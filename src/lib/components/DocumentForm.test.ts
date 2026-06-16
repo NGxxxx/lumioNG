@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
-import DocumentEditor from "./DocumentEditor.svelte";
+import DocumentForm from "./DocumentForm.svelte";
 import * as ipc from "../ipc";
 
 vi.mock("../ipc", () => ({
@@ -10,12 +10,12 @@ vi.mock("../ipc", () => ({
   errorMessage: (e: unknown) => String(e),
 }));
 
-describe("DocumentEditor", () => {
+describe("DocumentForm", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("cú pháp JSON sai → chặn save, không gọi backend, hiện lỗi", async () => {
     const onsaved = vi.fn();
-    const { getByText, container } = render(DocumentEditor, {
+    const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved, oncancel: () => {} },
     });
     const textarea = container.querySelector("textarea")!;
@@ -30,7 +30,7 @@ describe("DocumentEditor", () => {
   it("JSON hợp lệ ở chế độ insert → gọi insertDocument với text", async () => {
     const onsaved = vi.fn();
     (ipc.insertDocument as ReturnType<typeof vi.fn>).mockResolvedValue('{"$oid":"1"}');
-    const { getByText, container } = render(DocumentEditor, {
+    const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved, oncancel: () => {} },
     });
     const textarea = container.querySelector("textarea")!;
@@ -43,7 +43,7 @@ describe("DocumentEditor", () => {
   it("JSON hợp lệ ở chế độ edit → gọi replaceDocument với _id và text đã sửa", async () => {
     const onsaved = vi.fn();
     (ipc.replaceDocument as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-    const { getByText, container } = render(DocumentEditor, {
+    const { getByText, container } = render(DocumentForm, {
       props: {
         mode: "edit",
         db: "d",

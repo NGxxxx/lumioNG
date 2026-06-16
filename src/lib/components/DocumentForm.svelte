@@ -18,7 +18,6 @@
     oncancel: () => void;
   } = $props();
 
-  // Remounted fresh per open (ResultTable {#if editorOpen}); init-once from props is intentional.
   let text = $state(mode === "insert" ? "{}" : JSON.stringify(initial, null, 2));
   let error = $state<string | null>(null);
   let saving = $state(false);
@@ -57,23 +56,20 @@
   }
 </script>
 
-<div class="backdrop" role="presentation" onclick={oncancel}>
-  <div class="modal" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
-    <header>{mode === "insert" ? "New document" : "Edit document"}</header>
-    <textarea bind:value={text} spellcheck="false"></textarea>
-    {#if error}<div class="error">{error}</div>{/if}
-    <footer>
-      <button onclick={oncancel} disabled={saving}>Cancel</button>
-      <button onclick={save} disabled={saving}>{saving ? "Đang lưu…" : "Save"}</button>
-    </footer>
-  </div>
+<div class="form">
+  <header>{mode === "insert" ? "New document" : "Edit document"}</header>
+  <textarea bind:value={text} spellcheck="false"></textarea>
+  {#if error}<div class="error">{error}</div>{/if}
+  <footer>
+    <button onclick={oncancel} disabled={saving}>Cancel</button>
+    <button onclick={save} disabled={saving}>{saving ? "Đang lưu…" : "Save"}</button>
+  </footer>
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
-  .modal { background: #fff; width: 640px; max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; border-radius: 6px; overflow: hidden; }
+  .form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   header { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #eee; }
-  textarea { flex: 1; min-height: 320px; border: none; padding: 12px; font-family: ui-monospace, monospace; font-size: 13px; resize: none; outline: none; }
+  textarea { flex: 1; min-height: 240px; border: none; padding: 12px; font-family: ui-monospace, monospace; font-size: 13px; resize: none; outline: none; }
   .error { background: #fdecea; color: #b71c1c; padding: 6px 14px; font-size: 12px; }
   footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #eee; }
 </style>
