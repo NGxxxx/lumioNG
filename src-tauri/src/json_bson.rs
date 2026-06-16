@@ -1,0 +1,79 @@
+use crate::error::AppError;
+use mongodb::bson::{Bson, Document};
+
+/// Parse a Canonical Extended JSON string into a BSON value (inverse of serialize).
+pub fn canonical_string_to_bson(s: &str) -> Result<Bson, AppError> {
+    let value: serde_json::Value =
+        serde_json::from_str(s).map_err(|e| AppError::Parse(format!("JSON không hợp lệ: {e}")))?;
+    Bson::try_from(value).map_err(|e| AppError::Parse(format!("Extended JSON không hợp lệ: {e}")))
+}
+
+/// Parse a Canonical Extended JSON string and require a top-level document.
+pub fn canonical_string_to_doc(s: &str) -> Result<Document, AppError> {
+    match canonical_string_to_bson(s)? {
+        Bson::Document(d) => Ok(d),
+        _ => Err(AppError::Parse("cần một document JSON ở cấp cao nhất".into())),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bson_json::doc_to_canonical_string;
+    use mongodb::bson::spec::BinarySubtype;
+    use mongodb::bson::{doc, oid::ObjectId, Binary, DateTime, Decimal128, Document};
+    use std::str::FromStr;
+
+    fn roundtrip(d: Document) {
+        let s = doc_to_canonical_string(&d).expect("serialize ok");
+        let back = canonical_string_to_doc(&s).expect("parse ok");
+        assert_eq!(back, d);
+    }
+
+    #[test]
+    fn roundtrip_objectid() {
+        roundtrip(doc! { "_id": ObjectId::from_str("507f1f77bcf86cd799439011").unwrap() });
+    }
+    #[test]
+    fn roundtrip_numbers() {
+        roundtrip(doc! { "i32": 42i32, "i64": 9_000_000_000i64, "f": 3.14f64 });
+    }
+    #[test]
+    fn roundtrip_date() {
+        roundtrip(doc! { "at": DateTime::from_millis(1_700_000_000_000) });
+    }
+    #[test]
+    fn roundtrip_decimal128() {
+        roundtrip(doc! { "price": Decimal128::from_str("123.45").unwrap() });
+    }
+    #[test]
+    fn roundtrip_binary() {
+        roundtrip(doc! { "blob": Binary { subtype: BinarySubtype::Generic, bytes: vec![1, 2, 3, 4] } });
+    }
+    #[test]
+    fn roundtrip_nested_and_array() {
+        roundtrip(doc! {
+            "user": { "name": "a", "age": 30i32 },
+            "tags": ["x", "y", "z"],
+            "nums": [1i32, 2i32, 3i32]
+        });
+    }
+
+    #[test]
+    fn parse_id_value_objectid() {
+        let b = canonical_string_to_bson("{\"$oid\":\"507f1f77bcf86cd799439011\"}").expect("parse ok");
+        assert_eq!(b, Bson::ObjectId(ObjectId::from_str("507f1f77bcf86cd799439011").unwrap()));
+    }
+
+    #[test]
+    fn invalid_syntax_is_parse_error() {
+        let e = canonical_string_to_doc("{ broken").unwrap_err();
+        assert!(matches!(e, AppError::Parse(_)));
+    }
+
+    #[test]
+    fn top_level_non_document_is_parse_error() {
+        let e = canonical_string_to_doc("42").unwrap_err();
+        assert!(matches!(e, AppError::Parse(_)));
+    }
+}

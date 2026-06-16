@@ -7,7 +7,7 @@ export interface DbInfo {
 }
 
 export interface AppErrorShape {
-  kind: "Connection" | "Query" | "Serialize" | "NotConnected";
+  kind: "Connection" | "Query" | "Serialize" | "Parse" | "NotConnected";
   message?: string;
 }
 
@@ -43,4 +43,35 @@ export function errorMessage(e: unknown): string {
     return err.message ? `${err.kind}: ${err.message}` : err.kind;
   }
   return String(e);
+}
+
+export async function insertDocument(
+  db: string,
+  coll: string,
+  docJson: string
+): Promise<string> {
+  return await invoke<string>("insert_document", { db, coll, docJson });
+}
+
+export async function replaceDocument(
+  db: string,
+  coll: string,
+  idJson: string,
+  docJson: string
+): Promise<void> {
+  await invoke("replace_document", { db, coll, idJson, docJson });
+}
+
+export async function deleteDocument(
+  db: string,
+  coll: string,
+  idJson: string
+): Promise<void> {
+  await invoke("delete_document", { db, coll, idJson });
+}
+
+/** Serialize a document's _id back to a Canonical Extended JSON string; null if absent. */
+export function idJson(doc: Doc): string | null {
+  if (doc._id === undefined) return null;
+  return JSON.stringify(doc._id);
 }

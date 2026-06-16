@@ -2,6 +2,7 @@
 mod bson_json;
 mod commands;
 mod error;
+mod json_bson;
 mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,6 +14,9 @@ pub fn run() {
             commands::connect,
             commands::list_namespaces,
             commands::query_page,
+            commands::insert_document,
+            commands::replace_document,
+            commands::delete_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

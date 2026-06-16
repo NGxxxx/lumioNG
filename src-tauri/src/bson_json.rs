@@ -7,6 +7,12 @@ pub fn doc_to_canonical_string(doc: &Document) -> Result<String, AppError> {
     serde_json::to_string(&value).map_err(|e| AppError::Serialize(e.to_string()))
 }
 
+/// Serialize a single BSON value to a Canonical Extended JSON string.
+pub fn bson_to_canonical_string(value: &Bson) -> Result<String, AppError> {
+    let v = value.clone().into_canonical_extjson();
+    serde_json::to_string(&v).map_err(|e| AppError::Serialize(e.to_string()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -49,6 +55,14 @@ mod tests {
             "nums": [1i32, 2i32, 3i32]
         });
     }
+    #[test]
+    fn bson_value_roundtrips() {
+        let oid = ObjectId::from_str("507f1f77bcf86cd799439011").unwrap();
+        let s = bson_to_canonical_string(&Bson::ObjectId(oid)).unwrap();
+        let value: serde_json::Value = serde_json::from_str(&s).unwrap();
+        assert_eq!(Bson::try_from(value).unwrap(), Bson::ObjectId(oid));
+    }
+
     #[test]
     fn numbers_keep_type_in_canonical() {
         let doc = doc! { "i32": 42i32, "i64": 42i64, "f": 42f64 };
