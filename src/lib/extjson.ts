@@ -1,0 +1,52 @@
+export type BsonType =
+  | "objectId" | "date" | "int" | "long" | "double" | "decimal"
+  | "binary" | "string" | "bool" | "null" | "object" | "array" | "unknown";
+
+export interface ValueInfo {
+  type: BsonType;
+  display: string;
+}
+
+function previewJson(v: unknown, max = 80): string {
+  const s = JSON.stringify(v);
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
+}
+
+export function describeValue(v: unknown): ValueInfo {
+  if (v === null) return { type: "null", display: "null" };
+  if (typeof v === "string") return { type: "string", display: v };
+  if (typeof v === "boolean") return { type: "bool", display: String(v) };
+  if (typeof v === "number") return { type: "double", display: String(v) };
+
+  if (Array.isArray(v)) return { type: "array", display: previewJson(v) };
+
+  if (typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    if ("$oid" in o) return { type: "objectId", display: String(o.$oid) };
+    if ("$date" in o) {
+      const d = o.$date;
+      let display: string;
+      if (typeof d === "string") {
+        display = d;
+      } else if (d && typeof d === "object" && "$numberLong" in (d as object)) {
+        const ms = Number((d as Record<string, unknown>).$numberLong);
+        display = new Date(ms).toISOString();
+      } else {
+        display = previewJson(d);
+      }
+      return { type: "date", display };
+    }
+    if ("$numberInt" in o) return { type: "int", display: String(o.$numberInt) };
+    if ("$numberLong" in o) return { type: "long", display: String(o.$numberLong) };
+    if ("$numberDouble" in o) return { type: "double", display: String(o.$numberDouble) };
+    if ("$numberDecimal" in o) return { type: "decimal", display: String(o.$numberDecimal) };
+    if ("$binary" in o) {
+      const b = o.$binary as Record<string, unknown> | undefined;
+      const len = typeof b?.base64 === "string" ? (b.base64 as string).length : 0;
+      return { type: "binary", display: `Binary(${len} b64 chars)` };
+    }
+    return { type: "object", display: previewJson(o) };
+  }
+
+  return { type: "unknown", display: String(v) };
+}
