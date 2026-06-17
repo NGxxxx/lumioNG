@@ -1,6 +1,9 @@
 <script lang="ts">
-  import { insertDocument, replaceDocument, idJson, errorMessage } from "../ipc";
-  import type { Doc } from "../columns";
+  import { untrack } from "svelte";
+  import { insertDocument, replaceDocument } from "../api/documents";
+  import { errorMessage } from "../api/errors";
+  import { idJson } from "../domain/docid";
+  import type { Doc } from "../domain/columns";
   import TreeEditor from "./TreeEditor.svelte";
 
   let {
@@ -20,13 +23,16 @@
   } = $props();
 
   // Nguồn sự thật: object cây. Deep-clone qua JSON để an toàn mọi môi trường.
-  let docValue = $state<Doc>(mode === "insert" || !initial ? {} : JSON.parse(JSON.stringify(initial)));
-  let text = $state(JSON.stringify(docValue, null, 2));
+  // Props bất biến trong vòng đời (tab remount theo id) → chỉ lấy giá trị khởi tạo.
+  let docValue = $state<Doc>(
+    untrack(() => (mode === "insert" || !initial ? {} : JSON.parse(JSON.stringify(initial)))),
+  );
+  let text = $state(untrack(() => JSON.stringify(docValue, null, 2)));
   let view = $state<"tree" | "raw">("tree");
   let treeValid = $state(true);
   let error = $state<string | null>(null);
   let saving = $state(false);
-  const idText = mode === "edit" && initial ? idJson(initial) : null;
+  const idText = $derived(mode === "edit" && initial ? idJson(initial) : null);
 
   function isPlainObject(v: unknown): v is Doc {
     return typeof v === "object" && v !== null && !Array.isArray(v);

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { DbInfo } from "../ipc";
+  import type { DbInfo } from "../api/connection";
 
   let {
     databases = [],

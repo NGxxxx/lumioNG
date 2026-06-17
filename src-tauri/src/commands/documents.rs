@@ -4,54 +4,7 @@ use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc};
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, oid::ObjectId, Document};
-use mongodb::Client;
 use tauri::State;
-
-#[tauri::command]
-pub async fn connect(uri: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    let client = Client::with_uri_str(&uri)
-        .await
-        .map_err(|e| AppError::Connection(e.to_string()))?;
-
-    // Ping to confirm the connection is actually live (TLS/auth/SRV).
-    client
-        .database("admin")
-        .run_command(doc! { "ping": 1 })
-        .await
-        .map_err(|e| AppError::Connection(e.to_string()))?;
-
-    *state.client.lock().await = Some(client);
-    Ok(())
-}
-
-use serde::Serialize;
-
-#[derive(Serialize)]
-pub struct DbInfo {
-    pub name: String,
-    pub collections: Vec<String>,
-}
-
-const SYSTEM_DBS: [&str; 3] = ["admin", "local", "config"];
-
-#[tauri::command]
-pub async fn list_namespaces(state: State<'_, AppState>) -> Result<Vec<DbInfo>, AppError> {
-    let client = {
-        let guard = state.client.lock().await;
-        guard.as_ref().ok_or(AppError::NotConnected)?.clone()
-    };
-
-    let db_names = client.list_database_names().await?;
-    let mut out = Vec::new();
-    for name in db_names {
-        if SYSTEM_DBS.contains(&name.as_str()) {
-            continue;
-        }
-        let collections = client.database(&name).list_collection_names().await?;
-        out.push(DbInfo { name, collections });
-    }
-    Ok(out)
-}
 
 #[tauri::command]
 pub async fn query_page(
@@ -61,10 +14,7 @@ pub async fn query_page(
     limit: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = {
-        let guard = state.client.lock().await;
-        guard.as_ref().ok_or(AppError::NotConnected)?.clone()
-    };
+    let client = state.client().await?;
 
     let collection = client.database(&db).collection::<Document>(&coll);
 
@@ -98,10 +48,7 @@ pub async fn insert_document(
     doc_json: String,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let client = {
-        let guard = state.client.lock().await;
-        guard.as_ref().ok_or(AppError::NotConnected)?.clone()
-    };
+    let client = state.client().await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
@@ -130,10 +77,7 @@ pub async fn replace_document(
     doc_json: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = {
-        let guard = state.client.lock().await;
-        guard.as_ref().ok_or(AppError::NotConnected)?.clone()
-    };
+    let client = state.client().await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let id_bson = canonical_string_to_bson(&id_json)?;
@@ -142,7 +86,9 @@ pub async fn replace_document(
     ensure_id_unchanged(&new_doc, &id_bson)?;
 
     let collection = client.database(&db).collection::<Document>(&coll);
-    let res = collection.replace_one(doc! { "_id": id_bson }, new_doc).await?;
+    let res = collection
+        .replace_one(doc! { "_id": id_bson }, new_doc)
+        .await?;
     if res.matched_count == 0 {
         return Err(AppError::Query("document không còn tồn tại".into()));
     }
@@ -156,10 +102,7 @@ pub async fn delete_document(
     id_json: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = {
-        let guard = state.client.lock().await;
-        guard.as_ref().ok_or(AppError::NotConnected)?.clone()
-    };
+    let client = state.client().await?;
 
     let id_bson = canonical_string_to_bson(&id_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);

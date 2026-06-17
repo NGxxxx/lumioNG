@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { connect, errorMessage } from "../ipc";
+  import { connect } from "../api/connection";
+  import { errorMessage } from "../api/errors";
 
   let { onconnected }: { onconnected?: () => void } = $props();
 

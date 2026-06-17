@@ -11,12 +11,12 @@ pub fn run() {
         .manage(state::AppState::default())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
-            commands::connect,
-            commands::list_namespaces,
-            commands::query_page,
-            commands::insert_document,
-            commands::replace_document,
-            commands::delete_document,
+            commands::connection::connect,
+            commands::connection::list_namespaces,
+            commands::documents::query_page,
+            commands::documents::insert_document,
+            commands::documents::replace_document,
+            commands::documents::delete_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

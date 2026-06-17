@@ -1,6 +1,6 @@
 <script lang="ts">
   import TreeNode from "./TreeNode.svelte";
-  import { describeValue } from "../extjson";
+  import { describeValue } from "../domain/extjson";
   import {
     editTextOf,
     rebuildLeaf,
@@ -9,7 +9,7 @@
     ADDABLE_TYPES,
     type LeafInputType,
     type AddableType,
-  } from "../bsontree";
+  } from "../domain/bsontree";
 
   let {
     label,

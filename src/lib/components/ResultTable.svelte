@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { queryPage, lastObjectId, errorMessage, deleteDocument, replaceDocument, idJson } from "../ipc";
-  import { deriveColumnKeys, type Doc } from "../columns";
-  import { isInlineEditable, editTextOf, rebuildValue } from "../celledit";
+  import { onMount, untrack } from "svelte";
+  import { createCollectionView } from "../stores/collectionView.svelte";
+  import type { Doc } from "../domain/columns";
   import BsonCell from "./BsonCell.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
+  import ContextMenu from "./ContextMenu.svelte";
+  import { idJson } from "../domain/docid";
 
   let {
     db,
@@ -17,181 +17,37 @@
     onopendocument: (doc: Doc | null, mode: "edit" | "insert") => void;
   } = $props();
 
-  let docs = $state<Doc[]>([]);
-  let keys = $state<string[]>([]);
-  let loading = $state(false);
-  let done = $state(false);
-  let error = $state<string | null>(null);
+  const v = untrack(() => createCollectionView(db, coll));
   let scroller = $state<HTMLDivElement>();
-
-  let confirmDoc = $state<Doc | null>(null);
-
-  // Inline cell edit
-  let editing = $state<{ row: number; key: string } | null>(null);
-  let editText = $state("");
-  let editError = $state<string | null>(null);
-  let saving = $state(false);
-
-  // Context menu
-  let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
 
   function focusSelect(node: HTMLInputElement) {
     node.focus();
     node.select();
   }
 
-  async function loadMore() {
-    if (loading || done) return;
-    loading = true;
-    error = null;
-    try {
-      const after = lastObjectId(docs);
-      if (docs.length > 0 && after === null) {
-        done = true;
-        error = "Phân trang chỉ hỗ trợ _id kiểu ObjectId trong slice này.";
-        return;
-      }
-      const batch = await queryPage(db, coll, after, 50);
-      if (batch.length === 0) {
-        done = true;
-      } else {
-        docs = [...docs, ...batch];
-        keys = deriveColumnKeys(docs);
-      }
-    } catch (e) {
-      error = errorMessage(e);
-    } finally {
-      loading = false;
-    }
-  }
-
   function onScroll() {
     if (!scroller) return;
     const { scrollTop, scrollHeight, clientHeight } = scroller;
-    if (scrollHeight - scrollTop - clientHeight < 300) loadMore();
-  }
-
-  function startEdit(row: number, key: string) {
-    if (!isInlineEditable(key, docs[row][key])) return;
-    editing = { row, key };
-    editText = editTextOf(docs[row][key]);
-    editError = null;
-  }
-
-  function cancelEdit() {
-    if (saving) return;
-    editing = null;
-    editError = null;
-  }
-
-  async function commitEdit() {
-    if (!editing || saving) return;
-    const { row, key } = editing;
-    const r = rebuildValue(docs[row][key], editText);
-    if (!r.ok) {
-      editError = r.error;
-      return;
-    }
-    const newDoc: Doc = { ...docs[row], [key]: r.value };
-    const id = idJson(newDoc);
-    if (id === null) {
-      editError = "Document không có _id để cập nhật.";
-      return;
-    }
-    saving = true;
-    try {
-      await replaceDocument(db, coll, id, JSON.stringify(newDoc));
-      docs[row] = newDoc;
-      docs = [...docs];
-      editing = null;
-      editError = null;
-    } catch (e) {
-      editError = errorMessage(e);
-    } finally {
-      saving = false;
-    }
+    if (scrollHeight - scrollTop - clientHeight < 300) v.loadMore();
   }
 
   function onEditKey(e: KeyboardEvent) {
     if (e.key === "Enter") {
       e.preventDefault();
-      commitEdit();
+      v.commitEdit();
     } else if (e.key === "Escape") {
       e.preventDefault();
-      cancelEdit();
-    }
-  }
-
-  function openMenu(e: MouseEvent, row: number, key: string) {
-    e.preventDefault();
-    e.stopPropagation();
-    menu = { x: e.clientX, y: e.clientY, row, key };
-  }
-
-  function menuItems(): MenuItem[] {
-    if (!menu) return [];
-    const value = docs[menu.row][menu.key];
-    return [
-      { label: "Open document", action: "open" },
-      { label: "Delete document", action: "delete" },
-      { label: "Copy value", action: "copyValue" },
-      { label: "Copy _id", action: "copyId", disabled: idJson(docs[menu.row]) === null },
-      { label: "Edit cell", action: "editCell", disabled: !isInlineEditable(menu.key, value) },
-    ];
-  }
-
-  async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      error = "Không copy được vào clipboard.";
+      v.cancelEdit();
     }
   }
 
   function onMenuSelect(action: string) {
-    if (!menu) return;
-    const row = menu.row;
-    const key = menu.key;
-    const doc = docs[row];
-    menu = null;
-    switch (action) {
-      case "open":
-        onopendocument(doc, "edit");
-        break;
-      case "delete":
-        confirmDoc = doc;
-        break;
-      case "copyValue":
-        copy(JSON.stringify(doc[key]));
-        break;
-      case "copyId":
-        copy(idJson(doc) ?? "");
-        break;
-      case "editCell":
-        startEdit(row, key);
-        break;
-    }
-  }
-
-  async function confirmDelete() {
-    const d = confirmDoc;
-    confirmDoc = null;
-    if (!d) return;
-    const id = idJson(d);
-    if (id === null) {
-      error = "Document không có _id để xóa.";
-      return;
-    }
-    try {
-      await deleteDocument(db, coll, id);
-      docs = docs.filter((x) => x !== d);
-    } catch (e) {
-      error = errorMessage(e);
-    }
+    const r = v.onMenuSelect(action);
+    if (r) onopendocument(r.open, "edit");
   }
 
   onMount(() => {
-    loadMore();
+    v.loadMore();
   });
 </script>
 
@@ -199,30 +55,30 @@
   <div class="toolbar">
     <button onclick={() => onopendocument(null, "insert")}>+ New document</button>
   </div>
-  {#if error}<div class="error">{error}</div>{/if}
+  {#if v.error}<div class="error">{v.error}</div>{/if}
   <div class="scroller" bind:this={scroller} onscroll={onScroll}>
     <table>
       <thead>
-        <tr><th class="actions"></th>{#each keys as k}<th>{k}</th>{/each}</tr>
+        <tr><th class="actions"></th>{#each v.keys as k}<th>{k}</th>{/each}</tr>
       </thead>
       <tbody>
-        {#each docs as d, row}
+        {#each v.docs as d, row}
           <tr>
             <td class="actions">
               <button onclick={() => onopendocument(d, "edit")}>Edit</button>
-              <button onclick={() => (confirmDoc = d)}>Delete</button>
+              <button onclick={() => v.requestDelete(d)}>Delete</button>
             </td>
-            {#each keys as k}
-              <td oncontextmenu={(e) => openMenu(e, row, k)} ondblclick={() => startEdit(row, k)}>
-                {#if editing && editing.row === row && editing.key === k}
+            {#each v.keys as k}
+              <td oncontextmenu={(e) => v.openMenu(e, row, k)} ondblclick={() => v.startEdit(row, k)}>
+                {#if v.editing && v.editing.row === row && v.editing.key === k}
                   <input
                     class="celledit"
-                    bind:value={editText}
+                    bind:value={v.editText}
                     onkeydown={onEditKey}
-                    onblur={cancelEdit}
+                    onblur={v.cancelEdit}
                     use:focusSelect
                   />
-                  {#if editError}<div class="cellerror">{editError}</div>{/if}
+                  {#if v.editError}<div class="cellerror">{v.editError}</div>{/if}
                 {:else if k in d}
                   <BsonCell value={d[k]} />
                 {/if}
@@ -232,21 +88,27 @@
         {/each}
       </tbody>
     </table>
-    {#if loading}<div class="status">Đang tải…</div>{/if}
-    {#if done}<div class="status">— hết —</div>{/if}
+    {#if v.loading}<div class="status">Đang tải…</div>{/if}
+    {#if v.done}<div class="status">— hết —</div>{/if}
   </div>
 </div>
 
-{#if confirmDoc}
+{#if v.confirmDoc}
   <ConfirmDialog
-    idText={idJson(confirmDoc) ?? "(không có _id)"}
-    onconfirm={confirmDelete}
-    oncancel={() => (confirmDoc = null)}
+    idText={idJson(v.confirmDoc) ?? "(không có _id)"}
+    onconfirm={v.confirmDelete}
+    oncancel={v.cancelDelete}
   />
 {/if}
 
-{#if menu}
-  <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onselect={onMenuSelect} onclose={() => (menu = null)} />
+{#if v.menu}
+  <ContextMenu
+    x={v.menu.x}
+    y={v.menu.y}
+    items={v.menuItems()}
+    onselect={onMenuSelect}
+    onclose={v.closeMenu}
+  />
 {/if}
 
 <style>

@@ -1,7 +1,9 @@
 <script lang="ts">
-  import { listNamespaces, errorMessage, idJson, type DbInfo } from "$lib/ipc";
-  import { workspace } from "$lib/workspace.svelte";
-  import type { Doc } from "$lib/columns";
+  import { listNamespaces, type DbInfo } from "$lib/api/connection";
+  import { errorMessage } from "$lib/api/errors";
+  import { idJson } from "$lib/domain/docid";
+  import { workspace } from "$lib/stores/workspace.svelte";
+  import type { Doc } from "$lib/domain/columns";
   import ConnectionBar from "$lib/components/ConnectionBar.svelte";
   import NamespaceTree from "$lib/components/NamespaceTree.svelte";
   import ResultTable from "$lib/components/ResultTable.svelte";

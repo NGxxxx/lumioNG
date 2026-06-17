@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import DocumentForm from "./DocumentForm.svelte";
-import * as ipc from "../ipc";
+import * as documents from "../api/documents";
 
-vi.mock("../ipc", () => ({
+vi.mock("../api/documents", () => ({
   insertDocument: vi.fn(),
   replaceDocument: vi.fn(),
+}));
+vi.mock("../domain/docid", () => ({
   idJson: vi.fn(() => '{"$oid":"abc"}'),
-  errorMessage: (e: unknown) => String(e),
 }));
 
 describe("DocumentForm — Raw JSON view", () => {
@@ -23,14 +24,14 @@ describe("DocumentForm — Raw JSON view", () => {
     await fireEvent.input(textarea, { target: { value: "{ bad json" } });
     await fireEvent.click(getByText("Save"));
 
-    expect(ipc.insertDocument).not.toHaveBeenCalled();
+    expect(documents.insertDocument).not.toHaveBeenCalled();
     expect(onsaved).not.toHaveBeenCalled();
     expect(getByText(/sai cú pháp/)).toBeTruthy();
   });
 
   it("JSON hợp lệ ở chế độ insert → gọi insertDocument với JSON", async () => {
     const onsaved = vi.fn();
-    (ipc.insertDocument as ReturnType<typeof vi.fn>).mockResolvedValue('{"$oid":"1"}');
+    (documents.insertDocument as ReturnType<typeof vi.fn>).mockResolvedValue('{"$oid":"1"}');
     const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved, oncancel: () => {} },
     });
@@ -39,12 +40,12 @@ describe("DocumentForm — Raw JSON view", () => {
     await fireEvent.input(textarea, { target: { value: '{"a":1}' } });
     await fireEvent.click(getByText("Save"));
 
-    expect(ipc.insertDocument).toHaveBeenCalledWith("d", "c", '{"a":1}');
+    expect(documents.insertDocument).toHaveBeenCalledWith("d", "c", '{"a":1}');
   });
 
   it("JSON hợp lệ ở chế độ edit → gọi replaceDocument với _id và JSON đã sửa", async () => {
     const onsaved = vi.fn();
-    (ipc.replaceDocument as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (documents.replaceDocument as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     const { getByText, container } = render(DocumentForm, {
       props: {
         mode: "edit",
@@ -60,7 +61,7 @@ describe("DocumentForm — Raw JSON view", () => {
     await fireEvent.input(textarea, { target: { value: '{"_id":{"$oid":"abc"},"a":2}' } });
     await fireEvent.click(getByText("Save"));
 
-    expect(ipc.replaceDocument).toHaveBeenCalledWith(
+    expect(documents.replaceDocument).toHaveBeenCalledWith(
       "d",
       "c",
       '{"$oid":"abc"}',
@@ -102,7 +103,7 @@ describe("DocumentForm — Tree view", () => {
 
   it("sửa field trong tree → Save gọi replaceDocument với JSON đã đổi (giữ _id)", async () => {
     const onsaved = vi.fn();
-    (ipc.replaceDocument as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+    (documents.replaceDocument as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     const { getByText, container } = render(DocumentForm, {
       props: {
         mode: "edit",
@@ -117,7 +118,7 @@ describe("DocumentForm — Tree view", () => {
     await fireEvent.input(input, { target: { value: "y" } });
     await fireEvent.click(getByText("Save"));
 
-    expect(ipc.replaceDocument).toHaveBeenCalledWith(
+    expect(documents.replaceDocument).toHaveBeenCalledWith(
       "d",
       "c",
       '{"$oid":"abc"}',
@@ -143,7 +144,7 @@ describe("DocumentForm — Tree view", () => {
     await fireEvent.click(saveBtn);
 
     expect(saveBtn.disabled).toBe(true);
-    expect(ipc.replaceDocument).not.toHaveBeenCalled();
+    expect(documents.replaceDocument).not.toHaveBeenCalled();
     expect(onsaved).not.toHaveBeenCalled();
   });
 

@@ -1,4 +1,4 @@
-import type { Doc } from "./columns";
+import type { Doc } from "../domain/columns";
 
 export type CollectionTab = { id: number; kind: "collection"; db: string; coll: string };
 export type DocumentTab = {

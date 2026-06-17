@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { describeValue } from "../extjson";
+  import { describeValue } from "../domain/extjson";
 
   let { value }: { value: unknown } = $props();
 

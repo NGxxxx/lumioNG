@@ -1,6 +1,6 @@
 <script lang="ts">
   import TreeNode from "./TreeNode.svelte";
-  import type { Doc } from "../columns";
+  import type { Doc } from "../domain/columns";
 
   let {
     value,

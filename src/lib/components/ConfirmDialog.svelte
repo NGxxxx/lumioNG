@@ -10,8 +10,16 @@
   } = $props();
 </script>
 
-<div class="backdrop" role="presentation" onclick={oncancel}>
-  <div class="modal" role="dialog" aria-modal="true" onclick={(e) => e.stopPropagation()}>
+<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+
+<div
+  class="backdrop"
+  role="presentation"
+  onclick={(e) => {
+    if (e.target === e.currentTarget) oncancel();
+  }}
+>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Xóa document">
     <header>Xóa document?</header>
     <div class="body">
       Bạn sắp xóa document có <code>_id</code> = <code>{idText}</code>.

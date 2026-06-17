@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { Tab } from "../workspace.svelte";
+  import type { Tab } from "../stores/workspace.svelte";
 
   let {
     tabs,
