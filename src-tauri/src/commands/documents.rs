@@ -6,12 +6,23 @@ use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, oid::ObjectId, Document};
 use tauri::State;
 
+/// Ghép filter người dùng với con trỏ keyset trên _id.
+/// Không có con trỏ → trả filter nguyên vẹn; có → bọc trong `$and`
+/// (an toàn kể cả khi filter tự nhắc tới `_id`).
+fn build_query_filter(user: Document, after: Option<ObjectId>) -> Document {
+    match after {
+        None => user,
+        Some(oid) => doc! { "$and": [ user, { "_id": { "$gt": oid } } ] },
+    }
+}
+
 #[tauri::command]
 pub async fn query_page(
     db: String,
     coll: String,
     after_id: Option<String>,
     limit: i64,
+    filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let client = state.client().await?;
@@ -19,17 +30,23 @@ pub async fn query_page(
     let collection = client.database(&db).collection::<Document>(&coll);
 
     // Skeleton assumes _id is an ObjectId (documented limitation).
-    let filter = match after_id {
-        Some(id) => {
-            let oid = ObjectId::parse_str(&id)
-                .map_err(|e| AppError::Query(format!("invalid after_id: {e}")))?;
-            doc! { "_id": { "$gt": oid } }
-        }
-        None => doc! {},
+    let after = match after_id {
+        Some(id) => Some(
+            ObjectId::parse_str(&id)
+                .map_err(|e| AppError::Query(format!("invalid after_id: {e}")))?,
+        ),
+        None => None,
     };
 
+    let user_filter = match filter.as_deref() {
+        Some(s) if !s.trim().is_empty() => canonical_string_to_doc(s)?,
+        _ => Document::new(),
+    };
+
+    let query = build_query_filter(user_filter, after);
+
     let mut cursor = collection
-        .find(filter)
+        .find(query)
         .sort(doc! { "_id": 1 })
         .limit(limit)
         .await?;
@@ -139,5 +156,32 @@ mod tests {
         let id = Bson::ObjectId(ObjectId::new());
         let new_doc = doc! { "name": "alice" };
         assert!(ensure_id_unchanged(&new_doc, &id).is_ok());
+    }
+
+    #[test]
+    fn filter_without_cursor_is_unchanged() {
+        let user = doc! { "status": "active" };
+        let out = build_query_filter(user.clone(), None);
+        assert_eq!(out, user);
+    }
+
+    #[test]
+    fn filter_with_cursor_wraps_in_and() {
+        let oid = ObjectId::new();
+        let out = build_query_filter(doc! { "status": "active" }, Some(oid));
+        let and = out.get_array("$and").unwrap();
+        assert_eq!(and.len(), 2);
+        assert_eq!(and[0], Bson::Document(doc! { "status": "active" }));
+        assert_eq!(and[1], Bson::Document(doc! { "_id": { "$gt": oid } }));
+    }
+
+    #[test]
+    fn empty_user_filter_with_cursor_still_wraps() {
+        let oid = ObjectId::new();
+        let out = build_query_filter(Document::new(), Some(oid));
+        let and = out.get_array("$and").unwrap();
+        assert_eq!(and.len(), 2);
+        assert_eq!(and[0], Bson::Document(Document::new()));
+        assert_eq!(and[1], Bson::Document(doc! { "_id": { "$gt": oid } }));
     }
 }

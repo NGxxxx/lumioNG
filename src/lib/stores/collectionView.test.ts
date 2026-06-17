@@ -22,7 +22,7 @@ describe("createCollectionView", () => {
     await v.loadMore();
     expect(v.docs.length).toBe(1);
     expect(v.keys).toEqual(["_id", "x"]);
-    expect(qp).toHaveBeenCalledWith("d", "c", null, 50);
+    expect(qp).toHaveBeenCalledWith("d", "c", null, 50, "{}");
   });
 
   it("batch rỗng → done=true, không còn gọi tiếp", async () => {
@@ -63,5 +63,50 @@ describe("createCollectionView", () => {
     expect(repl).toHaveBeenCalled();
     expect(v.docs[0].x).toBe("world");
     expect(v.editing).toBeNull();
+  });
+
+  it("applyFilter cú pháp sai → set filterError, không gọi queryPage", async () => {
+    const v = createCollectionView("d", "c");
+    v.filterText = "{bad";
+    await v.applyFilter();
+    expect(v.filterError).not.toBeNull();
+    expect(qp).not.toHaveBeenCalled();
+  });
+
+  it("applyFilter hợp lệ → reset docs và gọi queryPage với filter", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, x: 2 }]);
+    const v = createCollectionView("d", "c");
+    await v.loadMore();
+    v.filterText = '{"x":2}';
+    await v.applyFilter();
+    expect(v.filterError).toBeNull();
+    expect(v.docs.length).toBe(1);
+    expect(qp).toHaveBeenLastCalledWith("d", "c", null, 50, '{"x":2}');
+  });
+
+  it("phân trang giữ filter đã apply", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 2 }]);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, x: 2 }]);
+    const v = createCollectionView("d", "c");
+    v.filterText = '{"x":2}';
+    await v.applyFilter();
+    await v.loadMore();
+    expect(qp).toHaveBeenLastCalledWith("d", "c", "a", 50, '{"x":2}');
+  });
+
+  it("applyFilter khi đang loadMore → bỏ kết quả cũ, dùng filter mới", async () => {
+    let resolveOld!: (v: unknown) => void;
+    qp.mockImplementationOnce(() => new Promise((r) => (resolveOld = r)));
+    const v = createCollectionView("d", "c");
+    const p1 = v.loadMore(); // in flight (old filter "{}")
+    v.filterText = '{"x":2}';
+    qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, x: 2 }]); // result for the new filter
+    const p2 = v.applyFilter();
+    resolveOld([{ _id: { $oid: "a" }, x: 1 }]); // stale request resolves AFTER filter change
+    await p1;
+    await p2;
+    expect(v.docs).toEqual([{ _id: { $oid: "b" }, x: 2 }]); // stale batch discarded
+    expect(qp).toHaveBeenLastCalledWith("d", "c", null, 50, '{"x":2}');
   });
 });

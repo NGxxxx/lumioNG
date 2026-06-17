@@ -56,6 +56,21 @@
     <button onclick={() => onopendocument(null, "insert")}>+ New document</button>
   </div>
   {#if v.error}<div class="error">{v.error}</div>{/if}
+  <div class="filterbar">
+    <input
+      class="filter-input"
+      bind:value={v.filterText}
+      placeholder={'{ "field": value }'}
+      onkeydown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          v.applyFilter();
+        }
+      }}
+    />
+    <button onclick={v.applyFilter}>Apply</button>
+  </div>
+  {#if v.filterError}<div class="error">{v.filterError}</div>{/if}
   <div class="scroller" bind:this={scroller} onscroll={onScroll}>
     <table>
       <thead>
@@ -122,6 +137,8 @@
   td.actions button { font-size: 11px; margin-right: 4px; }
   .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 13px; padding: 2px 4px; }
   .cellerror { color: #b71c1c; font-size: 11px; margin-top: 2px; }
+  .filterbar { display: flex; gap: 0.5rem; padding: 0.5rem; }
+  .filter-input { flex: 1; font-family: monospace; }
   .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; }
   .status { padding: 8px; color: #777; font-size: 12px; }
 </style>

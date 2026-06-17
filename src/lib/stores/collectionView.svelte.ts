@@ -3,6 +3,7 @@ import { errorMessage } from "../api/errors";
 import { lastObjectId, idJson } from "../domain/docid";
 import { deriveColumnKeys, type Doc } from "../domain/columns";
 import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
+import { parseFilter } from "../domain/filter";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 
 /**
@@ -15,6 +16,11 @@ export function createCollectionView(db: string, coll: string) {
   let loading = $state(false);
   let done = $state(false);
   let error = $state<string | null>(null);
+
+  let filterText = $state("");
+  let filterError = $state<string | null>(null);
+  let appliedFilter = $state("{}");
+  let generation = 0;
 
   let confirmDoc = $state<Doc | null>(null);
 
@@ -31,6 +37,7 @@ export function createCollectionView(db: string, coll: string) {
     if (loading || done) return;
     loading = true;
     error = null;
+    const gen = generation;
     try {
       const after = lastObjectId(docs);
       if (docs.length > 0 && after === null) {
@@ -38,7 +45,8 @@ export function createCollectionView(db: string, coll: string) {
         error = "Phân trang chỉ hỗ trợ _id kiểu ObjectId trong slice này.";
         return;
       }
-      const batch = await queryPage(db, coll, after, 50);
+      const batch = await queryPage(db, coll, after, 50, appliedFilter);
+      if (gen !== generation) return; // superseded by a newer filter
       if (batch.length === 0) {
         done = true;
       } else {
@@ -46,10 +54,28 @@ export function createCollectionView(db: string, coll: string) {
         keys = deriveColumnKeys(docs);
       }
     } catch (e) {
+      if (gen !== generation) return;
       error = errorMessage(e);
     } finally {
-      loading = false;
+      if (gen === generation) loading = false;
     }
+  }
+
+  async function applyFilter() {
+    const r = parseFilter(filterText);
+    if (!r.ok) {
+      filterError = r.error;
+      return;
+    }
+    appliedFilter = r.json;
+    filterError = null;
+    generation++; // invalidate any in-flight loadMore
+    docs = [];
+    keys = [];
+    done = false;
+    error = null;
+    loading = false; // release the guard so the fresh load can start
+    await loadMore();
   }
 
   function startEdit(row: number, key: string) {
@@ -190,6 +216,16 @@ export function createCollectionView(db: string, coll: string) {
     get error() {
       return error;
     },
+    get filterText() {
+      return filterText;
+    },
+    set filterText(v: string) {
+      filterText = v;
+    },
+    get filterError() {
+      return filterError;
+    },
+    applyFilter,
     get confirmDoc() {
       return confirmDoc;
     },

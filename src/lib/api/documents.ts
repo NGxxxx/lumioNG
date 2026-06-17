@@ -7,8 +7,9 @@ export async function queryPage(
   coll: string,
   afterId: string | null,
   limit = 50,
+  filter = "{}",
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("query_page", { db, coll, afterId, limit });
+  const rows = await invoke<string[]>("query_page", { db, coll, afterId, limit, filter });
   return rows.map((s) => JSON.parse(s) as Doc);
 }
 
