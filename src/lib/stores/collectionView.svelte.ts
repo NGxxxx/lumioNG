@@ -1,4 +1,6 @@
-import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany } from "../api/documents";
+import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany, exportQuery, importDocuments } from "../api/documents";
+import { saveDialog, openDialog, writeTextFile } from "../api/files";
+import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
 import { lastObjectId, idJson } from "../domain/docid";
 import { type Doc } from "../domain/columns";
@@ -53,6 +55,11 @@ export function createCollectionView(db: string, coll: string) {
   let bulkConfirmAll = $state(false);
   let bulkResult = $state<string | null>(null);
   let bulkError = $state<string | null>(null);
+
+  // Export / import I/O
+  let ioBusy = $state(false);
+  let ioMessage = $state<string | null>(null);
+  let ioError = $state<string | null>(null);
 
   const canRunBulk = $derived(
     bulkCount !== null &&
@@ -364,6 +371,50 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
+  async function exportAs(format: "json" | "csv") {
+    const path = await saveDialog(`${coll}.${format}`, [
+      { name: format.toUpperCase(), extensions: [format] },
+    ]);
+    if (path === null) return;
+    ioBusy = true;
+    ioMessage = null;
+    ioError = null;
+    try {
+      const data = await exportQuery(
+        db,
+        coll,
+        appliedFilter,
+        buildSort(sortKeys),
+        buildProjection(hidden),
+      );
+      const content = format === "json" ? toJsonArray(data) : toCsv(data);
+      await writeTextFile(path, content);
+      ioMessage = `Đã export ${data.length} document.`;
+    } catch (e) {
+      ioError = errorMessage(e);
+    } finally {
+      ioBusy = false;
+    }
+  }
+
+  async function importDocs() {
+    const path = await openDialog([{ name: "JSON / JSONL", extensions: ["json", "jsonl"] }]);
+    if (path === null) return;
+    ioBusy = true;
+    ioMessage = null;
+    ioError = null;
+    try {
+      const res = await importDocuments(db, coll, path);
+      const detail = res.errors.length ? ` ${res.errors.join("; ")}` : "";
+      ioMessage = `Đã chèn ${res.inserted}, bỏ qua ${res.failed} lỗi.${detail}`;
+      await reloadDocs();
+    } catch (e) {
+      ioError = errorMessage(e);
+    } finally {
+      ioBusy = false;
+    }
+  }
+
   function requestDelete(doc: Doc) {
     confirmDoc = doc;
   }
@@ -487,5 +538,10 @@ export function createCollectionView(db: string, coll: string) {
     closeBulk,
     countBulk,
     runBulk,
+    get ioBusy() { return ioBusy; },
+    get ioMessage() { return ioMessage; },
+    get ioError() { return ioError; },
+    exportAs,
+    importDocs,
   };
 }

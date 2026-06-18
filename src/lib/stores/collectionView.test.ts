@@ -10,9 +10,18 @@ vi.mock("../api/documents", () => ({
   countDocuments: vi.fn(),
   updateMany: vi.fn(),
   deleteMany: vi.fn(),
+  exportQuery: vi.fn(),
+  importDocuments: vi.fn(),
+}));
+
+vi.mock("../api/files", () => ({
+  saveDialog: vi.fn(),
+  openDialog: vi.fn(),
+  writeTextFile: vi.fn(),
 }));
 
 import * as documents from "../api/documents";
+import * as files from "../api/files";
 import { createCollectionView } from "./collectionView.svelte";
 
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
@@ -20,6 +29,11 @@ const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
 const repl = documents.replaceDocument as ReturnType<typeof vi.fn>;
 const samp = documents.sampleDocuments as ReturnType<typeof vi.fn>;
 const full = documents.fetchFullDoc as ReturnType<typeof vi.fn>;
+const expQ = documents.exportQuery as ReturnType<typeof vi.fn>;
+const impD = documents.importDocuments as ReturnType<typeof vi.fn>;
+const saveDlg = files.saveDialog as ReturnType<typeof vi.fn>;
+const openDlg = files.openDialog as ReturnType<typeof vi.fn>;
+const writeF = files.writeTextFile as ReturnType<typeof vi.fn>;
 
 describe("createCollectionView", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -201,6 +215,55 @@ describe("createCollectionView", () => {
     await v.startEdit(0, "x");
     expect(full).not.toHaveBeenCalled();
     expect(v.editing).toEqual({ row: 0, key: "x" });
+  });
+
+  it("exportAs('json') ghi file nội dung JSON array", async () => {
+    saveDlg.mockResolvedValueOnce("/tmp/c.json");
+    expQ.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    writeF.mockResolvedValueOnce(undefined);
+    const v = createCollectionView("d", "c");
+    await v.exportAs("json");
+    expect(expQ).toHaveBeenCalledWith("d", "c", "{}", null, null);
+    const [, content] = writeF.mock.calls[0];
+    expect(JSON.parse(content)).toEqual([{ _id: { $oid: "a" }, x: 1 }]);
+    expect(v.ioMessage).toContain("1");
+  });
+
+  it("exportAs('csv') ghi file nội dung CSV", async () => {
+    saveDlg.mockResolvedValueOnce("/tmp/c.csv");
+    expQ.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    writeF.mockResolvedValueOnce(undefined);
+    const v = createCollectionView("d", "c");
+    await v.exportAs("csv");
+    const [, content] = writeF.mock.calls[0];
+    expect(content.split("\n")[0]).toBe("_id,x");
+  });
+
+  it("exportAs hủy dialog → không export/ghi", async () => {
+    saveDlg.mockResolvedValueOnce(null);
+    const v = createCollectionView("d", "c");
+    await v.exportAs("json");
+    expect(expQ).not.toHaveBeenCalled();
+    expect(writeF).not.toHaveBeenCalled();
+  });
+
+  it("importDocs gọi importDocuments + reload + set message", async () => {
+    openDlg.mockResolvedValueOnce("/tmp/in.json");
+    impD.mockResolvedValueOnce({ inserted: 3, failed: 1, errors: ["dup"] });
+    qp.mockResolvedValueOnce([]); // reloadDocs
+    const v = createCollectionView("d", "c");
+    await v.importDocs();
+    expect(impD).toHaveBeenCalledWith("d", "c", "/tmp/in.json");
+    expect(v.ioMessage).toContain("3");
+    expect(v.ioMessage).toContain("1");
+    expect(qp).toHaveBeenCalled();
+  });
+
+  it("importDocs hủy dialog → không import", async () => {
+    openDlg.mockResolvedValueOnce(null);
+    const v = createCollectionView("d", "c");
+    await v.importDocs();
+    expect(impD).not.toHaveBeenCalled();
   });
 });
 

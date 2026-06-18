@@ -103,3 +103,30 @@ export async function deleteMany(
 ): Promise<number> {
   return await invoke<number>("delete_many", { db, coll, filter, allowAll });
 }
+
+/** Toàn bộ doc khớp filter (kèm sort/projection đang áp) — KHÔNG phân trang. */
+export async function exportQuery(
+  db: string,
+  coll: string,
+  filter = "{}",
+  sort: string | null = null,
+  projection: string | null = null,
+): Promise<Doc[]> {
+  const rows = await invoke<string[]>("export_query", { db, coll, filter, sort, projection });
+  return rows.map((s) => JSON.parse(s) as Doc);
+}
+
+export interface ImportResult {
+  inserted: number;
+  failed: number;
+  errors: string[];
+}
+
+/** Đọc file (mảng JSON hoặc JSONL) → insert_many(ordered=false). */
+export async function importDocuments(
+  db: string,
+  coll: string,
+  path: string,
+): Promise<ImportResult> {
+  return await invoke<ImportResult>("import_documents", { db, coll, path });
+}

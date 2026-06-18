@@ -4,6 +4,7 @@ use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc};
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, oid::ObjectId, Document};
+use mongodb::error::ErrorKind;
 use tauri::State;
 
 /// Ghép filter người dùng với con trỏ keyset trên _id.
@@ -195,6 +196,42 @@ pub struct BulkResult {
     pub modified: u64,
 }
 
+const MAX_IMPORT_ERRORS: usize = 5;
+
+#[derive(serde::Serialize)]
+pub struct ImportResult {
+    pub inserted: u64,
+    pub failed: u64,
+    pub errors: Vec<String>,
+}
+
+/// Tách nội dung file thành danh sách chuỗi ExtJSON từng-doc.
+/// Ký tự non-whitespace đầu là '[' → parse mảng JSON, mỗi phần tử serialize lại 1 chuỗi.
+/// Ngược lại → JSONL: mỗi dòng non-empty (sau trim) là một doc.
+fn split_import(content: &str) -> Result<Vec<String>, AppError> {
+    if content.trim_start().starts_with('[') {
+        let arr: Vec<serde_json::Value> =
+            serde_json::from_str(content).map_err(|e| AppError::Parse(e.to_string()))?;
+        arr.into_iter()
+            .map(|v| serde_json::to_string(&v).map_err(|e| AppError::Parse(e.to_string())))
+            .collect()
+    } else {
+        Ok(content
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect())
+    }
+}
+
+/// Dựng ImportResult từ số đã chèn + danh sách thông điệp lỗi, giữ tối đa MAX_IMPORT_ERRORS lỗi đầu.
+fn summarize_import(inserted: u64, mut errors: Vec<String>) -> ImportResult {
+    let failed = errors.len() as u64;
+    errors.truncate(MAX_IMPORT_ERRORS);
+    ImportResult { inserted, failed, errors }
+}
+
 /// Parse filter ExtJSON người dùng (rỗng/None → Document rỗng).
 fn parse_user_filter(filter: Option<&str>) -> Result<Document, AppError> {
     match filter {
@@ -261,6 +298,106 @@ fn ensure_filter_allowed(filter: &Document, allow_all: bool) -> Result<(), AppEr
         ));
     }
     Ok(())
+}
+
+#[tauri::command]
+pub async fn export_query(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    sort: Option<String>,
+    projection: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+
+    let user_filter = parse_user_filter(filter.as_deref())?;
+    let sort_doc = match sort.as_deref() {
+        Some(s) if !s.trim().is_empty() => canonical_string_to_doc(s)?,
+        _ => doc! { "_id": 1 },
+    };
+
+    let mut q = collection.find(user_filter).sort(sort_doc);
+    if let Some(s) = projection.as_deref() {
+        if !s.trim().is_empty() {
+            q = q.projection(canonical_string_to_doc(s)?);
+        }
+    }
+    let mut cursor = q.await?;
+
+    let mut docs = Vec::new();
+    while let Some(d) = cursor.try_next().await? {
+        docs.push(doc_to_canonical_string(&d)?);
+    }
+    Ok(docs)
+}
+
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
+    let p = std::path::Path::new(&path);
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    std::fs::write(p, contents).map_err(|e| AppError::Io(e.to_string()))
+}
+
+#[tauri::command]
+pub async fn import_documents(
+    db: String,
+    coll: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<ImportResult, AppError> {
+    let content = std::fs::read_to_string(&path).map_err(|e| AppError::Io(e.to_string()))?;
+    let raw_docs = split_import(&content)?;
+
+    let mut errors: Vec<String> = Vec::new();
+    let mut parsed: Vec<Document> = Vec::new();
+    // Parallel vec: parsed_raw_idx[k] = index in raw_docs of the k-th successfully-parsed doc.
+    let mut parsed_raw_idx: Vec<usize> = Vec::new();
+    for (i, s) in raw_docs.iter().enumerate() {
+        match canonical_string_to_doc(s) {
+            Ok(d) => {
+                parsed.push(d);
+                parsed_raw_idx.push(i);
+            }
+            Err(e) => errors.push(format!("doc#{i}: {e}")),
+        }
+    }
+
+    let valid = parsed.len() as u64;
+    if parsed.is_empty() {
+        return Ok(summarize_import(0, errors));
+    }
+
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+
+    let inserted = match collection.insert_many(parsed).ordered(false).await {
+        Ok(res) => res.inserted_ids.len() as u64,
+        Err(e) => {
+            // Clone the owned write-error list first so the borrow of `*e.kind` ends
+            // before we may consume `e` via `e.into()` in the fall-through arm.
+            let write_errors = match &*e.kind {
+                ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
+                _ => None,
+            };
+            match write_errors {
+                Some(we) => {
+                    for w in &we {
+                        // Remap batch index → raw input index so both error types share one index space.
+                        let raw = parsed_raw_idx.get(w.index).copied().unwrap_or(w.index);
+                        errors.push(format!("doc#{raw}: {}", w.message));
+                    }
+                    valid.saturating_sub(we.len() as u64)
+                }
+                None => return Err(e.into()),
+            }
+        }
+    };
+
+    Ok(summarize_import(inserted, errors))
 }
 
 #[cfg(test)]
@@ -349,5 +486,61 @@ mod tests {
     fn non_empty_filter_is_ok_without_allow() {
         let f = doc! { "status": "active" };
         assert!(ensure_filter_allowed(&f, false).is_ok());
+    }
+
+    #[test]
+    fn split_import_parses_json_array() {
+        let out = split_import(r#"[{"a":1},{"b":2}]"#).unwrap();
+        assert_eq!(out.len(), 2);
+        // each element is a standalone JSON object string
+        assert!(out[0].contains("\"a\""));
+        assert!(out[1].contains("\"b\""));
+    }
+
+    #[test]
+    fn split_import_accepts_leading_whitespace_array() {
+        let out = split_import("  \n  [ {\"a\":1} ]").unwrap();
+        assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn split_import_parses_jsonl_skipping_blank_lines() {
+        let out = split_import("{\"a\":1}\n\n{\"b\":2}\n").unwrap();
+        assert_eq!(out.len(), 2);
+        assert!(out[0].contains("\"a\""));
+        assert!(out[1].contains("\"b\""));
+    }
+
+    #[test]
+    fn split_import_rejects_malformed_array() {
+        assert!(matches!(split_import("[{"), Err(AppError::Parse(_))));
+    }
+
+    #[test]
+    fn summarize_import_no_errors() {
+        let r = summarize_import(3, vec![]);
+        assert_eq!(r.inserted, 3);
+        assert_eq!(r.failed, 0);
+        assert!(r.errors.is_empty());
+    }
+
+    #[test]
+    fn summarize_import_truncates_to_max() {
+        let errs: Vec<String> = (0..7).map(|i| format!("e{i}")).collect();
+        let r = summarize_import(2, errs);
+        assert_eq!(r.inserted, 2);
+        assert_eq!(r.failed, 7);
+        assert_eq!(r.errors.len(), MAX_IMPORT_ERRORS);
+        assert_eq!(r.errors[0], "e0");
+    }
+
+    #[test]
+    fn write_text_file_creates_dirs_and_writes() {
+        let dir = std::env::temp_dir().join("monglumio_test_export_write");
+        let path = dir.join("nested").join("out.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        write_text_file(path.to_string_lossy().to_string(), "hello world".into()).unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello world");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

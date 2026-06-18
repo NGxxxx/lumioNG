@@ -85,6 +85,9 @@
     <button onclick={() => onopendocument(null, "insert")}>+ New document</button>
     <button onclick={() => v.openBulk("update")}>Update many…</button>
     <button onclick={() => v.openBulk("delete")}>Delete many…</button>
+    <button onclick={() => v.exportAs("json")} disabled={v.ioBusy}>Export JSON</button>
+    <button onclick={() => v.exportAs("csv")} disabled={v.ioBusy}>Export CSV</button>
+    <button onclick={() => v.importDocs()} disabled={v.ioBusy}>Import…</button>
     <label class="pagesize">Rows/page
       <input
         type="number"
@@ -112,6 +115,8 @@
       {/if}
     </div>
   </div>
+  {#if v.ioMessage}<div class="io-ok">{v.ioMessage}</div>{/if}
+  {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
   <div class="filterbar">
     <input
@@ -235,6 +240,7 @@
   .filterbar { display: flex; gap: 0.5rem; padding: 0.5rem; }
   .filter-input { flex: 1; font-family: monospace; }
   .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; }
+  .io-ok { background: #e8f5e9; color: #1b5e20; padding: 6px 10px; font-size: 12px; }
   .status { padding: 8px; color: #777; font-size: 12px; }
   .pagesize input { width: 64px; margin-left: 4px; }
   .chooser-wrap { position: relative; }
