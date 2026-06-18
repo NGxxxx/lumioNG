@@ -29,3 +29,14 @@ export async function replaceDocument(
 export async function deleteDocument(db: string, coll: string, idJson: string): Promise<void> {
   await invoke("delete_document", { db, coll, idJson });
 }
+
+/** Mẫu schema: trả về `size` document ngẫu nhiên (áp filter nếu có). */
+export async function sampleDocuments(
+  db: string,
+  coll: string,
+  filter = "{}",
+  size = 100,
+): Promise<Doc[]> {
+  const rows = await invoke<string[]>("sample_documents", { db, coll, filter, size });
+  return rows.map((s) => JSON.parse(s) as Doc);
+}

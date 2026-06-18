@@ -6,6 +6,7 @@
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import { idJson } from "../domain/docid";
+  import { getByPath } from "../domain/schema";
 
   let {
     db,
@@ -47,7 +48,7 @@
   }
 
   onMount(() => {
-    v.loadMore();
+    v.init();
   });
 </script>
 
@@ -74,7 +75,16 @@
   <div class="scroller" bind:this={scroller} onscroll={onScroll}>
     <table>
       <thead>
-        <tr><th class="actions"></th>{#each v.keys as k}<th>{k}</th>{/each}</tr>
+        <tr
+          ><th class="actions"></th>{#each v.columnFields as c}<th
+            ><span class="colname">{c.path}</span>{#if c.type}<span class="badge"
+                >{c.type}{#if c.mixed}*{/if}</span
+              >{/if}{#if c.presence !== undefined && c.presence < 1}<span
+                class="presence"
+                title={`Hiện diện ${Math.round(c.presence * 100)}% mẫu`}>{Math.round(c.presence * 100)}%</span
+              >{/if}</th
+          >{/each}</tr
+        >
       </thead>
       <tbody>
         {#each v.docs as d, row}
@@ -83,7 +93,8 @@
               <button onclick={() => onopendocument(d, "edit")}>Edit</button>
               <button onclick={() => v.requestDelete(d)}>Delete</button>
             </td>
-            {#each v.keys as k}
+            {#each v.columnFields as c}
+              {@const k = c.path}
               <td oncontextmenu={(e) => v.openMenu(e, row, k)} ondblclick={() => v.startEdit(row, k)}>
                 {#if v.editing && v.editing.row === row && v.editing.key === k}
                   <input
@@ -94,8 +105,9 @@
                     use:focusSelect
                   />
                   {#if v.editError}<div class="cellerror">{v.editError}</div>{/if}
-                {:else if k in d}
-                  <BsonCell value={d[k]} />
+                {:else}
+                  {@const val = getByPath(d, k)}
+                  {#if val !== undefined}<BsonCell value={val} />{/if}
                 {/if}
               </td>
             {/each}
@@ -137,6 +149,9 @@
   td.actions button { font-size: 11px; margin-right: 4px; }
   .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 13px; padding: 2px 4px; }
   .cellerror { color: #b71c1c; font-size: 11px; margin-top: 2px; }
+  .colname { font-weight: 600; }
+  .badge { margin-left: 6px; font-size: 10px; color: #555; background: #e8e8e8; border-radius: 3px; padding: 0 4px; font-family: ui-monospace, monospace; }
+  .presence { margin-left: 4px; font-size: 10px; color: #999; }
   .filterbar { display: flex; gap: 0.5rem; padding: 0.5rem; }
   .filter-input { flex: 1; font-family: monospace; }
   .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; }

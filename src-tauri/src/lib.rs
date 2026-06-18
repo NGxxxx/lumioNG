@@ -3,6 +3,7 @@ mod bson_json;
 mod commands;
 mod error;
 mod json_bson;
+mod registry;
 mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -13,7 +14,11 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
             commands::connection::list_namespaces,
+            commands::connection::list_connections,
+            commands::connection::save_connection,
+            commands::connection::delete_connection,
             commands::documents::query_page,
+            commands::documents::sample_documents,
             commands::documents::insert_document,
             commands::documents::replace_document,
             commands::documents::delete_document,

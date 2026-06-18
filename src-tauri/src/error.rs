@@ -7,6 +7,7 @@ pub enum AppError {
     Query(String),
     Serialize(String),
     Parse(String),
+    Io(String),
     NotConnected,
 }
 
@@ -17,6 +18,7 @@ impl std::fmt::Display for AppError {
             AppError::Query(m) => write!(f, "Query error: {m}"),
             AppError::Serialize(m) => write!(f, "Serialize error: {m}"),
             AppError::Parse(m) => write!(f, "Parse error: {m}"),
+            AppError::Io(m) => write!(f, "IO error: {m}"),
             AppError::NotConnected => write!(f, "Not connected"),
         }
     }

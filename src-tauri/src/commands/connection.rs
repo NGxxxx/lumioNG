@@ -1,9 +1,11 @@
 use crate::error::AppError;
+use crate::registry::{self, SavedConnection};
 use crate::state::AppState;
 use mongodb::bson::doc;
 use mongodb::Client;
 use serde::Serialize;
-use tauri::State;
+use std::path::PathBuf;
+use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
 pub async fn connect(uri: String, state: State<'_, AppState>) -> Result<(), AppError> {
@@ -44,4 +46,38 @@ pub async fn list_namespaces(state: State<'_, AppState>) -> Result<Vec<DbInfo>, 
         out.push(DbInfo { name, collections });
     }
     Ok(out)
+}
+
+fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(dir.join("connections.json"))
+}
+
+#[tauri::command]
+pub fn list_connections(app: AppHandle) -> Result<Vec<SavedConnection>, AppError> {
+    registry::load(&registry_path(&app)?)
+}
+
+#[tauri::command]
+pub fn save_connection(
+    app: AppHandle,
+    id: Option<u32>,
+    label: String,
+    uri: String,
+) -> Result<Vec<SavedConnection>, AppError> {
+    let path = registry_path(&app)?;
+    let list = registry::upsert(registry::load(&path)?, id, label, uri);
+    registry::save(&path, &list)?;
+    Ok(list)
+}
+
+#[tauri::command]
+pub fn delete_connection(app: AppHandle, id: u32) -> Result<Vec<SavedConnection>, AppError> {
+    let path = registry_path(&app)?;
+    let list = registry::remove(registry::load(&path)?, id);
+    registry::save(&path, &list)?;
+    Ok(list)
 }

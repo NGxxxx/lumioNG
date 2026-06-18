@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api/documents", () => ({
   queryPage: vi.fn(),
+  sampleDocuments: vi.fn(),
   replaceDocument: vi.fn(),
   deleteDocument: vi.fn(),
 }));
@@ -12,16 +13,17 @@ import { createCollectionView } from "./collectionView.svelte";
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
 const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
 const repl = documents.replaceDocument as ReturnType<typeof vi.fn>;
+const samp = documents.sampleDocuments as ReturnType<typeof vi.fn>;
 
 describe("createCollectionView", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("loadMore append batch + derive keys", async () => {
+  it("loadMore append batch + derive columns", async () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     const v = createCollectionView("d", "c");
     await v.loadMore();
     expect(v.docs.length).toBe(1);
-    expect(v.keys).toEqual(["_id", "x"]);
+    expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "x"]);
     expect(qp).toHaveBeenCalledWith("d", "c", null, 50, "{}");
   });
 
@@ -108,5 +110,33 @@ describe("createCollectionView", () => {
     await p2;
     expect(v.docs).toEqual([{ _id: { $oid: "b" }, x: 2 }]); // stale batch discarded
     expect(qp).toHaveBeenLastCalledWith("d", "c", null, 50, '{"x":2}');
+  });
+
+  it("init gọi sampleDocuments + set schema (columnFields có metadata)", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
+    samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
+    const v = createCollectionView("d", "c");
+    await v.init();
+    expect(samp).toHaveBeenCalledWith("d", "c", "{}", 100);
+    const col = v.columnFields.find((c) => c.path === "x")!;
+    expect(col.type).toBe("string");
+  });
+
+  it("applyFilter re-sample với appliedFilter", async () => {
+    qp.mockResolvedValue([{ _id: { $oid: "a" }, x: 2 }]);
+    samp.mockResolvedValue([{ _id: { $oid: "a" }, x: 2 }]);
+    const v = createCollectionView("d", "c");
+    v.filterText = '{"x":2}';
+    await v.applyFilter();
+    expect(samp).toHaveBeenLastCalledWith("d", "c", '{"x":2}', 100);
+  });
+
+  it("sample lỗi → schema null, cột degrade row-derived, không throw", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    samp.mockRejectedValueOnce({ kind: "Query", message: "boom" });
+    const v = createCollectionView("d", "c");
+    await v.init();
+    expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "x"]);
+    expect(v.columnFields.find((c) => c.path === "x")!.type).toBeUndefined();
   });
 });

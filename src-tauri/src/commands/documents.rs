@@ -16,6 +16,16 @@ fn build_query_filter(user: Document, after: Option<ObjectId>) -> Document {
     }
 }
 
+/// Dựng pipeline lấy mẫu schema, áp filter người dùng nếu có.
+/// Filter rỗng → chỉ `$sample`; có filter → `$match` trước rồi `$sample`.
+fn build_sample_pipeline(user: Document, size: i64) -> Vec<Document> {
+    if user.is_empty() {
+        vec![doc! { "$sample": { "size": size } }]
+    } else {
+        vec![doc! { "$match": user }, doc! { "$sample": { "size": size } }]
+    }
+}
+
 #[tauri::command]
 pub async fn query_page(
     db: String,
@@ -51,6 +61,32 @@ pub async fn query_page(
         .limit(limit)
         .await?;
 
+    let mut docs = Vec::new();
+    while let Some(d) = cursor.try_next().await? {
+        docs.push(doc_to_canonical_string(&d)?);
+    }
+    Ok(docs)
+}
+
+#[tauri::command]
+pub async fn sample_documents(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    size: i64,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+
+    let user_filter = match filter.as_deref() {
+        Some(s) if !s.trim().is_empty() => canonical_string_to_doc(s)?,
+        _ => Document::new(),
+    };
+
+    let pipeline = build_sample_pipeline(user_filter, size);
+
+    let mut cursor = collection.aggregate(pipeline).await?;
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {
         docs.push(doc_to_canonical_string(&d)?);
@@ -183,5 +219,21 @@ mod tests {
         assert_eq!(and.len(), 2);
         assert_eq!(and[0], Bson::Document(Document::new()));
         assert_eq!(and[1], Bson::Document(doc! { "_id": { "$gt": oid } }));
+    }
+
+    #[test]
+    fn sample_pipeline_without_filter_is_sample_only() {
+        let out = build_sample_pipeline(Document::new(), 100);
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0], doc! { "$sample": { "size": 100_i64 } });
+    }
+
+    #[test]
+    fn sample_pipeline_with_filter_matches_then_samples() {
+        let user = doc! { "status": "active" };
+        let out = build_sample_pipeline(user.clone(), 50);
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0], doc! { "$match": user });
+        assert_eq!(out[1], doc! { "$sample": { "size": 50_i64 } });
     }
 }

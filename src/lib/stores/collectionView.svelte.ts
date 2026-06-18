@@ -1,7 +1,8 @@
-import { queryPage, deleteDocument, replaceDocument } from "../api/documents";
+import { queryPage, sampleDocuments, deleteDocument, replaceDocument } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { lastObjectId, idJson } from "../domain/docid";
-import { deriveColumnKeys, type Doc } from "../domain/columns";
+import { type Doc } from "../domain/columns";
+import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import type { MenuItem } from "../components/ContextMenu.svelte";
@@ -12,7 +13,7 @@ import type { MenuItem } from "../components/ContextMenu.svelte";
  */
 export function createCollectionView(db: string, coll: string) {
   let docs = $state<Doc[]>([]);
-  let keys = $state<string[]>([]);
+  let schema = $state<CollectionSchema | null>(null);
   let loading = $state(false);
   let done = $state(false);
   let error = $state<string | null>(null);
@@ -33,6 +34,26 @@ export function createCollectionView(db: string, coll: string) {
   // Context menu
   let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
 
+  const columnFields = $derived(mergeColumns(schema, docs));
+
+  async function loadSchema() {
+    const gen = generation;
+    try {
+      const sample = await sampleDocuments(db, coll, appliedFilter, 100);
+      if (gen !== generation) return;
+      schema = inferSchema(sample);
+    } catch {
+      if (gen !== generation) return;
+      schema = null; // degrade: cột rơi về row-derived
+    }
+  }
+
+  async function init() {
+    const schemaP = loadSchema();
+    await loadMore();
+    await schemaP;
+  }
+
   async function loadMore() {
     if (loading || done) return;
     loading = true;
@@ -51,7 +72,6 @@ export function createCollectionView(db: string, coll: string) {
         done = true;
       } else {
         docs = [...docs, ...batch];
-        keys = deriveColumnKeys(docs);
       }
     } catch (e) {
       if (gen !== generation) return;
@@ -69,19 +89,21 @@ export function createCollectionView(db: string, coll: string) {
     }
     appliedFilter = r.json;
     filterError = null;
-    generation++; // invalidate any in-flight loadMore
+    generation++; // invalidate any in-flight load
     docs = [];
-    keys = [];
+    schema = null;
     done = false;
     error = null;
-    loading = false; // release the guard so the fresh load can start
-    await loadMore();
+    loading = false;
+    await init();
   }
 
   function startEdit(row: number, key: string) {
-    if (!isInlineEditable(key, docs[row][key])) return;
+    if (key.includes(".")) return; // chưa hỗ trợ sửa inline field lồng nhau
+    const value = getByPath(docs[row], key);
+    if (!isInlineEditable(key, value)) return;
     editing = { row, key };
-    editText = editTextOf(docs[row][key]);
+    editText = editTextOf(value);
     editError = null;
   }
 
@@ -94,7 +116,7 @@ export function createCollectionView(db: string, coll: string) {
   async function commitEdit() {
     if (!editing || saving) return;
     const { row, key } = editing;
-    const r = rebuildValue(docs[row][key], editText);
+    const r = rebuildValue(getByPath(docs[row], key), editText);
     if (!r.ok) {
       editError = r.error;
       return;
@@ -131,13 +153,13 @@ export function createCollectionView(db: string, coll: string) {
 
   function menuItems(): MenuItem[] {
     if (!menu) return [];
-    const value = docs[menu.row][menu.key];
+    const value = getByPath(docs[menu.row], menu.key);
     return [
       { label: "Open document", action: "open" },
       { label: "Delete document", action: "delete" },
       { label: "Copy value", action: "copyValue" },
       { label: "Copy _id", action: "copyId", disabled: idJson(docs[menu.row]) === null },
-      { label: "Edit cell", action: "editCell", disabled: !isInlineEditable(menu.key, value) },
+      { label: "Edit cell", action: "editCell", disabled: menu.key.includes(".") || !isInlineEditable(menu.key, value) },
     ];
   }
 
@@ -163,7 +185,7 @@ export function createCollectionView(db: string, coll: string) {
         confirmDoc = doc;
         break;
       case "copyValue":
-        copy(JSON.stringify(doc[key]));
+        copy(JSON.stringify(getByPath(doc, key)));
         break;
       case "copyId":
         copy(idJson(doc) ?? "");
@@ -204,8 +226,11 @@ export function createCollectionView(db: string, coll: string) {
     get docs() {
       return docs;
     },
-    get keys() {
-      return keys;
+    get schema() {
+      return schema;
+    },
+    get columnFields() {
+      return columnFields;
     },
     get loading() {
       return loading;
@@ -248,6 +273,7 @@ export function createCollectionView(db: string, coll: string) {
       return menu;
     },
     loadMore,
+    init,
     startEdit,
     cancelEdit,
     commitEdit,
