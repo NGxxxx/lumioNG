@@ -1,10 +1,11 @@
-import { queryPage, sampleDocuments, deleteDocument, replaceDocument } from "../api/documents";
+import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { lastObjectId, idJson } from "../domain/docid";
 import { type Doc } from "../domain/columns";
 import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
+import { cycleSort, buildSort, buildProjection, type SortKey } from "../domain/grid";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 
 /**
@@ -22,6 +23,13 @@ export function createCollectionView(db: string, coll: string) {
   let filterError = $state<string | null>(null);
   let appliedFilter = $state("{}");
   let generation = 0;
+
+  let sortKeys = $state<SortKey[]>([]);
+  let hidden = $state<Set<string>>(new Set()); // projection đang áp (Task 4 thêm mutator)
+  let hiddenDraft = $state<Set<string>>(new Set());
+  let pageSize = $state(50);
+
+  const isPristine = $derived(appliedFilter === "{}" && sortKeys.length === 0);
 
   let confirmDoc = $state<Doc | null>(null);
 
@@ -60,14 +68,28 @@ export function createCollectionView(db: string, coll: string) {
     error = null;
     const gen = generation;
     try {
-      const after = lastObjectId(docs);
-      if (docs.length > 0 && after === null) {
-        done = true;
-        error = "Phân trang chỉ hỗ trợ _id kiểu ObjectId trong slice này.";
-        return;
+      let cursor: { afterId: string | null } | { skip: number };
+      if (isPristine) {
+        const after = lastObjectId(docs);
+        if (docs.length > 0 && after === null) {
+          done = true;
+          error = "Phân trang chỉ hỗ trợ _id kiểu ObjectId trong slice này.";
+          return;
+        }
+        cursor = { afterId: after };
+      } else {
+        cursor = { skip: docs.length };
       }
-      const batch = await queryPage(db, coll, after, 50, appliedFilter);
-      if (gen !== generation) return; // superseded by a newer filter
+      const batch = await queryPage(
+        db,
+        coll,
+        cursor,
+        pageSize,
+        appliedFilter,
+        buildSort(sortKeys),
+        buildProjection(hidden),
+      );
+      if (gen !== generation) return; // superseded by a newer filter/sort
       if (batch.length === 0) {
         done = true;
       } else {
@@ -81,6 +103,62 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
+  /** Reset state phân trang trước khi load lại (không đụng schema). */
+  function resetForReload() {
+    generation++;
+    docs = [];
+    done = false;
+    error = null;
+    loading = false;
+  }
+
+  /** Reset kết quả + load lại từ đầu, KHÔNG re-sample schema (cùng filter). */
+  async function reloadDocs() {
+    resetForReload();
+    await loadMore();
+  }
+
+  /** Đồng bộ nháp = trạng thái đang áp (gọi khi mở column chooser). */
+  function resetProjectionDraft() {
+    hiddenDraft = new Set(hidden);
+  }
+
+  function toggleHiddenDraft(path: string) {
+    const next = new Set(hiddenDraft);
+    if (next.has(path)) next.delete(path);
+    else next.add(path);
+    hiddenDraft = next;
+  }
+
+  /** Commit nháp → projection thật + reload. */
+  async function applyProjection() {
+    hidden = new Set(hiddenDraft);
+    await reloadDocs();
+  }
+
+  /** Trả nguyên doc đầy đủ field; chỉ re-fetch khi đang ẩn field (projection). */
+  async function fullDocFor(d: Doc): Promise<Doc> {
+    if (hidden.size === 0) return d;
+    const id = idJson(d);
+    if (id === null) return d;
+    return (await fetchFullDoc(db, coll, id)) ?? d;
+  }
+
+  /** Doc đầy đủ để mở tab edit (component tự mở). */
+  async function openDoc(d: Doc): Promise<Doc> {
+    return await fullDocFor(d);
+  }
+
+  async function toggleSort(path: string, shift: boolean) {
+    sortKeys = cycleSort(sortKeys, path, shift);
+    await reloadDocs();
+  }
+
+  async function setPageSize(n: number) {
+    pageSize = Math.max(1, Math.floor(n) || 50);
+    await reloadDocs();
+  }
+
   async function applyFilter() {
     const r = parseFilter(filterText);
     if (!r.ok) {
@@ -89,17 +167,20 @@ export function createCollectionView(db: string, coll: string) {
     }
     appliedFilter = r.json;
     filterError = null;
-    generation++; // invalidate any in-flight load
-    docs = [];
     schema = null;
-    done = false;
-    error = null;
-    loading = false;
+    resetForReload();
     await init();
   }
 
-  function startEdit(row: number, key: string) {
+  async function startEdit(row: number, key: string) {
     if (key.includes(".")) return; // chưa hỗ trợ sửa inline field lồng nhau
+    if (hidden.size > 0) {
+      const fullRow = await fullDocFor(docs[row]);
+      if (fullRow !== docs[row]) {
+        docs[row] = fullRow;
+        docs = [...docs];
+      }
+    }
     const value = getByPath(docs[row], key);
     if (!isInlineEditable(key, value)) return;
     editing = { row, key };
@@ -272,6 +353,24 @@ export function createCollectionView(db: string, coll: string) {
     get menu() {
       return menu;
     },
+    get sortKeys() {
+      return sortKeys;
+    },
+    get hidden() {
+      return hidden;
+    },
+    get hiddenDraft() {
+      return hiddenDraft;
+    },
+    get pageSize() {
+      return pageSize;
+    },
+    toggleSort,
+    setPageSize,
+    toggleHiddenDraft,
+    applyProjection,
+    resetProjectionDraft,
+    openDoc,
     loadMore,
     init,
     startEdit,

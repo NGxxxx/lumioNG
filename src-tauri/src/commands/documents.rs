@@ -27,39 +27,62 @@ fn build_sample_pipeline(user: Document, size: i64) -> Vec<Document> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn query_page(
     db: String,
     coll: String,
-    after_id: Option<String>,
+    after_id: Option<String>,   // keyset cursor (pristine: chưa filter, chưa sort)
+    skip: Option<i64>,          // skip/limit cursor (đã filter hoặc đã sort)
     limit: i64,
     filter: Option<String>,
+    sort: Option<String>,       // ExtJSON doc CÓ THỨ TỰ, vd {"age":-1,"_id":1}
+    projection: Option<String>, // ExtJSON exclusion doc, vd {"big":0}
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let client = state.client().await?;
-
     let collection = client.database(&db).collection::<Document>(&coll);
-
-    // Skeleton assumes _id is an ObjectId (documented limitation).
-    let after = match after_id {
-        Some(id) => Some(
-            ObjectId::parse_str(&id)
-                .map_err(|e| AppError::Query(format!("invalid after_id: {e}")))?,
-        ),
-        None => None,
-    };
 
     let user_filter = match filter.as_deref() {
         Some(s) if !s.trim().is_empty() => canonical_string_to_doc(s)?,
         _ => Document::new(),
     };
 
-    let query = build_query_filter(user_filter, after);
+    let projection_doc = match projection.as_deref() {
+        Some(s) if !s.trim().is_empty() => Some(canonical_string_to_doc(s)?),
+        _ => None,
+    };
 
-    let mut cursor = collection
-        .find(query)
-        .sort(doc! { "_id": 1 })
-        .limit(limit)
-        .await?;
+    let mut cursor = if let Some(skip_n) = skip {
+        // Skip/limit mode: đã filter hoặc đã sort. Projection áp nếu có.
+        let sort_doc = match sort.as_deref() {
+            Some(s) if !s.trim().is_empty() => canonical_string_to_doc(s)?,
+            _ => doc! { "_id": 1 },
+        };
+        let mut q = collection
+            .find(user_filter)
+            .sort(sort_doc)
+            .skip(skip_n.max(0) as u64)
+            .limit(limit);
+        if let Some(p) = projection_doc {
+            q = q.projection(p);
+        }
+        q.await?
+    } else {
+        // Keyset mode: pristine. Sort cố định {_id:1}; projection vẫn áp (không đổi thứ tự).
+        let after = match after_id {
+            Some(id) => Some(
+                ObjectId::parse_str(&id)
+                    .map_err(|e| AppError::Query(format!("invalid after_id: {e}")))?,
+            ),
+            None => None,
+        };
+        let query = build_query_filter(user_filter, after);
+        let mut q = collection.find(query).sort(doc! { "_id": 1 }).limit(limit);
+        if let Some(p) = projection_doc {
+            q = q.projection(p);
+        }
+        q.await?
+    };
 
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {

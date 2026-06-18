@@ -20,6 +20,32 @@
 
   const v = untrack(() => createCollectionView(db, coll));
   let scroller = $state<HTMLDivElement>();
+  let chooserOpen = $state(false);
+
+  const visibleColumns = $derived(v.columnFields.filter((c) => !v.hidden.has(c.path)));
+
+  function sortDirOf(path: string): 1 | -1 | null {
+    const k = v.sortKeys.find((s) => s.path === path);
+    return k ? k.dir : null;
+  }
+  function sortRankOf(path: string): number | null {
+    if (v.sortKeys.length < 2) return null;
+    const i = v.sortKeys.findIndex((s) => s.path === path);
+    return i === -1 ? null : i + 1;
+  }
+
+  function toggleChooser() {
+    if (!chooserOpen) v.resetProjectionDraft();
+    chooserOpen = !chooserOpen;
+  }
+  function applyChooser() {
+    v.applyProjection();
+    chooserOpen = false;
+  }
+
+  async function openEdit(d: Doc) {
+    onopendocument(await v.openDoc(d), "edit");
+  }
 
   function focusSelect(node: HTMLInputElement) {
     node.focus();
@@ -42,9 +68,9 @@
     }
   }
 
-  function onMenuSelect(action: string) {
+  async function onMenuSelect(action: string) {
     const r = v.onMenuSelect(action);
-    if (r) onopendocument(r.open, "edit");
+    if (r) onopendocument(await v.openDoc(r.open), "edit");
   }
 
   onMount(() => {
@@ -55,6 +81,32 @@
 <div class="result">
   <div class="toolbar">
     <button onclick={() => onopendocument(null, "insert")}>+ New document</button>
+    <label class="pagesize">Rows/page
+      <input
+        type="number"
+        min="1"
+        value={v.pageSize}
+        onchange={(e) => v.setPageSize(Math.max(1, +e.currentTarget.value || 50))}
+      />
+    </label>
+    <div class="chooser-wrap">
+      <button onclick={toggleChooser}>Columns…</button>
+      {#if chooserOpen}
+        <div class="chooser">
+          {#each v.columnFields as c}
+            <label class="chooser-row">
+              <input
+                type="checkbox"
+                checked={!v.hiddenDraft.has(c.path)}
+                onchange={() => v.toggleHiddenDraft(c.path)}
+              />
+              {c.path}
+            </label>
+          {/each}
+          <button class="chooser-apply" onclick={applyChooser}>Apply</button>
+        </div>
+      {/if}
+    </div>
   </div>
   {#if v.error}<div class="error">{v.error}</div>{/if}
   <div class="filterbar">
@@ -76,8 +128,12 @@
     <table>
       <thead>
         <tr
-          ><th class="actions"></th>{#each v.columnFields as c}<th
-            ><span class="colname">{c.path}</span>{#if c.type}<span class="badge"
+          ><th class="actions"></th>{#each visibleColumns as c}<th
+            onclick={(e) => v.toggleSort(c.path, e.shiftKey)}
+            ><span class="colname">{c.path}</span>{#if sortDirOf(c.path)}<span class="sortarrow"
+                >{sortDirOf(c.path) === 1 ? "▲" : "▼"}</span
+              >{/if}{#if sortRankOf(c.path)}<span class="sortrank">{sortRankOf(c.path)}</span
+              >{/if}{#if c.type}<span class="badge"
                 >{c.type}{#if c.mixed}*{/if}</span
               >{/if}{#if c.presence !== undefined && c.presence < 1}<span
                 class="presence"
@@ -90,10 +146,10 @@
         {#each v.docs as d, row}
           <tr>
             <td class="actions">
-              <button onclick={() => onopendocument(d, "edit")}>Edit</button>
+              <button onclick={() => openEdit(d)}>Edit</button>
               <button onclick={() => v.requestDelete(d)}>Delete</button>
             </td>
-            {#each v.columnFields as c}
+            {#each visibleColumns as c}
               {@const k = c.path}
               <td oncontextmenu={(e) => v.openMenu(e, row, k)} ondblclick={() => v.startEdit(row, k)}>
                 {#if v.editing && v.editing.row === row && v.editing.key === k}
@@ -140,11 +196,11 @@
 
 <style>
   .result { display: flex; flex-direction: column; height: 100%; }
-  .toolbar { padding: 6px 8px; border-bottom: 1px solid #eee; }
+  .toolbar { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-bottom: 1px solid #eee; }
   .scroller { overflow: auto; flex: 1; }
   table { border-collapse: collapse; width: 100%; font-size: 13px; }
   th, td { border: 1px solid #e0e0e0; padding: 4px 8px; text-align: left; }
-  th { position: sticky; top: 0; background: #f5f5f5; }
+  th { position: sticky; top: 0; background: #f5f5f5; cursor: pointer; user-select: none; }
   td.actions, th.actions { white-space: nowrap; }
   td.actions button { font-size: 11px; margin-right: 4px; }
   .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 13px; padding: 2px 4px; }
@@ -156,4 +212,11 @@
   .filter-input { flex: 1; font-family: monospace; }
   .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; }
   .status { padding: 8px; color: #777; font-size: 12px; }
+  .pagesize input { width: 64px; margin-left: 4px; }
+  .chooser-wrap { position: relative; }
+  .chooser { position: absolute; z-index: 10; top: 100%; right: 0; background: #fff; border: 1px solid #ccc; padding: 6px; min-width: 160px; max-height: 260px; overflow: auto; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .chooser-row { display: block; font-size: 12px; padding: 2px 0; white-space: nowrap; }
+  .chooser-apply { margin-top: 6px; width: 100%; }
+  .sortarrow { margin-left: 4px; font-size: 10px; color: #1565c0; }
+  .sortrank { margin-left: 2px; font-size: 9px; color: #1565c0; vertical-align: super; }
 </style>
