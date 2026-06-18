@@ -189,6 +189,80 @@ pub async fn delete_document(
     Ok(())
 }
 
+#[derive(serde::Serialize)]
+pub struct BulkResult {
+    pub matched: u64,
+    pub modified: u64,
+}
+
+/// Parse filter ExtJSON người dùng (rỗng/None → Document rỗng).
+fn parse_user_filter(filter: Option<&str>) -> Result<Document, AppError> {
+    match filter {
+        Some(s) if !s.trim().is_empty() => canonical_string_to_doc(s),
+        _ => Ok(Document::new()),
+    }
+}
+
+#[tauri::command]
+pub async fn count_documents(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let f = parse_user_filter(filter.as_deref())?;
+    Ok(collection.count_documents(f).await?)
+}
+
+#[tauri::command]
+pub async fn update_many(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    update: String,
+    allow_all: bool,
+    state: State<'_, AppState>,
+) -> Result<BulkResult, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let f = parse_user_filter(filter.as_deref())?;
+    ensure_filter_allowed(&f, allow_all)?;
+    let update_doc = canonical_string_to_doc(&update)?;
+    let res = collection.update_many(f, update_doc).await?;
+    Ok(BulkResult {
+        matched: res.matched_count,
+        modified: res.modified_count,
+    })
+}
+
+#[tauri::command]
+pub async fn delete_many(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    allow_all: bool,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let f = parse_user_filter(filter.as_deref())?;
+    ensure_filter_allowed(&f, allow_all)?;
+    let res = collection.delete_many(f).await?;
+    Ok(res.deleted_count)
+}
+
+/// Chặn thao tác bulk phá hủy trên filter rỗng trừ khi đã xác nhận tường minh.
+fn ensure_filter_allowed(filter: &Document, allow_all: bool) -> Result<(), AppError> {
+    if filter.is_empty() && !allow_all {
+        return Err(AppError::Query(
+            "filter rỗng: cần xác nhận để áp dụng cho toàn bộ collection".into(),
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -258,5 +332,22 @@ mod tests {
         assert_eq!(out.len(), 2);
         assert_eq!(out[0], doc! { "$match": user });
         assert_eq!(out[1], doc! { "$sample": { "size": 50_i64 } });
+    }
+
+    #[test]
+    fn empty_filter_without_allow_is_rejected() {
+        let res = ensure_filter_allowed(&Document::new(), false);
+        assert!(matches!(res, Err(AppError::Query(_))));
+    }
+
+    #[test]
+    fn empty_filter_with_allow_is_ok() {
+        assert!(ensure_filter_allowed(&Document::new(), true).is_ok());
+    }
+
+    #[test]
+    fn non_empty_filter_is_ok_without_allow() {
+        let f = doc! { "status": "active" };
+        assert!(ensure_filter_allowed(&f, false).is_ok());
     }
 }

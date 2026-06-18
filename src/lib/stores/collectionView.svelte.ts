@@ -1,4 +1,4 @@
-import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc } from "../api/documents";
+import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { lastObjectId, idJson } from "../domain/docid";
 import { type Doc } from "../domain/columns";
@@ -6,6 +6,7 @@ import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type Colum
 import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import { cycleSort, buildSort, buildProjection, type SortKey } from "../domain/grid";
+import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 
 /**
@@ -41,6 +42,23 @@ export function createCollectionView(db: string, coll: string) {
 
   // Context menu
   let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
+
+  // Bulk operations
+  let bulkMode = $state<"update" | "delete" | null>(null);
+  let bulkUpdateText = $state("");
+  let bulkUpdateError = $state<string | null>(null);
+  let bulkCount = $state<number | null>(null);
+  let bulkCounting = $state(false);
+  let bulkRunning = $state(false);
+  let bulkConfirmAll = $state(false);
+  let bulkResult = $state<string | null>(null);
+  let bulkError = $state<string | null>(null);
+
+  const canRunBulk = $derived(
+    bulkCount !== null &&
+      !bulkRunning &&
+      (!isEmptyFilter(appliedFilter) || bulkConfirmAll),
+  );
 
   const columnFields = $derived(mergeColumns(schema, docs));
 
@@ -278,6 +296,74 @@ export function createCollectionView(db: string, coll: string) {
     return null;
   }
 
+  function openBulk(mode: "update" | "delete") {
+    bulkMode = mode;
+    bulkUpdateText = "";
+    bulkUpdateError = null;
+    bulkCount = null;
+    bulkConfirmAll = false;
+    bulkResult = null;
+    bulkError = null;
+  }
+
+  function closeBulk() {
+    bulkMode = null;
+  }
+
+  async function countBulk() {
+    bulkCounting = true;
+    bulkError = null;
+    bulkResult = null;
+    try {
+      bulkCount = await countDocuments(db, coll, appliedFilter);
+    } catch (e) {
+      bulkError = errorMessage(e);
+    } finally {
+      bulkCounting = false;
+    }
+  }
+
+  async function runBulk() {
+    bulkError = null;
+    bulkResult = null;
+    const allowAll = isEmptyFilter(appliedFilter) && bulkConfirmAll;
+    if (isEmptyFilter(appliedFilter) && !bulkConfirmAll) {
+      bulkError = "Filter rỗng: cần tick xác nhận để áp dụng cho toàn bộ collection.";
+      return;
+    }
+    if (bulkMode === "update") {
+      const r = parseUpdateDoc(bulkUpdateText);
+      if (!r.ok) {
+        bulkUpdateError = r.error;
+        return;
+      }
+      bulkUpdateError = null;
+      bulkRunning = true;
+      try {
+        const res = await updateMany(db, coll, appliedFilter, r.json, allowAll);
+        bulkResult = `Đã cập nhật ${res.modified} (khớp ${res.matched}) document.`;
+        await reloadDocs();
+        bulkCount = null;
+      } catch (e) {
+        bulkError = errorMessage(e);
+      } finally {
+        bulkRunning = false;
+      }
+    } else if (bulkMode === "delete") {
+      bulkRunning = true;
+      try {
+        const n = await deleteMany(db, coll, appliedFilter, allowAll);
+        bulkResult = `Đã xóa ${n} document.`;
+        await reloadDocs();
+        bulkCount = null;
+      } catch (e) {
+        bulkError = errorMessage(e);
+      } finally {
+        bulkRunning = false;
+      }
+    }
+  }
+
   function requestDelete(doc: Doc) {
     confirmDoc = doc;
   }
@@ -384,5 +470,22 @@ export function createCollectionView(db: string, coll: string) {
     cancelDelete,
     confirmDelete,
     copy,
+    get appliedFilter() { return appliedFilter; },
+    get bulkMode() { return bulkMode; },
+    get bulkUpdateText() { return bulkUpdateText; },
+    set bulkUpdateText(v: string) { bulkUpdateText = v; },
+    get bulkUpdateError() { return bulkUpdateError; },
+    get bulkCount() { return bulkCount; },
+    get bulkCounting() { return bulkCounting; },
+    get bulkRunning() { return bulkRunning; },
+    get bulkConfirmAll() { return bulkConfirmAll; },
+    set bulkConfirmAll(v: boolean) { bulkConfirmAll = v; },
+    get bulkResult() { return bulkResult; },
+    get bulkError() { return bulkError; },
+    get canRunBulk() { return canRunBulk; },
+    openBulk,
+    closeBulk,
+    countBulk,
+    runBulk,
   };
 }

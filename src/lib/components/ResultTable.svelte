@@ -7,6 +7,8 @@
   import ContextMenu from "./ContextMenu.svelte";
   import { idJson } from "../domain/docid";
   import { getByPath } from "../domain/schema";
+  import BulkDialog from "./BulkDialog.svelte";
+  import { isEmptyFilter } from "../domain/bulk";
 
   let {
     db,
@@ -81,6 +83,8 @@
 <div class="result">
   <div class="toolbar">
     <button onclick={() => onopendocument(null, "insert")}>+ New document</button>
+    <button onclick={() => v.openBulk("update")}>Update many…</button>
+    <button onclick={() => v.openBulk("delete")}>Delete many…</button>
     <label class="pagesize">Rows/page
       <input
         type="number"
@@ -175,6 +179,26 @@
     {#if v.done}<div class="status">— hết —</div>{/if}
   </div>
 </div>
+
+{#if v.bulkMode}
+  <BulkDialog
+    mode={v.bulkMode}
+    appliedFilter={v.appliedFilter}
+    isEmpty={isEmptyFilter(v.appliedFilter)}
+    bind:updateText={v.bulkUpdateText}
+    updateError={v.bulkUpdateError}
+    bind:confirmAll={v.bulkConfirmAll}
+    count={v.bulkCount}
+    counting={v.bulkCounting}
+    running={v.bulkRunning}
+    result={v.bulkResult}
+    error={v.bulkError}
+    canRun={v.canRunBulk}
+    oncount={v.countBulk}
+    onrun={v.runBulk}
+    onclose={v.closeBulk}
+  />
+{/if}
 
 {#if v.confirmDoc}
   <ConfirmDialog

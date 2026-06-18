@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { countDocuments, updateMany, deleteMany } from "../api/documents";
 
 vi.mock("../api/documents", () => ({
   queryPage: vi.fn(),
@@ -6,6 +7,9 @@ vi.mock("../api/documents", () => ({
   replaceDocument: vi.fn(),
   deleteDocument: vi.fn(),
   fetchFullDoc: vi.fn(),
+  countDocuments: vi.fn(),
+  updateMany: vi.fn(),
+  deleteMany: vi.fn(),
 }));
 
 import * as documents from "../api/documents";
@@ -197,5 +201,62 @@ describe("createCollectionView", () => {
     await v.startEdit(0, "x");
     expect(full).not.toHaveBeenCalled();
     expect(v.editing).toEqual({ row: 0, key: "x" });
+  });
+});
+
+describe("bulk operations", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("openBulk set mode và reset", () => {
+    const v = createCollectionView("db", "c");
+    v.openBulk("delete");
+    expect(v.bulkMode).toBe("delete");
+    expect(v.bulkCount).toBeNull();
+    expect(v.bulkConfirmAll).toBe(false);
+  });
+
+  it("countBulk gọi countDocuments với filter đang áp", async () => {
+    vi.mocked(countDocuments).mockResolvedValueOnce(7);
+    const v = createCollectionView("db", "c");
+    v.openBulk("delete");
+    await v.countBulk();
+    expect(countDocuments).toHaveBeenCalledWith("db", "c", "{}");
+    expect(v.bulkCount).toBe(7);
+  });
+
+  it("runBulk delete với filter rỗng + chưa tick → không gọi api, báo lỗi", async () => {
+    const v = createCollectionView("db", "c");
+    v.openBulk("delete");
+    vi.mocked(countDocuments).mockResolvedValueOnce(3);
+    await v.countBulk();
+    await v.runBulk();
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(v.bulkError).toBeTruthy();
+  });
+
+  it("runBulk delete với filter rỗng + đã tick → gọi deleteMany allowAll=true", async () => {
+    vi.mocked(deleteMany).mockResolvedValueOnce(3);
+    vi.mocked(countDocuments).mockResolvedValueOnce(3);
+    qp.mockResolvedValueOnce([]);
+    const v = createCollectionView("db", "c");
+    v.openBulk("delete");
+    await v.countBulk();
+    v.bulkConfirmAll = true;
+    await v.runBulk();
+    expect(deleteMany).toHaveBeenCalledWith("db", "c", "{}", true);
+    expect(v.bulkResult).toContain("3");
+    expect(v.bulkCount).toBeNull();
+  });
+
+  it("runBulk update với update doc sai operator → báo lỗi, không gọi api", async () => {
+    const v = createCollectionView("db", "c");
+    v.openBulk("update");
+    vi.mocked(countDocuments).mockResolvedValueOnce(2);
+    await v.countBulk();
+    v.bulkConfirmAll = true; // filter rỗng nên cần tick
+    v.bulkUpdateText = '{"a":1}';
+    await v.runBulk();
+    expect(updateMany).not.toHaveBeenCalled();
+    expect(v.bulkUpdateError).toBeTruthy();
   });
 });

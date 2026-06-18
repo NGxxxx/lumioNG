@@ -71,3 +71,35 @@ export async function sampleDocuments(
   const rows = await invoke<string[]>("sample_documents", { db, coll, filter, size });
   return rows.map((s) => JSON.parse(s) as Doc);
 }
+
+/** Đếm số document khớp filter (ExtJSON). */
+export async function countDocuments(db: string, coll: string, filter = "{}"): Promise<number> {
+  return await invoke<number>("count_documents", { db, coll, filter });
+}
+
+/** updateMany theo filter; allowAll=true mới cho phép filter rỗng. Trả số matched/modified. */
+export async function updateMany(
+  db: string,
+  coll: string,
+  filter: string,
+  update: string,
+  allowAll: boolean,
+): Promise<{ matched: number; modified: number }> {
+  return await invoke<{ matched: number; modified: number }>("update_many", {
+    db,
+    coll,
+    filter,
+    update,
+    allowAll,
+  });
+}
+
+/** deleteMany theo filter; allowAll=true mới cho phép filter rỗng. Trả số deleted. */
+export async function deleteMany(
+  db: string,
+  coll: string,
+  filter: string,
+  allowAll: boolean,
+): Promise<number> {
+  return await invoke<number>("delete_many", { db, coll, filter, allowAll });
+}
