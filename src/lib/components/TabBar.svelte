@@ -19,6 +19,9 @@
 
   function title(t: Tab): string {
     if (t.kind === "collection") return t.coll;
+    if (t.kind === "index") return `${t.coll} · indexes`;
+    if (t.kind === "collinfo") return `${t.coll} · info`;
+    if (t.kind === "dbstats") return `${t.db} · stats`;
     if (t.mode === "insert") return `${t.coll} / new`;
     return `${t.coll} / ${t.idText ? shorten(t.idText) : "?"}`;
   }

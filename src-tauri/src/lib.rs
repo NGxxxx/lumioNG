@@ -29,6 +29,16 @@ pub fn run() {
             commands::documents::export_query,
             commands::documents::write_text_file,
             commands::documents::import_documents,
+            commands::admin::create_collection,
+            commands::admin::drop_collection,
+            commands::admin::rename_collection,
+            commands::admin::drop_database,
+            commands::index::list_indexes,
+            commands::index::create_index,
+            commands::index::drop_index,
+            commands::stats::coll_stats,
+            commands::stats::db_stats,
+            commands::stats::coll_options,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

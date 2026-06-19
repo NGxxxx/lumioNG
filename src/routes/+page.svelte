@@ -1,25 +1,19 @@
 <script lang="ts">
-  import { listNamespaces, type DbInfo } from "$lib/api/connection";
-  import { errorMessage } from "$lib/api/errors";
   import { idJson } from "$lib/domain/docid";
   import { workspace } from "$lib/stores/workspace.svelte";
+  import { namespaceTree } from "$lib/stores/namespaceTree.svelte";
   import type { Doc } from "$lib/domain/columns";
   import ConnectionBar from "$lib/components/ConnectionBar.svelte";
-  import NamespaceTree from "$lib/components/NamespaceTree.svelte";
+  import NamespacePanel from "$lib/components/NamespacePanel.svelte";
   import ResultTable from "$lib/components/ResultTable.svelte";
   import DocumentForm from "$lib/components/DocumentForm.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
-
-  let databases = $state<DbInfo[]>([]);
-  let treeError = $state<string | null>(null);
+  import IndexPanel from "$lib/components/IndexPanel.svelte";
+  import CollectionInfoPanel from "$lib/components/CollectionInfoPanel.svelte";
+  import DatabaseStatsPanel from "$lib/components/DatabaseStatsPanel.svelte";
 
   async function onConnected() {
-    treeError = null;
-    try {
-      databases = await listNamespaces();
-    } catch (e) {
-      treeError = errorMessage(e);
-    }
+    await namespaceTree.refresh();
   }
 
   function openDocument(db: string, coll: string, doc: Doc | null, mode: "edit" | "insert") {
@@ -38,11 +32,11 @@
   <ConnectionBar onconnected={onConnected} />
   <div class="body">
     <aside>
-      {#if treeError}<div class="error">{treeError}</div>{/if}
-      <NamespaceTree
-        {databases}
-        selected={null}
+      <NamespacePanel
         onselect={(d) => workspace.openCollection(d.db, d.coll)}
+        onopenindexes={(d) => workspace.openIndexes(d.db, d.coll)}
+        onopeninfo={(d) => workspace.openCollectionInfo(d.db, d.coll)}
+        onopendbstats={(d) => workspace.openDatabaseStats(d.db)}
       />
     </aside>
     <section>
@@ -63,7 +57,17 @@
                   onopendocument={(doc, mode) => openDocument(tab.db, tab.coll, doc, mode)}
                 />
               {/key}
-            {:else}
+            {:else if tab.kind === "index"}
+              {#key workspace.collectionVersion(tab.db, tab.coll)}
+                <IndexPanel db={tab.db} coll={tab.coll} />
+              {/key}
+            {:else if tab.kind === "collinfo"}
+              {#key workspace.collectionVersion(tab.db, tab.coll)}
+                <CollectionInfoPanel db={tab.db} coll={tab.coll} />
+              {/key}
+            {:else if tab.kind === "dbstats"}
+              <DatabaseStatsPanel db={tab.db} />
+            {:else if tab.kind === "document"}
               <DocumentForm
                 mode={tab.mode}
                 db={tab.db}
@@ -96,5 +100,4 @@
   .tabpane { height: 100%; }
   .tabpane[hidden] { display: none; }
   .empty { padding: 24px; color: #888; }
-  .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; font-size: 12px; }
 </style>

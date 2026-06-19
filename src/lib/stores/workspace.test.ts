@@ -67,4 +67,102 @@ describe("workspace tabs", () => {
     expect(ws.tabs.length).toBe(2);
     expect(ws.activeId).toBe(ws.tabs[0].id); // tab "b" giờ ở index 0
   });
+
+  it("closeForCollection đóng cả collection-tab lẫn document-tab của coll đó", () => {
+    const ws = createWorkspace();
+    ws.openCollection("d", "c");
+    ws.openDocument({ kind: "document", db: "d", coll: "c", mode: "insert", initial: null, idText: null });
+    ws.openCollection("d", "other");
+    ws.closeForCollection("d", "c");
+    expect(ws.tabs.length).toBe(1);
+    expect((ws.tabs[0] as { coll: string }).coll).toBe("other");
+  });
+
+  it("closeForDatabase đóng mọi tab thuộc db", () => {
+    const ws = createWorkspace();
+    ws.openCollection("d", "a");
+    ws.openCollection("d", "b");
+    ws.openCollection("other", "z");
+    ws.closeForDatabase("d");
+    expect(ws.tabs.length).toBe(1);
+    expect(ws.tabs[0].db).toBe("other");
+  });
+
+  it("renameCollectionTabs trỏ tab sang tên mới + bump version tên mới", () => {
+    const ws = createWorkspace();
+    ws.openCollection("d", "old");
+    expect(ws.collectionVersion("d", "new")).toBe(0);
+    ws.renameCollectionTabs("d", "old", "new");
+    expect((ws.tabs[0] as { coll: string }).coll).toBe("new");
+    expect(ws.collectionVersion("d", "new")).toBe(1);
+  });
+
+  it("openIndexes mở tab index và dedup", () => {
+    const ws = createWorkspace();
+    ws.openIndexes("d", "c");
+    ws.openIndexes("d", "c");
+    expect(ws.tabs.length).toBe(1);
+    expect(ws.tabs[0].kind).toBe("index");
+  });
+
+  it("closeForCollection đóng cả index tab của coll đó", () => {
+    const ws = createWorkspace();
+    ws.openCollection("d", "c");
+    ws.openIndexes("d", "c");
+    ws.closeForCollection("d", "c");
+    expect(ws.tabs.length).toBe(0);
+  });
+
+  it("renameCollectionTabs đổi tên cả index tab", () => {
+    const ws = createWorkspace();
+    ws.openIndexes("d", "old");
+    ws.renameCollectionTabs("d", "old", "new");
+    expect((ws.tabs[0] as { coll: string }).coll).toBe("new");
+    expect(ws.tabs[0].kind).toBe("index");
+  });
+
+  it("openCollectionInfo mở tab collinfo và dedup", () => {
+    const ws = createWorkspace();
+    ws.openCollectionInfo("d", "c");
+    ws.openCollectionInfo("d", "c");
+    expect(ws.tabs.length).toBe(1);
+    expect(ws.tabs[0].kind).toBe("collinfo");
+  });
+
+  it("openDatabaseStats mở tab dbstats và dedup", () => {
+    const ws = createWorkspace();
+    ws.openDatabaseStats("d");
+    ws.openDatabaseStats("d");
+    expect(ws.tabs.length).toBe(1);
+    expect(ws.tabs[0].kind).toBe("dbstats");
+  });
+
+  it("closeForCollection đóng collinfo nhưng KHÔNG đụng dbstats", () => {
+    const ws = createWorkspace();
+    ws.openCollectionInfo("d", "c");
+    ws.openDatabaseStats("d");
+    ws.closeForCollection("d", "c");
+    expect(ws.tabs.length).toBe(1);
+    expect(ws.tabs[0].kind).toBe("dbstats");
+  });
+
+  it("renameCollectionTabs đổi tên collinfo nhưng KHÔNG đụng dbstats", () => {
+    const ws = createWorkspace();
+    ws.openCollectionInfo("d", "old");
+    ws.openDatabaseStats("d");
+    ws.renameCollectionTabs("d", "old", "new");
+    const info = ws.tabs.find((t) => t.kind === "collinfo");
+    expect(info && "coll" in info ? info.coll : null).toBe("new");
+    expect(ws.tabs.some((t) => t.kind === "dbstats")).toBe(true);
+  });
+
+  it("closeForDatabase đóng cả collinfo lẫn dbstats của db", () => {
+    const ws = createWorkspace();
+    ws.openCollectionInfo("d", "c");
+    ws.openDatabaseStats("d");
+    ws.openCollection("other", "z");
+    ws.closeForDatabase("d");
+    expect(ws.tabs.length).toBe(1);
+    expect(ws.tabs[0].db).toBe("other");
+  });
 });

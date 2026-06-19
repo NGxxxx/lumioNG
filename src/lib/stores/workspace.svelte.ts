@@ -1,6 +1,9 @@
 import type { Doc } from "../domain/columns";
 
 export type CollectionTab = { id: number; kind: "collection"; db: string; coll: string };
+export type IndexTab = { id: number; kind: "index"; db: string; coll: string };
+export type CollInfoTab = { id: number; kind: "collinfo"; db: string; coll: string };
+export type DbStatsTab = { id: number; kind: "dbstats"; db: string };
 export type DocumentTab = {
   id: number;
   kind: "document";
@@ -10,7 +13,7 @@ export type DocumentTab = {
   initial: Doc | null;
   idText: string | null;
 };
-export type Tab = CollectionTab | DocumentTab;
+export type Tab = CollectionTab | DocumentTab | IndexTab | CollInfoTab | DbStatsTab;
 export type DocumentTabInit = Omit<DocumentTab, "id">;
 
 export function createWorkspace() {
@@ -28,6 +31,39 @@ export function createWorkspace() {
       return;
     }
     const tab: CollectionTab = { id: nextId++, kind: "collection", db, coll };
+    tabs = [...tabs, tab];
+    activeId = tab.id;
+  }
+
+  function openIndexes(db: string, coll: string) {
+    const existing = tabs.find((t) => t.kind === "index" && t.db === db && t.coll === coll);
+    if (existing) {
+      activeId = existing.id;
+      return;
+    }
+    const tab: IndexTab = { id: nextId++, kind: "index", db, coll };
+    tabs = [...tabs, tab];
+    activeId = tab.id;
+  }
+
+  function openCollectionInfo(db: string, coll: string) {
+    const existing = tabs.find((t) => t.kind === "collinfo" && t.db === db && t.coll === coll);
+    if (existing) {
+      activeId = existing.id;
+      return;
+    }
+    const tab: CollInfoTab = { id: nextId++, kind: "collinfo", db, coll };
+    tabs = [...tabs, tab];
+    activeId = tab.id;
+  }
+
+  function openDatabaseStats(db: string) {
+    const existing = tabs.find((t) => t.kind === "dbstats" && t.db === db);
+    if (existing) {
+      activeId = existing.id;
+      return;
+    }
+    const tab: DbStatsTab = { id: nextId++, kind: "dbstats", db };
     tabs = [...tabs, tab];
     activeId = tab.id;
   }
@@ -76,6 +112,20 @@ export function createWorkspace() {
     versions = { ...versions, [k]: (versions[k] ?? 0) + 1 };
   }
 
+  function closeForCollection(db: string, coll: string) {
+    for (const t of tabs.filter((t) => t.db === db && "coll" in t && t.coll === coll)) close(t.id);
+  }
+
+  function closeForDatabase(db: string) {
+    for (const t of tabs.filter((t) => t.db === db)) close(t.id);
+  }
+
+  function renameCollectionTabs(db: string, oldColl: string, newColl: string) {
+    const affected = tabs.some((t) => t.db === db && "coll" in t && t.coll === oldColl);
+    tabs = tabs.map((t) => (t.db === db && "coll" in t && t.coll === oldColl ? { ...t, coll: newColl } : t));
+    if (affected) bumpCollection(db, newColl);
+  }
+
   return {
     get tabs() {
       return tabs;
@@ -84,11 +134,17 @@ export function createWorkspace() {
       return activeId;
     },
     openCollection,
+    openIndexes,
+    openCollectionInfo,
+    openDatabaseStats,
     openDocument,
     close,
     activate,
     collectionVersion,
     bumpCollection,
+    closeForCollection,
+    closeForDatabase,
+    renameCollectionTabs,
   };
 }
 
