@@ -2,13 +2,25 @@ import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullD
 import { saveDialog, openDialog, writeTextFile } from "../api/files";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
-import { lastIdJson, idJson } from "../domain/docid";
+import { idJson } from "../domain/docid";
+import { pageCount, clampPage, skipFor } from "../domain/paging";
+import { rangeBetween, idInFilter } from "../domain/selection";
 import { type Doc } from "../domain/columns";
 import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
-import { cycleSort, buildSort, buildProjection, type SortKey } from "../domain/grid";
+import {
+  cycleSort,
+  buildSort,
+  buildProjection,
+  addSortKey,
+  toggleSortDir,
+  removeSortKey,
+  moveSortKey,
+  type SortKey,
+} from "../domain/grid";
 import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
+import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd, importCmd } from "../domain/mongosh";
@@ -21,7 +33,6 @@ export function createCollectionView(db: string, coll: string) {
   let docs = $state<Doc[]>([]);
   let schema = $state<CollectionSchema | null>(null);
   let loading = $state(false);
-  let done = $state(false);
   let error = $state<string | null>(null);
 
   let filterText = $state("");
@@ -30,11 +41,19 @@ export function createCollectionView(db: string, coll: string) {
   let generation = 0;
 
   let sortKeys = $state<SortKey[]>([]);
-  let hidden = $state<Set<string>>(new Set()); // projection đang áp (Task 4 thêm mutator)
+  let hidden = $state<Set<string>>(new Set());
   let hiddenDraft = $state<Set<string>>(new Set());
+  let colWidths = $state<Record<string, number>>({});
+  let defaultColWidths = $state<Record<string, number>>({});
+  let colWidthSig = "";
   let pageSize = $state(50);
+  let currentPage = $state(1);
+  let totalCount = $state(0);
+  const pgCount = $derived(pageCount(totalCount, pageSize));
 
-  const isPristine = $derived(appliedFilter === "{}" && sortKeys.length === 0);
+  let allShown = $state(false);
+  let showAllPending = $state<number | null>(null);
+  const SHOW_ALL_WARN_THRESHOLD = 5000;
 
   let confirmDoc = $state<Doc | null>(null);
 
@@ -47,6 +66,12 @@ export function createCollectionView(db: string, coll: string) {
   // Context menu
   let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
 
+  // Row selection (indices into the current page `docs`)
+  let selected = $state<Set<number>>(new Set());
+  let anchor = $state<number | null>(null);
+  const selectedCount = $derived(selected.size);
+  let confirmSelectionDelete = $state<number | null>(null);
+
   // Bulk operations
   let bulkMode = $state<"update" | "delete" | null>(null);
   let bulkUpdateText = $state("");
@@ -54,7 +79,9 @@ export function createCollectionView(db: string, coll: string) {
   let bulkCount = $state<number | null>(null);
   let bulkCounting = $state(false);
   let bulkRunning = $state(false);
-  let bulkConfirmAll = $state(false);
+  let bulkScope = $state<"filter" | "selection">("filter");
+  let bulkFilter = $state("{}");
+  let bulkTypeConfirm = $state(false);
   let bulkResult = $state<string | null>(null);
   let bulkError = $state<string | null>(null);
 
@@ -64,12 +91,28 @@ export function createCollectionView(db: string, coll: string) {
   let ioError = $state<string | null>(null);
 
   const canRunBulk = $derived(
-    bulkCount !== null &&
-      !bulkRunning &&
-      (!isEmptyFilter(appliedFilter) || bulkConfirmAll),
+    !bulkRunning && (bulkScope === "selection" || bulkCount !== null),
   );
 
   const columnFields = $derived(mergeColumns(schema, docs));
+
+  /** Compute default widths once per column-set; recompute only when the paths change. */
+  function ensureColWidths() {
+    const sig = columnFields.map((c) => c.path).join("|");
+    if (sig === colWidthSig) return;
+    colWidthSig = sig;
+    defaultColWidths = computeColumnWidths(columnFields, docs);
+    colWidths = { ...defaultColWidths };
+  }
+
+  function setColWidth(path: string, px: number) {
+    colWidths = { ...colWidths, [path]: clampWidth(px) };
+  }
+
+  function resetColWidth(path: string) {
+    if (defaultColWidths[path] === undefined) return;
+    colWidths = { ...colWidths, [path]: defaultColWidths[path] };
+  }
 
   async function loadSchema() {
     const gen = generation;
@@ -85,53 +128,42 @@ export function createCollectionView(db: string, coll: string) {
 
   async function init() {
     const schemaP = loadSchema();
-    await loadMore();
+    await refreshCount();
+    await loadPage();
     await schemaP;
   }
 
-  async function loadMore() {
-    if (loading || done) return;
+  /** Nạp đúng trang hiện tại (replace docs). */
+  async function loadPage() {
     loading = true;
+    allShown = false;
     error = null;
     const gen = generation;
     try {
-      let cursor: { afterId: string | null } | { skip: number };
-      if (isPristine) {
-        const after = lastIdJson(docs);
-        if (docs.length > 0 && after === null) {
-          done = true;
-          error = "document thiếu _id, không phân trang được";
-          return;
-        }
-        cursor = { afterId: after };
-      } else {
-        cursor = { skip: docs.length };
-      }
+      const skip = skipFor(currentPage, pageSize);
       commandLog.push(
         findCmd({
           coll,
           filter: appliedFilter,
           projection: buildProjection(hidden),
           sort: buildSort(sortKeys),
-          skip: isPristine ? undefined : docs.length,
+          skip,
           limit: pageSize,
         }),
       );
       const batch = await queryPage(
         db,
         coll,
-        cursor,
+        skip,
         pageSize,
         appliedFilter,
         buildSort(sortKeys),
         buildProjection(hidden),
       );
-      if (gen !== generation) return; // superseded by a newer filter/sort
-      if (batch.length === 0) {
-        done = true;
-      } else {
-        docs = [...docs, ...batch];
-      }
+      if (gen !== generation) return;
+      docs = batch;
+      ensureColWidths();
+      clearSelection();
     } catch (e) {
       if (gen !== generation) return;
       error = errorMessage(e);
@@ -140,19 +172,90 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
-  /** Reset state phân trang trước khi load lại (không đụng schema). */
-  function resetForReload() {
-    generation++;
-    docs = [];
-    done = false;
-    error = null;
-    loading = false;
+  /** Đếm tổng (theo filter đang áp) + kẹp trang hiện tại vào khoảng hợp lệ. */
+  async function refreshCount() {
+    const gen = generation;
+    try {
+      const n = await countDocuments(db, coll, appliedFilter);
+      if (gen !== generation) return;
+      totalCount = n;
+      currentPage = clampPage(currentPage, pageCount(totalCount, pageSize));
+    } catch (e) {
+      if (gen !== generation) return;
+      error = errorMessage(e);
+    }
   }
 
-  /** Reset kết quả + load lại từ đầu, KHÔNG re-sample schema (cùng filter). */
+  async function goToPage(n: number) {
+    const target = clampPage(n, pgCount);
+    currentPage = target;
+    generation++;
+    await loadPage();
+  }
+  const nextPage = () => goToPage(currentPage + 1);
+  const prevPage = () => goToPage(currentPage - 1);
+  const firstPage = () => goToPage(1);
+  const lastPage = () => goToPage(pgCount);
+
+  /** Show ALL: đếm trước; vượt ngưỡng thì chờ xác nhận, ngược lại nạp luôn. */
+  async function requestShowAll() {
+    error = null;
+    generation++;
+    const gen = generation;
+    try {
+      const n = await countDocuments(db, coll, appliedFilter);
+      if (gen !== generation) return;
+      totalCount = n;
+      if (n > SHOW_ALL_WARN_THRESHOLD) {
+        showAllPending = n;
+        return;
+      }
+      await confirmShowAll();
+    } catch (e) {
+      if (gen !== generation) return;
+      error = errorMessage(e);
+    }
+  }
+
+  /** Nạp toàn bộ kết quả (export_query) vào grid; ẩn pager. */
+  async function confirmShowAll() {
+    showAllPending = null;
+    loading = true;
+    error = null;
+    const gen = generation;
+    try {
+      const all = await exportQuery(
+        db,
+        coll,
+        appliedFilter,
+        buildSort(sortKeys),
+        buildProjection(hidden),
+      );
+      if (gen !== generation) return;
+      commandLog.push(
+        findCmd({ coll, filter: appliedFilter, projection: buildProjection(hidden), sort: buildSort(sortKeys) }),
+      );
+      docs = all;
+      ensureColWidths();
+      clearSelection();
+      allShown = true;
+    } catch (e) {
+      if (gen !== generation) return;
+      error = errorMessage(e);
+    } finally {
+      if (gen === generation) loading = false;
+    }
+  }
+
+  function cancelShowAll() {
+    showAllPending = null;
+  }
+
+  /** Reload tại chỗ (cùng filter): refresh count + nạp lại trang hiện tại (đã clamp). */
   async function reloadDocs() {
-    resetForReload();
-    await loadMore();
+    generation++;
+    await refreshCount();
+    await loadPage();
   }
 
   /** Đồng bộ nháp = trạng thái đang áp (gọi khi mở column chooser). */
@@ -186,14 +289,39 @@ export function createCollectionView(db: string, coll: string) {
     return await fullDocFor(d);
   }
 
-  async function toggleSort(path: string, shift: boolean) {
-    sortKeys = cycleSort(sortKeys, path, shift);
-    await reloadDocs();
+  /** Áp một bộ sortKeys mới: reset trang 1 + reload (dùng chung cho header-click và dropdown). */
+  async function applySortChange(next: SortKey[]) {
+    sortKeys = next;
+    generation++;
+    currentPage = 1;
+    await refreshCount();
+    await loadPage();
+  }
+
+  const toggleSort = (path: string, shift: boolean) =>
+    applySortChange(cycleSort(sortKeys, path, shift));
+  const addSort = (path: string) => applySortChange(addSortKey(sortKeys, path));
+  const toggleSortDirAt = (path: string) => applySortChange(toggleSortDir(sortKeys, path));
+  const removeSort = (path: string) => applySortChange(removeSortKey(sortKeys, path));
+  const moveSort = (path: string, delta: number) =>
+    applySortChange(moveSortKey(sortKeys, path, delta));
+  const clearSort = () => applySortChange([]);
+
+  /** Hiện mọi field (xóa draft ẩn). */
+  function showAllFieldsDraft() {
+    hiddenDraft = new Set();
+  }
+
+  /** Ẩn mọi field trừ _id (buildProjection vốn không loại _id). */
+  function hideAllFieldsDraft() {
+    hiddenDraft = new Set(columnFields.map((c) => c.path).filter((p) => p !== "_id"));
   }
 
   async function setPageSize(n: number) {
     pageSize = Math.max(1, Math.floor(n) || 50);
-    await reloadDocs();
+    generation++;
+    currentPage = 1;
+    await loadPage();
   }
 
   async function applyFilter() {
@@ -205,8 +333,11 @@ export function createCollectionView(db: string, coll: string) {
     appliedFilter = r.json;
     filterError = null;
     schema = null;
-    resetForReload();
-    await init();
+    generation++;
+    currentPage = 1;
+    await loadSchema();
+    await refreshCount();
+    await loadPage();
   }
 
   async function startEdit(row: number, key: string) {
@@ -263,6 +394,10 @@ export function createCollectionView(db: string, coll: string) {
   function openMenu(e: MouseEvent, row: number, key: string) {
     e.preventDefault();
     e.stopPropagation();
+    if (!selected.has(row)) {
+      selected = new Set([row]);
+      anchor = row;
+    }
     menu = { x: e.clientX, y: e.clientY, row, key };
   }
 
@@ -270,16 +405,65 @@ export function createCollectionView(db: string, coll: string) {
     menu = null;
   }
 
+  function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
+    if (mods.shift && anchor !== null) {
+      selected = new Set(rangeBetween(anchor, row));
+      return;
+    }
+    if (mods.ctrl) {
+      const next = new Set(selected);
+      if (next.has(row)) next.delete(row);
+      else next.add(row);
+      selected = next;
+      anchor = row;
+      return;
+    }
+    selected = new Set([row]);
+    anchor = row;
+  }
+
+  function selectAll() {
+    selected = new Set(docs.map((_, i) => i));
+    anchor = docs.length > 0 ? 0 : null;
+  }
+
+  function clearSelection() {
+    selected = new Set();
+    anchor = null;
+  }
+
+  /** Resolve selected rows to id ExtJSON; reports `missing` if any lacks _id. */
+  function selectedIds(): { ids: string[] } | { missing: true } {
+    const ids: string[] = [];
+    for (const row of selected) {
+      const id = idJson(docs[row]);
+      if (id === null) return { missing: true };
+      ids.push(id);
+    }
+    return { ids };
+  }
+
   function menuItems(): MenuItem[] {
     if (!menu) return [];
     const value = getByPath(docs[menu.row], menu.key);
-    return [
-      { label: "Open document", action: "open" },
-      { label: "Delete document", action: "delete" },
+    const items: MenuItem[] = [];
+    if (selected.size > 0) {
+      items.push({ label: `Update selected (${selected.size})…`, action: "updateSelected" });
+      items.push({ label: `Delete selected (${selected.size})`, action: "deleteSelected" });
+    }
+    if (selected.size === 1) {
+      items.push({ label: "Open document", action: "open" });
+    }
+    items.push(
       { label: "Copy value", action: "copyValue" },
       { label: "Copy _id", action: "copyId", disabled: idJson(docs[menu.row]) === null },
-      { label: "Edit cell", action: "editCell", disabled: menu.key.includes(".") || !isInlineEditable(menu.key, value) },
-    ];
+      {
+        label: "Edit cell",
+        action: "editCell",
+        disabled: menu.key.includes(".") || !isInlineEditable(menu.key, value),
+      },
+    );
+    return items;
   }
 
   async function copy(text: string) {
@@ -300,8 +484,11 @@ export function createCollectionView(db: string, coll: string) {
     switch (action) {
       case "open":
         return { open: doc };
-      case "delete":
-        confirmDoc = doc;
+      case "updateSelected":
+        openBulk("update", "selection");
+        break;
+      case "deleteSelected":
+        requestDeleteSelected();
         break;
       case "copyValue":
         copy(JSON.stringify(getByPath(doc, key)));
@@ -316,18 +503,33 @@ export function createCollectionView(db: string, coll: string) {
     return null;
   }
 
-  function openBulk(mode: "update" | "delete") {
+  function openBulk(mode: "update" | "delete", scope: "filter" | "selection" = "filter") {
     bulkMode = mode;
+    bulkScope = scope;
     bulkUpdateText = "";
     bulkUpdateError = null;
-    bulkCount = null;
-    bulkConfirmAll = false;
     bulkResult = null;
     bulkError = null;
+    bulkTypeConfirm = false;
+    if (scope === "selection") {
+      const sel = selectedIds();
+      if ("missing" in sel) {
+        bulkFilter = "";
+        bulkCount = null;
+        bulkError = "Một số dòng đang chọn thiếu _id.";
+        return;
+      }
+      bulkFilter = idInFilter(sel.ids);
+      bulkCount = sel.ids.length;
+    } else {
+      bulkFilter = appliedFilter;
+      bulkCount = null;
+    }
   }
 
   function closeBulk() {
     bulkMode = null;
+    bulkTypeConfirm = false;
   }
 
   async function countBulk() {
@@ -335,8 +537,8 @@ export function createCollectionView(db: string, coll: string) {
     bulkError = null;
     bulkResult = null;
     try {
-      bulkCount = await countDocuments(db, coll, appliedFilter);
-      commandLog.push(countCmd(coll, appliedFilter));
+      bulkCount = await countDocuments(db, coll, bulkFilter);
+      commandLog.push(countCmd(coll, bulkFilter));
     } catch (e) {
       bulkError = errorMessage(e);
     } finally {
@@ -345,13 +547,25 @@ export function createCollectionView(db: string, coll: string) {
   }
 
   async function runBulk() {
-    bulkError = null;
-    bulkResult = null;
-    const allowAll = isEmptyFilter(appliedFilter) && bulkConfirmAll;
-    if (isEmptyFilter(appliedFilter) && !bulkConfirmAll) {
-      bulkError = "Filter rỗng: cần tick xác nhận để áp dụng cho toàn bộ collection.";
+    if (bulkScope === "filter" && isEmptyFilter(bulkFilter)) {
+      bulkTypeConfirm = true;
       return;
     }
+    await performBulk(bulkFilter, false);
+  }
+
+  async function confirmBulkAll() {
+    bulkTypeConfirm = false;
+    await performBulk(bulkFilter, true);
+  }
+
+  function cancelBulkAll() {
+    bulkTypeConfirm = false;
+  }
+
+  async function performBulk(filter: string, allowAll: boolean) {
+    bulkError = null;
+    bulkResult = null;
     if (bulkMode === "update") {
       const r = parseUpdateDoc(bulkUpdateText);
       if (!r.ok) {
@@ -361,8 +575,8 @@ export function createCollectionView(db: string, coll: string) {
       bulkUpdateError = null;
       bulkRunning = true;
       try {
-        const res = await updateMany(db, coll, appliedFilter, r.json, allowAll);
-        commandLog.push(updateManyCmd(coll, appliedFilter, r.json));
+        const res = await updateMany(db, coll, filter, r.json, allowAll);
+        commandLog.push(updateManyCmd(coll, filter, r.json));
         bulkResult = `Đã cập nhật ${res.modified} (khớp ${res.matched}) document.`;
         await reloadDocs();
         bulkCount = null;
@@ -374,8 +588,8 @@ export function createCollectionView(db: string, coll: string) {
     } else if (bulkMode === "delete") {
       bulkRunning = true;
       try {
-        const n = await deleteMany(db, coll, appliedFilter, allowAll);
-        commandLog.push(deleteManyCmd(coll, appliedFilter));
+        const n = await deleteMany(db, coll, filter, allowAll);
+        commandLog.push(deleteManyCmd(coll, filter));
         bulkResult = `Đã xóa ${n} document.`;
         await reloadDocs();
         bulkCount = null;
@@ -433,6 +647,32 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
+  function requestDeleteSelected() {
+    if (selected.size === 0) return;
+    confirmSelectionDelete = selected.size;
+  }
+
+  function cancelDeleteSelected() {
+    confirmSelectionDelete = null;
+  }
+
+  async function confirmDeleteSelected() {
+    confirmSelectionDelete = null;
+    const sel = selectedIds();
+    if ("missing" in sel) {
+      error = "Một số dòng đang chọn thiếu _id để xóa.";
+      return;
+    }
+    const filter = idInFilter(sel.ids);
+    try {
+      await deleteMany(db, coll, filter, false);
+      commandLog.push(deleteManyCmd(coll, filter));
+      await reloadDocs(); // reloadDocs → loadPage → clearSelection
+    } catch (e) {
+      error = errorMessage(e);
+    }
+  }
+
   function requestDelete(doc: Doc) {
     confirmDoc = doc;
   }
@@ -453,7 +693,7 @@ export function createCollectionView(db: string, coll: string) {
     try {
       await deleteDocument(db, coll, id);
       commandLog.push(deleteOneCmd(coll, id));
-      docs = docs.filter((x) => x !== d);
+      await reloadDocs();
     } catch (e) {
       error = errorMessage(e);
     }
@@ -472,12 +712,17 @@ export function createCollectionView(db: string, coll: string) {
     get loading() {
       return loading;
     },
-    get done() {
-      return done;
-    },
     get error() {
       return error;
     },
+    get currentPage() { return currentPage; },
+    get pageCount() { return pgCount; },
+    get totalCount() { return totalCount; },
+    get allShown() { return allShown; },
+    get showAllPending() { return showAllPending; },
+    requestShowAll,
+    confirmShowAll,
+    cancelShowAll,
     get filterText() {
       return filterText;
     },
@@ -509,6 +754,16 @@ export function createCollectionView(db: string, coll: string) {
     get menu() {
       return menu;
     },
+    get selected() { return selected; },
+    get selectedCount() { return selectedCount; },
+    get confirmSelectionDelete() { return confirmSelectionDelete; },
+    clickRow,
+    selectAll,
+    clearSelection,
+    selectedIds,
+    requestDeleteSelected,
+    cancelDeleteSelected,
+    confirmDeleteSelected,
     get sortKeys() {
       return sortKeys;
     },
@@ -518,16 +773,32 @@ export function createCollectionView(db: string, coll: string) {
     get hiddenDraft() {
       return hiddenDraft;
     },
+    get colWidths() {
+      return colWidths;
+    },
+    setColWidth,
+    resetColWidth,
     get pageSize() {
       return pageSize;
     },
     toggleSort,
+    addSort,
+    toggleSortDirAt,
+    removeSort,
+    moveSort,
+    clearSort,
+    showAllFieldsDraft,
+    hideAllFieldsDraft,
     setPageSize,
+    goToPage,
+    nextPage,
+    prevPage,
+    firstPage,
+    lastPage,
     toggleHiddenDraft,
     applyProjection,
     resetProjectionDraft,
     openDoc,
-    loadMore,
     init,
     startEdit,
     cancelEdit,
@@ -548,8 +819,10 @@ export function createCollectionView(db: string, coll: string) {
     get bulkCount() { return bulkCount; },
     get bulkCounting() { return bulkCounting; },
     get bulkRunning() { return bulkRunning; },
-    get bulkConfirmAll() { return bulkConfirmAll; },
-    set bulkConfirmAll(v: boolean) { bulkConfirmAll = v; },
+    get bulkScope() { return bulkScope; },
+    get bulkTypeConfirm() { return bulkTypeConfirm; },
+    confirmBulkAll,
+    cancelBulkAll,
     get bulkResult() { return bulkResult; },
     get bulkError() { return bulkError; },
     get canRunBulk() { return canRunBulk; },

@@ -7,6 +7,7 @@
   import type { Doc } from "$lib/domain/columns";
   import type { ContextKind } from "$lib/stores/navigation.svelte";
   import SessionManager from "$lib/components/SessionManager.svelte";
+  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import NamespacePanel from "$lib/components/NamespacePanel.svelte";
   import ResultTable from "$lib/components/ResultTable.svelte";
   import DocumentForm from "$lib/components/DocumentForm.svelte";
@@ -28,6 +29,9 @@
     data: "Data",
     query: "Query",
   };
+
+  let confirmQuit = $state(false);
+  const requestQuit = () => (confirmQuit = true);
 
   const active = $derived(navigation.active);
   const sel = $derived(navigation.selection);
@@ -99,12 +103,13 @@
     conn={shell.connection?.label ?? null}
     db={sel?.db ?? null}
     coll={sel?.coll ?? null}
+    onquit={requestQuit}
   />
   <MenuBar
     connected={shell.connection !== null}
     onsession={() => shell.toggleSession()}
     onrefresh={doRefresh}
-    onquit={quit}
+    onquit={requestQuit}
   />
   <Toolbar
     connected={shell.connection !== null}
@@ -223,6 +228,17 @@
   />
   {#if shell.sessionOpen}
     <SessionManager onconnected={onConnected} onclose={() => shell.toggleSession()} />
+  {/if}
+  {#if confirmQuit}
+    <ConfirmDialog
+      title="Thoát MongoStudio?"
+      message="Bạn có chắc muốn thoát ứng dụng? Công việc chưa lưu sẽ mất."
+      confirmLabel="Thoát"
+      cancelLabel="Hủy"
+      danger
+      onconfirm={quit}
+      oncancel={() => (confirmQuit = false)}
+    />
   {/if}
 </div>
 

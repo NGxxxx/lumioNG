@@ -27,6 +27,36 @@ export function cycleSort(keys: SortKey[], path: string, shift: boolean): SortKe
   return keys.filter((k) => k.path !== path);
 }
 
+/** Thêm khóa sort asc cho path nếu chưa có; path đã có → giữ nguyên mảng. */
+export function addSortKey(keys: SortKey[], path: string): SortKey[] {
+  if (keys.some((k) => k.path === path)) return keys;
+  return [...keys, { path, dir: 1 }];
+}
+
+/** Đảo chiều khóa của path (1↔-1); path không có → giữ nguyên. */
+export function toggleSortDir(keys: SortKey[], path: string): SortKey[] {
+  return keys.map((k) =>
+    k.path === path ? { path: k.path, dir: (k.dir === 1 ? -1 : 1) as 1 | -1 } : k,
+  );
+}
+
+/** Bỏ khóa của path; path không có → giữ nguyên. */
+export function removeSortKey(keys: SortKey[], path: string): SortKey[] {
+  return keys.filter((k) => k.path !== path);
+}
+
+/** Dời khóa path đi delta (±1) trong mảng, kẹp biên; không có/đụng biên → giữ nguyên. */
+export function moveSortKey(keys: SortKey[], path: string, delta: number): SortKey[] {
+  const i = keys.findIndex((k) => k.path === path);
+  if (i === -1) return keys;
+  const j = i + delta;
+  if (j < 0 || j >= keys.length) return keys;
+  const next = [...keys];
+  const [item] = next.splice(i, 1);
+  next.splice(j, 0, item);
+  return next;
+}
+
 /** Sort doc ExtJSON giữ thứ tự ưu tiên; tự nối {_id:1} nếu chưa có khóa _id. Rỗng → null. */
 export function buildSort(keys: SortKey[]): string | null {
   if (keys.length === 0) return null;

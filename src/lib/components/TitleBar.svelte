@@ -1,8 +1,18 @@
 <script lang="ts">
   import { buildBreadcrumb } from "$lib/domain/breadcrumb";
-  import { minimize, toggleMaximize, quit } from "$lib/api/window";
+  import { minimize, toggleMaximize } from "$lib/api/window";
 
-  let { conn, db, coll }: { conn: string | null; db: string | null; coll: string | null } = $props();
+  let {
+    conn,
+    db,
+    coll,
+    onquit,
+  }: {
+    conn: string | null;
+    db: string | null;
+    coll: string | null;
+    onquit: () => void;
+  } = $props();
 
   const APP_VERSION = "MongoStudio 0.1.0";
   const crumb = $derived(buildBreadcrumb({ conn, db, coll }));
@@ -31,7 +41,7 @@
     <button class="wbtn" title="Maximize" onclick={toggleMaximize} aria-label="Maximize">
       <svg width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="#555" stroke-width="1" /></svg>
     </button>
-    <button class="wbtn close" title="Close" onclick={quit} aria-label="Close">
+    <button class="wbtn close" title="Close" onclick={onquit} aria-label="Close">
       <svg width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="#555" stroke-width="1.1" /></svg>
     </button>
   </div>

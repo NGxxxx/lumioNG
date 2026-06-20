@@ -1,5 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { cycleSort, buildSort, buildProjection, type SortKey } from "./grid";
+import {
+  cycleSort,
+  buildSort,
+  buildProjection,
+  addSortKey,
+  toggleSortDir,
+  removeSortKey,
+  moveSortKey,
+  type SortKey,
+} from "./grid";
 
 describe("cycleSort (không shift)", () => {
   it("rỗng → asc field này", () => {
@@ -59,5 +68,71 @@ describe("buildProjection", () => {
   });
   it("vài path → exclusion doc, loại _id", () => {
     expect(buildProjection(new Set(["a", "_id", "b"]))).toBe('{"a":0,"b":0}');
+  });
+});
+
+describe("addSortKey", () => {
+  it("path mới → append asc, giữ thứ tự cũ", () => {
+    expect(addSortKey([{ path: "a", dir: 1 }], "b")).toEqual([
+      { path: "a", dir: 1 },
+      { path: "b", dir: 1 },
+    ]);
+  });
+  it("path đã có → giữ nguyên (không nhân đôi, không đổi dir)", () => {
+    expect(addSortKey([{ path: "a", dir: -1 }], "a")).toEqual([{ path: "a", dir: -1 }]);
+  });
+});
+
+describe("toggleSortDir", () => {
+  it("1 → -1", () => {
+    expect(toggleSortDir([{ path: "a", dir: 1 }], "a")).toEqual([{ path: "a", dir: -1 }]);
+  });
+  it("-1 → 1", () => {
+    expect(toggleSortDir([{ path: "a", dir: -1 }], "a")).toEqual([{ path: "a", dir: 1 }]);
+  });
+  it("path không có → giữ nguyên", () => {
+    expect(toggleSortDir([{ path: "a", dir: 1 }], "b")).toEqual([{ path: "a", dir: 1 }]);
+  });
+});
+
+describe("removeSortKey", () => {
+  it("bỏ path khớp", () => {
+    expect(removeSortKey([{ path: "a", dir: 1 }, { path: "b", dir: 1 }], "a")).toEqual([
+      { path: "b", dir: 1 },
+    ]);
+  });
+  it("path không có → giữ nguyên", () => {
+    expect(removeSortKey([{ path: "a", dir: 1 }], "z")).toEqual([{ path: "a", dir: 1 }]);
+  });
+});
+
+describe("moveSortKey", () => {
+  const keys: SortKey[] = [
+    { path: "a", dir: 1 },
+    { path: "b", dir: 1 },
+    { path: "c", dir: 1 },
+  ];
+  it("delta -1 dời lên một bậc", () => {
+    expect(moveSortKey(keys, "b", -1)).toEqual([
+      { path: "b", dir: 1 },
+      { path: "a", dir: 1 },
+      { path: "c", dir: 1 },
+    ]);
+  });
+  it("delta +1 dời xuống một bậc", () => {
+    expect(moveSortKey(keys, "b", 1)).toEqual([
+      { path: "a", dir: 1 },
+      { path: "c", dir: 1 },
+      { path: "b", dir: 1 },
+    ]);
+  });
+  it("đụng biên đầu → giữ nguyên", () => {
+    expect(moveSortKey(keys, "a", -1)).toEqual(keys);
+  });
+  it("đụng biên cuối → giữ nguyên", () => {
+    expect(moveSortKey(keys, "c", 1)).toEqual(keys);
+  });
+  it("path không có → giữ nguyên", () => {
+    expect(moveSortKey(keys, "z", 1)).toEqual(keys);
   });
 });

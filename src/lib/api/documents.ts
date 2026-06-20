@@ -2,32 +2,21 @@ import { invoke } from "@tauri-apps/api/core";
 import type { Doc } from "../domain/columns";
 
 /**
- * Con trỏ phân trang: keyset trên _id (pristine) HOẶC skip/limit (đã filter/sort).
- * `afterId` = chuỗi Canonical Extended JSON của `_id` doc cuối (mọi kiểu: `{"$oid":...}`,
- * `"abc"`, `{"$numberInt":"5"}`); `null` cho trang đầu.
- */
-export type Cursor = { afterId: string | null } | { skip: number };
-
-/**
- * Returns documents parsed from Canonical Extended JSON strings.
- * Keyset mode (`afterId`): backend dùng `_id > afterId`, KHÔNG nhận sort.
- * `afterId` phải là chuỗi Canonical Extended JSON của `_id`.
+ * Trả documents parse từ chuỗi Canonical Extended JSON.
+ * Phân trang skip/limit: `skip` = số doc bỏ qua (FE tính từ trang). `sort` rỗng → {_id:1}.
  */
 export async function queryPage(
   db: string,
   coll: string,
-  cursor: Cursor,
+  skip: number,
   limit = 50,
   filter = "{}",
   sort: string | null = null,
   projection: string | null = null,
 ): Promise<Doc[]> {
-  const afterId = "afterId" in cursor ? cursor.afterId : null;
-  const skip = "skip" in cursor ? cursor.skip : null;
   const rows = await invoke<string[]>("query_page", {
     db,
     coll,
-    afterId,
     skip,
     limit,
     filter,
@@ -59,7 +48,6 @@ export async function fetchFullDoc(db: string, coll: string, idJson: string): Pr
   const rows = await invoke<string[]>("query_page", {
     db,
     coll,
-    afterId: null,
     skip: 0,
     limit: 1,
     filter: `{"_id": ${idJson}}`,

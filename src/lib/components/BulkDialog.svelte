@@ -1,11 +1,12 @@
 <script lang="ts">
   let {
     mode,
+    scope,
     appliedFilter,
     isEmpty,
+    selectionCount,
     updateText = $bindable(),
     updateError,
-    confirmAll = $bindable(),
     count,
     counting,
     running,
@@ -17,11 +18,12 @@
     onclose,
   }: {
     mode: "update" | "delete";
+    scope: "selection" | "filter";
     appliedFilter: string;
     isEmpty: boolean;
+    selectionCount: number;
     updateText: string;
     updateError: string | null;
-    confirmAll: boolean;
     count: number | null;
     counting: boolean;
     running: boolean;
@@ -32,6 +34,16 @@
     onrun: () => void;
     onclose: () => void;
   } = $props();
+
+  const heading = $derived(
+    scope === "selection"
+      ? mode === "update"
+        ? "Update selected"
+        : "Delete selected"
+      : mode === "update"
+        ? "Update many"
+        : "Delete many",
+  );
 </script>
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
@@ -44,17 +56,18 @@
   }}
 >
   <div class="modal" role="dialog" aria-modal="true">
-    <header>{mode === "update" ? "Update many" : "Delete many"}</header>
+    <header>{heading}</header>
     <div class="body">
-      <div class="row">Filter đang áp: <code>{appliedFilter}</code></div>
-      {#if isEmpty}
-        <div class="warn">
-          Filter rỗng — thao tác này áp dụng cho <b>TOÀN BỘ</b> collection.
-          <label class="confirm">
-            <input type="checkbox" bind:checked={confirmAll} />
-            Tôi hiểu và muốn áp dụng cho toàn bộ collection.
-          </label>
-        </div>
+      {#if scope === "selection"}
+        <div class="row">{selectionCount} dòng đã chọn.</div>
+      {:else}
+        <div class="row">Filter đang áp: <code>{appliedFilter}</code></div>
+        {#if isEmpty}
+          <div class="warn">
+            Filter rỗng — khi Run, bạn sẽ phải gõ tên collection để xác nhận áp dụng cho
+            <b>TOÀN BỘ</b> collection.
+          </div>
+        {/if}
       {/if}
       {#if mode === "update"}
         <label class="ulabel">Update document (operator)
@@ -62,10 +75,12 @@
         </label>
         {#if updateError}<div class="err">{updateError}</div>{/if}
       {/if}
-      <div class="counter">
-        <button onclick={oncount} disabled={counting}>Count</button>
-        {#if count !== null}<span>Khớp {count} document.</span>{/if}
-      </div>
+      {#if scope === "filter"}
+        <div class="counter">
+          <button onclick={oncount} disabled={counting}>Count</button>
+          {#if count !== null}<span>Khớp {count} document.</span>{/if}
+        </div>
+      {/if}
       {#if result}<div class="ok">{result}</div>{/if}
       {#if error}<div class="err">{error}</div>{/if}
     </div>
@@ -85,7 +100,6 @@
   .body { padding: 14px; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
   code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; font-family: ui-monospace, monospace; }
   .warn { background: #fff4e5; border: 1px solid #ffb74d; padding: 8px; border-radius: 4px; }
-  .confirm { display: block; margin-top: 6px; }
   .ulabel { display: flex; flex-direction: column; gap: 4px; }
   textarea { font-family: ui-monospace, monospace; font-size: 12px; }
   .counter { display: flex; align-items: center; gap: 8px; }
