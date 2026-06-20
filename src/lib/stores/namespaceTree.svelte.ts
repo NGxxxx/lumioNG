@@ -2,15 +2,22 @@ import { listNamespaces, type DbInfo } from "../api/connection";
 import * as admin from "../api/admin";
 import { errorMessage } from "../api/errors";
 import { validateCollectionName, validateDatabaseName } from "../domain/namespaces";
-import { workspace as defaultWorkspace } from "./workspace.svelte";
+import { navigation as defaultNav } from "./navigation.svelte";
+import { commandLog } from "./commandLog.svelte";
+import {
+  createCollectionCmd,
+  dropCollectionCmd,
+  renameCollectionCmd,
+  dropDatabaseCmd,
+} from "../domain/mongosh";
 
-type WorkspaceLike = {
+type NavLike = {
   closeForCollection(db: string, coll: string): void;
   closeForDatabase(db: string): void;
   renameCollectionTabs(db: string, oldColl: string, newColl: string): void;
 };
 
-export function createNamespaceTree(workspace: WorkspaceLike = defaultWorkspace) {
+export function createNamespaceTree(nav: NavLike = defaultNav) {
   let databases = $state<DbInfo[]>([]);
   let error = $state<string | null>(null);
 
@@ -27,6 +34,7 @@ export function createNamespaceTree(workspace: WorkspaceLike = defaultWorkspace)
     const msg = validateCollectionName(coll);
     if (msg) throw msg;
     await admin.createCollection(db, coll);
+    commandLog.push(createCollectionCmd(coll));
     await refresh();
   }
 
@@ -36,12 +44,14 @@ export function createNamespaceTree(workspace: WorkspaceLike = defaultWorkspace)
     const collMsg = validateCollectionName(coll);
     if (collMsg) throw collMsg;
     await admin.createCollection(db, coll);
+    commandLog.push(createCollectionCmd(coll));
     await refresh();
   }
 
   async function dropCollection(db: string, coll: string) {
     await admin.dropCollection(db, coll);
-    workspace.closeForCollection(db, coll);
+    commandLog.push(dropCollectionCmd(coll));
+    nav.closeForCollection(db, coll);
     await refresh();
   }
 
@@ -49,13 +59,15 @@ export function createNamespaceTree(workspace: WorkspaceLike = defaultWorkspace)
     const msg = validateCollectionName(to);
     if (msg) throw msg;
     await admin.renameCollection(db, from, to);
-    workspace.renameCollectionTabs(db, from, to);
+    commandLog.push(renameCollectionCmd(from, to));
+    nav.renameCollectionTabs(db, from, to);
     await refresh();
   }
 
   async function dropDatabase(db: string) {
     await admin.dropDatabase(db);
-    workspace.closeForDatabase(db);
+    commandLog.push(dropDatabaseCmd());
+    nav.closeForDatabase(db);
     await refresh();
   }
 

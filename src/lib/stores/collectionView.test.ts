@@ -23,6 +23,8 @@ vi.mock("../api/files", () => ({
 import * as documents from "../api/documents";
 import * as files from "../api/files";
 import { createCollectionView } from "./collectionView.svelte";
+import { commandLog } from "./commandLog.svelte";
+import { findCmd, deleteOneCmd } from "../domain/mongosh";
 
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
 const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
@@ -332,5 +334,31 @@ describe("bulk operations", () => {
     await v.runBulk();
     expect(updateMany).not.toHaveBeenCalled();
     expect(v.bulkUpdateError).toBeTruthy();
+  });
+});
+
+describe("command log instrumentation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    commandLog.clear();
+  });
+
+  it("loadMore đẩy findCmd vào command log", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    const v = createCollectionView("d", "c");
+    await v.loadMore();
+    const last = commandLog.entries.at(-1)!;
+    expect(last.text).toBe(findCmd({ coll: "c", filter: "{}", projection: null, sort: null, limit: 50 }));
+  });
+
+  it("confirmDelete đẩy deleteOneCmd", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    del.mockResolvedValueOnce(undefined);
+    const v = createCollectionView("d", "c");
+    await v.loadMore();
+    commandLog.clear();
+    v.requestDelete(v.docs[0]);
+    await v.confirmDelete();
+    expect(commandLog.entries.at(-1)!.text).toBe(deleteOneCmd("c", '{"$oid":"a"}'));
   });
 });

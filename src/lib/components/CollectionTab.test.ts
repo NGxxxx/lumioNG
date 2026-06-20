@@ -1,0 +1,23 @@
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { render, fireEvent } from "@testing-library/svelte";
+
+vi.mock("../stores/collectionInfo.svelte", () => ({
+  createCollectionInfo: () => ({ init() {}, error: null, loading: false, stats: null, options: null }),
+}));
+vi.mock("../stores/indexView.svelte", () => ({
+  createIndexView: () => ({ init() {}, error: null, loading: false, indexes: [], create: vi.fn(), drop: vi.fn() }),
+}));
+
+import CollectionTab from "./CollectionTab.svelte";
+import { navigation } from "../stores/navigation.svelte";
+
+describe("CollectionTab", () => {
+  beforeEach(() => navigation.setCollectionSection("info"));
+
+  it("mặc định Info: chưa hiện nút Create index; bấm Indexes → hiện", async () => {
+    const { getByText, queryByText } = render(CollectionTab, { props: { db: "d", coll: "c" } });
+    expect(queryByText("＋ Create index")).toBeNull();
+    await fireEvent.click(getByText("Indexes"));
+    expect(getByText("＋ Create index")).toBeTruthy();
+  });
+});

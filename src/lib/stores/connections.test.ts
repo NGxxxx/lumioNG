@@ -10,6 +10,8 @@ vi.mock("../api/connection", () => ({ connect: vi.fn() }));
 import * as conns from "../api/connections";
 import * as conn from "../api/connection";
 import { createConnectionRegistry } from "./connections.svelte";
+import { commandLog } from "./commandLog.svelte";
+import { connectCmd } from "../domain/mongosh";
 
 const list = conns.listConnections as ReturnType<typeof vi.fn>;
 const save = conns.saveConnection as ReturnType<typeof vi.fn>;
@@ -85,5 +87,19 @@ describe("createConnectionRegistry", () => {
     const ok = await r.connectTo("mongodb://x");
     expect(ok).toBe(false);
     expect(r.error).not.toBeNull();
+  });
+});
+
+describe("connections command log", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    commandLog.clear();
+  });
+
+  it("connectTo thành công đẩy connectCmd", async () => {
+    connect.mockResolvedValueOnce(undefined);
+    const r = createConnectionRegistry();
+    await r.connectTo("mongodb://localhost:27017");
+    expect(commandLog.entries.at(-1)!.text).toBe(connectCmd("mongodb://localhost:27017"));
   });
 });

@@ -32,4 +32,34 @@ describe("NamespaceTree", () => {
     await fireEvent.click(getByText("users"));
     expect(onselect).toHaveBeenCalledWith({ db: "shop", coll: "users" });
   });
+
+  it("caret thu/mở: click db ẩn rồi hiện lại collection", async () => {
+    const { getByText, queryByText } = render(NamespaceTree, { props: { databases } });
+    expect(getByText("users")).toBeTruthy();
+    await fireEvent.click(getByText("shop"));
+    expect(queryByText("users")).toBeNull(); // đã thu
+    await fireEvent.click(getByText("shop"));
+    expect(getByText("users")).toBeTruthy(); // mở lại
+  });
+
+  it("footer đếm databases + collections", () => {
+    const dbs = [
+      { name: "a", collections: ["x", "y"] },
+      { name: "b", collections: ["z"] },
+    ];
+    const { getByText } = render(NamespaceTree, { props: { databases: dbs } });
+    expect(getByText("2 databases · 3 collections")).toBeTruthy();
+  });
+
+  it("hiện node connection khi có prop connection", () => {
+    const { getByText } = render(NamespaceTree, { props: { databases, connection: { label: "Local" } } });
+    expect(getByText("Local")).toBeTruthy();
+  });
+
+  it("left-click db → onselectdb (vẫn toggle thu/mở)", async () => {
+    const onselectdb = vi.fn();
+    const { getByText } = render(NamespaceTree, { props: { databases, onselectdb } });
+    await fireEvent.click(getByText("shop"));
+    expect(onselectdb).toHaveBeenCalledWith({ db: "shop" });
+  });
 });

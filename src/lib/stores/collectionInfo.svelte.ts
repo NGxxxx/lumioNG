@@ -6,6 +6,8 @@ import {
   type CollOptionsInfo,
 } from "../domain/stats";
 import { errorMessage } from "../api/errors";
+import { commandLog } from "./commandLog.svelte";
+import { collStatsCmd } from "../domain/mongosh";
 
 /** Trạng thái + nạp số liệu tab Info cho một collection. Component chỉ render. */
 export function createCollectionInfo(db: string, coll: string) {
@@ -20,6 +22,7 @@ export function createCollectionInfo(db: string, coll: string) {
       const [s, o] = await Promise.all([collStats(db, coll), collOptions(db, coll)]);
       stats = parseCollStats(s);
       options = parseCollOptions(o);
+      commandLog.push(collStatsCmd(coll));
       error = null;
     } catch (e) {
       error = errorMessage(e);

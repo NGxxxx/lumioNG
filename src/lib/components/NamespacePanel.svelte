@@ -7,12 +7,16 @@
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
 
   let {
+    connection = null,
     onselect,
+    onselectdb,
     onopenindexes,
     onopeninfo,
     onopendbstats,
   }: {
+    connection?: { label: string } | null;
     onselect?: (d: { db: string; coll: string }) => void;
+    onselectdb?: (d: { db: string }) => void;
     onopenindexes?: (d: { db: string; coll: string }) => void;
     onopeninfo?: (d: { db: string; coll: string }) => void;
     onopendbstats?: (d: { db: string }) => void;
@@ -60,7 +64,9 @@
 
 <NamespaceTree
   databases={namespaceTree.databases}
+  {connection}
   {onselect}
+  {onselectdb}
   onnewdatabase={() => (dialog = { type: "newDb" })}
   onmenu={(t) => (menu = t)}
 />

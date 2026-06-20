@@ -10,6 +10,8 @@ import { parseFilter } from "../domain/filter";
 import { cycleSort, buildSort, buildProjection, type SortKey } from "../domain/grid";
 import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
 import type { MenuItem } from "../components/ContextMenu.svelte";
+import { commandLog } from "./commandLog.svelte";
+import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd, importCmd } from "../domain/mongosh";
 
 /**
  * Trạng thái + hành động của một collection view (data, paging, inline edit,
@@ -105,6 +107,16 @@ export function createCollectionView(db: string, coll: string) {
       } else {
         cursor = { skip: docs.length };
       }
+      commandLog.push(
+        findCmd({
+          coll,
+          filter: appliedFilter,
+          projection: buildProjection(hidden),
+          sort: buildSort(sortKeys),
+          skip: isPristine ? undefined : docs.length,
+          limit: pageSize,
+        }),
+      );
       const batch = await queryPage(
         db,
         coll,
@@ -236,6 +248,7 @@ export function createCollectionView(db: string, coll: string) {
     saving = true;
     try {
       await replaceDocument(db, coll, id, JSON.stringify(newDoc));
+      commandLog.push(replaceCmd(coll, id, JSON.stringify(newDoc)));
       docs[row] = newDoc;
       docs = [...docs];
       editing = null;
@@ -323,6 +336,7 @@ export function createCollectionView(db: string, coll: string) {
     bulkResult = null;
     try {
       bulkCount = await countDocuments(db, coll, appliedFilter);
+      commandLog.push(countCmd(coll, appliedFilter));
     } catch (e) {
       bulkError = errorMessage(e);
     } finally {
@@ -348,6 +362,7 @@ export function createCollectionView(db: string, coll: string) {
       bulkRunning = true;
       try {
         const res = await updateMany(db, coll, appliedFilter, r.json, allowAll);
+        commandLog.push(updateManyCmd(coll, appliedFilter, r.json));
         bulkResult = `Đã cập nhật ${res.modified} (khớp ${res.matched}) document.`;
         await reloadDocs();
         bulkCount = null;
@@ -360,6 +375,7 @@ export function createCollectionView(db: string, coll: string) {
       bulkRunning = true;
       try {
         const n = await deleteMany(db, coll, appliedFilter, allowAll);
+        commandLog.push(deleteManyCmd(coll, appliedFilter));
         bulkResult = `Đã xóa ${n} document.`;
         await reloadDocs();
         bulkCount = null;
@@ -387,6 +403,7 @@ export function createCollectionView(db: string, coll: string) {
         buildSort(sortKeys),
         buildProjection(hidden),
       );
+      commandLog.push(findCmd({ coll, filter: appliedFilter, sort: buildSort(sortKeys), projection: buildProjection(hidden) }));
       const content = format === "json" ? toJsonArray(data) : toCsv(data);
       await writeTextFile(path, content);
       ioMessage = `Đã export ${data.length} document.`;
@@ -405,6 +422,7 @@ export function createCollectionView(db: string, coll: string) {
     ioError = null;
     try {
       const res = await importDocuments(db, coll, path);
+      commandLog.push(importCmd(db, coll, path));
       const detail = res.errors.length ? ` ${res.errors.join("; ")}` : "";
       ioMessage = `Đã chèn ${res.inserted}, bỏ qua ${res.failed} lỗi.${detail}`;
       await reloadDocs();
@@ -434,6 +452,7 @@ export function createCollectionView(db: string, coll: string) {
     }
     try {
       await deleteDocument(db, coll, id);
+      commandLog.push(deleteOneCmd(coll, id));
       docs = docs.filter((x) => x !== d);
     } catch (e) {
       error = errorMessage(e);

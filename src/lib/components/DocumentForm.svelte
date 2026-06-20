@@ -5,6 +5,8 @@
   import { idJson } from "../domain/docid";
   import type { Doc } from "../domain/columns";
   import { parseDocumentText } from "../domain/docparse";
+  import { commandLog } from "../stores/commandLog.svelte";
+  import { insertCmd, replaceCmd } from "../domain/mongosh";
   import TreeEditor from "./TreeEditor.svelte";
 
   let {
@@ -34,6 +36,20 @@
   let error = $state<string | null>(null);
   let saving = $state(false);
   const idText = $derived(mode === "edit" && initial ? idJson(initial) : null);
+
+  // Field count derived from top-level keys of docValue
+  const fieldCount = $derived(Object.keys(docValue).length);
+
+  // JSON validation status derived from current text (only relevant in raw view)
+  const jsonValid = $derived(view === "raw" ? parseDocumentText(text).ok : true);
+
+  // Line numbers for the JSON gutter
+  const lineNumbers = $derived(
+    text
+      .split("\n")
+      .map((_, i) => i + 1)
+      .join("\n"),
+  );
 
   function toRaw() {
     text = JSON.stringify(docValue, null, 2);
@@ -74,12 +90,14 @@
       saving = true;
       if (mode === "insert") {
         await insertDocument(db, coll, docJson);
+        commandLog.push(insertCmd(coll, docJson));
       } else {
         if (idText === null) {
           error = "Document không có _id để cập nhật.";
           return;
         }
         await replaceDocument(db, coll, idText, docJson);
+        commandLog.push(replaceCmd(coll, idText, docJson));
       }
       onsaved();
     } catch (e) {
@@ -92,41 +110,227 @@
 
 <div class="form">
   <header>
-    <span>{mode === "insert" ? "New document" : "Edit document"}</span>
-    <div class="views">
-      <button class:active={view === "tree"} onclick={toTree} disabled={view === "tree"}>Tree</button>
-      <button class:active={view === "raw"} onclick={toRaw} disabled={view === "raw"}>Raw JSON</button>
-    </div>
+    <!-- Pencil icon -->
+    <svg width="15" height="15" viewBox="0 0 16 16" class="header-icon" aria-hidden="true">
+      <path d="M2 11l7-7 3 3-7 7H2z" fill="#f0d574" stroke="#b89534" stroke-width="0.9"/>
+      <path d="M10 3l2-2 3 3-2 2z" fill="#9fb4cc" stroke="#5b7088" stroke-width="0.8"/>
+    </svg>
+    <span class="header-title">
+      {mode === "insert" ? "New document" : "Edit document"} — {db}.{coll}
+    </span>
   </header>
 
-  {#if view === "tree"}
-    <TreeEditor
-      value={docValue}
-      onchange={(v) => (docValue = v)}
-      onvalidchange={(valid) => (treeValid = valid)}
-    />
-  {:else}
-    <textarea bind:value={text} spellcheck="false"></textarea>
-  {/if}
+  <div class="subtabs">
+    <button
+      class="subtab"
+      class:subtab-active={view === "raw"}
+      onclick={toRaw}
+    >JSON</button>
+    <button
+      class="subtab"
+      class:subtab-active={view === "tree"}
+      onclick={toTree}
+    >Field tree</button>
+  </div>
+
+  <div class="editor-body">
+    {#if view === "tree"}
+      <TreeEditor
+        value={docValue}
+        onchange={(v) => (docValue = v)}
+        onvalidchange={(valid) => (treeValid = valid)}
+      />
+    {:else}
+      <div class="json-area">
+        <div class="gutter" aria-hidden="true">{lineNumbers}</div>
+        <textarea bind:value={text} spellcheck="false" class="json-textarea"></textarea>
+      </div>
+    {/if}
+  </div>
 
   {#if error}<div class="error">{error}</div>{/if}
   {#if view === "tree" && !treeValid}<div class="error">Còn field chưa hợp lệ — sửa xong mới lưu được.</div>{/if}
 
   <footer>
-    <button onclick={oncancel} disabled={saving}>Cancel</button>
-    <button onclick={save} disabled={saving || (view === "tree" && !treeValid)}>
-      {saving ? "Đang lưu…" : "Save"}
-    </button>
+    <span class="footer-status">
+      {#if view === "tree"}
+        {treeValid ? "Valid" : "Invalid"} · {fieldCount} fields
+      {:else}
+        {jsonValid ? `Valid JSON · ${fieldCount} fields` : "Invalid JSON"}
+      {/if}
+    </span>
+    <div class="footer-actions">
+      <button class="btn-save" onclick={save} disabled={saving || (view === "tree" && !treeValid)}>
+        {saving ? "Đang lưu…" : "Save"}
+      </button>
+      <button class="btn-cancel" onclick={oncancel} disabled={saving}>Cancel</button>
+    </div>
   </footer>
 </div>
 
 <style>
-  .form { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #eee; }
-  .views { display: flex; gap: 4px; font-weight: 400; }
-  .views button { font-size: 12px; padding: 3px 10px; border: 1px solid #ccc; background: #fff; cursor: pointer; border-radius: 3px; }
-  .views button.active { background: #e8f0fe; border-color: #4a90d9; }
-  textarea { flex: 1; min-height: 240px; border: none; padding: 12px; font-family: ui-monospace, monospace; font-size: 13px; resize: none; outline: none; }
-  .error { background: #fdecea; color: #b71c1c; padding: 6px 14px; font-size: 12px; }
-  footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #eee; }
+  .form {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+    background: #f0f0f0;
+    font-family: inherit;
+  }
+
+  /* Header */
+  header {
+    display: flex;
+    align-items: center;
+    height: 34px;
+    flex: none;
+    background: #fff;
+    border-bottom: 1px solid #dcdcdc;
+    padding: 0 12px;
+    gap: 7px;
+  }
+  .header-icon { flex: none; }
+  .header-title { font-weight: 600; font-size: 13px; }
+
+  /* Sub-tabs */
+  .subtabs {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    flex: none;
+    background: #f6f6f6;
+    border-bottom: 1px solid #e2e2e2;
+    padding: 0 10px;
+    gap: 2px;
+  }
+  .subtab {
+    padding: 3px 11px;
+    color: #666;
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    font-size: 12px;
+    font-weight: 400;
+    border-radius: 3px 3px 0 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+  .subtab-active {
+    background: #fff;
+    border: 1px solid #cfcfcf;
+    border-bottom: 1px solid #fff;
+    margin-bottom: -1px;
+    font-weight: 600;
+    color: #222;
+  }
+
+  /* Editor body */
+  .editor-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    overflow: hidden;
+    background: #fffef9;
+  }
+
+  /* JSON area with gutter */
+  .json-area {
+    flex: 1;
+    display: flex;
+    overflow: auto;
+    min-height: 0;
+    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .gutter {
+    width: 40px;
+    flex: none;
+    text-align: right;
+    color: #bbb;
+    padding: 10px 8px 0 0;
+    user-select: none;
+    border-right: 1px solid #eee;
+    background: #faf9f3;
+    white-space: pre;
+    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    overflow: hidden;
+  }
+  .json-textarea {
+    flex: 1;
+    border: none;
+    padding: 10px 14px;
+    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    resize: none;
+    outline: none;
+    background: #fffef9;
+    color: #222;
+    white-space: pre;
+    overflow-wrap: normal;
+    overflow-x: auto;
+    min-height: 100%;
+  }
+
+  /* Error */
+  .error {
+    background: #fdecea;
+    color: #b71c1c;
+    padding: 6px 14px;
+    font-size: 12px;
+    flex: none;
+  }
+
+  /* Footer */
+  footer {
+    display: flex;
+    align-items: center;
+    height: 46px;
+    flex: none;
+    border-top: 1px solid #cfcfcf;
+    padding: 0 12px;
+    gap: 8px;
+    background: #fff;
+  }
+  .footer-status {
+    color: #888;
+    font-size: 11px;
+  }
+  .footer-actions {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+  .btn-save {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 20px;
+    background: #1f9d4d;
+    color: #fff;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .btn-save:hover:not(:disabled) { background: #1a8a43; }
+  .btn-save:disabled { opacity: 0.6; cursor: default; }
+  .btn-cancel {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    padding: 0 20px;
+    background: #fff;
+    border: 1px solid #b8b8b8;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .btn-cancel:hover:not(:disabled) { background: #eee; }
+  .btn-cancel:disabled { opacity: 0.6; cursor: default; }
 </style>

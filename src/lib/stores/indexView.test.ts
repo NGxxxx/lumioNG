@@ -8,6 +8,8 @@ vi.mock("../api/indexes", () => ({
 
 import * as api from "../api/indexes";
 import { createIndexView } from "./indexView.svelte";
+import { commandLog } from "./commandLog.svelte";
+import { dropIndexCmd } from "../domain/mongosh";
 
 const listIdx = api.listIndexes as ReturnType<typeof vi.fn>;
 const createIdx = api.createIndex as ReturnType<typeof vi.fn>;
@@ -62,5 +64,21 @@ describe("createIndexView", () => {
     const v = createIndexView("d", "c");
     await v.refresh();
     expect(v.error).toContain("boom");
+  });
+});
+
+describe("indexView command log", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listIdx.mockResolvedValue([]);
+    commandLog.clear();
+  });
+
+  it("drop đẩy dropIndexCmd", async () => {
+    dropIdx.mockResolvedValueOnce(undefined);
+    listIdx.mockResolvedValueOnce([]);
+    const v = createIndexView("d", "c");
+    await v.drop("age_1");
+    expect(commandLog.entries.at(-1)!.text).toBe(dropIndexCmd("c", "age_1"));
   });
 });

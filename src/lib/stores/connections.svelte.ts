@@ -7,6 +7,8 @@ import {
 import { connect } from "../api/connection";
 import { errorMessage } from "../api/errors";
 import { validateConnection } from "../domain/connections";
+import { commandLog } from "./commandLog.svelte";
+import { connectCmd } from "../domain/mongosh";
 
 const DEFAULT_URI = "mongodb://localhost:27017";
 
@@ -71,6 +73,7 @@ export function createConnectionRegistry() {
     error = null;
     try {
       await connect(connUri);
+      commandLog.push(connectCmd(connUri));
       return true;
     } catch (e) {
       error = errorMessage(e);

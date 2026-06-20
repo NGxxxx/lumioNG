@@ -19,7 +19,7 @@ describe("DocumentForm — Raw JSON view", () => {
     const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved, oncancel: () => {} },
     });
-    await fireEvent.click(getByText("Raw JSON"));
+    await fireEvent.click(getByText("JSON"));
     const textarea = container.querySelector("textarea")!;
     await fireEvent.input(textarea, { target: { value: "{ bad json" } });
     await fireEvent.click(getByText("Save"));
@@ -35,7 +35,7 @@ describe("DocumentForm — Raw JSON view", () => {
     const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved, oncancel: () => {} },
     });
-    await fireEvent.click(getByText("Raw JSON"));
+    await fireEvent.click(getByText("JSON"));
     const textarea = container.querySelector("textarea")!;
     await fireEvent.input(textarea, { target: { value: '{"a":1}' } });
     await fireEvent.click(getByText("Save"));
@@ -56,7 +56,7 @@ describe("DocumentForm — Raw JSON view", () => {
         oncancel: () => {},
       },
     });
-    await fireEvent.click(getByText("Raw JSON"));
+    await fireEvent.click(getByText("JSON"));
     const textarea = container.querySelector("textarea")!;
     await fireEvent.input(textarea, { target: { value: '{"_id":{"$oid":"abc"},"a":2}' } });
     await fireEvent.click(getByText("Save"));
@@ -73,10 +73,10 @@ describe("DocumentForm — Raw JSON view", () => {
     const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved: () => {}, oncancel: () => {} },
     });
-    await fireEvent.click(getByText("Raw JSON"));
+    await fireEvent.click(getByText("JSON"));
     const textarea = container.querySelector("textarea")!;
     await fireEvent.input(textarea, { target: { value: "{ bad json" } });
-    await fireEvent.click(getByText("Tree"));
+    await fireEvent.click(getByText("Field tree"));
     // vẫn còn textarea (chưa chuyển sang Tree) + có lỗi cú pháp
     expect(container.querySelector("textarea")).not.toBeNull();
     expect(getByText(/sai cú pháp/)).toBeTruthy();
@@ -162,8 +162,8 @@ describe("DocumentForm — Tree view", () => {
     const input = container.querySelector("input.leaf")!;
     await fireEvent.input(input, { target: { value: "abc" } }); // không hợp lệ -> treeValid=false
     expect((getByText("Save") as HTMLButtonElement).disabled).toBe(true);
-    await fireEvent.click(getByText("Raw JSON"));
-    await fireEvent.click(getByText("Tree"));
+    await fireEvent.click(getByText("JSON"));
+    await fireEvent.click(getByText("Field tree"));
     expect((getByText("Save") as HTMLButtonElement).disabled).toBe(false);
   });
 });
