@@ -1,3 +1,5 @@
+import { numFromExt } from "./extjson";
+
 export type IndexKeyValue = number | string;
 
 export interface IndexInfo {
@@ -9,20 +11,8 @@ export interface IndexInfo {
   isId: boolean; // name === "_id_"
 }
 
-/** Rút số từ giá trị ExtJSON ($numberInt/$numberLong/$numberDouble/$numberDecimal) hoặc số thô. */
-function extJsonNumber(v: unknown): number | null {
-  if (typeof v === "number") return v;
-  if (v && typeof v === "object") {
-    const o = v as Record<string, unknown>;
-    for (const k of ["$numberInt", "$numberLong", "$numberDouble", "$numberDecimal"]) {
-      if (k in o) return Number(o[k]);
-    }
-  }
-  return null;
-}
-
 function normalizeKeyValue(v: unknown): IndexKeyValue {
-  const n = extJsonNumber(v);
+  const n = numFromExt(v);
   return n !== null ? n : String(v); // "text" / "2dsphere" / "hashed" ...
 }
 
@@ -41,7 +31,7 @@ export function parseIndexList(jsonStrings: string[]): IndexInfo[] {
       entries,
       unique: doc.unique === true,
       sparse: doc.sparse === true,
-      ttl: extJsonNumber(doc.expireAfterSeconds),
+      ttl: numFromExt(doc.expireAfterSeconds),
       isId: name === "_id_",
     };
   });

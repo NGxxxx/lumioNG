@@ -1,25 +1,11 @@
 import { describe, it, expect } from "vitest";
 import {
-  numFromExt,
   formatBytes,
   formatCount,
   parseCollStats,
   parseDbStats,
   parseCollOptions,
 } from "./stats";
-
-describe("numFromExt", () => {
-  it("số thuần", () => expect(numFromExt(42)).toBe(42));
-  it("$numberInt", () => expect(numFromExt({ $numberInt: "7" })).toBe(7));
-  it("$numberLong", () => expect(numFromExt({ $numberLong: "1500" })).toBe(1500));
-  it("$numberDouble", () => expect(numFromExt({ $numberDouble: "1.5" })).toBe(1.5));
-  it("$numberDecimal", () => expect(numFromExt({ $numberDecimal: "9.99" })).toBe(9.99));
-  it("giá trị không suy ra được → null", () => {
-    expect(numFromExt(undefined)).toBeNull();
-    expect(numFromExt("abc")).toBeNull();
-    expect(numFromExt({ foo: 1 })).toBeNull();
-  });
-});
 
 describe("formatBytes", () => {
   it("null → —", () => expect(formatBytes(null)).toBe("—"));

@@ -1,4 +1,5 @@
 import { describeValue, type BsonType } from "./extjson";
+import { rebuildNumber } from "./bsonnum";
 import type { RebuildResult } from "./celledit";
 
 /** Kiểu lá có ô nhập riêng trong tree (Tier 2). */
@@ -70,27 +71,11 @@ export function rebuildLeaf(type: LeafInputType, text: string): RebuildResult {
       if (t === "true") return { ok: true, value: true };
       if (t === "false") return { ok: true, value: false };
       return { ok: false, error: 'Giá trị bool phải là "true" hoặc "false".' };
-    case "int": {
-      const n = Number(t);
-      if (!Number.isInteger(n) || n < -2147483648 || n > 2147483647)
-        return { ok: false, error: "Cần số nguyên 32-bit." };
-      return { ok: true, value: { $numberInt: String(n) } };
-    }
-    case "long": {
-      if (!/^-?\d+$/.test(t)) return { ok: false, error: "Cần số nguyên." };
-      const big = BigInt(t);
-      if (big < -9223372036854775808n || big > 9223372036854775807n)
-        return { ok: false, error: "Số vượt quá dải 64-bit." };
-      return { ok: true, value: { $numberLong: t } };
-    }
-    case "double": {
-      const n = Number(t);
-      if (t === "" || !Number.isFinite(n)) return { ok: false, error: "Số không hợp lệ." };
-      return { ok: true, value: { $numberDouble: t } };
-    }
+    case "int":
+    case "long":
+    case "double":
     case "decimal":
-      if (!/^-?\d+(\.\d+)?$/.test(t)) return { ok: false, error: "Số thập phân không hợp lệ." };
-      return { ok: true, value: { $numberDecimal: t } };
+      return rebuildNumber(type, t);
     case "date": {
       if (!/^\d{4}-\d{2}-\d{2}/.test(t)) return { ok: false, error: "Ngày giờ không hợp lệ (cần ISO-8601)." };
       const ms = Date.parse(t);
@@ -101,6 +86,17 @@ export function rebuildLeaf(type: LeafInputType, text: string): RebuildResult {
       if (!/^[0-9a-fA-F]{24}$/.test(t)) return { ok: false, error: "ObjectId cần 24 ký tự hex." };
       return { ok: true, value: { $oid: t } };
   }
+}
+
+/**
+ * Validate tên field mới khi thêm vào object. Trả message lỗi (đúng chuỗi người
+ * dùng đang thấy) hoặc null nếu hợp lệ. Tên được trim trước khi kiểm tra.
+ */
+export function validateNewFieldName(name: string, existingKeys: string[]): string | null {
+  const n = name.trim();
+  if (n === "") return "Tên field không được rỗng.";
+  if (existingKeys.includes(n)) return "Field đã tồn tại.";
+  return null;
 }
 
 /** Giá trị rỗng đúng kiểu khi thêm field/phần tử mới (tất định, không dùng Date.now). */

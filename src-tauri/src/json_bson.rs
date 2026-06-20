@@ -21,7 +21,7 @@ mod tests {
     use super::*;
     use crate::bson_json::doc_to_canonical_string;
     use mongodb::bson::spec::BinarySubtype;
-    use mongodb::bson::{doc, oid::ObjectId, Binary, DateTime, Decimal128, Document};
+    use mongodb::bson::{doc, oid::ObjectId, Binary, Bson, DateTime, Decimal128, Document, Regex, Timestamp};
     use std::str::FromStr;
 
     fn roundtrip(d: Document) {
@@ -49,6 +49,35 @@ mod tests {
     #[test]
     fn roundtrip_binary() {
         roundtrip(doc! { "blob": Binary { subtype: BinarySubtype::Generic, bytes: vec![1, 2, 3, 4] } });
+    }
+    #[test]
+    fn roundtrip_null() {
+        roundtrip(doc! { "n": Bson::Null });
+    }
+    #[test]
+    fn roundtrip_bool() {
+        roundtrip(doc! { "t": true, "f": false });
+    }
+    #[test]
+    fn roundtrip_regex() {
+        roundtrip(doc! { "re": Regex { pattern: "^a.*z$".into(), options: "im".into() } });
+    }
+    #[test]
+    fn roundtrip_timestamp() {
+        roundtrip(doc! { "ts": Timestamp { time: 1_700_000_000, increment: 5 } });
+    }
+    #[test]
+    fn roundtrip_uuid_binary_subtype4() {
+        roundtrip(doc! {
+            "u": Binary { subtype: BinarySubtype::Uuid, bytes: vec![
+                0x00,0x11,0x22,0x33,0x44,0x55,0x66,0x77,
+                0x88,0x99,0xaa,0xbb,0xcc,0xdd,0xee,0xff,
+            ] }
+        });
+    }
+    #[test]
+    fn roundtrip_int64_boundaries() {
+        roundtrip(doc! { "min": i64::MIN, "max": i64::MAX });
     }
     #[test]
     fn roundtrip_nested_and_array() {

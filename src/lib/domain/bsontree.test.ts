@@ -6,6 +6,7 @@ import {
   editTextOf,
   rebuildLeaf,
   emptyValue,
+  validateNewFieldName,
   ADDABLE_TYPES,
   type LeafInputType,
 } from "./bsontree";
@@ -121,5 +122,22 @@ describe("emptyValue", () => {
     expect(ADDABLE_TYPES).toEqual([
       "string", "int", "long", "double", "decimal", "bool", "date", "objectId", "null", "object", "array",
     ]);
+  });
+});
+
+describe("validateNewFieldName", () => {
+  it("tên hợp lệ → null", () => {
+    expect(validateNewFieldName("newf", ["a", "b"])).toBeNull();
+  });
+  it("trim trước khi kiểm tra", () => {
+    expect(validateNewFieldName("  newf  ", ["a"])).toBeNull();
+    expect(validateNewFieldName("  a  ", ["a"])).toBe("Field đã tồn tại.");
+  });
+  it("rỗng → lỗi", () => {
+    expect(validateNewFieldName("", ["a"])).toBe("Tên field không được rỗng.");
+    expect(validateNewFieldName("   ", ["a"])).toBe("Tên field không được rỗng.");
+  });
+  it("trùng khóa → lỗi", () => {
+    expect(validateNewFieldName("a", ["a", "b"])).toBe("Field đã tồn tại.");
   });
 });

@@ -6,6 +6,7 @@
     rebuildLeaf,
     emptyValue,
     hasInput,
+    validateNewFieldName,
     ADDABLE_TYPES,
     type LeafInputType,
     type AddableType,
@@ -107,8 +108,8 @@
 
   function addField() {
     const name = newName.trim();
-    if (name === "") { addError = "Tên field không được rỗng."; return; }
-    if (name in (value as Record<string, unknown>)) { addError = "Field đã tồn tại."; return; }
+    const err = validateNewFieldName(name, Object.keys(value as Record<string, unknown>));
+    if (err !== null) { addError = err; return; }
     addError = null;
     onchange({ ...(value as Record<string, unknown>), [name]: emptyValue(newType) });
     newName = "";

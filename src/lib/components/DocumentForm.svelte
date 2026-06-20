@@ -4,6 +4,7 @@
   import { errorMessage } from "../api/errors";
   import { idJson } from "../domain/docid";
   import type { Doc } from "../domain/columns";
+  import { parseDocumentText } from "../domain/docparse";
   import TreeEditor from "./TreeEditor.svelte";
 
   let {
@@ -34,10 +35,6 @@
   let saving = $state(false);
   const idText = $derived(mode === "edit" && initial ? idJson(initial) : null);
 
-  function isPlainObject(v: unknown): v is Doc {
-    return typeof v === "object" && v !== null && !Array.isArray(v);
-  }
-
   function toRaw() {
     text = JSON.stringify(docValue, null, 2);
     error = null;
@@ -45,18 +42,12 @@
   }
 
   function toTree() {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      error = "JSON sai cú pháp: " + (e as Error).message;
+    const r = parseDocumentText(text);
+    if (!r.ok) {
+      error = r.error;
       return;
     }
-    if (!isPlainObject(parsed)) {
-      error = "Document phải là một object JSON.";
-      return;
-    }
-    docValue = parsed;
+    docValue = r.doc;
     error = null;
     treeValid = true;
     view = "tree";
@@ -67,18 +58,12 @@
     error = null;
     let payload: Doc;
     if (view === "raw") {
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text);
-      } catch (e) {
-        error = "JSON sai cú pháp: " + (e as Error).message;
+      const r = parseDocumentText(text);
+      if (!r.ok) {
+        error = r.error;
         return;
       }
-      if (!isPlainObject(parsed)) {
-        error = "Document phải là một object JSON.";
-        return;
-      }
-      payload = parsed;
+      payload = r.doc;
       docValue = payload;
     } else {
       payload = docValue;

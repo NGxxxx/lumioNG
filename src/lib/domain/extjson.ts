@@ -7,6 +7,24 @@ export interface ValueInfo {
   display: string;
 }
 
+/**
+ * Rút số từ giá trị ExtJSON ($numberInt/$numberLong/$numberDouble/$numberDecimal)
+ * hoặc số thô; null nếu không suy ra được (kể cả khi parse ra NaN).
+ */
+export function numFromExt(v: unknown): number | null {
+  if (typeof v === "number") return v;
+  if (v && typeof v === "object") {
+    const o = v as Record<string, unknown>;
+    for (const k of ["$numberInt", "$numberLong", "$numberDouble", "$numberDecimal"]) {
+      if (k in o) {
+        const n = Number(o[k]);
+        return Number.isNaN(n) ? null : n;
+      }
+    }
+  }
+  return null;
+}
+
 function previewJson(v: unknown, max = 80): string {
   const s = JSON.stringify(v);
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
