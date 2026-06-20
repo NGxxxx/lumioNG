@@ -2,7 +2,7 @@ import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullD
 import { saveDialog, openDialog, writeTextFile } from "../api/files";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
-import { lastObjectId, idJson } from "../domain/docid";
+import { lastIdJson, idJson } from "../domain/docid";
 import { type Doc } from "../domain/columns";
 import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
@@ -95,10 +95,10 @@ export function createCollectionView(db: string, coll: string) {
     try {
       let cursor: { afterId: string | null } | { skip: number };
       if (isPristine) {
-        const after = lastObjectId(docs);
+        const after = lastIdJson(docs);
         if (docs.length > 0 && after === null) {
           done = true;
-          error = "Phân trang chỉ hỗ trợ _id kiểu ObjectId trong slice này.";
+          error = "document thiếu _id, không phân trang được";
           return;
         }
         cursor = { afterId: after };

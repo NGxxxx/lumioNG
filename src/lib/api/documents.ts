@@ -1,10 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Doc } from "../domain/columns";
 
-/** Con trỏ phân trang: keyset trên _id (pristine) HOẶC skip/limit (đã filter/sort). */
+/**
+ * Con trỏ phân trang: keyset trên _id (pristine) HOẶC skip/limit (đã filter/sort).
+ * `afterId` = chuỗi Canonical Extended JSON của `_id` doc cuối (mọi kiểu: `{"$oid":...}`,
+ * `"abc"`, `{"$numberInt":"5"}`); `null` cho trang đầu.
+ */
 export type Cursor = { afterId: string | null } | { skip: number };
 
-/** Returns documents parsed from Canonical Extended JSON strings. */
+/**
+ * Returns documents parsed from Canonical Extended JSON strings.
+ * Keyset mode (`afterId`): backend dùng `_id > afterId`, KHÔNG nhận sort.
+ * `afterId` phải là chuỗi Canonical Extended JSON của `_id`.
+ */
 export async function queryPage(
   db: string,
   coll: string,

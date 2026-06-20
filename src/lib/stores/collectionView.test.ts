@@ -47,6 +47,17 @@ describe("createCollectionView", () => {
     expect(qp).toHaveBeenCalledWith("d", "c", { afterId: null }, 50, "{}", null, null);
   });
 
+  it("pristine với _id kiểu string → loadMore thứ hai gửi afterId = ExtJSON _id cuối", async () => {
+    qp.mockResolvedValueOnce([{ _id: "a", x: 1 }]);
+    qp.mockResolvedValueOnce([{ _id: "b", x: 2 }]);
+    const v = createCollectionView("d", "c");
+    await v.loadMore();
+    await v.loadMore();
+    expect(v.error).toBeNull();
+    expect(qp).toHaveBeenNthCalledWith(1, "d", "c", { afterId: null }, 50, "{}", null, null);
+    expect(qp).toHaveBeenNthCalledWith(2, "d", "c", { afterId: '"a"' }, 50, "{}", null, null);
+  });
+
   it("batch rỗng → done=true, không còn gọi tiếp", async () => {
     qp.mockResolvedValueOnce([]);
     const v = createCollectionView("d", "c");

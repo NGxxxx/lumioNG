@@ -3,17 +3,17 @@ use crate::error::AppError;
 use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc};
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
-use mongodb::bson::{doc, oid::ObjectId, Document};
+use mongodb::bson::{doc, Bson, Document};
 use mongodb::error::ErrorKind;
 use tauri::State;
 
 /// Ghép filter người dùng với con trỏ keyset trên _id.
 /// Không có con trỏ → trả filter nguyên vẹn; có → bọc trong `$and`
 /// (an toàn kể cả khi filter tự nhắc tới `_id`).
-fn build_query_filter(user: Document, after: Option<ObjectId>) -> Document {
+fn build_query_filter(user: Document, after: Option<Bson>) -> Document {
     match after {
         None => user,
-        Some(oid) => doc! { "$and": [ user, { "_id": { "$gt": oid } } ] },
+        Some(v) => doc! { "$and": [ user, { "_id": { "$gt": v } } ] },
     }
 }
 
@@ -70,11 +70,14 @@ pub async fn query_page(
         q.await?
     } else {
         // Keyset mode: pristine. Sort cố định {_id:1}; projection vẫn áp (không đổi thứ tự).
+        // B2: keyset không nhận sort — fail-fast thay vì âm thầm bỏ qua.
+        if let Some(s) = sort.as_deref() {
+            if !s.trim().is_empty() {
+                return Err(AppError::Query("keyset mode does not support sort".into()));
+            }
+        }
         let after = match after_id {
-            Some(id) => Some(
-                ObjectId::parse_str(&id)
-                    .map_err(|e| AppError::Query(format!("invalid after_id: {e}")))?,
-            ),
+            Some(id) => Some(canonical_string_to_bson(&id)?),
             None => None,
         };
         let query = build_query_filter(user_filter, after);
@@ -436,9 +439,9 @@ mod tests {
     }
 
     #[test]
-    fn filter_with_cursor_wraps_in_and() {
+    fn filter_with_objectid_cursor_wraps_in_and() {
         let oid = ObjectId::new();
-        let out = build_query_filter(doc! { "status": "active" }, Some(oid));
+        let out = build_query_filter(doc! { "status": "active" }, Some(Bson::ObjectId(oid)));
         let and = out.get_array("$and").unwrap();
         assert_eq!(and.len(), 2);
         assert_eq!(and[0], Bson::Document(doc! { "status": "active" }));
@@ -446,9 +449,30 @@ mod tests {
     }
 
     #[test]
+    fn filter_with_string_cursor_wraps_in_and() {
+        let out = build_query_filter(
+            doc! { "status": "active" },
+            Some(Bson::String("abc".into())),
+        );
+        let and = out.get_array("$and").unwrap();
+        assert_eq!(and.len(), 2);
+        assert_eq!(and[0], Bson::Document(doc! { "status": "active" }));
+        assert_eq!(and[1], Bson::Document(doc! { "_id": { "$gt": "abc" } }));
+    }
+
+    #[test]
+    fn filter_with_int_cursor_wraps_in_and() {
+        let out = build_query_filter(doc! { "status": "active" }, Some(Bson::Int32(5)));
+        let and = out.get_array("$and").unwrap();
+        assert_eq!(and.len(), 2);
+        assert_eq!(and[0], Bson::Document(doc! { "status": "active" }));
+        assert_eq!(and[1], Bson::Document(doc! { "_id": { "$gt": 5_i32 } }));
+    }
+
+    #[test]
     fn empty_user_filter_with_cursor_still_wraps() {
         let oid = ObjectId::new();
-        let out = build_query_filter(Document::new(), Some(oid));
+        let out = build_query_filter(Document::new(), Some(Bson::ObjectId(oid)));
         let and = out.get_array("$and").unwrap();
         assert_eq!(and.len(), 2);
         assert_eq!(and[0], Bson::Document(Document::new()));
