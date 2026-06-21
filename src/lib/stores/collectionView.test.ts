@@ -11,7 +11,7 @@ vi.mock("../api/documents", () => ({
   updateMany: vi.fn(),
   deleteMany: vi.fn(),
   exportQuery: vi.fn(),
-  importDocuments: vi.fn(),
+  exportBson: vi.fn(),
 }));
 
 vi.mock("../api/files", () => ({
@@ -32,10 +32,10 @@ const repl = documents.replaceDocument as ReturnType<typeof vi.fn>;
 const samp = documents.sampleDocuments as ReturnType<typeof vi.fn>;
 const full = documents.fetchFullDoc as ReturnType<typeof vi.fn>;
 const expQ = documents.exportQuery as ReturnType<typeof vi.fn>;
-const impD = documents.importDocuments as ReturnType<typeof vi.fn>;
+const exportBsonMock = documents.exportBson as ReturnType<typeof vi.fn>;
+const exportQueryMock = documents.exportQuery as ReturnType<typeof vi.fn>;
 const cnt = documents.countDocuments as ReturnType<typeof vi.fn>;
 const saveDlg = files.saveDialog as ReturnType<typeof vi.fn>;
-const openDlg = files.openDialog as ReturnType<typeof vi.fn>;
 const writeF = files.writeTextFile as ReturnType<typeof vi.fn>;
 
 describe("createCollectionView — paging", () => {
@@ -289,55 +289,6 @@ describe("createCollectionView — paging", () => {
     expect(v.editing).toEqual({ row: 0, key: "x" });
   });
 
-  it("exportAs('json') ghi file nội dung JSON array", async () => {
-    saveDlg.mockResolvedValueOnce("/tmp/c.json");
-    expQ.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
-    writeF.mockResolvedValueOnce(undefined);
-    const v = createCollectionView("d", "c");
-    await v.exportAs("json");
-    expect(expQ).toHaveBeenCalledWith("d", "c", "{}", null, null);
-    const [, content] = writeF.mock.calls[0];
-    expect(JSON.parse(content)).toEqual([{ _id: { $oid: "a" }, x: 1 }]);
-    expect(v.ioMessage).toContain("1");
-  });
-
-  it("exportAs('csv') ghi file nội dung CSV", async () => {
-    saveDlg.mockResolvedValueOnce("/tmp/c.csv");
-    expQ.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
-    writeF.mockResolvedValueOnce(undefined);
-    const v = createCollectionView("d", "c");
-    await v.exportAs("csv");
-    const [, content] = writeF.mock.calls[0];
-    expect(content.split("\n")[0]).toBe("_id,x");
-  });
-
-  it("exportAs hủy dialog → không export/ghi", async () => {
-    saveDlg.mockResolvedValueOnce(null);
-    const v = createCollectionView("d", "c");
-    await v.exportAs("json");
-    expect(expQ).not.toHaveBeenCalled();
-    expect(writeF).not.toHaveBeenCalled();
-  });
-
-  it("importDocs gọi importDocuments + reload + set message", async () => {
-    openDlg.mockResolvedValueOnce("/tmp/in.json");
-    impD.mockResolvedValueOnce({ inserted: 3, failed: 1, errors: ["dup"] });
-    cnt.mockResolvedValueOnce(3); // reload count
-    qp.mockResolvedValueOnce([]); // reload page
-    const v = createCollectionView("d", "c");
-    await v.importDocs();
-    expect(impD).toHaveBeenCalledWith("d", "c", "/tmp/in.json");
-    expect(v.ioMessage).toContain("3");
-    expect(v.ioMessage).toContain("1");
-    expect(qp).toHaveBeenCalled();
-  });
-
-  it("importDocs hủy dialog → không import", async () => {
-    openDlg.mockResolvedValueOnce(null);
-    const v = createCollectionView("d", "c");
-    await v.importDocs();
-    expect(impD).not.toHaveBeenCalled();
-  });
 });
 
 describe("bulk operations", () => {
@@ -799,14 +750,16 @@ describe("selection-aware context menu", () => {
     expect(v.selectedCount).toBe(2);
   });
 
-  it("menuItems prepends update/delete selected with the count", async () => {
+  it("menuItems shows update/delete selected with effective count, no open when n>1", async () => {
     const v = await withTwoDocs();
     v.selectAll();
     v.openMenu(ev(), 0, "x");
-    const actions = v.menuItems().map((i) => i.action);
-    expect(actions.slice(0, 2)).toEqual(["updateSelected", "deleteSelected"]);
-    const labels = v.menuItems().map((i) => i.label);
-    expect(labels[0]).toContain("2");
+    const items = v.menuItems();
+    const actions = items.map((i) => i.action);
+    expect(actions).toContain("updateSelected");
+    expect(actions).toContain("deleteSelected");
+    const updateItem = items.find((i) => i.action === "updateSelected")!;
+    expect(updateItem.label).toContain("2");
     expect(actions).not.toContain("open"); // 2 rows selected → no single-open
   });
 
@@ -826,6 +779,17 @@ describe("selection-aware context menu", () => {
     expect(v.bulkMode).toBe("update");
     expect(v.bulkScope).toBe("selection");
     expect(v.bulkCount).toBe(2);
+  });
+
+  it("menuItems shows Copy and Export submenus with effective count", async () => {
+    // open menu on row 0 with no multi-selection → effective count 1
+    const v = await withTwoDocs();
+    v.openMenu(ev(), 0, "name");
+    const items = v.menuItems();
+    const copy = items.find((i) => i.label === "Copy");
+    const exp = items.find((i) => i.label === "Export");
+    expect(copy?.children?.some((c) => c.action === "copyJson")).toBe(true);
+    expect(exp?.children?.some((c) => c.action === "exportSelected")).toBe(true);
   });
 });
 
@@ -870,5 +834,47 @@ describe("createCollectionView — column widths", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, name: "Bob" }]);
     await v.goToPage(2);
     expect(v.colWidths.name).toBe(300);
+  });
+});
+
+describe("effective selection + export request", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValue(0);
+  });
+
+  const ev = () =>
+    ({ clientX: 1, clientY: 1, preventDefault() {}, stopPropagation() {} }) as unknown as MouseEvent;
+
+  async function withTwoDocs() {
+    cnt.mockResolvedValueOnce(2);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }, { _id: { $oid: "b" }, x: 2 }]);
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("d", "c");
+    await v.init();
+    return v;
+  }
+
+  it("runExport selection → exportQuery called with _id $in filter, json content written", async () => {
+    const v = await withTwoDocs();
+    v.clickRow(0, { ctrl: false, shift: false });
+    v.openMenu(ev(), 0, "x");
+    saveDlg.mockResolvedValueOnce("/tmp/c.json");
+    exportQueryMock.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    writeF.mockResolvedValueOnce(undefined);
+    v.requestExport("selection");
+    await v.runExport("json");
+    expect(exportQueryMock).toHaveBeenCalledWith(expect.any(String), expect.any(String),
+      expect.stringContaining('"$in"'), null, null);
+    expect(writeF).toHaveBeenCalled();
+  });
+
+  it("runExport filter bson → exportBson called", async () => {
+    const v = await withTwoDocs();
+    saveDlg.mockResolvedValueOnce("/tmp/c.bson");
+    exportBsonMock.mockResolvedValueOnce(2);
+    v.requestExport("filter");
+    await v.runExport("bson");
+    expect(exportBsonMock).toHaveBeenCalled();
   });
 });

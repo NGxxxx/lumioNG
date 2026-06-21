@@ -15,33 +15,61 @@ vi.mock("../stores/namespaceTree.svelte", () => ({
     dropCollection: vi.fn(),
     renameCollection: vi.fn(),
     dropDatabase: vi.fn(),
+    truncate: vi.fn(),
   },
+}));
+
+vi.mock("../api/files", () => ({
+  saveDialog: vi.fn(),
+  openDialog: vi.fn(),
+  writeTextFile: vi.fn(),
+}));
+
+vi.mock("../api/documents", () => ({
+  exportQuery: vi.fn(),
+  exportBson: vi.fn(),
+  importDocuments: vi.fn(),
+  importBson: vi.fn(),
 }));
 
 import NamespacePanel from "./NamespacePanel.svelte";
 
 describe("NamespacePanel", () => {
-  it("right-click collection → menu Indexes → onopenindexes", async () => {
-    const onopenindexes = vi.fn();
-    const { getByText } = render(NamespacePanel, { props: { onopenindexes } });
-    await fireEvent.contextMenu(getByText("users"));
-    await fireEvent.click(getByText("Indexes"));
-    expect(onopenindexes).toHaveBeenCalledWith({ db: "shop", coll: "users" });
-  });
+  it("collection menu shows Export/Import/Truncate; db menu has no Stats", async () => {
+    const { getByText, queryByText } = render(NamespacePanel, { props: {} });
 
-  it("right-click collection → menu Info → onopeninfo", async () => {
-    const onopeninfo = vi.fn();
-    const { getByText } = render(NamespacePanel, { props: { onopeninfo } });
+    // Open collection context menu
     await fireEvent.contextMenu(getByText("users"));
-    await fireEvent.click(getByText("Info"));
-    expect(onopeninfo).toHaveBeenCalledWith({ db: "shop", coll: "users" });
-  });
+    expect(getByText("Export…")).toBeTruthy();
+    expect(getByText("Import…")).toBeTruthy();
+    expect(getByText("Truncate…")).toBeTruthy();
 
-  it("right-click database → menu Stats → onopendbstats", async () => {
-    const onopendbstats = vi.fn();
-    const { getByText } = render(NamespacePanel, { props: { onopendbstats } });
+    // Close collection menu by pressing Escape
+    await fireEvent.keyDown(window, { key: "Escape" });
+
+    // Open db context menu
     await fireEvent.contextMenu(getByText("shop"));
-    await fireEvent.click(getByText("Stats"));
-    expect(onopendbstats).toHaveBeenCalledWith({ db: "shop" });
+    expect(queryByText("Stats")).toBeNull();
+  });
+
+  it("collection menu: Copy name copies db.coll to clipboard", async () => {
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      writable: true,
+    });
+    const { getByText } = render(NamespacePanel, { props: {} });
+    await fireEvent.contextMenu(getByText("users"));
+    await fireEvent.click(getByText("Copy name"));
+    expect(writeText).toHaveBeenCalledWith("shop.users");
+  });
+
+  it("db menu shows New collection… / Copy name / Refresh / Drop database…", async () => {
+    const { getByText } = render(NamespacePanel, { props: {} });
+    await fireEvent.contextMenu(getByText("shop"));
+    expect(getByText("New collection…")).toBeTruthy();
+    expect(getByText("Copy name")).toBeTruthy();
+    expect(getByText("Refresh")).toBeTruthy();
+    expect(getByText("Drop database…")).toBeTruthy();
   });
 });

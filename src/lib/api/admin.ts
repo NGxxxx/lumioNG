@@ -15,3 +15,7 @@ export async function renameCollection(db: string, from: string, to: string): Pr
 export async function dropDatabase(db: string): Promise<void> {
   await invoke("drop_database", { db });
 }
+
+export async function truncateCollection(db: string, coll: string): Promise<number> {
+  return await invoke<number>("truncate_collection", { db, coll });
+}

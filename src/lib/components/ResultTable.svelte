@@ -12,6 +12,7 @@
   import { getByPath } from "../domain/schema";
   import BulkDialog from "./BulkDialog.svelte";
   import { isEmptyFilter } from "../domain/bulk";
+  import ExportDialog from "./ExportDialog.svelte";
   import { statusPill, jsonValueColor } from "../domain/theme";
   import type { ValueKind } from "../domain/theme";
   import { describeValue } from "../domain/extjson";
@@ -220,7 +221,8 @@
 
   async function onMenuSelect(action: string) {
     const r = v.onMenuSelect(action);
-    if (r) onopendocument(await v.openDoc(r.open), "edit");
+    if (r && "open" in r) onopendocument(await v.openDoc(r.open), "edit");
+    else if (r && "newDoc" in r) onopendocument(null, "insert");
   }
 
   function onGridKey(e: KeyboardEvent) {
@@ -236,27 +238,6 @@
 </script>
 
 <div class="result">
-  <div class="toolbar">
-    <button onclick={() => onopendocument(null, "insert")}>+ New document</button>
-    <button onclick={() => v.openBulk("update")}>Update many…</button>
-    <button onclick={() => v.openBulk("delete")}>Delete many…</button>
-    {#if v.selectedCount > 0}
-      <span class="sel-hint">{v.selectedCount} dòng đã chọn</span>
-      <button onclick={() => v.openBulk("update", "selection")}>Update selected…</button>
-      <button onclick={v.requestDeleteSelected}>Delete selected</button>
-    {/if}
-    <button onclick={() => v.exportAs("json")} disabled={v.ioBusy}>Export JSON</button>
-    <button onclick={() => v.exportAs("csv")} disabled={v.ioBusy}>Export CSV</button>
-    <button onclick={() => v.importDocs()} disabled={v.ioBusy}>Import…</button>
-    <label class="pagesize">Rows/page
-      <input
-        type="number"
-        min="1"
-        value={v.pageSize}
-        onchange={(e) => v.setPageSize(Math.max(1, +e.currentTarget.value || 50))}
-      />
-    </label>
-  </div>
   {#if v.ioMessage}<div class="io-ok">{v.ioMessage}</div>{/if}
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
@@ -384,6 +365,7 @@
           {#each visibleColumns as c}
             <th
               class="th-data"
+              title="Click: sort · Shift+click: add column"
               onclick={(e) => { if (resizingCol) return; v.toggleSort(c.path, e.shiftKey); }}
             ><span class="colname">{c.path}</span>{#if sortDirOf(c.path)}<span class="sortarrow"
                 >{sortDirOf(c.path) === 1 ? "▲" : "▼"}</span
@@ -449,7 +431,11 @@
         {/if}
       </tbody>
     </table>
-    {#if v.loading}<div class="status">Đang tải…</div>{/if}
+    {#if v.loading}
+      <div class="loading-overlay" role="status" aria-live="polite">
+        <span class="spinner"></span><span>Đang tải…</span>
+      </div>
+    {/if}
   </div>
   {:else}
   <!-- Tree view -->
@@ -489,29 +475,31 @@
   {/if}
   {#if v.allShown}
     <div class="pager">
-      <span class="pg-info">Hiển tất cả {v.totalCount} dòng</span>
-      <button class="pg-btn" onclick={v.firstPage}>← Quay về phân trang</button>
+      <button class="pg-btn" onclick={v.firstPage} title="Back to paging">↩ Paged</button>
+      <label class="pg-rows">Rows
+        <input type="number" min="1" value={v.pageSize}
+          onchange={(e) => v.setPageSize(Math.max(1, +e.currentTarget.value || 50))} />
+      </label>
+      <span class="pg-total">all {v.totalCount} docs</span>
     </div>
   {:else}
     <div class="pager">
-      <button class="pg-btn" onclick={v.firstPage} disabled={v.currentPage <= 1}>«</button>
-      <button class="pg-btn" onclick={v.prevPage} disabled={v.currentPage <= 1}>‹ Prev</button>
+      <button class="pg-btn" onclick={v.firstPage} disabled={v.currentPage <= 1} title="First">«</button>
+      <button class="pg-btn" onclick={v.prevPage} disabled={v.currentPage <= 1} title="Prev">‹</button>
       <span class="pg-info">
-        Trang
-        <input
-          class="pg-jump"
-          type="number"
-          min="1"
-          max={v.pageCount}
-          value={v.currentPage}
-          onchange={(e) => v.goToPage(Math.max(1, +e.currentTarget.value || 1))}
-        />
+        <input class="pg-jump" type="number" min="1" max={v.pageCount} value={v.currentPage}
+          onchange={(e) => v.goToPage(Math.max(1, +e.currentTarget.value || 1))} />
         / {v.pageCount}
       </span>
-      <button class="pg-btn" onclick={v.nextPage} disabled={v.currentPage >= v.pageCount}>Next ›</button>
-      <button class="pg-btn" onclick={v.lastPage} disabled={v.currentPage >= v.pageCount}>»</button>
-      <button class="pg-btn show-all" onclick={v.requestShowAll}>Show ALL</button>
-      <span class="pg-total">{v.totalCount} dòng · {v.pageSize}/trang</span>
+      <button class="pg-btn" onclick={v.nextPage} disabled={v.currentPage >= v.pageCount} title="Next">›</button>
+      <button class="pg-btn" onclick={v.lastPage} disabled={v.currentPage >= v.pageCount} title="Last">»</button>
+      <span class="pg-sep">|</span>
+      <label class="pg-rows">Rows
+        <input type="number" min="1" value={v.pageSize}
+          onchange={(e) => v.setPageSize(Math.max(1, +e.currentTarget.value || 50))} />
+      </label>
+      <button class="pg-btn" onclick={v.requestShowAll}>Show all</button>
+      <span class="pg-total">{v.totalCount} docs</span>
     </div>
   {/if}
 </div>
@@ -590,10 +578,26 @@
   />
 {/if}
 
+{#if v.exportRequest}
+  <ExportDialog
+    scope={v.exportRequest.kind === "selection"
+      ? { kind: "selection", count: v.exportRequest.count }
+      : { kind: "filter" }}
+    onexport={(format) => v.runExport(format)}
+    oncancel={v.cancelExport}
+  />
+{/if}
+
 <style>
   .result { display: flex; flex-direction: column; height: 100%; }
-  .toolbar { display: flex; align-items: center; gap: 12px; padding: 6px 8px; border-bottom: 1px solid #eee; }
-  .scroller { overflow: auto; flex: 1; }
+  .scroller { overflow: auto; flex: 1; position: relative; }
+  .loading-overlay {
+    position: absolute; inset: 0; z-index: 5;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: rgba(255,255,255,.55); color: #555; font-size: 12px;
+  }
+  .spinner { width: 14px; height: 14px; border: 2px solid #cfd8e3; border-top-color: #4c7; border-radius: 50%; animation: spin .7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   table { border-collapse: collapse; table-layout: fixed; font-size: 12px; white-space: nowrap; }
 
   /* === Header === */
@@ -641,7 +645,6 @@
     font-size: 11px;
   }
   .row-selected td { box-shadow: inset 0 -1px 0 var(--row-selected-ring), inset 0 1px 0 var(--row-selected-ring); }
-  .sel-hint { color: #1565c0; font-weight: 600; }
   .scroller:focus { outline: none; }
   .data-cell { padding: 0; height: 22px; }
   .data-cell :global(.cell) { padding: 0 9px; display: inline-block; height: 22px; line-height: 22px; }
@@ -733,8 +736,6 @@
   .io-ok { background: #e8f5e9; color: #1b5e20; padding: 6px 10px; font-size: 12px; }
   .status { padding: 8px; color: #777; font-size: 12px; }
 
-  /* === Toolbar misc === */
-  .pagesize input { width: 64px; margin-left: 4px; }
   .chooser-row { display: block; font-size: 12px; padding: 2px 0; white-space: nowrap; }
   .chooser-apply { margin-top: 6px; width: 100%; }
 
@@ -762,7 +763,9 @@
   .pg-info { display: flex; align-items: center; gap: 4px; color: #555; }
   .pg-jump { width: 52px; height: 20px; text-align: center; }
   .pg-total { margin-left: auto; color: #888; }
-  .show-all { margin-left: 6px; }
+  .pg-sep { color: #ccc; }
+  .pg-rows { display: flex; align-items: center; gap: 4px; color: #555; }
+  .pg-rows input { width: 56px; height: 20px; text-align: center; }
 
   /* === Tree view === */
   .tree-scroller {

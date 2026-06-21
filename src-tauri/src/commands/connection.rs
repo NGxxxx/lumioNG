@@ -24,6 +24,12 @@ pub async fn connect(uri: String, state: State<'_, AppState>) -> Result<(), AppE
     Ok(())
 }
 
+#[tauri::command]
+pub async fn disconnect(state: State<'_, AppState>) -> Result<(), AppError> {
+    *state.client.lock().await = None;
+    Ok(())
+}
+
 #[derive(Serialize)]
 pub struct DbInfo {
     pub name: String,

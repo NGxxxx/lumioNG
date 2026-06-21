@@ -126,3 +126,20 @@ export async function importDocuments(
 ): Promise<ImportResult> {
   return await invoke<ImportResult>("import_documents", { db, coll, path });
 }
+
+/** Export docs matching filter (with sort/projection) as concatenated BSON to `path`. Returns count. */
+export async function exportBson(
+  db: string,
+  coll: string,
+  filter = "{}",
+  sort: string | null = null,
+  projection: string | null = null,
+  path: string,
+): Promise<number> {
+  return await invoke<number>("export_bson", { db, coll, filter, sort, projection, path });
+}
+
+/** Import a concatenated-BSON (.bson) file via insert_many(ordered=false). */
+export async function importBson(db: string, coll: string, path: string): Promise<ImportResult> {
+  return await invoke<ImportResult>("import_bson", { db, coll, path });
+}

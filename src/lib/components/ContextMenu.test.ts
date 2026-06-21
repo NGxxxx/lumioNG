@@ -22,4 +22,16 @@ describe("ContextMenu", () => {
     await fireEvent.click(getByText("Edit cell"));
     expect(onselect).not.toHaveBeenCalled();
   });
+
+  it("submenu: hover parent reveals children; leaf click → onselect(action)", async () => {
+    const onselect = vi.fn();
+    const onclose = vi.fn();
+    const items = [
+      { label: "Copy", action: "copy", children: [{ label: "Value", action: "copyValue" }] },
+    ];
+    const { getByRole, getByText } = render(ContextMenu, { props: { x: 0, y: 0, items, onselect, onclose } });
+    await fireEvent.mouseEnter(getByRole("menuitem", { name: /Copy/i }));
+    await fireEvent.click(getByText("Value"));
+    expect(onselect).toHaveBeenCalledWith("copyValue");
+  });
 });

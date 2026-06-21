@@ -19,6 +19,9 @@ export function createShell(tree: TreeLike = defaultTree) {
   function toggleSession() {
     sessionOpen = !sessionOpen;
   }
+  function openSession() {
+    sessionOpen = true;
+  }
   function toggleLog() {
     logOpen = !logOpen;
   }
@@ -53,6 +56,7 @@ export function createShell(tree: TreeLike = defaultTree) {
     },
     setConnection,
     toggleSession,
+    openSession,
     toggleLog,
     setSidebarWidth,
     setLogHeight,

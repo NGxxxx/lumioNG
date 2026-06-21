@@ -5,11 +5,13 @@ import NamespaceTree from "./NamespaceTree.svelte";
 const databases = [{ name: "shop", collections: ["users"] }];
 
 describe("NamespaceTree", () => {
-  it("nút New database → onnewdatabase", async () => {
-    const onnewdatabase = vi.fn();
-    const { getByText } = render(NamespaceTree, { props: { databases, onnewdatabase } });
-    await fireEvent.click(getByText("＋ New database"));
-    expect(onnewdatabase).toHaveBeenCalled();
+  it("right-click connection node emits conn menu", async () => {
+    const onmenu = vi.fn();
+    const { getByText } = render(NamespaceTree, {
+      props: { databases: [], connection: { label: "local" }, onmenu },
+    });
+    await fireEvent.contextMenu(getByText("local"));
+    expect(onmenu).toHaveBeenCalledWith(expect.objectContaining({ kind: "conn" }));
   });
 
   it("right-click collection → onmenu kind=coll", async () => {
@@ -24,6 +26,24 @@ describe("NamespaceTree", () => {
     const { getByText } = render(NamespaceTree, { props: { databases, onmenu } });
     await fireEvent.contextMenu(getByText("shop"));
     expect(onmenu).toHaveBeenCalledWith(expect.objectContaining({ kind: "db", db: "shop" }));
+  });
+
+  // Regression: the contextmenu must NOT bubble to document/window, otherwise the
+  // ContextMenu's own window oncontextmenu={onclose} closes the menu on the same event.
+  it("right-click stops propagation (menu would self-close otherwise)", async () => {
+    const onmenu = vi.fn();
+    const bubbled = vi.fn();
+    document.addEventListener("contextmenu", bubbled);
+    try {
+      const { getByText } = render(NamespaceTree, {
+        props: { databases, connection: { label: "local" }, onmenu },
+      });
+      await fireEvent.contextMenu(getByText("users"));
+      expect(onmenu).toHaveBeenCalled();
+      expect(bubbled).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener("contextmenu", bubbled);
+    }
   });
 
   it("left-click collection vẫn gọi onselect", async () => {

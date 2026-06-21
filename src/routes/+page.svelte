@@ -4,6 +4,7 @@
   import { namespaceTree } from "$lib/stores/namespaceTree.svelte";
   import { shell } from "$lib/stores/shell.svelte";
   import { quit } from "$lib/api/window";
+  import { disconnect as apiDisconnect } from "$lib/api/connection";
   import type { Doc } from "$lib/domain/columns";
   import type { ContextKind } from "$lib/stores/navigation.svelte";
   import SessionManager from "$lib/components/SessionManager.svelte";
@@ -58,6 +59,18 @@
     await namespaceTree.refresh();
     const s = navigation.selection;
     if (s?.coll) navigation.bumpCollection(s.db, s.coll);
+  }
+
+  async function doDisconnect() {
+    try {
+      await apiDisconnect();
+    } finally {
+      for (const t of [...navigation.workTabs]) navigation.closeWork(t.id);
+      navigation.setConnected(false);
+      shell.setConnection(null);
+      namespaceTree.clear();
+      // Do not auto-open the session modal — the user reopens it manually when needed.
+    }
   }
 
   function newDocActive() {
@@ -127,17 +140,8 @@
         connection={shell.connection}
         onselect={(d) => navigation.selectCollection(d.db, d.coll)}
         onselectdb={(d) => navigation.selectDatabase(d.db)}
-        onopenindexes={(d) => {
-          navigation.selectCollection(d.db, d.coll);
-          navigation.showContext("collection");
-          navigation.setCollectionSection("indexes");
-        }}
-        onopeninfo={(d) => {
-          navigation.selectCollection(d.db, d.coll);
-          navigation.showContext("collection");
-          navigation.setCollectionSection("info");
-        }}
-        onopendbstats={(d) => navigation.selectDatabase(d.db)}
+        onmanagesessions={() => shell.openSession()}
+        ondisconnect={doDisconnect}
       />
     </aside>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -167,7 +171,7 @@
           {:else if sel}
             {#if active.kind === "data" && sel.coll}
               {@const coll = sel.coll}
-              {#key navigation.collectionVersion(sel.db, coll)}
+              {#key `${sel.db}/${coll}#${navigation.collectionVersion(sel.db, coll)}`}
                 <ResultTable
                   db={sel.db}
                   {coll}
@@ -176,7 +180,7 @@
               {/key}
             {:else if active.kind === "collection" && sel.coll}
               {@const coll = sel.coll}
-              {#key navigation.collectionVersion(sel.db, coll)}
+              {#key `${sel.db}/${coll}#${navigation.collectionVersion(sel.db, coll)}`}
                 <CollectionTab db={sel.db} {coll} />
               {/key}
             {:else if active.kind === "database"}

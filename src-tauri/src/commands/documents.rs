@@ -200,6 +200,53 @@ fn summarize_import(inserted: u64, mut errors: Vec<String>) -> ImportResult {
     ImportResult { inserted, failed, errors }
 }
 
+/// Parse concatenated BSON documents (mongodump-style) until EOF.
+fn read_bson_docs(mut bytes: &[u8]) -> Result<Vec<Document>, AppError> {
+    let mut out = Vec::new();
+    while !bytes.is_empty() {
+        let d = Document::from_reader(&mut bytes).map_err(|e| AppError::Parse(e.to_string()))?;
+        out.push(d);
+    }
+    Ok(out)
+}
+
+/// Insert pre-parsed docs unordered; remap batch write-errors to raw indices; summarize.
+async fn insert_parsed(
+    collection: &mongodb::Collection<Document>,
+    parsed: Vec<Document>,
+    parsed_raw_idx: Vec<usize>,
+    mut errors: Vec<String>,
+) -> ImportResult {
+    let valid = parsed.len() as u64;
+    if parsed.is_empty() {
+        return summarize_import(0, errors);
+    }
+    let inserted = match collection.insert_many(parsed).ordered(false).await {
+        Ok(res) => res.inserted_ids.len() as u64,
+        Err(e) => {
+            let write_errors = match &*e.kind {
+                ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
+                _ => None,
+            };
+            match write_errors {
+                Some(we) => {
+                    for w in &we {
+                        let raw = parsed_raw_idx.get(w.index).copied().unwrap_or(w.index);
+                        errors.push(format!("doc#{raw}: {}", w.message));
+                    }
+                    valid.saturating_sub(we.len() as u64)
+                }
+                None => {
+                    // Plan-mandated: non-write errors are recorded into `errors`, not propagated (keeps the helper infallible and consistent with BSON import).
+                    errors.push(e.to_string());
+                    0
+                }
+            }
+        }
+    };
+    summarize_import(inserted, errors)
+}
+
 /// Parse filter ExtJSON người dùng (rỗng/None → Document rỗng).
 fn parse_user_filter(filter: Option<&str>) -> Result<Document, AppError> {
     match filter {
@@ -334,38 +381,66 @@ pub async fn import_documents(
         }
     }
 
-    let valid = parsed.len() as u64;
-    if parsed.is_empty() {
-        return Ok(summarize_import(0, errors));
-    }
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, errors).await)
+}
 
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn export_bson(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    sort: Option<String>,
+    projection: Option<String>,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
     let client = state.client().await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
-    let inserted = match collection.insert_many(parsed).ordered(false).await {
-        Ok(res) => res.inserted_ids.len() as u64,
-        Err(e) => {
-            // Clone the owned write-error list first so the borrow of `*e.kind` ends
-            // before we may consume `e` via `e.into()` in the fall-through arm.
-            let write_errors = match &*e.kind {
-                ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
-                _ => None,
-            };
-            match write_errors {
-                Some(we) => {
-                    for w in &we {
-                        // Remap batch index → raw input index so both error types share one index space.
-                        let raw = parsed_raw_idx.get(w.index).copied().unwrap_or(w.index);
-                        errors.push(format!("doc#{raw}: {}", w.message));
-                    }
-                    valid.saturating_sub(we.len() as u64)
-                }
-                None => return Err(e.into()),
-            }
-        }
+    let user_filter = parse_user_filter(filter.as_deref())?;
+    let sort_doc = match sort.as_deref() {
+        Some(s) if !s.trim().is_empty() => canonical_string_to_doc(s)?,
+        _ => doc! { "_id": 1 },
     };
+    let mut q = collection.find(user_filter).sort(sort_doc);
+    if let Some(s) = projection.as_deref() {
+        if !s.trim().is_empty() {
+            q = q.projection(canonical_string_to_doc(s)?);
+        }
+    }
+    let mut cursor = q.await?;
 
-    Ok(summarize_import(inserted, errors))
+    let p = std::path::Path::new(&path);
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    let mut buf: Vec<u8> = Vec::new();
+    let mut count: u64 = 0;
+    while let Some(d) = cursor.try_next().await? {
+        let bytes = mongodb::bson::to_vec(&d).map_err(|e| AppError::Parse(e.to_string()))?;
+        buf.extend_from_slice(&bytes);
+        count += 1;
+    }
+    std::fs::write(p, &buf).map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(count)
+}
+
+#[tauri::command]
+pub async fn import_bson(
+    db: String,
+    coll: String,
+    path: String,
+    state: State<'_, AppState>,
+) -> Result<ImportResult, AppError> {
+    let bytes = std::fs::read(&path).map_err(|e| AppError::Io(e.to_string()))?;
+    let parsed = read_bson_docs(&bytes)?;
+    let parsed_raw_idx: Vec<usize> = (0..parsed.len()).collect();
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, Vec::new()).await)
 }
 
 #[cfg(test)]
@@ -483,5 +558,18 @@ mod tests {
         write_text_file(path.to_string_lossy().to_string(), "hello world".into()).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello world");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn read_bson_docs_roundtrips_concatenation() {
+        use mongodb::bson::doc;
+        let a = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
+        let b = mongodb::bson::to_vec(&doc! {"b": 2}).unwrap();
+        let mut buf = a.clone();
+        buf.extend_from_slice(&b);
+        let docs = read_bson_docs(&buf).unwrap();
+        assert_eq!(docs.len(), 2);
+        assert_eq!(docs[0].get_i32("a").unwrap(), 1);
+        assert_eq!(docs[1].get_i32("b").unwrap(), 2);
     }
 }

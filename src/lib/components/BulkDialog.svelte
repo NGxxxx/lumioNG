@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { portal } from "../actions/portal";
+
   let {
     mode,
     scope,
@@ -50,6 +52,7 @@
 
 <div
   class="backdrop"
+  use:portal
   role="presentation"
   onclick={(e) => {
     if (e.target === e.currentTarget) onclose();
@@ -94,7 +97,7 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
+  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
   .modal { background: #fff; width: 480px; max-width: 92vw; border-radius: 6px; overflow: hidden; }
   header { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #eee; }
   .body { padding: 14px; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }

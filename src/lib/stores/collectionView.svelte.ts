@@ -1,5 +1,5 @@
-import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany, exportQuery, importDocuments } from "../api/documents";
-import { saveDialog, openDialog, writeTextFile } from "../api/files";
+import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany, exportQuery, exportBson } from "../api/documents";
+import { saveDialog, writeTextFile } from "../api/files";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";
@@ -23,7 +23,7 @@ import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
-import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd, importCmd } from "../domain/mongosh";
+import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd, exportBsonCmd } from "../domain/mongosh";
 
 /**
  * Trạng thái + hành động của một collection view (data, paging, inline edit,
@@ -89,6 +89,8 @@ export function createCollectionView(db: string, coll: string) {
   let ioBusy = $state(false);
   let ioMessage = $state<string | null>(null);
   let ioError = $state<string | null>(null);
+  let exportRequest = $state<{ kind: "filter" } | { kind: "selection"; count: number } | null>(null);
+  let pendingExportFilter: string | null = "{}";
 
   const canRunBulk = $derived(
     !bulkRunning && (bulkScope === "selection" || bulkCount !== null),
@@ -443,25 +445,61 @@ export function createCollectionView(db: string, coll: string) {
     return { ids };
   }
 
+  /** Effective selection for right-click: the multi-select if the menu row is in it, else the menu row alone. */
+  function effectiveRows(): number[] {
+    if (!menu) return [...selected];
+    if (selected.has(menu.row)) return [...selected];
+    return [menu.row];
+  }
+  function effectiveSelectionCount(): number {
+    return effectiveRows().length;
+  }
+  function effectiveIds(): { ids: string[] } | { missing: true } {
+    const ids: string[] = [];
+    for (const row of effectiveRows()) {
+      const id = idJson(docs[row]);
+      if (id === null) return { missing: true };
+      ids.push(id);
+    }
+    return { ids };
+  }
+
   function menuItems(): MenuItem[] {
     if (!menu) return [];
     const value = getByPath(docs[menu.row], menu.key);
+    const n = effectiveSelectionCount();
+    const hasId = idJson(docs[menu.row]) !== null;
     const items: MenuItem[] = [];
-    if (selected.size > 0) {
-      items.push({ label: `Update selected (${selected.size})…`, action: "updateSelected" });
-      items.push({ label: `Delete selected (${selected.size})`, action: "deleteSelected" });
-    }
-    if (selected.size === 1) {
-      items.push({ label: "Open document", action: "open" });
-    }
+    if (n === 1) items.push({ label: "Open document", action: "open" });
+    items.push({
+      label: "Edit cell",
+      action: "editCell",
+      disabled: menu.key.includes(".") || !isInlineEditable(menu.key, value),
+    });
+    items.push({
+      label: "Copy",
+      action: "copy",
+      children: [
+        { label: "Value", action: "copyValue" },
+        { label: "_id", action: "copyId", disabled: !hasId },
+        { label: `Selected (${n}) as JSON`, action: "copyJson" },
+        { label: `Selected (${n}) as CSV`, action: "copyCsv" },
+      ],
+    });
+    items.push({
+      label: "Export",
+      action: "export",
+      children: [
+        { label: `Selected (${n}) to file…`, action: "exportSelected" },
+        { label: "All matching filter to file…", action: "exportFilter" },
+      ],
+    });
     items.push(
-      { label: "Copy value", action: "copyValue" },
-      { label: "Copy _id", action: "copyId", disabled: idJson(docs[menu.row]) === null },
-      {
-        label: "Edit cell",
-        action: "editCell",
-        disabled: menu.key.includes(".") || !isInlineEditable(menu.key, value),
-      },
+      { label: `Update selected (${n})…`, action: "updateSelected" },
+      { label: `Delete selected (${n})`, action: "deleteSelected" },
+      { label: "Update all matching filter…", action: "updateAll" },
+      { label: "Delete all matching filter…", action: "deleteAll" },
+      { label: "New document…", action: "newDoc" },
     );
     return items;
   }
@@ -474,32 +512,56 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
-  /** Trả về doc cần mở khi action là "open" (component quyết định mở tab). */
-  function onMenuSelect(action: string): { open: Doc } | null {
+  /** Trả về doc cần mở khi action là "open", hoặc `{ newDoc: true }` để mở tab chèn. */
+  function onMenuSelect(action: string): { open: Doc } | { newDoc: true } | null {
     if (!menu) return null;
     const row = menu.row;
     const key = menu.key;
     const doc = docs[row];
-    menu = null;
+    // NOTE: menu = null is set AFTER the switch so that effectiveRows() (used by
+    // requestExport/copySelectedAs) can still read menu.row for effective-selection logic.
     switch (action) {
       case "open":
+        menu = null;
         return { open: doc };
-      case "updateSelected":
-        openBulk("update", "selection");
-        break;
-      case "deleteSelected":
-        requestDeleteSelected();
-        break;
       case "copyValue":
         copy(JSON.stringify(getByPath(doc, key)));
         break;
       case "copyId":
         copy(idJson(doc) ?? "");
         break;
+      case "copyJson":
+        copySelectedAs("json");
+        break;
+      case "copyCsv":
+        copySelectedAs("csv");
+        break;
+      case "exportSelected":
+        requestExport("selection");
+        break;
+      case "exportFilter":
+        requestExport("filter");
+        break;
+      case "updateSelected":
+        openBulk("update", "selection");
+        break;
+      case "deleteSelected":
+        requestDeleteSelected();
+        break;
+      case "updateAll":
+        openBulk("update", "filter");
+        break;
+      case "deleteAll":
+        openBulk("delete", "filter");
+        break;
+      case "newDoc":
+        menu = null;
+        return { newDoc: true };
       case "editCell":
         startEdit(row, key);
         break;
     }
+    menu = null;
     return null;
   }
 
@@ -601,26 +663,42 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
-  async function exportAs(format: "json" | "csv") {
-    const path = await saveDialog(`${coll}.${format}`, [
-      { name: format.toUpperCase(), extensions: [format] },
-    ]);
+  function requestExport(scope: "filter" | "selection") {
+    exportRequest = scope === "filter" ? { kind: "filter" } : { kind: "selection", count: effectiveSelectionCount() };
+    if (scope === "selection") {
+      // capture ids now (menu closes on action)
+      const sel = effectiveIds();
+      pendingExportFilter = "missing" in sel ? null : idInFilter(sel.ids);
+    } else {
+      pendingExportFilter = appliedFilter;
+    }
+  }
+  function cancelExport() { exportRequest = null; pendingExportFilter = "{}"; }
+
+  async function runExport(format: "json" | "csv" | "bson") {
+    const req = exportRequest;
+    exportRequest = null;
+    if (!req) return;
+    if (pendingExportFilter === null) { ioError = "Một số dòng đang chọn thiếu _id."; return; }
+    const filter = pendingExportFilter;
+    const useSort = req.kind === "filter" ? buildSort(sortKeys) : null;
+    const useProj = req.kind === "filter" ? buildProjection(hidden) : null;
+    const ext = format === "bson" ? "bson" : format;
+    const path = await saveDialog(`${coll}.${ext}`, [{ name: ext.toUpperCase(), extensions: [ext] }]);
     if (path === null) return;
-    ioBusy = true;
-    ioMessage = null;
-    ioError = null;
+    ioBusy = true; ioMessage = null; ioError = null;
     try {
-      const data = await exportQuery(
-        db,
-        coll,
-        appliedFilter,
-        buildSort(sortKeys),
-        buildProjection(hidden),
-      );
-      commandLog.push(findCmd({ coll, filter: appliedFilter, sort: buildSort(sortKeys), projection: buildProjection(hidden) }));
-      const content = format === "json" ? toJsonArray(data) : toCsv(data);
-      await writeTextFile(path, content);
-      ioMessage = `Đã export ${data.length} document.`;
+      if (format === "bson") {
+        const n = await exportBson(db, coll, filter, useSort, useProj, path);
+        ioMessage = `Đã export ${n} document.`;
+        commandLog.push(exportBsonCmd(db, coll, path));
+      } else {
+        const data = await exportQuery(db, coll, filter, useSort, useProj);
+        const content = format === "json" ? toJsonArray(data) : toCsv(data);
+        await writeTextFile(path, content);
+        ioMessage = `Đã export ${data.length} document.`;
+        commandLog.push(findCmd({ coll, filter, sort: useSort, projection: useProj }));
+      }
     } catch (e) {
       ioError = errorMessage(e);
     } finally {
@@ -628,23 +706,11 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
-  async function importDocs() {
-    const path = await openDialog([{ name: "JSON / JSONL", extensions: ["json", "jsonl"] }]);
-    if (path === null) return;
-    ioBusy = true;
-    ioMessage = null;
-    ioError = null;
-    try {
-      const res = await importDocuments(db, coll, path);
-      commandLog.push(importCmd(db, coll, path));
-      const detail = res.errors.length ? ` ${res.errors.join("; ")}` : "";
-      ioMessage = `Đã chèn ${res.inserted}, bỏ qua ${res.failed} lỗi.${detail}`;
-      await reloadDocs();
-    } catch (e) {
-      ioError = errorMessage(e);
-    } finally {
-      ioBusy = false;
-    }
+  async function copySelectedAs(format: "json" | "csv") {
+    const rows = effectiveRows();
+    const picked = rows.map((r) => docs[r]).filter(Boolean);
+    const text = format === "json" ? toJsonArray(picked) : toCsv(picked);
+    await copy(text);
   }
 
   function requestDeleteSelected() {
@@ -833,7 +899,11 @@ export function createCollectionView(db: string, coll: string) {
     get ioBusy() { return ioBusy; },
     get ioMessage() { return ioMessage; },
     get ioError() { return ioError; },
-    exportAs,
-    importDocs,
+    get exportRequest() { return exportRequest; },
+    requestExport,
+    cancelExport,
+    runExport,
+    effectiveSelectionCount,
+    copySelectedAs,
   };
 }

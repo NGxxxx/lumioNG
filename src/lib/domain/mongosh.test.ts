@@ -3,7 +3,7 @@ import {
   findCmd, insertCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd,
   countCmd, createCollectionCmd, dropCollectionCmd, renameCollectionCmd,
   dropDatabaseCmd, createIndexCmd, dropIndexCmd, collStatsCmd, dbStatsCmd,
-  importCmd, connectCmd,
+  importCmd, exportBsonCmd, connectCmd, truncateCollectionCmd,
 } from "./mongosh";
 
 describe("findCmd", () => {
@@ -92,7 +92,15 @@ describe("write/admin commands", () => {
       'mongoimport --db shop --collection users --file "/tmp/in.json"',
     );
   });
+  it("exportBsonCmd", () => {
+    expect(exportBsonCmd("mydb", "users", "/tmp/out.bson")).toBe(
+      'mongodump --db mydb --collection users --out "/tmp/out.bson"',
+    );
+  });
   it("connectCmd", () => {
     expect(connectCmd("mongodb://localhost:27017")).toBe('mongosh "mongodb://localhost:27017"');
+  });
+  it("truncateCollectionCmd → deleteMany({})", () => {
+    expect(truncateCollectionCmd("users")).toBe('db.getCollection("users").deleteMany({})');
   });
 });

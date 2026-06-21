@@ -9,6 +9,7 @@ import {
   dropCollectionCmd,
   renameCollectionCmd,
   dropDatabaseCmd,
+  truncateCollectionCmd,
 } from "../domain/mongosh";
 
 type NavLike = {
@@ -71,6 +72,18 @@ export function createNamespaceTree(nav: NavLike = defaultNav) {
     await refresh();
   }
 
+  async function truncate(db: string, coll: string) {
+    await admin.truncateCollection(db, coll);
+    commandLog.push(truncateCollectionCmd(coll));
+    await refresh();
+  }
+
+  /** Drop all cached namespaces (e.g. on disconnect) so the sidebar shows no stale DBs. */
+  function clear() {
+    databases = [];
+    error = null;
+  }
+
   return {
     get databases() {
       return databases;
@@ -84,6 +97,8 @@ export function createNamespaceTree(nav: NavLike = defaultNav) {
     dropCollection,
     renameCollection,
     dropDatabase,
+    truncate,
+    clear,
   };
 }
 

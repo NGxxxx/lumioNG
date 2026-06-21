@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { portal } from "../actions/portal";
+
   let {
     title,
     message,
@@ -24,6 +26,7 @@
 
 <div
   class="backdrop"
+  use:portal
   role="presentation"
   onclick={(e) => {
     if (e.target === e.currentTarget) oncancel();

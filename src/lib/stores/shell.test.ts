@@ -33,6 +33,13 @@ describe("createShell", () => {
     expect(s.logOpen).toBe(!logOpen);
   });
 
+  it("openSession sets sessionOpen true", () => {
+    const s = createShell(fakeTree([]));
+    s.toggleSession(); // false (was true by default)
+    s.openSession();
+    expect(s.sessionOpen).toBe(true);
+  });
+
   it("setSidebarWidth/setLogHeight bị kẹp biên", () => {
     const s = createShell(fakeTree([]));
     s.setSidebarWidth(10);

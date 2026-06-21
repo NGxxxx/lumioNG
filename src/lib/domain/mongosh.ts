@@ -41,6 +41,8 @@ export const createCollectionCmd = (coll: string) => `db.createCollection("${col
 
 export const dropCollectionCmd = (coll: string) => `${c(coll)}.drop()`;
 
+export const truncateCollectionCmd = (coll: string) => `${c(coll)}.deleteMany({})`;
+
 export const renameCollectionCmd = (coll: string, to: string) =>
   `${c(coll)}.renameCollection("${to}")`;
 
@@ -64,5 +66,8 @@ export const dbStatsCmd = () => "db.stats()";
 
 export const importCmd = (db: string, coll: string, path: string) =>
   `mongoimport --db ${db} --collection ${coll} --file "${path}"`;
+
+export const exportBsonCmd = (db: string, coll: string, path: string) =>
+  `mongodump --db ${db} --collection ${coll} --out "${path}"`;
 
 export const connectCmd = (uri: string) => `mongosh "${uri}"`;

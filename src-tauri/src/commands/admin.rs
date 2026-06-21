@@ -55,3 +55,18 @@ pub async fn drop_database(db: String, state: State<'_, AppState>) -> Result<(),
     client.database(&db).drop().await?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn truncate_collection(
+    db: String,
+    coll: String,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let client = state.client().await?;
+    let res = client
+        .database(&db)
+        .collection::<Document>(&coll)
+        .delete_many(doc! {})
+        .await?;
+    Ok(res.deleted_count)
+}

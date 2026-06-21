@@ -203,4 +203,13 @@ describe("navigation refresh + DDL reconcile", () => {
     expect(n.selection).toEqual({ db: "d", coll: "new" });
     expect(n.collectionVersion("d", "new")).toBe(1);
   });
+
+  it("collectionVersion is independent per collection", () => {
+    const nav = createNavigation();
+    expect(nav.collectionVersion("db", "a")).toBe(0);
+    expect(nav.collectionVersion("db", "b")).toBe(0);
+    nav.bumpCollection("db", "a");
+    expect(nav.collectionVersion("db", "a")).toBe(1);
+    expect(nav.collectionVersion("db", "b")).toBe(0); // independent
+  });
 });

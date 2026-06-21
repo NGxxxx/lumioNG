@@ -1,5 +1,6 @@
 <script lang="ts" module>
   export type TreeMenuTarget =
+    | { kind: "conn"; x: number; y: number }
     | { kind: "db"; db: string; x: number; y: number }
     | { kind: "coll"; db: string; coll: string; x: number; y: number };
 </script>
@@ -13,7 +14,6 @@
     connection = null,
     onselect,
     onselectdb,
-    onnewdatabase,
     onmenu,
   }: {
     databases?: DbInfo[];
@@ -21,7 +21,6 @@
     connection?: { label: string } | null;
     onselect?: (d: { db: string; coll: string }) => void;
     onselectdb?: (d: { db: string }) => void;
-    onnewdatabase?: () => void;
     onmenu?: (t: TreeMenuTarget) => void;
   } = $props();
 
@@ -38,19 +37,29 @@
     onselectdb?.({ db });
     toggle(db);
   }
+  // stopPropagation: Svelte flushes after the handler, mounting ContextMenu (and its
+  // window oncontextmenu={onclose} listener) synchronously; without this, the same
+  // right-click event bubbles to window and immediately closes the just-opened menu.
   function dbMenu(e: MouseEvent, db: string) {
     e.preventDefault();
+    e.stopPropagation();
     onmenu?.({ kind: "db", db, x: e.clientX, y: e.clientY });
+  }
+  function connMenu(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    onmenu?.({ kind: "conn", x: e.clientX, y: e.clientY });
   }
   function collMenu(e: MouseEvent, db: string, coll: string) {
     e.preventDefault();
+    e.stopPropagation();
     onmenu?.({ kind: "coll", db, coll, x: e.clientX, y: e.clientY });
   }
 </script>
 
 <div class="tree" role="tree">
   {#if connection}
-    <div class="conn">
+    <div class="conn" role="treeitem" tabindex="-1" aria-selected="false" oncontextmenu={connMenu}>
       <!-- Mongo leaf SVG icon -->
       <svg width="15" height="15" viewBox="0 0 24 24" class="icon-mongo">
         <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke="#13aa52" stroke-width="1.6"/>
@@ -60,9 +69,6 @@
       <span class="status-dot"></span>
     </div>
   {/if}
-  <div class="toolbar">
-    <button class="newdb" onclick={() => onnewdatabase?.()}>＋ New database</button>
-  </div>
   {#each databases as d (d.name)}
     <div
       class="db"
@@ -145,20 +151,6 @@
     margin-left: 6px;
     flex: none;
   }
-
-  /* ── Toolbar ── */
-  .toolbar { padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  .newdb {
-    width: 100%;
-    text-align: left;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    border-radius: 4px;
-    padding: 5px 8px;
-    cursor: pointer;
-    font-size: 12px;
-  }
-  .newdb:hover { background: var(--hover); }
 
   /* ── Database row ── */
   .db {

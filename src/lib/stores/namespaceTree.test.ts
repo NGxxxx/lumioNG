@@ -5,6 +5,7 @@ vi.mock("../api/admin", () => ({
   dropCollection: vi.fn(),
   renameCollection: vi.fn(),
   dropDatabase: vi.fn(),
+  truncateCollection: vi.fn(),
 }));
 vi.mock("../api/connection", () => ({
   listNamespaces: vi.fn(),
@@ -20,12 +21,14 @@ import {
   dropCollectionCmd,
   renameCollectionCmd,
   dropDatabaseCmd,
+  truncateCollectionCmd,
 } from "../domain/mongosh";
 
 const createColl = admin.createCollection as ReturnType<typeof vi.fn>;
 const dropColl = admin.dropCollection as ReturnType<typeof vi.fn>;
 const renameColl = admin.renameCollection as ReturnType<typeof vi.fn>;
 const dropDb = admin.dropDatabase as ReturnType<typeof vi.fn>;
+const truncateMock = admin.truncateCollection as ReturnType<typeof vi.fn>;
 const listNs = connection.listNamespaces as ReturnType<typeof vi.fn>;
 
 describe("createNamespaceTree", () => {
@@ -100,6 +103,24 @@ describe("createNamespaceTree", () => {
     expect(nav.workTabs.length).toBe(0);
     expect(nav.selection).toBeNull();
   });
+
+  it("truncate calls admin.truncateCollection and refreshes", async () => {
+    truncateMock.mockResolvedValue(3);
+    const nt = createNamespaceTree(createNavigation());
+    await nt.truncate("db", "coll");
+    expect(truncateMock).toHaveBeenCalledWith("db", "coll");
+    expect(listNs).toHaveBeenCalled(); // refresh
+  });
+
+  it("clear empties cached databases (disconnect)", async () => {
+    listNs.mockResolvedValueOnce([{ name: "d", collections: ["c"] }]);
+    const nt = createNamespaceTree(createNavigation());
+    await nt.refresh();
+    expect(nt.databases.length).toBe(1);
+    nt.clear();
+    expect(nt.databases).toEqual([]);
+    expect(nt.error).toBeNull();
+  });
 });
 
 describe("namespaceTree command log", () => {
@@ -137,5 +158,12 @@ describe("namespaceTree command log", () => {
     const nt = createNamespaceTree(createNavigation());
     await nt.dropDatabase("shop");
     expect(commandLog.entries.at(-1)!.text).toBe(dropDatabaseCmd());
+  });
+
+  it("truncate đẩy truncateCollectionCmd", async () => {
+    truncateMock.mockResolvedValue(5);
+    const nt = createNamespaceTree(createNavigation());
+    await nt.truncate("shop", "orders");
+    expect(commandLog.entries.at(-1)!.text).toBe(truncateCollectionCmd("orders"));
   });
 });
