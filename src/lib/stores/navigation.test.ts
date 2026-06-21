@@ -25,13 +25,13 @@ describe("navigation selection", () => {
     expect(n.active).toEqual({ zone: "context", kind: "database" });
   });
 
-  it("selectCollection → contextTabs đủ 5, active mặc định data", () => {
+  it("selectCollection → contextTabs đủ 4, active mặc định data", () => {
     const n = createNavigation();
     n.setConnected(true);
     n.selectCollection("shop", "users");
     expect(n.selection).toEqual({ db: "shop", coll: "users" });
     expect(n.level).toBe("coll");
-    expect(n.contextTabs).toEqual(["host", "database", "collection", "data", "query"]);
+    expect(n.contextTabs).toEqual(["host", "database", "collection", "data"]);
     expect(n.active).toEqual({ zone: "context", kind: "data" });
   });
 
@@ -148,11 +148,11 @@ describe("contextTabs với connected/host/query", () => {
     n.selectDatabase("shop");
     expect(n.contextTabs).toEqual(["host", "database"]);
   });
-  it("connected + coll → host, database, collection, data, query", () => {
+  it("connected + coll → host, database, collection, data (no query)", () => {
     const n = createNavigation();
     n.setConnected(true);
     n.selectCollection("shop", "orders");
-    expect(n.contextTabs).toEqual(["host", "database", "collection", "data", "query"]);
+    expect(n.contextTabs).toEqual(["host", "database", "collection", "data"]);
   });
 });
 
@@ -189,7 +189,9 @@ describe("navigation refresh + DDL reconcile", () => {
     n.openDocument(insertDoc("other", "z"));
     n.closeForDatabase("d");
     expect(n.workTabs.length).toBe(1);
-    expect(n.workTabs[0].db).toBe("other");
+    const tab0 = n.workTabs[0];
+    if (tab0.kind !== "document") throw new Error("expected document tab");
+    expect(tab0.db).toBe("other");
     expect(n.selection).toBeNull();
     expect(n.active).toBeNull();
   });
@@ -199,7 +201,9 @@ describe("navigation refresh + DDL reconcile", () => {
     n.selectCollection("d", "old");
     n.openDocument(insertDoc("d", "old"));
     n.renameCollectionTabs("d", "old", "new");
-    expect(n.workTabs[0].coll).toBe("new");
+    const renamed = n.workTabs[0];
+    if (renamed.kind !== "document") throw new Error("expected document tab");
+    expect(renamed.coll).toBe("new");
     expect(n.selection).toEqual({ db: "d", coll: "new" });
     expect(n.collectionVersion("d", "new")).toBe(1);
   });
@@ -211,5 +215,45 @@ describe("navigation refresh + DDL reconcile", () => {
     nav.bumpCollection("db", "a");
     expect(nav.collectionVersion("db", "a")).toBe(1);
     expect(nav.collectionVersion("db", "b")).toBe(0); // independent
+  });
+});
+
+describe("navigation query work tabs", () => {
+  it("openQuery adds a persistent query tab with an incrementing seq", () => {
+    const nav = createNavigation();
+    nav.setConnected(true);
+    nav.selectCollection("shop", "orders");
+    nav.openQuery('db.getCollection("orders").aggregate([])');
+    nav.openQuery('db.getCollection("orders").aggregate([])');
+    const queries = nav.workTabs.filter((t) => t.kind === "query");
+    expect(queries.map((t) => (t.kind === "query" ? t.seq : 0))).toEqual([1, 2]);
+    expect(nav.active).toEqual({ zone: "work", id: queries[1].id });
+  });
+
+  it("query tabs survive a selection change", () => {
+    const nav = createNavigation();
+    nav.setConnected(true);
+    nav.selectCollection("shop", "orders");
+    nav.openQuery('db.getCollection("orders").aggregate([])');
+    nav.selectCollection("shop", "users");
+    expect(nav.workTabs.filter((t) => t.kind === "query").length).toBe(1);
+  });
+
+  it("query is no longer a context tab", () => {
+    const nav = createNavigation();
+    nav.setConnected(true);
+    nav.selectCollection("shop", "orders");
+    expect(nav.contextTabs).not.toContain("query");
+  });
+
+  it("reuses the lowest free Query number after closing", () => {
+    const nav = createNavigation();
+    nav.setConnected(true);
+    nav.openQuery("a");
+    nav.openQuery("b"); // #1, #2
+    const first = nav.workTabs.find((t) => t.kind === "query" && t.seq === 1)!;
+    nav.closeWork(first.id);
+    nav.openQuery("c"); // should reuse #1
+    expect(nav.workTabs.filter((t) => t.kind === "query").map((t) => (t.kind === "query" ? t.seq : 0)).sort()).toEqual([1, 2]);
   });
 });

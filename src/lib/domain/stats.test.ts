@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   formatBytes,
   formatCount,
+  formatPercent,
   parseCollStats,
   parseDbStats,
   parseCollOptions,
@@ -78,6 +79,18 @@ describe("parseDbStats", () => {
   });
   it("thiếu field → null", () => {
     expect(parseDbStats("{}").objects).toBeNull();
+  });
+});
+
+describe("formatPercent", () => {
+  it("formats a 0..1 ratio as a rounded percent", () => {
+    expect(formatPercent(1)).toBe("100%");
+    expect(formatPercent(0.5)).toBe("50%");
+    expect(formatPercent(0.333)).toBe("33%");
+  });
+  it("returns dash for null/NaN", () => {
+    expect(formatPercent(null)).toBe("—");
+    expect(formatPercent(NaN)).toBe("—");
   });
 });
 

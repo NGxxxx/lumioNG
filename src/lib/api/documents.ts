@@ -143,3 +143,14 @@ export async function exportBson(
 export async function importBson(db: string, coll: string, path: string): Promise<ImportResult> {
   return await invoke<ImportResult>("import_bson", { db, coll, path });
 }
+
+/** Run an aggregate pipeline (ExtJSON array string). limit≠null appends a trailing $limit. */
+export async function aggregate(
+  db: string,
+  coll: string,
+  pipeline: string,
+  limit: number | null,
+): Promise<Doc[]> {
+  const rows = await invoke<string[]>("aggregate", { db, coll, pipeline, limit });
+  return rows.map((s) => JSON.parse(s) as Doc);
+}

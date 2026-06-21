@@ -39,3 +39,16 @@ describe("Toolbar", () => {
     expect(onToggleLog).toHaveBeenCalled();
   });
 });
+
+describe("Toolbar Run query", () => {
+  it("is disabled when canRun is false", () => {
+    const { getByTitle } = render(Toolbar, { props: { ...base, canRun: false, onrun: vi.fn() } });
+    expect((getByTitle("Run query") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls onrun when enabled and clicked", async () => {
+    const onrun = vi.fn();
+    const { getByTitle } = render(Toolbar, { props: { ...base, canRun: true, onrun } });
+    await fireEvent.click(getByTitle("Run query"));
+    expect(onrun).toHaveBeenCalled();
+  });
+});

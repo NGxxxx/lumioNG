@@ -71,3 +71,9 @@ export const exportBsonCmd = (db: string, coll: string, path: string) =>
   `mongodump --db ${db} --collection ${coll} --out "${path}"`;
 
 export const connectCmd = (uri: string) => `mongosh "${uri}"`;
+
+export const sampleCmd = (coll: string, size: number) =>
+  `${c(coll)}.aggregate([{ "$sample": { "size": ${size} } }])`;
+
+export const aggregateCmd = (coll: string, pipeline: string) =>
+  `${c(coll)}.aggregate(${pipeline})`;

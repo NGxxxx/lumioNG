@@ -1,9 +1,10 @@
 import type { Doc } from "../domain/columns";
+import { nextQuerySeq } from "../domain/queryseq";
 
-export type ContextKind = "host" | "database" | "collection" | "data" | "query";
-export type CollectionSection = "info" | "indexes";
+export type ContextKind = "host" | "database" | "collection" | "data";
+export type CollectionSection = "info" | "indexes" | "schema";
 
-export type WorkTab = {
+export type DocumentTab = {
   id: number;
   kind: "document";
   db: string;
@@ -12,7 +13,14 @@ export type WorkTab = {
   initial: Doc | null;
   idText: string | null;
 };
-export type WorkTabInit = Omit<WorkTab, "id">;
+export type QueryTab = {
+  id: number;
+  kind: "query";
+  seq: number;
+  initialStatement: string;
+};
+export type WorkTab = DocumentTab | QueryTab;
+export type DocumentTabInit = Omit<DocumentTab, "id">;
 
 export type Active =
   | { zone: "context"; kind: ContextKind }
@@ -38,7 +46,7 @@ export function createNavigation() {
     !connected
       ? []
       : selColl
-        ? ["host", "database", "collection", "data", "query"]
+        ? ["host", "database", "collection", "data"]
         : selDb
           ? ["host", "database"]
           : ["host"],
@@ -66,17 +74,29 @@ export function createNavigation() {
     collectionSection = s;
   }
 
-  function openDocument(init: WorkTabInit) {
+  function openDocument(init: DocumentTabInit) {
     if (init.mode === "edit") {
       const existing = workTabs.find(
-        (t) => t.mode === "edit" && t.db === init.db && t.coll === init.coll && t.idText === init.idText,
+        (t) => t.kind === "document" && t.mode === "edit" && t.db === init.db && t.coll === init.coll && t.idText === init.idText,
       );
       if (existing) {
         active = { zone: "work", id: existing.id };
         return;
       }
     }
-    const tab: WorkTab = { id: nextId++, ...init };
+    const tab: DocumentTab = { id: nextId++, ...init };
+    workTabs = [...workTabs, tab];
+    active = { zone: "work", id: tab.id };
+  }
+
+  function openQuery(initialStatement: string) {
+    const used = workTabs.filter((t) => t.kind === "query").map((t) => t.seq);
+    const tab: QueryTab = {
+      id: nextId++,
+      kind: "query",
+      seq: nextQuerySeq(used),
+      initialStatement,
+    };
     workTabs = [...workTabs, tab];
     active = { zone: "work", id: tab.id };
   }
@@ -120,7 +140,7 @@ export function createNavigation() {
   }
 
   function closeForCollection(db: string, coll: string) {
-    for (const t of workTabs.filter((t) => t.db === db && t.coll === coll)) closeWork(t.id);
+    for (const t of workTabs.filter((t) => t.kind === "document" && t.db === db && t.coll === coll)) closeWork(t.id);
     if (selDb === db && selColl === coll) {
       selColl = null;
       active = { zone: "context", kind: "database" };
@@ -128,7 +148,7 @@ export function createNavigation() {
   }
 
   function closeForDatabase(db: string) {
-    for (const t of workTabs.filter((t) => t.db === db)) closeWork(t.id);
+    for (const t of workTabs.filter((t) => t.kind === "document" && t.db === db)) closeWork(t.id);
     if (selDb === db) {
       selDb = null;
       selColl = null;
@@ -137,8 +157,10 @@ export function createNavigation() {
   }
 
   function renameCollectionTabs(db: string, oldColl: string, newColl: string) {
-    const affected = workTabs.some((t) => t.db === db && t.coll === oldColl);
-    workTabs = workTabs.map((t) => (t.db === db && t.coll === oldColl ? { ...t, coll: newColl } : t));
+    const affected = workTabs.some((t) => t.kind === "document" && t.db === db && t.coll === oldColl);
+    workTabs = workTabs.map((t) =>
+      t.kind === "document" && t.db === db && t.coll === oldColl ? { ...t, coll: newColl } : t,
+    );
     if (selDb === db && selColl === oldColl) selColl = newColl;
     if (affected) bumpCollection(db, newColl);
   }
@@ -159,6 +181,7 @@ export function createNavigation() {
     showContext,
     setCollectionSection,
     openDocument,
+    openQuery,
     activateWork,
     closeWork,
     collectionVersion,

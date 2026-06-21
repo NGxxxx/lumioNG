@@ -17,12 +17,14 @@
     connection = null,
     onselect,
     onselectdb,
+    onnewquery,
     onmanagesessions,
     ondisconnect,
   }: {
     connection?: { label: string } | null;
     onselect?: (d: { db: string; coll: string }) => void;
     onselectdb?: (d: { db: string }) => void;
+    onnewquery?: (d: { db: string; coll: string }) => void;
     onmanagesessions?: () => void;
     ondisconnect?: () => void;
   } = $props();
@@ -55,6 +57,7 @@
     { label: "Drop database…", action: "dropDb" },
   ];
   const collItems = [
+    { label: "New aggregate…", action: "newQuery" },
     { label: "Export…", action: "export" },
     { label: "Import…", action: "import" },
     { label: "Copy name", action: "copyName" },
@@ -78,7 +81,8 @@
       else if (action === "refresh") namespaceTree.refresh();
       else if (action === "dropDb") dialog = { type: "dropDb", db: m.db };
     } else {
-      if (action === "export") dialog = { type: "export", db: m.db, coll: m.coll };
+      if (action === "newQuery") onnewquery?.({ db: m.db, coll: m.coll });
+      else if (action === "export") dialog = { type: "export", db: m.db, coll: m.coll };
       else if (action === "import") runImport(m.db, m.coll);
       else if (action === "copyName") navigator.clipboard.writeText(`${m.db}.${m.coll}`);
       else if (action === "rename") dialog = { type: "rename", db: m.db, coll: m.coll };

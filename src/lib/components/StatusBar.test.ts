@@ -28,4 +28,22 @@ describe("StatusBar", () => {
     });
     expect(getByText("Disconnected")).toBeTruthy();
   });
+
+  it("shows server version and formatted uptime when provided", () => {
+    const { getByText } = render(StatusBar, {
+      props: {
+        connected: true,
+        connectionLabel: "local",
+        dbCount: 1,
+        collCount: 2,
+        selDb: "shop",
+        selColl: null,
+        version: "7.0.5",
+        uptimeSeconds: 3725,
+        serverTimeIso: "2023-11-14T22:13:20.000Z",
+      },
+    });
+    expect(getByText("MongoDB 7.0.5")).toBeTruthy();
+    expect(getByText("Uptime: 1h 2m")).toBeTruthy();
+  });
 });

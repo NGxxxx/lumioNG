@@ -7,6 +7,7 @@ import {
 import { connect } from "../api/connection";
 import { errorMessage } from "../api/errors";
 import { validateConnection } from "../domain/connections";
+import { maskUri } from "../domain/uri";
 import { commandLog } from "./commandLog.svelte";
 import { connectCmd } from "../domain/mongosh";
 
@@ -73,7 +74,7 @@ export function createConnectionRegistry() {
     error = null;
     try {
       await connect(connUri);
-      commandLog.push(connectCmd(connUri));
+      commandLog.push(connectCmd(maskUri(connUri)));
       return true;
     } catch (e) {
       error = errorMessage(e);

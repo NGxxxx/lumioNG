@@ -19,6 +19,7 @@ describe("TabBar", () => {
         onShowContext: vi.fn(),
         onActivateWork: vi.fn(),
         onCloseWork: vi.fn(),
+        onNewQuery: vi.fn(),
       },
     });
     expect(getByText("Database")).toBeTruthy();
@@ -36,6 +37,7 @@ describe("TabBar", () => {
         onShowContext,
         onActivateWork: vi.fn(),
         onCloseWork: vi.fn(),
+        onNewQuery: vi.fn(),
       },
     });
     await fireEvent.click(getByText("Collection"));
@@ -54,11 +56,21 @@ describe("TabBar", () => {
         onShowContext: vi.fn(),
         onActivateWork,
         onCloseWork,
+        onNewQuery: vi.fn(),
       },
     });
     await fireEvent.click(getByText("orders / new"));
     expect(onActivateWork).toHaveBeenCalledWith(7);
     await fireEvent.click(getByLabelText("Close tab"));
     expect(onCloseWork).toHaveBeenCalledWith(7);
+  });
+
+  it("[+] button triggers onNewQuery", async () => {
+    const onNewQuery = vi.fn();
+    const { getByTitle } = render(TabBar, {
+      props: { contextTabs: [], workTabs: [], active: null, onShowContext: vi.fn(), onActivateWork: vi.fn(), onCloseWork: vi.fn(), onNewQuery },
+    });
+    await fireEvent.click(getByTitle("New aggregate query"));
+    expect(onNewQuery).toHaveBeenCalled();
   });
 });

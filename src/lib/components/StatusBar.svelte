@@ -1,5 +1,7 @@
 <!-- src/lib/components/StatusBar.svelte -->
 <script lang="ts">
+  import { formatUptime } from "../domain/host";
+
   let {
     connected,
     connectionLabel,
@@ -7,6 +9,9 @@
     collCount,
     selDb,
     selColl,
+    version,
+    uptimeSeconds,
+    serverTimeIso,
   }: {
     connected: boolean;
     connectionLabel: string | null;
@@ -14,9 +19,13 @@
     collCount: number;
     selDb: string | null;
     selColl: string | null;
+    version?: string | null;
+    uptimeSeconds?: number | null;
+    serverTimeIso?: string | null;
   } = $props();
 
   const label = $derived(selDb ?? connectionLabel ?? "—");
+  const serverTime = $derived(serverTimeIso ? new Date(serverTimeIso).toLocaleTimeString() : "—");
 </script>
 
 <div class="statusbar">
@@ -36,14 +45,14 @@
   <!-- Segment 3: connected time placeholder -->
   <div class="seg">Connected: —</div>
 
-  <!-- Segment 4: MongoDB version placeholder -->
-  <div class="seg">MongoDB —</div>
+  <!-- Segment 4: MongoDB version -->
+  <div class="seg">MongoDB {version ?? "—"}</div>
 
-  <!-- Segment 5: uptime placeholder -->
-  <div class="seg">Uptime: —</div>
+  <!-- Segment 5: uptime -->
+  <div class="seg">Uptime: {formatUptime(uptimeSeconds ?? null)}</div>
 
-  <!-- Segment 6: server time placeholder -->
-  <div class="seg">Server time: —</div>
+  <!-- Segment 6: server time -->
+  <div class="seg">Server time: {serverTime}</div>
 
   <!-- Right: idle status -->
   <div class="seg idle">Idle.</div>

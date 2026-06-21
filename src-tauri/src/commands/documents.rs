@@ -7,6 +7,45 @@ use mongodb::bson::{doc, Document};
 use mongodb::error::ErrorKind;
 use tauri::State;
 
+/// Parse a Canonical Extended JSON **array** of aggregation stages into Documents.
+fn parse_pipeline(pipeline: &str) -> Result<Vec<Document>, AppError> {
+    match canonical_string_to_bson(pipeline)? {
+        mongodb::bson::Bson::Array(arr) => arr
+            .into_iter()
+            .map(|b| {
+                b.as_document()
+                    .cloned()
+                    .ok_or_else(|| AppError::Query("each pipeline stage must be an object".into()))
+            })
+            .collect(),
+        _ => Err(AppError::Query("pipeline must be an array of stages".into())),
+    }
+}
+
+#[tauri::command]
+pub async fn aggregate(
+    db: String,
+    coll: String,
+    pipeline: String,
+    limit: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+
+    let mut stages = parse_pipeline(&pipeline)?;
+    if let Some(n) = limit {
+        stages.push(doc! { "$limit": n });
+    }
+
+    let mut cursor = collection.aggregate(stages).await?;
+    let mut docs = Vec::new();
+    while let Some(d) = cursor.try_next().await? {
+        docs.push(doc_to_canonical_string(&d)?);
+    }
+    Ok(docs)
+}
+
 /// Dựng pipeline lấy mẫu schema, áp filter người dùng nếu có.
 /// Filter rỗng → chỉ `$sample`; có filter → `$match` trước rồi `$sample`.
 fn build_sample_pipeline(user: Document, size: i64) -> Vec<Document> {
@@ -558,6 +597,24 @@ mod tests {
         write_text_file(path.to_string_lossy().to_string(), "hello world".into()).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello world");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_pipeline_reads_array_of_stages() {
+        let out = parse_pipeline(r#"[{"$match":{"a":1}},{"$limit":5}]"#).unwrap();
+        assert_eq!(out.len(), 2);
+        assert!(out[0].contains_key("$match"));
+        assert!(out[1].contains_key("$limit"));
+    }
+
+    #[test]
+    fn parse_pipeline_rejects_non_array() {
+        assert!(matches!(parse_pipeline(r#"{"$match":{}}"#), Err(AppError::Query(_))));
+    }
+
+    #[test]
+    fn parse_pipeline_rejects_non_object_stage() {
+        assert!(matches!(parse_pipeline(r#"[1,2]"#), Err(AppError::Query(_))));
     }
 
     #[test]

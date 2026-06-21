@@ -2,6 +2,7 @@
   import { navigation } from "../stores/navigation.svelte";
   import CollectionInfoPanel from "./CollectionInfoPanel.svelte";
   import IndexPanel from "./IndexPanel.svelte";
+  import SchemaPanel from "./SchemaPanel.svelte";
 
   let { db, coll }: { db: string; coll: string } = $props();
 </script>
@@ -9,11 +10,14 @@
 <div class="colltab">
   <div class="subtabs">
     <button class:active={navigation.collectionSection === "info"} onclick={() => navigation.setCollectionSection("info")}>Info</button>
+    <button class:active={navigation.collectionSection === "schema"} onclick={() => navigation.setCollectionSection("schema")}>Schema</button>
     <button class:active={navigation.collectionSection === "indexes"} onclick={() => navigation.setCollectionSection("indexes")}>Indexes</button>
   </div>
   <div class="subpane">
     {#if navigation.collectionSection === "info"}
       <CollectionInfoPanel {db} {coll} />
+    {:else if navigation.collectionSection === "schema"}
+      <SchemaPanel {db} {coll} />
     {:else}
       <IndexPanel {db} {coll} />
     {/if}

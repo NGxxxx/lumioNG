@@ -20,6 +20,7 @@ pub fn run() {
             commands::connection::delete_connection,
             commands::connection::disconnect,
             commands::documents::query_page,
+            commands::documents::aggregate,
             commands::documents::sample_documents,
             commands::documents::insert_document,
             commands::documents::replace_document,
@@ -43,6 +44,9 @@ pub fn run() {
             commands::stats::coll_stats,
             commands::stats::db_stats,
             commands::stats::coll_options,
+            commands::server::server_status,
+            commands::server::build_info,
+            commands::server::host_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

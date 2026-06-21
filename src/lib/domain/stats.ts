@@ -20,6 +20,12 @@ export function formatCount(n: number | null): string {
   return n.toLocaleString("en-US");
 }
 
+/** Format a 0..1 presence ratio as a rounded percent: 1→"100%", null→"—". */
+export function formatPercent(ratio: number | null): string {
+  if (ratio === null || Number.isNaN(ratio)) return "—";
+  return `${Math.round(ratio * 100)}%`;
+}
+
 export interface CollStatsInfo {
   ns: string;
   count: number | null;

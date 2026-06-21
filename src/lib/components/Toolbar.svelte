@@ -7,6 +7,8 @@
     onrefresh,
     onnewdocument,
     onToggleLog,
+    canRun = false,
+    onrun = () => {},
     selDb = null,
     selColl = null,
   }: {
@@ -16,6 +18,8 @@
     onrefresh: () => void;
     onnewdocument: () => void;
     onToggleLog: () => void;
+    canRun?: boolean;
+    onrun?: () => void;
     selDb?: string | null;
     selColl?: string | null;
   } = $props();
@@ -100,8 +104,8 @@
     </svg>
   </button>
 
-  <!-- Run query (context-dependent, disabled) -->
-  <button aria-label="Run query" title="Run query" class="btn-icon" disabled>
+  <!-- Run query (enabled when canRun) -->
+  <button aria-label="Run query" title="Run query" class="btn-icon" disabled={!canRun} onclick={onrun}>
     <svg width="16" height="16" viewBox="0 0 16 16">
       <path d="M4 3l9 5-9 5z" fill="#1f9d4d"/>
     </svg>

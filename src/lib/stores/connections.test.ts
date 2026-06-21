@@ -102,4 +102,12 @@ describe("connections command log", () => {
     await r.connectTo("mongodb://localhost:27017");
     expect(commandLog.entries.at(-1)!.text).toBe(connectCmd("mongodb://localhost:27017"));
   });
+
+  it("connectTo logs the URI with the password masked", async () => {
+    connect.mockResolvedValueOnce(undefined);
+    const r = createConnectionRegistry();
+    await r.connectTo("mongodb://bob:hunter2@h:27017");
+    expect(commandLog.entries.at(-1)!.text).toContain("mongodb://bob:****@h:27017");
+    expect(commandLog.entries.at(-1)!.text).not.toContain("hunter2");
+  });
 });

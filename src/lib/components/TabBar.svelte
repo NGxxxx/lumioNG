@@ -8,6 +8,7 @@
     onShowContext,
     onActivateWork,
     onCloseWork,
+    onNewQuery,
   }: {
     contextTabs: { kind: ContextKind; label: string }[];
     workTabs: WorkTab[];
@@ -15,12 +16,14 @@
     onShowContext: (kind: ContextKind) => void;
     onActivateWork: (id: number) => void;
     onCloseWork: (id: number) => void;
+    onNewQuery: () => void;
   } = $props();
 
   function shorten(s: string): string {
     return s.length > 14 ? s.slice(0, 12) + "…" : s;
   }
   function workTitle(t: WorkTab): string {
+    if (t.kind === "query") return `Query #${t.seq}`;
     if (t.mode === "insert") return `${t.coll} / new`;
     return `${t.coll} / ${t.idText ? shorten(t.idText) : "?"}`;
   }
@@ -57,11 +60,6 @@
           <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="#2f7dd1" stroke-width="1.1"/>
           <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="#2f7dd1" stroke-width="0.8"/>
         </svg>
-      {:else if c.kind === "query"}
-        <!-- Purple diamond/arrow -->
-        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M3 2h10l-4 6 4 6H3l4-6z" fill="none" stroke="#7b53b8" stroke-width="1.1"/>
-        </svg>
       {/if}
       {c.label}
     </button>
@@ -75,6 +73,7 @@
       <button class="x" onclick={() => onCloseWork(t.id)} aria-label="Close tab">×</button>
     </div>
   {/each}
+  <button class="tab newq" onclick={onNewQuery} title="New aggregate query">+</button>
 </div>
 
 <style>
@@ -166,4 +165,7 @@
   .x:hover {
     color: var(--fg);
   }
+
+  .newq { align-self: flex-end; margin-bottom: -1px; padding: 4px 12px; font-weight: 600; color: #555; cursor: pointer; }
+  .newq:hover { background: var(--panel); }
 </style>

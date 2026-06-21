@@ -1,12 +1,15 @@
 <script lang="ts">
   import { idJson } from "$lib/domain/docid";
+  import { aggregateTemplate } from "$lib/domain/aggregate";
   import { navigation } from "$lib/stores/navigation.svelte";
+  import { getQueryRun, disposeQueryRun } from "$lib/stores/queryRuns.svelte";
   import { namespaceTree } from "$lib/stores/namespaceTree.svelte";
   import { shell } from "$lib/stores/shell.svelte";
+  import { hostStatus } from "$lib/stores/hostStatus.svelte";
   import { quit } from "$lib/api/window";
   import { disconnect as apiDisconnect } from "$lib/api/connection";
   import type { Doc } from "$lib/domain/columns";
-  import type { ContextKind } from "$lib/stores/navigation.svelte";
+  import type { ContextKind, QueryTab as QueryTabType } from "$lib/stores/navigation.svelte";
   import SessionManager from "$lib/components/SessionManager.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import NamespacePanel from "$lib/components/NamespacePanel.svelte";
@@ -14,7 +17,7 @@
   import DocumentForm from "$lib/components/DocumentForm.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import CollectionTab from "$lib/components/CollectionTab.svelte";
-  import DatabaseStatsPanel from "$lib/components/DatabaseStatsPanel.svelte";
+  import DatabaseCollectionsPanel from "$lib/components/DatabaseCollectionsPanel.svelte";
   import HostTab from "$lib/components/HostTab.svelte";
   import QueryTab from "$lib/components/QueryTab.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
@@ -28,7 +31,6 @@
     database: "Database",
     collection: "Collection",
     data: "Data",
-    query: "Query",
   };
 
   let confirmQuit = $state(false);
@@ -37,11 +39,21 @@
   const active = $derived(navigation.active);
   const sel = $derived(navigation.selection);
   const contextTabs = $derived(navigation.contextTabs.map((kind) => ({ kind, label: CONTEXT_LABEL[kind] })));
+  const queryActive = $derived(
+    active?.zone === "work" &&
+      navigation.workTabs.find((t) => t.id === active.id)?.kind === "query",
+  );
+  const activeQueryTab = $derived(
+    active?.zone === "work"
+      ? ((navigation.workTabs.find((t) => t.id === active.id && t.kind === "query") ?? null) as QueryTabType | null)
+      : null,
+  );
 
   async function onConnected(conn: { label: string; uri: string }) {
     shell.setConnection(conn);
     navigation.setConnected(true);
     await namespaceTree.refresh();
+    hostStatus.load(); // fire-and-forget; feeds Host tab + status bar
   }
 
   function openDocument(db: string, coll: string, doc: Doc | null, mode: "edit" | "insert") {
@@ -65,10 +77,11 @@
     try {
       await apiDisconnect();
     } finally {
-      for (const t of [...navigation.workTabs]) navigation.closeWork(t.id);
+      for (const t of [...navigation.workTabs]) { disposeQueryRun(t.id); navigation.closeWork(t.id); }
       navigation.setConnected(false);
       shell.setConnection(null);
       namespaceTree.clear();
+      hostStatus.clear();
       // Do not auto-open the session modal — the user reopens it manually when needed.
     }
   }
@@ -133,6 +146,8 @@
     onToggleLog={() => shell.toggleLog()}
     selDb={sel?.db ?? null}
     selColl={sel?.coll ?? null}
+    canRun={activeQueryTab != null}
+    onrun={() => { if (activeQueryTab) getQueryRun(activeQueryTab.id, activeQueryTab.initialStatement).run(sel?.db ?? null); }}
   />
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
@@ -140,6 +155,7 @@
         connection={shell.connection}
         onselect={(d) => navigation.selectCollection(d.db, d.coll)}
         onselectdb={(d) => navigation.selectDatabase(d.db)}
+        onnewquery={(d) => navigation.openQuery(aggregateTemplate(d.coll))}
         onmanagesessions={() => shell.openSession()}
         ondisconnect={doDisconnect}
       />
@@ -160,14 +176,13 @@
         {active}
         onShowContext={(kind) => navigation.showContext(kind)}
         onActivateWork={(id) => navigation.activateWork(id)}
-        onCloseWork={(id) => navigation.closeWork(id)}
+        onCloseWork={(id) => { disposeQueryRun(id); navigation.closeWork(id); }}
+        onNewQuery={() => navigation.openQuery(aggregateTemplate(""))}
       />
       <div class="panes">
         {#if active?.zone === "context"}
           {#if active.kind === "host"}
             <HostTab connection={shell.connection} />
-          {:else if active.kind === "query" && sel?.coll}
-            <QueryTab db={sel.db} coll={sel.coll} />
           {:else if sel}
             {#if active.kind === "data" && sel.coll}
               {@const coll = sel.coll}
@@ -184,30 +199,36 @@
                 <CollectionTab db={sel.db} {coll} />
               {/key}
             {:else if active.kind === "database"}
-              <DatabaseStatsPanel db={sel.db} />
+              {#key sel.db}
+                <DatabaseCollectionsPanel db={sel.db} onopen={(c) => navigation.selectCollection(sel.db, c)} />
+              {/key}
             {/if}
           {/if}
         {/if}
         {#each navigation.workTabs as tab (tab.id)}
           <div class="tabpane" hidden={!(active?.zone === "work" && active.id === tab.id)}>
-            <DocumentForm
-              mode={tab.mode}
-              db={tab.db}
-              coll={tab.coll}
-              initial={tab.initial}
-              onsaved={() => {
-                navigation.bumpCollection(tab.db, tab.coll);
-                navigation.closeWork(tab.id);
-              }}
-              oncancel={() => navigation.closeWork(tab.id)}
-            />
+            {#if tab.kind === "query"}
+              <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement} currentDb={sel?.db ?? null} />
+            {:else}
+              <DocumentForm
+                mode={tab.mode}
+                db={tab.db}
+                coll={tab.coll}
+                initial={tab.initial}
+                onsaved={() => {
+                  navigation.bumpCollection(tab.db, tab.coll);
+                  navigation.closeWork(tab.id);
+                }}
+                oncancel={() => navigation.closeWork(tab.id)}
+              />
+            {/if}
           </div>
         {/each}
         {#if active === null}
           <div class="empty">Chọn một database hoặc collection để bắt đầu</div>
         {/if}
       </div>
-      {#if shell.logOpen}
+      {#if shell.logOpen && !queryActive}
         <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
         <div
           class="hsplit"
@@ -229,6 +250,9 @@
     collCount={shell.collCount}
     selDb={sel?.db ?? null}
     selColl={sel?.coll ?? null}
+    version={hostStatus.info?.version ?? null}
+    uptimeSeconds={hostStatus.info?.uptimeSeconds ?? null}
+    serverTimeIso={hostStatus.info?.localTimeIso ?? null}
   />
   {#if shell.sessionOpen}
     <SessionManager onconnected={onConnected} onclose={() => shell.toggleSession()} />
