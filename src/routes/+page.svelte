@@ -259,7 +259,7 @@
   {/if}
   {#if confirmQuit}
     <ConfirmDialog
-      title="Thoát MongoStudio?"
+      title="Thoát LumioNG?"
       message="Bạn có chắc muốn thoát ứng dụng? Công việc chưa lưu sẽ mất."
       confirmLabel="Thoát"
       cancelLabel="Hủy"

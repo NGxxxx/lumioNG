@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    monglumio_app_lib::run()
+    lumiong_app_lib::run()
 }

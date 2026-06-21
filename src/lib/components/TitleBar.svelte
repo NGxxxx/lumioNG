@@ -14,7 +14,7 @@
     onquit: () => void;
   } = $props();
 
-  const APP_VERSION = "MongoStudio 0.1.0";
+  const APP_VERSION = "LumioNG 0.1.0";
   const crumb = $derived(buildBreadcrumb({ conn, db, coll }));
 </script>
 
