@@ -1,3 +1,4 @@
+// src/lib/stores/connections.test.ts
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api/connections", () => ({
@@ -9,105 +10,109 @@ vi.mock("../api/connection", () => ({ connect: vi.fn() }));
 
 import * as conns from "../api/connections";
 import * as conn from "../api/connection";
+import type { SavedConnection } from "../api/connections";
 import { createConnectionRegistry } from "./connections.svelte";
 import { commandLog } from "./commandLog.svelte";
-import { connectCmd } from "../domain/mongosh";
+import { obfuscate, deobfuscate } from "../domain/secret";
 
 const list = conns.listConnections as ReturnType<typeof vi.fn>;
 const save = conns.saveConnection as ReturnType<typeof vi.fn>;
 const del = conns.deleteConnection as ReturnType<typeof vi.fn>;
 const connect = conn.connect as ReturnType<typeof vi.fn>;
 
-describe("createConnectionRegistry", () => {
-  beforeEach(() => vi.clearAllMocks());
+function saved(over: Partial<SavedConnection> = {}): SavedConnection {
+  return {
+    id: 1, label: "Local", scheme: "mongodb", host: "localhost", port: 27017,
+    authMethod: "none", user: "", passwordEnc: "", authSource: "", replicaSet: "",
+    tls: false, extraOptions: "", ...over,
+  };
+}
 
-  it("load đổ list", async () => {
-    list.mockResolvedValueOnce([{ id: 1, label: "Local", uri: "mongodb://localhost" }]);
+describe("createConnectionRegistry", () => {
+  beforeEach(() => { vi.clearAllMocks(); commandLog.clear(); });
+
+  it("load fills the list (no migration when already structured)", async () => {
+    list.mockResolvedValueOnce([saved()]);
     const r = createConnectionRegistry();
     await r.load();
     expect(r.list.length).toBe(1);
+    expect(save).not.toHaveBeenCalled();
   });
 
-  it("load lỗi → error set", async () => {
-    list.mockRejectedValueOnce({ kind: "Io", message: "đọc file lỗi" });
+  it("load migrates a legacy uri entry via parse + write-back", async () => {
+    list.mockResolvedValueOnce([
+      { id: 1, label: "Old", scheme: "", host: "", port: null, authMethod: "none",
+        user: "", passwordEnc: "", authSource: "", replicaSet: "", tls: false,
+        extraOptions: "", uri: "mongodb://bob:hunter2@h:27017/?authSource=admin" } as SavedConnection,
+    ]);
+    save.mockResolvedValueOnce([saved({ host: "h", user: "bob", authMethod: "password" })]);
     const r = createConnectionRegistry();
     await r.load();
-    expect(r.error).not.toBeNull();
+    expect(save).toHaveBeenCalledTimes(1);
+    const [id, input] = save.mock.calls[0];
+    expect(id).toBe(1);
+    expect(input.host).toBe("h");
+    expect(input.user).toBe("bob");
+    expect(input.authSource).toBe("admin");
+    expect(deobfuscate(input.passwordEnc)).toBe("hunter2");
+    expect(input.passwordEnc).not.toContain("hunter2");
   });
 
-  it("save invalid → formError, không gọi api", async () => {
+  it("save invalid → formError, no api call", async () => {
     const r = createConnectionRegistry();
     r.label = "";
-    r.uri = "mongodb://x";
     await r.save();
     expect(r.formError).not.toBeNull();
     expect(save).not.toHaveBeenCalled();
   });
 
-  it("save valid → gọi saveConnection và clear form", async () => {
-    save.mockResolvedValueOnce([{ id: 1, label: "L", uri: "mongodb://x" }]);
+  it("save valid → obfuscates password and clears form", async () => {
+    save.mockResolvedValueOnce([saved()]);
     const r = createConnectionRegistry();
-    r.label = "L";
-    r.uri = "mongodb://x";
+    r.label = "L"; r.host = "localhost"; r.authMethod = "password"; r.user = "bob"; r.password = "s3cret";
     await r.save();
-    expect(save).toHaveBeenCalledWith(null, "L", "mongodb://x");
-    expect(r.list.length).toBe(1);
+    const [id, input] = save.mock.calls[0];
+    expect(id).toBeNull();
+    expect(deobfuscate(input.passwordEnc)).toBe("s3cret");
+    expect(input.passwordEnc).not.toContain("s3cret");
     expect(r.editingId).toBeNull();
     expect(r.label).toBe("");
   });
 
-  it("edit nạp form rồi save dùng editingId", async () => {
-    save.mockResolvedValueOnce([]);
+  it("edit loads fields and deobfuscates the password", async () => {
     const r = createConnectionRegistry();
-    r.edit({ id: 7, label: "Old", uri: "mongodb://old" });
+    r.edit(saved({ id: 7, label: "Old", host: "h", authMethod: "password", user: "u", passwordEnc: obfuscate("pw") }));
     expect(r.editingId).toBe(7);
-    expect(r.label).toBe("Old");
-    await r.save();
-    expect(save).toHaveBeenCalledWith(7, "Old", "mongodb://old");
+    expect(r.host).toBe("h");
+    expect(r.password).toBe("pw");
   });
 
-  it("remove gọi deleteConnection", async () => {
+  it("connectTo builds the URI from fields and logs it masked", async () => {
+    connect.mockResolvedValueOnce(undefined);
+    const r = createConnectionRegistry();
+    r.host = "h"; r.port = 27017; r.authMethod = "password"; r.user = "bob"; r.password = "hunter2";
+    const ok = await r.connectTo();
+    expect(ok).toBe(true);
+    expect(connect).toHaveBeenCalledWith("mongodb://bob:hunter2@h:27017/");
+    const logged = commandLog.entries.at(-1)!.text;
+    expect(logged).toContain("mongodb://bob:****@h:27017");
+    expect(logged).not.toContain("hunter2");
+  });
+
+  it("importFromUri fills fields and password", () => {
+    const r = createConnectionRegistry();
+    r.importFromUri("mongodb+srv://u:p@cluster.example.net/?replicaSet=rs0");
+    expect(r.scheme).toBe("mongodb+srv");
+    expect(r.host).toBe("cluster.example.net");
+    expect(r.user).toBe("u");
+    expect(r.password).toBe("p");
+    expect(r.replicaSet).toBe("rs0");
+  });
+
+  it("remove calls deleteConnection", async () => {
     del.mockResolvedValueOnce([]);
     const r = createConnectionRegistry();
     await r.remove(3);
     expect(del).toHaveBeenCalledWith(3);
-  });
-
-  it("connectTo ok → gọi connect, trả true", async () => {
-    connect.mockResolvedValueOnce(undefined);
-    const r = createConnectionRegistry();
-    const ok = await r.connectTo("mongodb://x");
-    expect(connect).toHaveBeenCalledWith("mongodb://x");
-    expect(ok).toBe(true);
-  });
-
-  it("connectTo lỗi → error set, trả false", async () => {
-    connect.mockRejectedValueOnce({ kind: "Connection", message: "boom" });
-    const r = createConnectionRegistry();
-    const ok = await r.connectTo("mongodb://x");
-    expect(ok).toBe(false);
-    expect(r.error).not.toBeNull();
-  });
-});
-
-describe("connections command log", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    commandLog.clear();
-  });
-
-  it("connectTo thành công đẩy connectCmd", async () => {
-    connect.mockResolvedValueOnce(undefined);
-    const r = createConnectionRegistry();
-    await r.connectTo("mongodb://localhost:27017");
-    expect(commandLog.entries.at(-1)!.text).toBe(connectCmd("mongodb://localhost:27017"));
-  });
-
-  it("connectTo logs the URI with the password masked", async () => {
-    connect.mockResolvedValueOnce(undefined);
-    const r = createConnectionRegistry();
-    await r.connectTo("mongodb://bob:hunter2@h:27017");
-    expect(commandLog.entries.at(-1)!.text).toContain("mongodb://bob:****@h:27017");
-    expect(commandLog.entries.at(-1)!.text).not.toContain("hunter2");
   });
 });

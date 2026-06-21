@@ -1,9 +1,23 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export interface SavedConnection {
-  id: number;
+export interface ConnectionInput {
   label: string;
-  uri: string;
+  scheme: string; // "mongodb" | "mongodb+srv"
+  host: string;
+  port: number | null;
+  authMethod: string; // "none" | "password"
+  user: string;
+  passwordEnc: string;
+  authSource: string;
+  replicaSet: string;
+  tls: boolean;
+  extraOptions: string;
+}
+
+export interface SavedConnection extends ConnectionInput {
+  id: number;
+  /** Legacy pre-Phase-E field; present only on un-migrated entries. */
+  uri?: string | null;
 }
 
 export async function listConnections(): Promise<SavedConnection[]> {
@@ -12,10 +26,9 @@ export async function listConnections(): Promise<SavedConnection[]> {
 
 export async function saveConnection(
   id: number | null,
-  label: string,
-  uri: string,
+  input: ConnectionInput,
 ): Promise<SavedConnection[]> {
-  return await invoke<SavedConnection[]>("save_connection", { id, label, uri });
+  return await invoke<SavedConnection[]>("save_connection", { id, input });
 }
 
 export async function deleteConnection(id: number): Promise<SavedConnection[]> {

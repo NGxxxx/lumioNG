@@ -2,32 +2,91 @@ use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// Profile fields supplied by the frontend on save (no id). `password_enc` is already
+/// obfuscated by the frontend `domain/secret` transform — never plaintext.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConnectionInput {
+    pub label: String,
+    pub scheme: String,
+    pub host: String,
+    pub port: Option<u16>,
+    pub auth_method: String,
+    pub user: String,
+    pub password_enc: String,
+    pub auth_source: String,
+    pub replica_set: String,
+    pub tls: bool,
+    pub extra_options: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SavedConnection {
     pub id: u32,
     pub label: String,
-    pub uri: String,
+    #[serde(default)]
+    pub scheme: String,
+    #[serde(default)]
+    pub host: String,
+    #[serde(default)]
+    pub port: Option<u16>,
+    #[serde(default)]
+    pub auth_method: String,
+    #[serde(default)]
+    pub user: String,
+    #[serde(default)]
+    pub password_enc: String,
+    #[serde(default)]
+    pub auth_source: String,
+    #[serde(default)]
+    pub replica_set: String,
+    #[serde(default)]
+    pub tls: bool,
+    #[serde(default)]
+    pub extra_options: String,
+    /// Legacy pre-Phase-E field; present only in un-migrated files. Cleared on next save.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
 }
 
-/// `id` None → thêm mới (gán max(id)+1, list rỗng → 1). `id` khớp → cập nhật label+uri.
-/// `id` không khớp phần tử nào → list giữ nguyên.
+impl SavedConnection {
+    fn from_input(id: u32, input: ConnectionInput) -> Self {
+        SavedConnection {
+            id,
+            label: input.label,
+            scheme: input.scheme,
+            host: input.host,
+            port: input.port,
+            auth_method: input.auth_method,
+            user: input.user,
+            password_enc: input.password_enc,
+            auth_source: input.auth_source,
+            replica_set: input.replica_set,
+            tls: input.tls,
+            extra_options: input.extra_options,
+            uri: None,
+        }
+    }
+}
+
+/// `id` None → append (id = max(id)+1, empty list → 1). `id` matching → overwrite all profile
+/// fields and clear the legacy `uri`. `id` not matching → list unchanged.
 pub fn upsert(
     mut list: Vec<SavedConnection>,
     id: Option<u32>,
-    label: String,
-    uri: String,
+    input: ConnectionInput,
 ) -> Vec<SavedConnection> {
     match id {
         Some(id) => {
             if let Some(c) = list.iter_mut().find(|c| c.id == id) {
-                c.label = label;
-                c.uri = uri;
+                *c = SavedConnection::from_input(id, input);
             }
             list
         }
         None => {
             let next = list.iter().map(|c| c.id).max().map_or(1, |m| m + 1);
-            list.push(SavedConnection { id: next, label, uri });
+            list.push(SavedConnection::from_input(next, input));
             list
         }
     }
@@ -58,41 +117,65 @@ pub fn save(path: &Path, list: &[SavedConnection]) -> Result<(), AppError> {
 mod tests {
     use super::*;
 
-    fn conn(id: u32, label: &str, uri: &str) -> SavedConnection {
-        SavedConnection { id, label: label.into(), uri: uri.into() }
+    fn input(label: &str, host: &str) -> ConnectionInput {
+        ConnectionInput {
+            label: label.into(),
+            scheme: "mongodb".into(),
+            host: host.into(),
+            port: Some(27017),
+            auth_method: "none".into(),
+            user: String::new(),
+            password_enc: String::new(),
+            auth_source: String::new(),
+            replica_set: String::new(),
+            tls: false,
+            extra_options: String::new(),
+        }
     }
 
     #[test]
     fn upsert_new_on_empty_gets_id_1() {
-        let out = upsert(vec![], None, "Local".into(), "mongodb://localhost".into());
-        assert_eq!(out, vec![conn(1, "Local", "mongodb://localhost")]);
+        let out = upsert(vec![], None, input("Local", "localhost"));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, 1);
+        assert_eq!(out[0].host, "localhost");
+        assert_eq!(out[0].uri, None);
     }
 
     #[test]
     fn upsert_new_gets_max_id_plus_1() {
-        let list = vec![conn(1, "a", "mongodb://a"), conn(4, "b", "mongodb://b")];
-        let out = upsert(list, None, "c".into(), "mongodb://c".into());
+        let mut list = upsert(vec![], None, input("a", "ha")); // id 1
+        // force a gap: make the second entry id 4
+        let mut second = upsert(vec![], None, input("b", "hb"));
+        second[0].id = 4;
+        list.append(&mut second);
+        let out = upsert(list, None, input("c", "hc"));
         assert_eq!(out.last().unwrap().id, 5);
     }
 
     #[test]
-    fn upsert_existing_updates_keeps_id() {
-        let list = vec![conn(2, "old", "mongodb://old")];
-        let out = upsert(list, Some(2), "new".into(), "mongodb://new".into());
-        assert_eq!(out, vec![conn(2, "new", "mongodb://new")]);
+    fn upsert_existing_updates_keeps_id_and_clears_legacy_uri() {
+        let mut list = upsert(vec![], None, input("old", "oldhost"));
+        list[0].uri = Some("mongodb://legacy".into());
+        let out = upsert(list, Some(1), input("new", "newhost"));
+        assert_eq!(out.len(), 1);
+        assert_eq!(out[0].id, 1);
+        assert_eq!(out[0].label, "new");
+        assert_eq!(out[0].host, "newhost");
+        assert_eq!(out[0].uri, None);
     }
 
     #[test]
     fn upsert_unknown_id_is_noop() {
-        let list = vec![conn(1, "a", "mongodb://a")];
-        let out = upsert(list.clone(), Some(99), "x".into(), "mongodb://x".into());
+        let list = upsert(vec![], None, input("a", "ha"));
+        let out = upsert(list.clone(), Some(99), input("x", "hx"));
         assert_eq!(out, list);
     }
 
     #[test]
     fn remove_drops_matching_id() {
-        let list = vec![conn(1, "a", "mongodb://a"), conn(2, "b", "mongodb://b")];
-        assert_eq!(remove(list, 1), vec![conn(2, "b", "mongodb://b")]);
+        let list = upsert(vec![], None, input("a", "ha"));
+        assert!(remove(list, 1).is_empty());
     }
 
     #[test]
@@ -100,7 +183,7 @@ mod tests {
         let dir = std::env::temp_dir().join("monglumio_test_registry_roundtrip");
         let path = dir.join("connections.json");
         let _ = std::fs::remove_dir_all(&dir);
-        let list = vec![conn(1, "Local", "mongodb://localhost:27017")];
+        let list = upsert(vec![], None, input("Local", "localhost"));
         save(&path, &list).unwrap();
         assert_eq!(load(&path).unwrap(), list);
         let _ = std::fs::remove_dir_all(&dir);
@@ -111,5 +194,19 @@ mod tests {
         let path = std::env::temp_dir().join("monglumio_test_registry_missing/nope.json");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
         assert_eq!(load(&path).unwrap(), Vec::<SavedConnection>::new());
+    }
+
+    #[test]
+    fn legacy_file_deserializes_with_uri_and_empty_fields() {
+        let dir = std::env::temp_dir().join("monglumio_test_registry_legacy");
+        let path = dir.join("connections.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, r#"[{"id":1,"label":"Old","uri":"mongodb://localhost:27017"}]"#).unwrap();
+        let list = load(&path).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].uri.as_deref(), Some("mongodb://localhost:27017"));
+        assert_eq!(list[0].host, "");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -1,23 +1,30 @@
 import { describe, it, expect } from "vitest";
-import { validateConnection } from "./connections";
+import { validateProfile } from "./connections";
+import type { ConnectionProfile } from "./connuri";
 
-describe("validateConnection", () => {
-  it("label rỗng → lỗi", () => {
-    expect(validateConnection("  ", "mongodb://x")).toEqual({ ok: false, error: "Tên connection không được rỗng." });
+const ok: ConnectionProfile = {
+  scheme: "mongodb", host: "localhost", port: 27017, authMethod: "none",
+  user: "", authSource: "", replicaSet: "", tls: false, extraOptions: "",
+};
+
+describe("validateProfile", () => {
+  it("accepts a valid profile", () => {
+    expect(validateProfile("Local", ok)).toEqual({ ok: true });
   });
-  it("uri rỗng → lỗi", () => {
-    expect(validateConnection("L", "  ")).toEqual({ ok: false, error: "URI không được rỗng." });
+  it("rejects empty label", () => {
+    expect(validateProfile("  ", ok).ok).toBe(false);
   });
-  it("sai scheme → lỗi", () => {
-    expect(validateConnection("L", "http://x")).toEqual({
-      ok: false,
-      error: "URI phải bắt đầu bằng mongodb:// hoặc mongodb+srv://.",
-    });
+  it("rejects empty host", () => {
+    expect(validateProfile("L", { ...ok, host: "" }).ok).toBe(false);
   });
-  it("mongodb:// hợp lệ", () => {
-    expect(validateConnection("L", "mongodb://localhost:27017")).toEqual({ ok: true });
+  it("rejects out-of-range port", () => {
+    expect(validateProfile("L", { ...ok, port: 0 }).ok).toBe(false);
+    expect(validateProfile("L", { ...ok, port: 70000 }).ok).toBe(false);
   });
-  it("mongodb+srv:// hợp lệ", () => {
-    expect(validateConnection("Atlas", "mongodb+srv://a.b/c")).toEqual({ ok: true });
+  it("rejects password auth with empty user", () => {
+    expect(validateProfile("L", { ...ok, authMethod: "password", user: "" }).ok).toBe(false);
+  });
+  it("rejects NaN port", () => {
+    expect(validateProfile("L", { ...ok, port: NaN }).ok).toBe(false);
   });
 });

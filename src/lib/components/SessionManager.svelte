@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { createConnectionRegistry } from "../stores/connections.svelte";
+  import type { SavedConnection } from "../api/connections";
 
   let {
     onconnected,
@@ -16,17 +17,19 @@
   let selectedId = $state<number | null>(null);
   // Filter text
   let filterText = $state("");
+  // Import URI local state
+  let importUri = $state("");
 
   const filteredList = $derived(
     filterText.trim()
       ? r.list.filter((c) =>
           c.label.toLowerCase().includes(filterText.toLowerCase()) ||
-          c.uri.toLowerCase().includes(filterText.toLowerCase())
+          c.host.toLowerCase().includes(filterText.toLowerCase())
         )
       : r.list,
   );
 
-  function selectSession(c: { id: number; label: string; uri: string }) {
+  function selectSession(c: SavedConnection) {
     selectedId = c.id;
     r.edit(c);
   }
@@ -37,13 +40,16 @@
   }
 
   async function openSession() {
-    const connUri = r.uri.trim();
-    const connLabel = r.label.trim() || connUri;
-    if (!connUri) return;
-    if (await r.connectTo(connUri)) {
-      onconnected({ label: connLabel, uri: connUri });
+    if (!r.host.trim()) return;
+    const connLabel = r.label.trim() || r.currentUri();
+    if (await r.connectTo()) {
+      onconnected({ label: connLabel, uri: r.currentUri() });
       onclose();
     }
+  }
+
+  function doImport() {
+    if (importUri.trim()) { r.importFromUri(importUri.trim()); importUri = ""; }
   }
 
   onMount(() => {
@@ -105,7 +111,7 @@
               class="session-row"
               class:selected={selectedId === c.id}
               onclick={() => selectSession(c)}
-              title={c.uri}
+              title={c.host}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" class="session-icon">
                 <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
@@ -123,48 +129,60 @@
 
       <!-- Right column: form -->
       <div class="right-col">
-        <!-- URI field (the actual connect field) -->
         <div class="form-grid">
           <span class="form-label">Session name:</span>
-          <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" />
+          <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" aria-label="Session name" />
 
-          <span class="form-label">Connection URI:</span>
-          <input class="form-input mono" bind:value={r.uri} placeholder="mongodb://localhost:27017" />
+          <span class="form-label">Connection type:</span>
+          <select class="form-input" bind:value={r.scheme} aria-label="Connection type">
+            <option value="mongodb">Direct connection (mongodb://)</option>
+            <option value="mongodb+srv">DNS Seed List (mongodb+srv://)</option>
+          </select>
 
-          <span class="form-label form-muted">Connection type:</span>
-          <div class="form-fake select-fake" title="Defined by the URI schema">
-            <span>Direct connection (URI)</span>
-            <span class="arrow">▾</span>
-          </div>
+          <span class="form-label">Hostname / IP:</span>
+          <input class="form-input mono" bind:value={r.host} placeholder="localhost" aria-label="Hostname / IP" />
 
-          <span class="form-label form-muted">Hostname / IP:</span>
-          <div class="form-fake mono disabled" title="Set via URI">localhost</div>
+          <span class="form-label">Port:</span>
+          <input
+            class="form-input mono short"
+            type="number"
+            bind:value={r.port}
+            disabled={r.scheme === "mongodb+srv"}
+            placeholder="27017"
+            aria-label="Port"
+          />
 
-          <span class="form-label form-muted">Port:</span>
-          <div class="form-fake mono disabled short" title="Set via URI">27017</div>
+          <span class="form-label">Authentication:</span>
+          <select class="form-input" bind:value={r.authMethod} aria-label="Authentication">
+            <option value="none">None</option>
+            <option value="password">Username &amp; Password</option>
+          </select>
 
-          <span class="form-label form-muted">Authentication:</span>
-          <div class="form-fake select-fake disabled" title="Set via URI">
-            <span>Defined by URI</span>
-            <span class="arrow">▾</span>
-          </div>
+          <span class="form-label">User:</span>
+          <input class="form-input" bind:value={r.user} disabled={r.authMethod === "none"} aria-label="User" />
 
-          <span class="form-label form-muted">User:</span>
-          <div class="form-fake mono disabled" title="Set via URI">(optional — in URI)</div>
+          <span class="form-label">Password:</span>
+          <input class="form-input" type="password" bind:value={r.password} disabled={r.authMethod === "none"} aria-label="Password" />
 
-          <span class="form-label form-muted">Password:</span>
-          <div class="form-fake mono disabled" title="Set via URI">(optional — in URI)</div>
+          <span class="form-label">Auth database:</span>
+          <input class="form-input mono" bind:value={r.authSource} placeholder="admin" aria-label="Auth database" />
 
-          <span class="form-label form-muted">Auth database:</span>
-          <div class="form-fake mono disabled" title="Set via URI">(optional — in URI)</div>
+          <span class="form-label">Replica set:</span>
+          <input class="form-input mono" bind:value={r.replicaSet} placeholder="(optional)" aria-label="Replica set" />
 
-          <span class="form-label form-muted">Replica set:</span>
-          <div class="form-fake disabled" title="Set via URI">(optional)</div>
+          <span class="form-label">TLS / SSL:</span>
+          <label class="form-check">
+            <input type="checkbox" bind:checked={r.tls} aria-label="TLS / SSL" />
+            <span>Enable TLS</span>
+          </label>
 
-          <span class="form-label form-muted">Read preference:</span>
-          <div class="form-fake select-fake disabled" title="Set via URI">
-            <span>primary</span>
-            <span class="arrow">▾</span>
+          <span class="form-label">Extra options:</span>
+          <input class="form-input mono" bind:value={r.extraOptions} placeholder="readPreference=secondary&appName=x" aria-label="Extra options" />
+
+          <span class="form-label">Import from URI:</span>
+          <div class="import-row">
+            <input class="form-input mono" bind:value={importUri} placeholder="paste a mongodb:// URI" aria-label="Import from URI" />
+            <button type="button" class="import-btn" onclick={doImport}>Import</button>
           </div>
         </div>
 
@@ -183,7 +201,7 @@
         <button class="foot-btn new-btn" onclick={newSession}>
           <span class="plus">+</span>New
         </button>
-        <button class="foot-btn" onclick={r.save} disabled={!r.label.trim() && !r.uri.trim()}>
+        <button class="foot-btn" onclick={r.save} disabled={!r.label.trim() && !r.host.trim()}>
           {r.editingId !== null ? "Update" : "Save"}
         </button>
         <button
@@ -198,7 +216,7 @@
         <button
           class="foot-btn open-btn"
           onclick={openSession}
-          disabled={r.connecting || !r.uri.trim()}
+          disabled={r.connecting || !r.host.trim()}
         >
           {r.connecting ? "Connecting…" : "Open"}
         </button>
@@ -395,9 +413,6 @@
     font-size: 12px;
     text-align: right;
   }
-  .form-label.form-muted {
-    color: #888;
-  }
 
   .form-input {
     height: 24px;
@@ -414,25 +429,17 @@
   }
   .form-input:focus { border-color: #5aabff; }
   .form-input.mono { font-family: var(--mono); }
+  .form-input.short { width: 90px; }
+  .form-input:disabled { background: #f5f5f5; color: #999; cursor: default; }
 
-  .form-fake {
-    display: flex;
-    align-items: center;
-    height: 24px;
-    background: #fff;
-    border: 1px solid #c4c4c4;
-    border-radius: 2px;
-    padding: 0 8px;
-    font-size: 12px;
-    color: #999;
-    box-sizing: border-box;
-    width: 100%;
+  .form-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); }
+  .import-row { display: flex; gap: 6px; }
+  .import-row .form-input { flex: 1; }
+  .import-btn {
+    height: 24px; padding: 0 10px; border: 1px solid #b8b8b8; border-radius: 2px;
+    background: var(--panel); cursor: pointer; font-size: 12px; color: var(--fg); flex: none;
   }
-  .form-fake.mono { font-family: var(--mono); }
-  .form-fake.short { width: 90px; }
-  .form-fake.select-fake { justify-content: space-between; }
-  .form-fake.disabled { background: #f5f5f5; cursor: default; }
-  .arrow { color: #888; font-size: 10px; }
+  .import-btn:hover { background: #f3f3f3; }
 
   .form-error {
     margin-top: 10px;

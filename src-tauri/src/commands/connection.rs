@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::registry::{self, SavedConnection};
+use crate::registry::{self, ConnectionInput, SavedConnection};
 use crate::state::AppState;
 use mongodb::bson::doc;
 use mongodb::Client;
@@ -71,11 +71,10 @@ pub fn list_connections(app: AppHandle) -> Result<Vec<SavedConnection>, AppError
 pub fn save_connection(
     app: AppHandle,
     id: Option<u32>,
-    label: String,
-    uri: String,
+    input: ConnectionInput,
 ) -> Result<Vec<SavedConnection>, AppError> {
     let path = registry_path(&app)?;
-    let list = registry::upsert(registry::load(&path)?, id, label, uri);
+    let list = registry::upsert(registry::load(&path)?, id, input);
     registry::save(&path, &list)?;
     Ok(list)
 }
