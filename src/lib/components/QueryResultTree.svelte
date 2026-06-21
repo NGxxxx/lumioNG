@@ -2,6 +2,10 @@
   import type { Doc } from "../domain/columns";
   import { describeValue } from "../domain/extjson";
   import { jsonValueColor, type ValueKind } from "../domain/theme";
+  import { toJsonDoc } from "../domain/exporter";
+  async function copyDoc(doc: Doc) {
+    try { await navigator.clipboard.writeText(toJsonDoc(doc)); } catch { /* ignore */ }
+  }
 
   let { docs }: { docs: Doc[] } = $props();
   let open = $state<Record<number, boolean>>({});
@@ -40,6 +44,8 @@
           onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(i); } }}>
           <span class="tree-n">{i + 1}</span>
           <span class="tree-brace">{"{"}{isOpen ? "" : " … }"}</span>
+          <button class="tree-copy" title="Copy document as JSON"
+            onclick={(e) => { e.stopPropagation(); copyDoc(doc); }}>Copy</button>
         </div>
         {#if isOpen}
           <div class="tree-body">
@@ -71,4 +77,6 @@
   .tree-colon { color: #555; }
   .tree-val { margin-left: 5px; }
   .tree-close { padding: 1px 10px 1px 22px; color: #7b53b8; }
+  .tree-copy { margin-left: auto; height: 18px; padding: 0 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 2px; background: #f0f0f0; color: #444; cursor: pointer; opacity: 0; }
+  .tree-header:hover .tree-copy { opacity: 1; }
 </style>

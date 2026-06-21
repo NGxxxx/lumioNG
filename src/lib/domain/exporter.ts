@@ -36,3 +36,8 @@ export function toCsv(docs: Doc[]): string {
 export function toJsonArray(docs: Doc[]): string {
   return JSON.stringify(docs, null, 2);
 }
+
+/** One document as Canonical ExtJSON, pretty 2-space (always valid JSON). */
+export function toJsonDoc(doc: Doc): string {
+  return JSON.stringify(doc, null, 2);
+}

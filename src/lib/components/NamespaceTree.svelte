@@ -12,19 +12,22 @@
     databases = [],
     selected = null,
     connection = null,
+    forceExpand = null,
     onselect,
     onselectdb,
     onmenu,
   }: {
     databases?: DbInfo[];
-    selected?: { db: string; coll: string } | null;
+    selected?: { db: string; coll: string | null } | null;
     connection?: { label: string } | null;
+    forceExpand?: Set<string> | null;
     onselect?: (d: { db: string; coll: string }) => void;
     onselectdb?: (d: { db: string }) => void;
     onmenu?: (t: TreeMenuTarget) => void;
   } = $props();
 
   let collapsed = $state<Set<string>>(new Set());
+  const isOpen = (db: string) => (forceExpand?.has(db) ?? false) || !collapsed.has(db);
   const collCount = $derived(databases.reduce((n, d) => n + d.collections.length, 0));
 
   function toggle(db: string) {
@@ -74,14 +77,14 @@
       class="db"
       role="treeitem"
       tabindex="-1"
-      aria-selected={selected?.db === d.name}
+      aria-selected={selected?.db === d.name && !selected?.coll}
       onclick={() => selectDb(d.name)}
       onkeydown={(e) => e.key === "Enter" && selectDb(d.name)}
       oncontextmenu={(e) => dbMenu(e, d.name)}
     >
       <!-- Caret SVG: rotated when open -->
       <svg aria-hidden="true" class="caret" width="9" height="9" viewBox="0 0 9 9">
-        {#if collapsed.has(d.name)}
+        {#if !isOpen(d.name)}
           <path d="M2 1.5 L6 4.5 L2 7.5z" fill="#888"/>
         {:else}
           <path d="M1.5 2 L4.5 6 L7.5 2z" fill="#888"/>
@@ -96,7 +99,7 @@
       <span class="db-name">{d.name}</span>
       <span class="db-size">—</span>
     </div>
-    {#if !collapsed.has(d.name)}
+    {#if isOpen(d.name)}
       {#each d.collections as c (c)}
         <button
           class="coll"
@@ -164,8 +167,8 @@
   }
   .db:hover { background: #f2f7fc; }
   .db[aria-selected="true"] {
-    background: var(--row-selected);
-    box-shadow: inset 0 0 0 1px var(--row-selected-ring);
+    background: #e6f1fb;
+    box-shadow: inset 2px 0 0 var(--accent);
     font-weight: 600;
   }
   .caret { margin-right: 3px; flex: none; }
@@ -190,8 +193,8 @@
   }
   .coll:hover { background: #f2f7fc; }
   .coll.active {
-    background: var(--row-selected);
-    box-shadow: inset 0 0 0 1px var(--row-selected-ring);
+    background: #e6f1fb;
+    box-shadow: inset 2px 0 0 var(--accent);
     font-weight: 600;
   }
   .icon-coll { margin-right: 5px; flex: none; }

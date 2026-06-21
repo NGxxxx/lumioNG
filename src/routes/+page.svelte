@@ -144,8 +144,6 @@
     onrefresh={doRefresh}
     onnewdocument={newDocActive}
     onToggleLog={() => shell.toggleLog()}
-    selDb={sel?.db ?? null}
-    selColl={sel?.coll ?? null}
     canRun={activeQueryTab != null}
     onrun={() => { if (activeQueryTab) getQueryRun(activeQueryTab.id, activeQueryTab.initialStatement).run(sel?.db ?? null); }}
   />
@@ -180,30 +178,36 @@
         onNewQuery={() => navigation.openQuery(aggregateTemplate(""))}
       />
       <div class="panes">
-        {#if active?.zone === "context"}
-          {#if active.kind === "host"}
+        {#if navigation.contextTabs.includes("host")}
+          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "host")}>
             <HostTab connection={shell.connection} />
-          {:else if sel}
-            {#if active.kind === "data" && sel.coll}
-              {@const coll = sel.coll}
-              {#key `${sel.db}/${coll}#${navigation.collectionVersion(sel.db, coll)}`}
-                <ResultTable
-                  db={sel.db}
-                  {coll}
-                  onopendocument={(doc, mode) => openDocument(sel.db, coll, doc, mode)}
-                />
-              {/key}
-            {:else if active.kind === "collection" && sel.coll}
-              {@const coll = sel.coll}
-              {#key `${sel.db}/${coll}#${navigation.collectionVersion(sel.db, coll)}`}
-                <CollectionTab db={sel.db} {coll} />
-              {/key}
-            {:else if active.kind === "database"}
-              {#key sel.db}
-                <DatabaseCollectionsPanel db={sel.db} onopen={(c) => navigation.selectCollection(sel.db, c)} />
-              {/key}
-            {/if}
-          {/if}
+          </div>
+        {/if}
+        {#if sel && navigation.contextTabs.includes("database")}
+          {@const db = sel.db}
+          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "database")}>
+            {#key db}
+              <DatabaseCollectionsPanel {db} onopen={(c) => navigation.selectCollection(db, c)} />
+            {/key}
+          </div>
+        {/if}
+        {#if sel?.coll && navigation.contextTabs.includes("collection")}
+          {@const db = sel.db}
+          {@const coll = sel.coll}
+          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "collection")}>
+            {#key `${db}/${coll}#${navigation.collectionVersion(db, coll)}`}
+              <CollectionTab {db} {coll} />
+            {/key}
+          </div>
+        {/if}
+        {#if sel?.coll && navigation.contextTabs.includes("data")}
+          {@const db = sel.db}
+          {@const coll = sel.coll}
+          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "data")}>
+            {#key `${db}/${coll}#${navigation.collectionVersion(db, coll)}`}
+              <ResultTable {db} {coll} onopendocument={(doc, mode) => openDocument(db, coll, doc, mode)} />
+            {/key}
+          </div>
         {/if}
         {#each navigation.workTabs as tab (tab.id)}
           <div class="tabpane" hidden={!(active?.zone === "work" && active.id === tab.id)}>

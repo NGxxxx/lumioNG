@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { escapeCsv, csvCell, toCsv, toJsonArray } from "./exporter";
+import { escapeCsv, csvCell, toCsv, toJsonArray, toJsonDoc } from "./exporter";
 
 describe("escapeCsv", () => {
   it("leaves plain text untouched", () => {
@@ -66,5 +66,14 @@ describe("toJsonArray", () => {
   it("round-trips via JSON.parse", () => {
     const docs = [{ _id: { $oid: "a" }, x: 1 }];
     expect(JSON.parse(toJsonArray(docs))).toEqual(docs);
+  });
+});
+
+describe("toJsonDoc", () => {
+  it("serializes one document as valid pretty JSON", () => {
+    const doc = { _id: { $oid: "59b99db5cfa9a34dcd7885b8" }, name: "Jaime" };
+    const text = toJsonDoc(doc);
+    expect(JSON.parse(text)).toEqual(doc); // round-trips => valid JSON
+    expect(text).toContain("\n"); // pretty-printed
   });
 });

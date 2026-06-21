@@ -1,6 +1,8 @@
 <script lang="ts">
   import { namespaceTree } from "../stores/namespaceTree.svelte";
   import NamespaceTree, { type TreeMenuTarget } from "./NamespaceTree.svelte";
+  import { filterNamespaces } from "../domain/nsfilter";
+  import { navigation } from "../stores/navigation.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import NameDialog from "./NameDialog.svelte";
   import NewDatabaseDialog from "./NewDatabaseDialog.svelte";
@@ -30,6 +32,8 @@
   } = $props();
 
   let menu = $state<TreeMenuTarget | null>(null);
+  let query = $state("");
+  const filtered = $derived(filterNamespaces(namespaceTree.databases, query));
 
   type Dialog =
     | { type: "newDb" }
@@ -128,8 +132,24 @@
 
 {#if namespaceTree.error}<div class="error">{namespaceTree.error}</div>{/if}
 
+<div class="ns-search">
+  <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16">
+    <circle cx="7" cy="7" r="4.2" fill="none" stroke="#888" stroke-width="1.3"/>
+    <path d="M10.2 10.2 L14 14" stroke="#888" stroke-width="1.5"/>
+  </svg>
+  <input
+    type="text"
+    placeholder="Filter collections…"
+    bind:value={query}
+    onkeydown={(e) => { if (e.key === "Escape") { query = ""; (e.currentTarget as HTMLInputElement).blur(); } }}
+  />
+  {#if query}<button class="ns-clear" aria-label="Clear filter" onclick={() => (query = "")}>×</button>{/if}
+</div>
+
 <NamespaceTree
-  databases={namespaceTree.databases}
+  databases={filtered.databases}
+  forceExpand={query ? filtered.expand : null}
+  selected={navigation.selection}
   {connection}
   {onselect}
   {onselectdb}
@@ -221,4 +241,8 @@
 <style>
   .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; font-size: 12px; }
   .io-ok { background: #e6f4ea; color: #1b5e20; padding: 6px 10px; font-size: 12px; }
+  .ns-search { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .ns-search input { flex: 1; border: none; background: none; font-size: 12px; outline: none; }
+  .ns-clear { border: none; background: none; cursor: pointer; color: #999; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .ns-clear:hover { color: #444; }
 </style>

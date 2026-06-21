@@ -16,6 +16,10 @@
   import { statusPill, jsonValueColor } from "../domain/theme";
   import type { ValueKind } from "../domain/theme";
   import { describeValue } from "../domain/extjson";
+  import { toJsonDoc } from "../domain/exporter";
+  async function copyTreeDoc(doc: Doc) {
+    try { await navigator.clipboard.writeText(toJsonDoc(doc)); } catch { /* ignore */ }
+  }
 
   let {
     db,
@@ -456,6 +460,8 @@
           <span class="tree-idkey">_id</span><span class="tree-colon">:</span><span class="tree-idval">{idShort(doc)}</span>
           {#if !open}<span class="tree-summary">{docSummary(doc)}</span>{/if}
           {#if open}<span class="tree-brace-close-hint"> … }</span>{/if}
+          <button class="tree-copy" title="Copy document as JSON"
+            onclick={(e) => { e.stopPropagation(); copyTreeDoc(doc); }}>Copy</button>
         </div>
         <!-- Expanded body -->
         {#if open}
@@ -737,7 +743,19 @@
   .status { padding: 8px; color: #777; font-size: 12px; }
 
   .chooser-row { display: block; font-size: 12px; padding: 2px 0; white-space: nowrap; }
-  .chooser-apply { margin-top: 6px; width: 100%; }
+  .chooser-apply {
+    display: block;
+    margin: 8px 0 2px auto;
+    height: 22px;
+    padding: 0 10px;
+    font-size: 12px;
+    border: 1px solid #ccc;
+    border-radius: 2px;
+    background: #f0f0f0;
+    color: #444;
+    cursor: pointer;
+  }
+  .chooser-apply:hover { background: #e6e6e6; }
 
   .pager {
     display: flex;
@@ -792,6 +810,8 @@
     gap: 0;
   }
   .tree-header:hover { background: #f5f9fd; }
+  .tree-copy { margin-left: auto; height: 18px; padding: 0 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 2px; background: #f0f0f0; color: #444; cursor: pointer; opacity: 0; }
+  .tree-header:hover .tree-copy { opacity: 1; }
   .tree-caret {
     flex-shrink: 0;
     margin-right: 6px;

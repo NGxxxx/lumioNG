@@ -9,8 +9,6 @@
     onToggleLog,
     canRun = false,
     onrun = () => {},
-    selDb = null,
-    selColl = null,
   }: {
     connected: boolean;
     canNewDoc: boolean;
@@ -20,12 +18,7 @@
     onToggleLog: () => void;
     canRun?: boolean;
     onrun?: () => void;
-    selDb?: string | null;
-    selColl?: string | null;
   } = $props();
-
-  const dbLabel = $derived(selDb ?? "—");
-  const collLabel = $derived(selColl ?? "—");
 </script>
 
 <div class="toolbar">
@@ -170,25 +163,6 @@
     </svg>
   </button>
 
-  <!-- Right cluster -->
-  <div class="right-cluster">
-    <!-- db | coll ▾ -->
-    <div class="db-coll-box" title="Selected database / collection">
-      <span class="db-coll-label">{dbLabel} | {collLabel}</span>
-      <svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8" style="margin:0 6px; flex:none;">
-        <path d="M1 2.5 L4 5.5 L7 2.5" stroke="#888" stroke-width="1.1" fill="none"/>
-      </svg>
-    </div>
-
-    <!-- Search collections (disabled placeholder) -->
-    <div class="search-box" aria-label="Search collections" title="Search collections">
-      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" style="margin:0 5px; flex:none;">
-        <circle cx="7" cy="7" r="4.2" fill="none" stroke="#888" stroke-width="1.3"/>
-        <path d="M10.2 10.2 L14 14" stroke="#888" stroke-width="1.5"/>
-      </svg>
-      <span class="search-placeholder">Search collections…</span>
-    </div>
-  </div>
 </div>
 
 <style>
@@ -233,47 +207,4 @@
     flex: none;
   }
 
-  /* Right cluster */
-  .right-cluster {
-    margin-left: auto;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding-right: 6px;
-  }
-
-  .db-coll-box {
-    display: flex;
-    align-items: center;
-    height: 22px;
-    border: 1px solid #c4c4c4;
-    background: #fff;
-    border-radius: 2px;
-    cursor: default;
-  }
-
-  .db-coll-label {
-    padding: 0 8px;
-    color: #444;
-    border-right: 1px solid #e0e0e0;
-    line-height: 22px;
-    white-space: nowrap;
-    font-size: 12px;
-  }
-
-  .search-box {
-    display: flex;
-    align-items: center;
-    height: 22px;
-    border: 1px solid #c4c4c4;
-    background: #fff;
-    border-radius: 2px;
-    width: 170px;
-    cursor: default;
-  }
-
-  .search-placeholder {
-    color: #999;
-    font-size: 12px;
-  }
 </style>
