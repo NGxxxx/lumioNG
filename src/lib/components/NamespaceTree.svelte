@@ -61,7 +61,7 @@
   {#if connection}
     <div class="conn" role="treeitem" tabindex="-1" aria-selected="false" oncontextmenu={connMenu}>
       <!-- Mongo leaf SVG icon -->
-      <svg width="15" height="15" viewBox="0 0 24 24" class="icon-mongo">
+      <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" class="icon-mongo">
         <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke="#13aa52" stroke-width="1.6"/>
         <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="#e6f7ee" stroke="#13aa52" stroke-width="1.6"/>
       </svg>
@@ -80,7 +80,7 @@
       oncontextmenu={(e) => dbMenu(e, d.name)}
     >
       <!-- Caret SVG: rotated when open -->
-      <svg class="caret" width="9" height="9" viewBox="0 0 9 9">
+      <svg aria-hidden="true" class="caret" width="9" height="9" viewBox="0 0 9 9">
         {#if collapsed.has(d.name)}
           <path d="M2 1.5 L6 4.5 L2 7.5z" fill="#888"/>
         {:else}
@@ -88,7 +88,7 @@
         {/if}
       </svg>
       <!-- Purple cylinder icon -->
-      <svg width="15" height="15" viewBox="0 0 16 16" class="icon-db">
+      <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" class="icon-db">
         <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="#e8d9f4" stroke="#8a6cb5" stroke-width="1"/>
         <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-0.9 5-2v-9" fill="#f2eafa" stroke="#8a6cb5" stroke-width="1"/>
         <path d="M3 8c0 1.1 2.2 2 5 2s5-0.9 5-2" fill="none" stroke="#8a6cb5" stroke-width="0.9"/>
@@ -105,7 +105,7 @@
           oncontextmenu={(e) => collMenu(e, d.name, c)}
         >
           <!-- Yellow table icon -->
-          <svg width="14" height="14" viewBox="0 0 16 16" class="icon-coll">
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" class="icon-coll">
             <rect x="2" y="3" width="12" height="10" rx="1" fill="#fbf0d8" stroke="#caa84e" stroke-width="0.9"/>
             <path d="M2 6h12M6 6v7" stroke="#caa84e" stroke-width="0.8"/>
           </svg>

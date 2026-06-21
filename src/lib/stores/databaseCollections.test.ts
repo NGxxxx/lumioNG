@@ -45,6 +45,21 @@ describe("createDatabaseCollections", () => {
     expect(v.rows.map((r) => r.name)).toEqual(["orders", "users"]);
     v.setSort("count");          // toggle desc
     expect(v.sortDir).toBe("desc");
+    expect(v.rows.map((r) => r.name)).toEqual(["orders", "users"]); // nulls stay last in desc too
+  });
+
+  it("desc sort reverses order among loaded rows", async () => {
+    collStats
+      .mockResolvedValueOnce(JSON.stringify({ ns: "shop.orders", count: { $numberInt: "9" } }))
+      .mockResolvedValueOnce(JSON.stringify({ ns: "shop.users", count: { $numberInt: "5" } }));
+    const v = createDatabaseCollections("shop", tree);
+    await v.init();
+    await v.loadStats("orders");
+    await v.loadStats("users");
+    v.setSort("count");          // asc → users(5), orders(9)
+    expect(v.rows.map((r) => r.name)).toEqual(["users", "orders"]);
+    v.setSort("count");          // desc → orders(9), users(5)
+    expect(v.rows.map((r) => r.name)).toEqual(["orders", "users"]);
   });
 
   it("loadStats error sets row error state", async () => {

@@ -36,13 +36,13 @@
   <span class="crumb">{crumb} — {APP_VERSION}</span>
   <div class="wbtns">
     <button class="wbtn" title="Minimize" onclick={minimize} aria-label="Minimize">
-      <svg width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="#555" /></svg>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="#555" /></svg>
     </button>
     <button class="wbtn" title="Maximize" onclick={toggleMaximize} aria-label="Maximize">
-      <svg width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="#555" stroke-width="1" /></svg>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="#555" stroke-width="1" /></svg>
     </button>
     <button class="wbtn close" title="Close" onclick={onquit} aria-label="Close">
-      <svg width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="#555" stroke-width="1.1" /></svg>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="#555" stroke-width="1.1" /></svg>
     </button>
   </div>
 </div>

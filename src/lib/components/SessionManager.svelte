@@ -68,7 +68,7 @@
     <div class="header">
       <span class="header-title">Session manager</span>
       <button class="close-btn" onclick={onclose} title="Close" aria-label="Close">
-        <svg width="11" height="11" viewBox="0 0 11 11">
+        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11">
           <path d="M1 1 L10 10 M10 1 L1 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
       </button>
@@ -81,7 +81,7 @@
         <!-- Filter bar -->
         <div class="filter-bar">
           <div class="filter-input-wrap">
-            <svg class="filter-icon" width="12" height="12" viewBox="0 0 16 16">
+            <svg aria-hidden="true" class="filter-icon" width="12" height="12" viewBox="0 0 16 16">
               <circle cx="6.5" cy="6.5" r="5" fill="none" stroke="#aaa" stroke-width="1.5"/>
               <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#aaa" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
@@ -113,7 +113,7 @@
               onclick={() => selectSession(c)}
               title={c.host}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" class="session-icon">
+              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" class="session-icon">
                 <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
                 <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
               </svg>

@@ -35,6 +35,17 @@ describe("parseHostInfo", () => {
     expect(h.os).toBeNull();
     expect(h.version).toBe("7.0.5");
   });
+
+  it("falls back to buildInfo version when serverStatus omits it", () => {
+    const ssNoVer = JSON.stringify({ connections: {}, mem: {}, network: {} });
+    const h = parseHostInfo(ssNoVer, JSON.stringify({ version: "6.0.1" }), null);
+    expect(h.version).toBe("6.0.1");
+  });
+
+  it("builds os from name alone when version is missing", () => {
+    const h = parseHostInfo(ss, bi, JSON.stringify({ os: { name: "Ubuntu" } }));
+    expect(h.os).toBe("Ubuntu");
+  });
 });
 
 describe("formatUptime", () => {

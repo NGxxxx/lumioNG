@@ -256,7 +256,7 @@
       }}
     />
     <button class="btn-run" onclick={v.applyFilter}>
-      <svg width="11" height="11" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z" fill="#fff"/></svg>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z" fill="#fff"/></svg>
       Run
     </button>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -334,7 +334,7 @@
         onclick={() => { view = "grid"; }}
         title="Grid view"
       >
-        <svg width="13" height="13" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="currentColor" stroke-width="0.9"/></svg>
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="currentColor" stroke-width="0.9"/></svg>
         Grid
       </button>
       <button
@@ -343,7 +343,7 @@
         onclick={() => { view = "tree"; }}
         title="Tree view"
       >
-        <svg width="13" height="13" viewBox="0 0 16 16"><path d="M6 2.5C4 2.5 4 5 4 6.5S2.5 8 2.5 8 4 8.5 4 10s0 3.5 2 3.5M10 2.5c2 0 2 2.5 2 4s1.5 1.5 1.5 1.5S12 8.5 12 10s0 3.5-2 3.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16"><path d="M6 2.5C4 2.5 4 5 4 6.5S2.5 8 2.5 8 4 8.5 4 10s0 3.5 2 3.5M10 2.5c2 0 2 2.5 2 4s1.5 1.5 1.5 1.5S12 8.5 12 10s0 3.5-2 3.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
         Tree
       </button>
     </div>
@@ -448,7 +448,7 @@
         <!-- Header row -->
         <div class="tree-header" onclick={() => toggleDoc(docKey)} role="button" tabindex="0"
           onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDoc(docKey); } }}>
-          <svg width="9" height="9" viewBox="0 0 9 9" class="tree-caret" class:tree-caret-open={open}>
+          <svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" class="tree-caret" class:tree-caret-open={open}>
             <path d={open ? "M1.5 3l3 3 3-3" : "M3 1.5l3 3-3 3"} fill="#888" stroke="#888" stroke-width="0.8" fill-rule="evenodd"/>
           </svg>
           <span class="tree-n">{v.allShown ? i + 1 : (v.currentPage - 1) * v.pageSize + i + 1}</span>
