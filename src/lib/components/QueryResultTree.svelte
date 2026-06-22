@@ -44,7 +44,7 @@
           onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(i); } }}>
           <span class="tree-n">{i + 1}</span>
           <span class="tree-brace">{"{"}{isOpen ? "" : " … }"}</span>
-          <button class="tree-copy" title="Copy document as JSON"
+          <button type="button" class="tree-copy" title="Copy document as JSON"
             onclick={(e) => { e.stopPropagation(); copyDoc(doc); }}>Copy</button>
         </div>
         {#if isOpen}

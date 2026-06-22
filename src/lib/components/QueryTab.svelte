@@ -5,9 +5,12 @@
   import QueryResultTree from "./QueryResultTree.svelte";
   import CommandLogView from "./CommandLogView.svelte";
   import ContextMenu from "./ContextMenu.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import type { Doc } from "../domain/columns";
 
-  let { id, seq, initialStatement, currentDb }:
-    { id: number; seq: number; initialStatement: string; currentDb: string | null } = $props();
+  let { id, seq, initialStatement, currentDb, onopendocument }:
+    { id: number; seq: number; initialStatement: string; currentDb: string | null;
+      onopendocument?: (db: string, coll: string, doc: Doc, mode: "edit") => void } = $props();
 
   const v = untrack(() => getQueryRun(id, initialStatement));
   let bottomTab = $state<"result" | "log">("result");
@@ -23,6 +26,11 @@
     if (action === "run") v.run(currentDb);
     menu = null;
   }
+
+  function onResultMenu(action: string) {
+    const r = v.onMenuSelect(action);
+    if (r && "open" in r && v.srcDb && v.srcColl) onopendocument?.(v.srcDb, v.srcColl, r.open, "edit");
+  }
 </script>
 
 <div class="query">
@@ -34,6 +42,7 @@
   <textarea class="editor" bind:value={v.statementText} spellcheck="false" oncontextmenu={openMenu}></textarea>
 
   {#if v.error}<div class="error">{v.error}</div>{/if}
+  {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.capped}
     <div class="cap">Showing first 200 results.
       <button onclick={() => v.runNoLimit(currentDb)}>Run without limit</button>
@@ -61,7 +70,10 @@
         {:else if v.ran}
           {#if v.view === "grid"}
             <QueryResultGrid columns={v.columns} docs={v.pageDocs} colWidths={v.colWidths}
-              onResize={v.setColWidth} onReset={v.resetColWidth} />
+              onResize={v.setColWidth} onReset={v.resetColWidth}
+              selected={v.selected} menu={v.menu} menuItems={v.menuItems}
+              onRowClick={v.clickRow} onOpenMenu={v.openMenu}
+              onMenuSelect={onResultMenu} onCloseMenu={v.closeMenu} />
           {:else}
             <QueryResultTree docs={v.pageDocs} />
           {/if}
@@ -89,6 +101,17 @@
 
 {#if menu}
   <ContextMenu x={menu.x} y={menu.y} items={[{ label: "Run", action: "run" }]} onselect={onMenu} onclose={() => (menu = null)} />
+{/if}
+
+{#if v.confirmDelete}
+  <ConfirmDialog
+    title="Xóa document đã chọn?"
+    message={`Bạn sắp xóa ${v.confirmDelete.count} document. Hành động này không hoàn tác được.`}
+    confirmLabel="Delete"
+    danger
+    onconfirm={v.confirmDeleteRun}
+    oncancel={v.cancelDelete}
+  />
 {/if}
 
 <style>

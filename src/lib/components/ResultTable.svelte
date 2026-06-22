@@ -460,7 +460,7 @@
           <span class="tree-idkey">_id</span><span class="tree-colon">:</span><span class="tree-idval">{idShort(doc)}</span>
           {#if !open}<span class="tree-summary">{docSummary(doc)}</span>{/if}
           {#if open}<span class="tree-brace-close-hint"> … }</span>{/if}
-          <button class="tree-copy" title="Copy document as JSON"
+          <button type="button" class="tree-copy" title="Copy document as JSON"
             onclick={(e) => { e.stopPropagation(); copyTreeDoc(doc); }}>Copy</button>
         </div>
         <!-- Expanded body -->

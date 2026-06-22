@@ -34,6 +34,12 @@
     r.edit(c);
   }
 
+  /** Double-click a saved session = select it + connect immediately (no Open click). */
+  function openSessionRow(c: SavedConnection) {
+    selectSession(c);
+    openSession();
+  }
+
   function newSession() {
     selectedId = null;
     r.clearForm();
@@ -111,7 +117,8 @@
               class="session-row"
               class:selected={selectedId === c.id}
               onclick={() => selectSession(c)}
-              title={c.host}
+              ondblclick={() => openSessionRow(c)}
+              title={`${c.host} — double-click to connect`}
             >
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" class="session-icon">
                 <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
@@ -246,6 +253,8 @@
   .panel {
     width: 880px;
     height: 560px;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 24px);
     background: var(--bg);
     border: 1px solid #888;
     border-radius: 6px;

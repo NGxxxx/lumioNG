@@ -212,7 +212,8 @@
         {#each navigation.workTabs as tab (tab.id)}
           <div class="tabpane" hidden={!(active?.zone === "work" && active.id === tab.id)}>
             {#if tab.kind === "query"}
-              <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement} currentDb={sel?.db ?? null} />
+              <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement} currentDb={sel?.db ?? null}
+                onopendocument={(db, coll, doc, mode) => openDocument(db, coll, doc, mode)} />
             {:else}
               <DocumentForm
                 mode={tab.mode}

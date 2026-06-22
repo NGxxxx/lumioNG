@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../api/documents", () => ({ aggregate: vi.fn() }));
+vi.mock("../api/documents", () => ({
+  aggregate: vi.fn(async () => [{ _id: { $oid: "1" }, name: "A" }]),
+  deleteDocument: vi.fn(async () => {}),
+  fetchFullDoc: vi.fn(async () => ({ _id: { $oid: "1" }, name: "A" })),
+  exportQuery: vi.fn(async () => []),
+  exportBson: vi.fn(async () => 0),
+  deleteMany: vi.fn(async () => 0),
+}));
+vi.mock("../api/files", () => ({ saveDialog: vi.fn(async () => null), writeTextFile: vi.fn(async () => {}) }));
 
 import * as api from "../api/documents";
 import { createQueryRun } from "./queryRun.svelte";
@@ -70,5 +78,58 @@ describe("createQueryRun", () => {
     expect(v.colWidths._id).toBeGreaterThan(0);
     v.setColWidth("name", 300);
     expect(v.colWidths.name).toBe(300);
+  });
+});
+
+describe("queryRun source + menu", () => {
+  it("captures source db/coll after a run", async () => {
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    expect(r.srcDb).toBe("mydb");
+    expect(r.srcColl).toBe("people");
+  });
+
+  it("menu offers edit/delete only when the row has _id", async () => {
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "name");
+    const labels = r.menuItems().map((m) => m.action);
+    expect(labels).toContain("open");
+    expect(labels).toContain("deleteSelected");
+    expect(labels).toContain("copy");
+    expect(labels).toContain("export");
+  });
+
+  it("onMenuSelect deleteSelected requests confirmation then deletes and clears selection", async () => {
+    vi.mocked(aggregate).mockResolvedValueOnce([{ _id: { $oid: "abc123" }, name: "Test" }]);
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "_id");
+    r.onMenuSelect("deleteSelected");
+    // confirmation dialog should be pending
+    expect(r.confirmDelete).not.toBeNull();
+    expect(r.confirmDelete!.count).toBe(1);
+    // confirm the delete
+    await r.confirmDeleteRun();
+    expect(vi.mocked(api.deleteMany)).toHaveBeenCalledOnce();
+    expect(r.selected.size).toBe(0);
+    expect(r.confirmDelete).toBeNull();
+  });
+
+  it("deleteSelected is disabled when any selected row lacks _id (mixed selection)", async () => {
+    vi.mocked(aggregate).mockResolvedValueOnce([
+      { _id: { $oid: "aaa" }, name: "WithId" },
+      { name: "NoId" },
+    ]);
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    // select row 0 (has _id), then ctrl-click row 1 (no _id)
+    r.clickRow(0, { ctrl: false, shift: false });
+    r.clickRow(1, { ctrl: true, shift: false });
+    // open menu on row 0 (which has _id) — without this fix, disabled would be false
+    r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "name");
+    const deleteItem = r.menuItems().find((m) => m.action === "deleteSelected");
+    expect(deleteItem).toBeDefined();
+    expect(deleteItem!.disabled).toBe(true);
   });
 });

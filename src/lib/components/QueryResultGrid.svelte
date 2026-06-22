@@ -2,13 +2,22 @@
   import { getByPath, type ColumnField } from "../domain/schema";
   import type { Doc } from "../domain/columns";
   import BsonCell from "./BsonCell.svelte";
+  import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
 
-  let { columns, docs, colWidths, onResize, onReset }: {
+  let { columns, docs, colWidths, onResize, onReset,
+        selected, menu, menuItems, onRowClick, onOpenMenu, onMenuSelect, onCloseMenu }: {
     columns: ColumnField[];
     docs: Doc[];
     colWidths: Record<string, number>;
     onResize: (path: string, px: number) => void;
     onReset: (path: string) => void;
+    selected: Set<number>;
+    menu: { x: number; y: number; row: number; key: string } | null;
+    menuItems: () => MenuItem[];
+    onRowClick: (row: number, mods: { ctrl: boolean; shift: boolean }) => void;
+    onOpenMenu: (e: MouseEvent, row: number, key: string) => void;
+    onMenuSelect: (action: string) => void;
+    onCloseMenu: () => void;
   } = $props();
 
   const FALLBACK_W = 160;
@@ -57,17 +66,22 @@
       </thead>
       <tbody>
         {#each docs as d, i (i)}
-          <tr style="background:{i % 2 === 0 ? 'var(--zebra)' : 'var(--zebra-alt)'}">
+          <tr style="background:{selected.has(i) ? 'var(--row-selected)' : (i % 2 === 0 ? 'var(--zebra)' : 'var(--zebra-alt)')}"
+            onclick={(e) => onRowClick(i, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}>
             <td class="rownum">{i + 1}</td>
             {#each columns as c (c.path)}
               {@const val = getByPath(d, c.path)}
-              <td class="data-cell">{#if val !== undefined}<BsonCell value={val} />{/if}</td>
+              <td class="data-cell" oncontextmenu={(e) => onOpenMenu(e, i, c.path)}>{#if val !== undefined}<BsonCell value={val} />{/if}</td>
             {/each}
           </tr>
         {/each}
       </tbody>
     </table>
   </div>
+{/if}
+
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menuItems()} onselect={onMenuSelect} onclose={onCloseMenu} />
 {/if}
 
 <style>

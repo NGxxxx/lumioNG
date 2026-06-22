@@ -2,5 +2,5 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 fn main() {
-    lumiong_app_lib::run()
+    lumio_ng_app_lib::run()
 }
