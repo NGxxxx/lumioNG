@@ -18,7 +18,9 @@ const SAFETY_CAP = 200;
 /** Per-tab state for one aggregate Query tab: parse + run + client-side paging + column widths. */
 export function createQueryRun(initialStatement: string) {
   let statementText = $state(initialStatement);
-  let docs = $state<Doc[]>([]);
+  // $state.raw: result docs are replaced wholesale, never mutated in place. Avoids deep-proxying
+  // every nested field (the main RAM sink for large result sets). See collectionView for rationale.
+  let docs = $state.raw<Doc[]>([]);
   let columns = $state<ColumnField[]>([]);
   let error = $state<string | null>(null);
   let loading = $state(false);

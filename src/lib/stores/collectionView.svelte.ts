@@ -30,7 +30,11 @@ import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countC
  * context menu, xóa). Component chỉ render và bind; không giữ logic.
  */
 export function createCollectionView(db: string, coll: string) {
-  let docs = $state<Doc[]>([]);
+  // $state.raw (not $state): docs are always replaced wholesale (loadPage/showAll/filter
+  // assign a fresh array; inline edits mutate then reassign `[...docs]`). Deep-proxying every
+  // doc here is what made a 25k-row "Show all" balloon to >1GB — each nested field became a
+  // Svelte signal/proxy. Raw keeps them plain objects; reassignment still drives reactivity.
+  let docs = $state.raw<Doc[]>([]);
   let schema = $state<CollectionSchema | null>(null);
   let loading = $state(false);
   let error = $state<string | null>(null);

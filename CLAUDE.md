@@ -50,6 +50,16 @@ export function createX(args) {
 - Props là **bất biến trong vòng đời** khi component được mount lại theo key (vd tab theo `id`).
   Khi khởi tạo `$state`/tạo store từ props, bọc `untrack(() => …)` để tránh cảnh báo
   `state_referenced_locally`; giá trị chỉ-đọc dẫn xuất từ props dùng `$derived` (xem `DocumentForm.svelte`).
+- **Mảng document lớn dùng `$state.raw`, KHÔNG dùng `$state`** (xem `docs`/`pageDocs` trong
+  `collectionView.svelte.ts`, `queryRun.svelte.ts`). `$state` deep-proxy mọi field lồng nhau →
+  25k document khiến RAM phình >1GB (mỗi field thành một signal/proxy). `$state.raw` giữ doc là
+  object thuần; vẫn reactive khi **gán lại nguyên mảng**.
+  ⚠️ Đánh đổi: với raw, **mutate tại chỗ không re-render**. Mọi cập nhật phải theo kiểu immutable —
+  dựng doc/mảng mới rồi gán lại:
+  - ✅ `docs[row] = { ...docs[row], [key]: v }; docs = [...docs];` (inline edit hiện tại)
+  - ✅ `docs = docs.filter(...)` / `docs = batch`
+  - ❌ `docs[row].field = v` hay `docs[row].a.b = v` **mà không** gán lại `docs` → đổi data nhưng UI
+    đứng im (lỗi âm thầm). Nếu sau này hỗ trợ sửa field lồng nhau, vẫn phải dựng doc mới + reassign.
 - Test đặt **cạnh** file nguồn (`foo.ts` + `foo.test.ts`).
 
 ---
