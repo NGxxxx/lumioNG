@@ -1,0 +1,210 @@
+<script lang="ts">
+  import { untrack } from "svelte";
+  import { get } from "svelte/store";
+  import { createVirtualizer } from "@tanstack/svelte-virtual";
+  import type { Doc } from "../domain/columns";
+  import { describeValue } from "../domain/extjson";
+  import { jsonValueColor, type ValueKind } from "../domain/theme";
+
+  /**
+   * Shared, virtualized tree view for both the collection data grid and query results.
+   * Only the visible documents are rendered; row heights are measured so expanding a doc
+   * (variable height) stays smooth even with 25k+ rows. `startIndex` offsets the row number
+   * (collection view passes the page offset; query view leaves it 0 = page-local numbering).
+   * `onRowMenu` lets the parent open its own context menu (copy/open/export/delete) on right-click.
+   */
+  let { docs, startIndex = 0, onRowMenu }:
+    { docs: Doc[]; startIndex?: number; onRowMenu?: (e: MouseEvent, index: number) => void } = $props();
+
+  let openRows = $state<Set<number>>(new Set());
+  function toggle(i: number) {
+    const next = new Set(openRows);
+    if (next.has(i)) next.delete(i);
+    else next.add(i);
+    openRows = next;
+  }
+
+  // Reset expansion when the underlying docs change (paging/sort/filter/new query) so a
+  // previously-open index doesn't show the wrong row — and stale heights get re-measured.
+  let lastDocs = untrack(() => docs);
+  $effect(() => {
+    if (docs !== lastDocs) {
+      lastDocs = docs;
+      openRows = new Set();
+    }
+  });
+
+  function toValueKind(type: string): ValueKind | null {
+    switch (type) {
+      case "string": return "string";
+      case "int": case "long": case "double": case "decimal": return "number";
+      case "bool": return "bool";
+      case "objectId": return "objectid";
+      case "date": return "date";
+      case "null": return "null";
+      default: return null;
+    }
+  }
+  function valColor(v: unknown): string {
+    const info = describeValue(v);
+    const kind = toValueKind(info.type);
+    if (kind) return `color:${jsonValueColor(kind)}`;
+    if (info.type === "object") return "color:#7b53b8";
+    if (info.type === "array") return "color:#a07b2f";
+    return "color:#444";
+  }
+
+  /** _id display. Collapsed → truncated preview; expanded → full value (shown right after `{`). */
+  function idFull(doc: Doc): string {
+    const id = doc._id;
+    return id === undefined || id === null ? "(no _id)" : describeValue(id).display;
+  }
+  function idPreview(doc: Doc): string {
+    const s = idFull(doc);
+    return s.length > 32 ? s.slice(0, 31) + "…" : s;
+  }
+  function extraFields(doc: Doc): number {
+    return Object.keys(doc).length - ("_id" in doc ? 1 : 0);
+  }
+  /** Fields shown in the expanded body — everything except _id (which sits on the header line). */
+  function otherEntries(doc: Doc): [string, unknown][] {
+    return Object.entries(doc).filter(([k]) => k !== "_id");
+  }
+
+  // === Virtualization (variable row height → measureElement) ===
+  const ROW_EST = 24; // collapsed-row estimate; expanded rows are measured
+  const OVERSCAN = 6;
+  let scrollerEl = $state<HTMLDivElement | null>(null);
+
+  const rowVirtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: untrack(() => docs.length),
+    getScrollElement: () => scrollerEl,
+    estimateSize: () => ROW_EST,
+    overscan: OVERSCAN,
+  });
+
+  $effect(() => {
+    const count = docs.length;
+    const el = scrollerEl;
+    get(rowVirtualizer).setOptions({
+      count,
+      getScrollElement: () => el,
+      estimateSize: () => ROW_EST,
+      overscan: OVERSCAN,
+    });
+  });
+
+  const virtualItems = $derived($rowVirtualizer.getVirtualItems());
+  const totalSize = $derived($rowVirtualizer.getTotalSize());
+
+  // Register each rendered row so its real (collapsed/expanded) height refines the layout.
+  function measure(node: HTMLDivElement) {
+    get(rowVirtualizer).measureElement(node);
+    return {};
+  }
+</script>
+
+{#if docs.length === 0}
+  <div class="empty">No results</div>
+{:else}
+  <div class="tree-scroller" bind:this={scrollerEl}>
+    <div class="tree-sizer" style="height:{totalSize}px">
+      {#each virtualItems as vi (vi.index)}
+        {@const i = vi.index}
+        {@const doc = docs[i]}
+        {@const isOpen = openRows.has(i)}
+        {@const extra = extraFields(doc)}
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
+        <div
+          class="tree-doc"
+          data-index={vi.index}
+          use:measure
+          style="transform:translateY({vi.start}px)"
+          oncontextmenu={onRowMenu ? (e) => onRowMenu(e, i) : undefined}
+        >
+          <div
+            class="tree-header"
+            role="button"
+            tabindex="0"
+            onclick={() => toggle(i)}
+            onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(i); } }}
+          >
+            <svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" class="tree-caret" class:tree-caret-open={isOpen}>
+              <path d={isOpen ? "M1.5 3l3 3 3-3" : "M3 1.5l3 3-3 3"} fill="#888" stroke="#888" stroke-width="0.8" fill-rule="evenodd"/>
+            </svg>
+            <span class="tree-n">{startIndex + i + 1}</span>
+            <span class="tree-brace">{"{"}</span>
+            <span class="tree-idkey">_id</span><span class="tree-colon">:</span><span class="tree-idval">{isOpen ? idFull(doc) : idPreview(doc)}</span>
+            {#if !isOpen}
+              {#if extra > 0}<span class="tree-summary">+{extra} field{extra > 1 ? "s" : ""}</span>{/if}
+              <span class="tree-brace tree-brace-close">{"}"}</span>
+            {/if}
+          </div>
+          {#if isOpen}
+            <div class="tree-body">
+              {#each otherEntries(doc) as [key, val] (key)}
+                <div class="tree-line">
+                  <span class="tree-key">{key}</span><span class="tree-colon">:</span><span class="tree-val" style={valColor(val)}>{describeValue(val).display}</span>
+                </div>
+              {/each}
+              <div class="tree-close">{"}"}</div>
+            </div>
+          {/if}
+        </div>
+      {/each}
+    </div>
+  </div>
+{/if}
+
+<style>
+  .empty { padding: 16px; color: var(--muted); font-size: 12px; }
+  .tree-scroller {
+    overflow: auto;
+    height: 100%;
+    position: relative;
+    background: #fff;
+    font-family: Consolas, "Courier New", monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+  }
+  /* Spacer that holds the full virtual height; rows are absolutely positioned within it. */
+  .tree-sizer { position: relative; width: 100%; }
+  .tree-doc {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    border-bottom: 1px solid #f0f0f0;
+    padding: 2px 0;
+  }
+  .tree-header {
+    display: flex;
+    align-items: center;
+    padding: 1px 10px;
+    cursor: default;
+    white-space: nowrap;
+    overflow: hidden;
+    user-select: none;
+  }
+  .tree-header:hover { background: #f5f9fd; }
+  .tree-caret { flex: none; margin-right: 6px; transition: transform 0.1s; }
+  .tree-n { color: #999; margin-right: 8px; }
+  .tree-brace { color: #7b53b8; }
+  .tree-brace-close { margin-left: 5px; }
+  .tree-idkey { color: #9a2f8f; margin-left: 6px; }
+  .tree-colon { color: #555; }
+  .tree-idval { color: #6b3fa0; margin-left: 5px; }
+  .tree-summary { color: #bbb; margin-left: 8px; }
+  .tree-body { padding: 1px 0 4px 0; }
+  .tree-line {
+    padding: 0 10px 0 26px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tree-key { color: #9a2f8f; }
+  .tree-colon { color: #555; }
+  .tree-val { margin-left: 5px; }
+  .tree-close { padding: 1px 10px 1px 22px; color: #7b53b8; }
+</style>

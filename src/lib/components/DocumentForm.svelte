@@ -27,8 +27,10 @@
 
   // Nguồn sự thật: object cây. Deep-clone qua JSON để an toàn mọi môi trường.
   // Props bất biến trong vòng đời (tab remount theo id) → chỉ lấy giá trị khởi tạo.
+  // `initial` dùng cho cả edit (doc gốc) lẫn insert có sẵn (skeleton New / bản sao Duplicate);
+  // insert không kèm initial → form trống.
   let docValue = $state<Doc>(
-    untrack(() => (mode === "insert" || !initial ? {} : JSON.parse(JSON.stringify(initial)))),
+    untrack(() => (initial ? JSON.parse(JSON.stringify(initial)) : {})),
   );
   let text = $state(untrack(() => JSON.stringify(docValue, null, 2)));
   let view = $state<"tree" | "raw">("tree");

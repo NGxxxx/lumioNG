@@ -9,6 +9,12 @@
     onToggleLog,
     canRun = false,
     onrun = () => {},
+    canRunSelection = false,
+    onrunselection = () => {},
+    canEditDoc = false,
+    oneditdocument = () => {},
+    canExport = false,
+    onexport = () => {},
   }: {
     connected: boolean;
     canNewDoc: boolean;
@@ -18,6 +24,12 @@
     onToggleLog: () => void;
     canRun?: boolean;
     onrun?: () => void;
+    canRunSelection?: boolean;
+    onrunselection?: () => void;
+    canEditDoc?: boolean;
+    oneditdocument?: () => void;
+    canExport?: boolean;
+    onexport?: () => void;
   } = $props();
 </script>
 
@@ -104,8 +116,8 @@
     </svg>
   </button>
 
-  <!-- Run selection (context-dependent, disabled) -->
-  <button aria-label="Run selection" title="Run selection" class="btn-icon" disabled>
+  <!-- Run selection (enabled when query tab has a highlighted statement) -->
+  <button aria-label="Run selection" title="Run selection" class="btn-icon" disabled={!canRunSelection} onclick={onrunselection}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M3 3l6 5-6 5z" fill="#1f9d4d"/>
       <rect x="11" y="3" width="2.2" height="10" fill="#1f9d4d"/>
@@ -139,16 +151,16 @@
 
   <div class="sep"></div>
 
-  <!-- Edit document (context-dependent, disabled) -->
-  <button aria-label="Edit document" title="Edit document" class="btn-icon" disabled>
+  <!-- Edit document (enabled when exactly one data-view row with an _id is selected) -->
+  <button aria-label="Edit document" title="Edit document" class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M2 11l7-7 3 3-7 7H2z" fill="#f0d574" stroke="#b89534" stroke-width="0.9"/>
       <path d="M10 3l2-2 3 3-2 2z" fill="#9fb4cc" stroke="#5b7088" stroke-width="0.8"/>
     </svg>
   </button>
 
-  <!-- Export JSON (context-dependent, disabled) -->
-  <button aria-label="Export JSON" title="Export JSON" class="btn-icon" disabled>
+  <!-- Export (enabled in the data view; exports the selection if any, else the filtered set) -->
+  <button aria-label="Export" title="Export" class="btn-icon" disabled={!canExport} onclick={onexport}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M4 1.5h6l3 3v10H4z" fill="#fff" stroke="#888" stroke-width="0.9"/>
       <path d="M8 6v5M5.6 8.6L8 11l2.4-2.4" stroke="#2f7dd1" stroke-width="1.2" fill="none"/>

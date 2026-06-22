@@ -20,6 +20,7 @@ import {
   type SortKey,
 } from "../domain/grid";
 import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
+import { buildSkeleton, duplicateForInsert } from "../domain/skeleton";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
@@ -504,6 +505,7 @@ export function createCollectionView(db: string, coll: string) {
       { label: "Update all matching filter…", action: "updateAll" },
       { label: "Delete all matching filter…", action: "deleteAll" },
       { label: "New document…", action: "newDoc" },
+      { label: "Duplicate document…", action: "duplicate", disabled: n !== 1 },
     );
     return items;
   }
@@ -516,8 +518,11 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
-  /** Trả về doc cần mở khi action là "open", hoặc `{ newDoc: true }` để mở tab chèn. */
-  function onMenuSelect(action: string): { open: Doc } | { newDoc: true } | null {
+  /**
+   * Trả doc cần mở khi action là "open", hoặc `{ insert }` (kèm doc dựng sẵn) cho New/Duplicate.
+   * New document → skeleton đủ field theo schema; Duplicate → bản sao doc (bỏ _id).
+   */
+  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | null {
     if (!menu) return null;
     const row = menu.row;
     const key = menu.key;
@@ -560,7 +565,12 @@ export function createCollectionView(db: string, coll: string) {
         break;
       case "newDoc":
         menu = null;
-        return { newDoc: true };
+        return { insert: buildSkeleton(columnFields) };
+      case "duplicate": {
+        const dup = doc ? duplicateForInsert(doc) : null;
+        menu = null;
+        return dup ? { insert: dup } : null;
+      }
       case "editCell":
         startEdit(row, key);
         break;

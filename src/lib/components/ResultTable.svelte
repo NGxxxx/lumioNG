@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { onMount, untrack } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
   import { get } from "svelte/store";
   import { createCollectionView } from "../stores/collectionView.svelte";
+  import { activeDataView } from "../stores/activeDataView.svelte";
   import type { Doc } from "../domain/columns";
-  import BsonCell from "./BsonCell.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -16,10 +16,7 @@
   import { statusPill, jsonValueColor } from "../domain/theme";
   import type { ValueKind } from "../domain/theme";
   import { describeValue } from "../domain/extjson";
-  import { toJsonDoc } from "../domain/exporter";
-  async function copyTreeDoc(doc: Doc) {
-    try { await navigator.clipboard.writeText(toJsonDoc(doc)); } catch { /* ignore */ }
-  }
+  import ResultTree from "./ResultTree.svelte";
 
   let {
     db,
@@ -79,11 +76,6 @@
   }
 
   let view = $state<"grid" | "tree">("grid");
-  let openDocs = $state<Record<string, boolean>>({});
-
-  function toggleDoc(key: string) {
-    openDocs = { ...openDocs, [key]: !openDocs[key] };
-  }
 
   /** Map BsonType → ValueKind for color lookup (same logic as BsonCell). */
   function toValueKind(type: string): ValueKind | null {
@@ -98,36 +90,13 @@
     }
   }
 
-  /** Return inline color style for a value. */
-  function valColor(v: unknown): string {
-    const info = describeValue(v);
-    const kind = toValueKind(info.type);
-    if (kind) return `color:${jsonValueColor(kind)}`;
-    if (info.type === "object") return "color:#7b53b8";
-    if (info.type === "array") return "color:#a07b2f";
-    return "color:#444";
-  }
-
-  /** Short display string for _id header. */
-  function idShort(doc: Doc): string {
-    const id = doc._id;
-    if (id === undefined || id === null) return "(no _id)";
-    const info = describeValue(id);
-    const s = info.display;
-    return s.length > 24 ? s.slice(0, 22) + "…" : s;
-  }
-
-  /** Summary text shown when doc is collapsed. */
-  function docSummary(doc: Doc): string {
-    const keys = Object.keys(doc);
-    const extra = keys.length - 1; // excluding _id
-    return extra > 0 ? `+${extra} field${extra > 1 ? "s" : ""}` : "";
-  }
-
   const visibleColumns = $derived(v.columnFields.filter((c) => !v.hidden.has(c.path)));
 
   // === Grid row virtualization ===
-  const ROW_H = 24; // approximate fixed row height (px); initial estimate, refined by measureElement
+  // Rows are single-line and fixed-height (see `tbody tr[data-index]` in CSS), so the virtualizer
+  // trusts ROW_H exactly — no per-row measureElement/ResizeObserver. This removes scroll churn and
+  // a ResizeObserver per visible row, which matters a lot when scrolling 25k rows.
+  const ROW_H = 24; // exact row height (px); MUST match `tbody tr[data-index] { height }`
   const OVERSCAN = 8;
   let scrollerEl = $state<HTMLDivElement | null>(null);
 
@@ -168,12 +137,6 @@
     ROWNUM_COL_W +
       visibleColumns.reduce((sum, c) => sum + (v.colWidths[c.path] ?? FALLBACK_COL_W), 0),
   );
-
-  // Register each rendered row with the virtualizer so real heights refine the estimate.
-  function measure(node: HTMLTableRowElement) {
-    get(rowVirtualizer).measureElement(node);
-    return {};
-  }
 
   /** Field summary: số field hiện / tổng. */
   const fieldsSummary = $derived(`${visibleColumns.length}/${v.columnFields.length}`);
@@ -226,7 +189,7 @@
   async function onMenuSelect(action: string) {
     const r = v.onMenuSelect(action);
     if (r && "open" in r) onopendocument(await v.openDoc(r.open), "edit");
-    else if (r && "newDoc" in r) onopendocument(null, "insert");
+    else if (r && "insert" in r) onopendocument(r.insert, "insert");
   }
 
   function onGridKey(e: KeyboardEvent) {
@@ -236,9 +199,34 @@
     }
   }
 
+  // Bridge for the global toolbar (Edit document / Export). Getters keep the toolbar reactive
+  // to selection. Edit targets the single selected row (must have an _id); Export uses the
+  // selection if any, else the whole filtered set — both reuse the store's existing flows.
+  const dataViewHandle = {
+    get canEdit() {
+      if (v.selectedCount !== 1) return false;
+      const d = v.docs[[...v.selected][0]];
+      return d ? idJson(d) !== null : false;
+    },
+    get canExport() {
+      return true;
+    },
+    async editSelected() {
+      if (v.selectedCount !== 1) return;
+      const d = v.docs[[...v.selected][0]];
+      if (!d || idJson(d) === null) return;
+      onopendocument(await v.openDoc(d), "edit");
+    },
+    exportCurrent() {
+      v.requestExport(v.selectedCount > 0 ? "selection" : "filter");
+    },
+  };
+
   onMount(() => {
     v.init();
+    activeDataView.register(dataViewHandle);
   });
+  onDestroy(() => activeDataView.unregister(dataViewHandle));
 </script>
 
 <div class="result">
@@ -397,7 +385,6 @@
           {@const d = v.docs[row]}
           <tr
             data-index={vi.index}
-            use:measure
             class:row-selected={v.selected.has(row)}
             style="background:{v.selected.has(row) ? 'var(--row-selected)' : (row % 2 === 0 ? 'var(--zebra)' : 'var(--zebra-alt)')}"
             onclick={(e) => v.clickRow(row, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
@@ -422,7 +409,10 @@
                       {@const pill = statusPill(val)}
                       <span class="pill" style="color:{pill.color}; background:{pill.bg};">{val}</span>
                     {:else}
-                      <BsonCell value={val} />
+                      {@const info = describeValue(val)}
+                      {@const kind = toValueKind(info.type)}
+                      <span class="cell {info.type}" title={info.display}
+                        style={kind ? `color:${jsonValueColor(kind)}` : undefined}>{info.display}</span>
                     {/if}
                   {/if}
                 {/if}
@@ -442,40 +432,10 @@
     {/if}
   </div>
   {:else}
-  <!-- Tree view -->
-  <div class="tree-scroller">
-    {#each v.docs as doc, i}
-      {@const docKey = idJson(doc) ?? `__idx_${i}`}
-      {@const open = !!openDocs[docKey]}
-      {@const entries = Object.entries(doc)}
-      <div class="tree-doc">
-        <!-- Header row -->
-        <div class="tree-header" onclick={() => toggleDoc(docKey)} role="button" tabindex="0"
-          onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleDoc(docKey); } }}>
-          <svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" class="tree-caret" class:tree-caret-open={open}>
-            <path d={open ? "M1.5 3l3 3 3-3" : "M3 1.5l3 3-3 3"} fill="#888" stroke="#888" stroke-width="0.8" fill-rule="evenodd"/>
-          </svg>
-          <span class="tree-n">{v.allShown ? i + 1 : (v.currentPage - 1) * v.pageSize + i + 1}</span>
-          <span class="tree-brace">{"{" }</span>
-          <span class="tree-idkey">_id</span><span class="tree-colon">:</span><span class="tree-idval">{idShort(doc)}</span>
-          {#if !open}<span class="tree-summary">{docSummary(doc)}</span>{/if}
-          {#if open}<span class="tree-brace-close-hint"> … }</span>{/if}
-          <button type="button" class="tree-copy" title="Copy document as JSON"
-            onclick={(e) => { e.stopPropagation(); copyTreeDoc(doc); }}>Copy</button>
-        </div>
-        <!-- Expanded body -->
-        {#if open}
-          <div class="tree-body">
-            {#each entries as [key, val]}
-              <div class="tree-line">
-                <span class="tree-key">{key}</span><span class="tree-colon">:</span><span class="tree-val" style={valColor(val)}>{describeValue(val).display}</span>
-              </div>
-            {/each}
-            <div class="tree-close-brace">{"}"}</div>
-          </div>
-        {/if}
-      </div>
-    {/each}
+  <!-- Tree view (shared, virtualized component) -->
+  <div class="tree-wrap">
+    <ResultTree docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
+      onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
     {#if v.loading}<div class="status">Đang tải…</div>{/if}
   </div>
   {/if}
@@ -650,10 +610,23 @@
     padding: 3px 6px;
     font-size: 11px;
   }
+  /* Fixed data-row height so virtualization can trust ROW_H without measuring. Spacer rows
+     (padTop/padBottom) have no data-index, so their explicit pixel heights are unaffected. */
+  tbody tr[data-index] { height: 24px; }
   .row-selected td { box-shadow: inset 0 -1px 0 var(--row-selected-ring), inset 0 1px 0 var(--row-selected-ring); }
   .scroller:focus { outline: none; }
   .data-cell { padding: 0; height: 22px; }
-  .data-cell :global(.cell) { padding: 0 9px; display: inline-block; height: 22px; line-height: 22px; }
+  /* Inlined BsonCell (no component per cell): base + per-BSON-type modifiers. Scalar colors come
+     from the inline style attr; object/array colors come from the type-class rules below. */
+  .data-cell .cell {
+    padding: 0 9px; display: inline-block; height: 22px; line-height: 22px;
+    max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    vertical-align: bottom; font-family: ui-monospace, monospace; font-size: 12px;
+  }
+  .data-cell .cell.string { font-family: system-ui, sans-serif; }
+  .data-cell .cell.null { font-style: italic; }
+  .data-cell .cell.object { color: #8a6cb5; font-style: italic; font-size: 11px; }
+  .data-cell .cell.array { color: #a07b2f; font-style: italic; font-size: 11px; }
 
   /* === Pill for status column === */
   .pill {
@@ -740,7 +713,9 @@
   /* === Error / status messages === */
   .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; }
   .io-ok { background: #e8f5e9; color: #1b5e20; padding: 6px 10px; font-size: 12px; }
-  .status { padding: 8px; color: #777; font-size: 12px; }
+  /* Tree-view loading hint: overlay so it doesn't disturb the 100%-height virtual scroller. */
+  .status { position: absolute; top: 6px; right: 12px; padding: 3px 8px; color: #777; font-size: 12px;
+    background: rgba(255, 255, 255, 0.75); border-radius: 3px; z-index: 5; }
 
   .chooser-row { display: block; font-size: 12px; padding: 2px 0; white-space: nowrap; }
   .chooser-apply {
@@ -785,60 +760,9 @@
   .pg-rows { display: flex; align-items: center; gap: 4px; color: #555; }
   .pg-rows input { width: 56px; height: 20px; text-align: center; }
 
-  /* === Tree view === */
-  .tree-scroller {
-    overflow: auto;
-    flex: 1;
-    background: #fff;
-    font-family: Consolas, 'Courier New', monospace;
-    font-size: 12.5px;
-    line-height: 1.55;
-    padding: 8px 0;
-  }
-  .tree-doc {
-    border-bottom: 1px solid #f0f0f0;
-    padding: 2px 0;
-  }
-  .tree-header {
-    display: flex;
-    align-items: center;
-    padding: 1px 10px;
-    cursor: default;
-    white-space: nowrap;
-    overflow: hidden;
-    user-select: none;
-    gap: 0;
-  }
-  .tree-header:hover { background: #f5f9fd; }
-  .tree-copy { margin-left: auto; height: 18px; padding: 0 8px; font-size: 11px; border: 1px solid #ccc; border-radius: 2px; background: #f0f0f0; color: #444; cursor: pointer; opacity: 0; }
-  .tree-header:hover .tree-copy { opacity: 1; }
-  .tree-caret {
-    flex-shrink: 0;
-    margin-right: 6px;
-    transition: transform 0.1s;
-  }
-  .tree-n { color: #999; margin-right: 8px; }
-  .tree-brace { color: #7b53b8; }
-  .tree-brace-close-hint { color: #7b53b8; opacity: 0.5; margin-left: 4px; }
-  .tree-idkey { color: #9a2f8f; margin-left: 6px; }
-  .tree-colon { color: #555; }
-  .tree-idval { color: #6b3fa0; margin-left: 5px; }
-  .tree-summary { color: #bbb; margin-left: 8px; }
-  .tree-body {
-    padding: 1px 0 4px 0;
-  }
-  .tree-line {
-    padding: 0 10px 0 26px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .tree-key { color: #9a2f8f; }
-  .tree-val { margin-left: 5px; }
-  .tree-close-brace {
-    padding: 1px 10px 1px 22px;
-    color: #7b53b8;
-  }
+  /* === Tree view === (rendering lives in the shared, virtualized ResultTree.svelte) */
+  .tree-wrap { flex: 1; min-height: 0; position: relative; }
+  .tree-wrap > :global(.tree-scroller) { height: 100%; }
 
   /* === Header dropdowns (Sort / Fields) === */
   .dropwrap { position: relative; display: flex; align-items: center; gap: 4px; margin-left: 4px; }

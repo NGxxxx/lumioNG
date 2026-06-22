@@ -1,10 +1,14 @@
 <script lang="ts">
   import { idJson } from "$lib/domain/docid";
   import { aggregateTemplate } from "$lib/domain/aggregate";
+  import { inferSchema } from "$lib/domain/schema";
+  import { buildSkeleton } from "$lib/domain/skeleton";
+  import { sampleDocuments } from "$lib/api/documents";
   import { navigation } from "$lib/stores/navigation.svelte";
   import { getQueryRun, disposeQueryRun } from "$lib/stores/queryRuns.svelte";
   import { namespaceTree } from "$lib/stores/namespaceTree.svelte";
   import { shell } from "$lib/stores/shell.svelte";
+  import { activeDataView } from "$lib/stores/activeDataView.svelte";
   import { hostStatus } from "$lib/stores/hostStatus.svelte";
   import { quit } from "$lib/api/window";
   import { disconnect as apiDisconnect } from "$lib/api/connection";
@@ -48,6 +52,13 @@
       ? ((navigation.workTabs.find((t) => t.id === active.id && t.kind === "query") ?? null) as QueryTabType | null)
       : null,
   );
+  // Resolve the active query tab's run store (getQueryRun caches, so this is idempotent).
+  // Reading it here keeps the toolbar's Run / Run-selection state reactive to editor changes.
+  const activeQueryRun = $derived(
+    activeQueryTab ? getQueryRun(activeQueryTab.id, activeQueryTab.initialStatement) : null,
+  );
+  // Toolbar Edit/Export act on the collection data view, and only when it's the active context.
+  const dataViewActive = $derived(active?.zone === "context" && active.kind === "data");
 
   async function onConnected(conn: { label: string; uri: string }) {
     shell.setConnection(conn);
@@ -86,9 +97,16 @@
     }
   }
 
-  function newDocActive() {
+  async function newDocActive() {
     const s = navigation.selection;
-    if (s?.coll) openDocument(s.db, s.coll, null, "insert");
+    if (!s?.coll) return;
+    // Pre-fill all known fields (sampled schema) so the user only fills values; blank on failure.
+    let initial: Doc | null = null;
+    try {
+      const sample = await sampleDocuments(s.db, s.coll, "{}", 100);
+      initial = buildSkeleton(inferSchema(sample).fields);
+    } catch { /* fall back to an empty form */ }
+    openDocument(s.db, s.coll, initial, "insert");
   }
 
   // Splitter sidebar (kéo ngang)
@@ -144,8 +162,14 @@
     onrefresh={doRefresh}
     onnewdocument={newDocActive}
     onToggleLog={() => shell.toggleLog()}
-    canRun={activeQueryTab != null}
-    onrun={() => { if (activeQueryTab) getQueryRun(activeQueryTab.id, activeQueryTab.initialStatement).run(sel?.db ?? null); }}
+    canRun={activeQueryRun != null}
+    onrun={() => activeQueryRun?.run(sel?.db ?? null)}
+    canRunSelection={activeQueryRun?.hasSelection ?? false}
+    onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
+    canEditDoc={dataViewActive && (activeDataView.handle?.canEdit ?? false)}
+    oneditdocument={() => activeDataView.handle?.editSelected()}
+    canExport={dataViewActive && (activeDataView.handle?.canExport ?? false)}
+    onexport={() => activeDataView.handle?.exportCurrent()}
   />
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
@@ -153,7 +177,7 @@
         connection={shell.connection}
         onselect={(d) => navigation.selectCollection(d.db, d.coll)}
         onselectdb={(d) => navigation.selectDatabase(d.db)}
-        onnewquery={(d) => navigation.openQuery(aggregateTemplate(d.coll))}
+        onnewquery={(d) => { navigation.selectCollection(d.db, d.coll); navigation.openQuery(aggregateTemplate(d.coll)); }}
         onmanagesessions={() => shell.openSession()}
         ondisconnect={doDisconnect}
       />

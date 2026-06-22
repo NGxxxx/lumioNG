@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { getQueryRun } from "../stores/queryRuns.svelte";
   import QueryResultGrid from "./QueryResultGrid.svelte";
-  import QueryResultTree from "./QueryResultTree.svelte";
+  import ResultTree from "./ResultTree.svelte";
   import CommandLogView from "./CommandLogView.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -24,7 +24,14 @@
   }
   function onMenu(action: string) {
     if (action === "run") v.run(currentDb);
+    else if (action === "runSelection") v.runSelection(currentDb);
     menu = null;
+  }
+
+  /** Keep the store's selection range in sync with the editor (for Run selection). */
+  function syncSelection(e: Event) {
+    const t = e.currentTarget as HTMLTextAreaElement;
+    v.setSelection(t.selectionStart, t.selectionEnd);
   }
 
   function onResultMenu(action: string) {
@@ -39,7 +46,8 @@
     {#if currentDb}<span class="db">db: {currentDb}</span>{/if}
   </div>
 
-  <textarea class="editor" bind:value={v.statementText} spellcheck="false" oncontextmenu={openMenu}></textarea>
+  <textarea class="editor" bind:value={v.statementText} spellcheck="false" oncontextmenu={openMenu}
+    onselect={syncSelection} onkeyup={syncSelection} onmouseup={syncSelection}></textarea>
 
   {#if v.error}<div class="error">{v.error}</div>{/if}
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
@@ -75,7 +83,10 @@
               onRowClick={v.clickRow} onOpenMenu={v.openMenu}
               onMenuSelect={onResultMenu} onCloseMenu={v.closeMenu} />
           {:else}
-            <QueryResultTree docs={v.pageDocs} />
+            <ResultTree docs={v.pageDocs} onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
+            {#if v.menu}
+              <ContextMenu x={v.menu.x} y={v.menu.y} items={v.menuItems()} onselect={onResultMenu} onclose={v.closeMenu} />
+            {/if}
           {/if}
         {:else}
           <div class="status">Edit the statement and run it (toolbar ▶ or right-click → Run).</div>
@@ -100,7 +111,9 @@
 </div>
 
 {#if menu}
-  <ContextMenu x={menu.x} y={menu.y} items={[{ label: "Run", action: "run" }]} onselect={onMenu} onclose={() => (menu = null)} />
+  <ContextMenu x={menu.x} y={menu.y}
+    items={[{ label: "Run", action: "run" }, { label: "Run selection", action: "runSelection", disabled: !v.hasSelection }]}
+    onselect={onMenu} onclose={() => (menu = null)} />
 {/if}
 
 {#if v.confirmDelete}

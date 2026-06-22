@@ -39,19 +39,25 @@ export function createQueryRun(initialStatement: string) {
   let ioError = $state<string | null>(null);
   let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
 
+  // Editor selection range (chars into statementText), kept in sync by the textarea.
+  // Enables "Run selection": run only the highlighted statement instead of the whole editor.
+  let selStart = $state(0);
+  let selEnd = $state(0);
+  const hasSelection = $derived(selStart !== selEnd && statementText.slice(selStart, selEnd).trim().length > 0);
+
   const totalCount = $derived(docs.length);
   const pgCount = $derived(pageCount(totalCount, pageSize));
   const page = $derived(clampPage(pageReq, pgCount));
   const pageDocs = $derived(docs.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize));
 
-  async function exec(db: string | null, forceNoLimit: boolean) {
+  async function exec(db: string | null, forceNoLimit: boolean, stmt: string = statementText) {
     if (!db) {
       error = "Select a database first.";
       return;
     }
     let parsed: { coll: string; pipelineText: string };
     try {
-      parsed = parseAggregateStatement(statementText);
+      parsed = parseAggregateStatement(stmt);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       return;
@@ -77,6 +83,17 @@ export function createQueryRun(initialStatement: string) {
     } finally {
       loading = false;
     }
+  }
+
+  /** Run only the highlighted text (falls back to the whole statement if nothing is selected). */
+  function runSelection(db: string | null) {
+    const stmt = hasSelection ? statementText.slice(selStart, selEnd) : statementText;
+    return exec(db, false, stmt);
+  }
+
+  function setSelection(start: number, end: number) {
+    selStart = start;
+    selEnd = end;
   }
 
   function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
@@ -208,6 +225,9 @@ export function createQueryRun(initialStatement: string) {
     setPageSize: (n: number) => { pageSize = Math.max(1, Math.floor(n) || 50); pageReq = 1; },
     run: (db: string | null) => exec(db, false),
     runNoLimit: (db: string | null) => exec(db, true),
+    runSelection,
+    setSelection,
+    get hasSelection() { return hasSelection; },
     get srcDb() { return srcDb; },
     get srcColl() { return srcColl; },
     get selected() { return selected; },
