@@ -1,3 +1,4 @@
+// State and DDL actions for the namespace sidebar tree (databases + collections).
 import { listNamespaces, type DbInfo } from "../api/connection";
 import * as admin from "../api/admin";
 import { errorMessage } from "../api/errors";
@@ -102,5 +103,5 @@ export function createNamespaceTree(nav: NavLike = defaultNav) {
   };
 }
 
-/** Singleton dùng trong app (test tự tạo instance riêng qua createNamespaceTree). */
+/** App-wide singleton (tests create their own instance via createNamespaceTree). */
 export const namespaceTree = createNamespaceTree();

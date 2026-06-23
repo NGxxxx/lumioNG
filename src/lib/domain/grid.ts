@@ -1,14 +1,16 @@
-/** Một khóa sort: dot-path + chiều (1 asc / -1 desc). */
+/** Sort-key and projection helpers for the data grid (sort cycling, build, projection). */
+
+/** A sort key: dot-path + direction (1 asc / -1 desc). */
 export interface SortKey {
   path: string;
   dir: 1 | -1;
 }
 
 /**
- * Xoay vòng sort khi click header.
- * - shift = false: chỉ giữ 1 khóa của field này, xoay none→asc→desc→none.
- * - shift = true: thêm field mới (append asc) hoặc xoay dir field đã có (asc→desc→bỏ),
- *   giữ nguyên thứ tự + chiều các khóa khác.
+ * Cycle the sort on a header click.
+ * - shift = false: single-key mode, cycles none→asc→desc→none for this field.
+ * - shift = true: multi-key mode, appends a new field (asc) or cycles an existing one
+ *   (asc→desc→remove), leaving other keys untouched.
  */
 export function cycleSort(keys: SortKey[], path: string, shift: boolean): SortKey[] {
   if (!shift) {
@@ -27,25 +29,25 @@ export function cycleSort(keys: SortKey[], path: string, shift: boolean): SortKe
   return keys.filter((k) => k.path !== path);
 }
 
-/** Thêm khóa sort asc cho path nếu chưa có; path đã có → giữ nguyên mảng. */
+/** Append an asc sort key for path if not already present; no-op if already in the list. */
 export function addSortKey(keys: SortKey[], path: string): SortKey[] {
   if (keys.some((k) => k.path === path)) return keys;
   return [...keys, { path, dir: 1 }];
 }
 
-/** Đảo chiều khóa của path (1↔-1); path không có → giữ nguyên. */
+/** Toggle direction of a key (1↔-1); no-op when path is not in the list. */
 export function toggleSortDir(keys: SortKey[], path: string): SortKey[] {
   return keys.map((k) =>
     k.path === path ? { path: k.path, dir: (k.dir === 1 ? -1 : 1) as 1 | -1 } : k,
   );
 }
 
-/** Bỏ khóa của path; path không có → giữ nguyên. */
+/** Remove the key for path; no-op when path is not in the list. */
 export function removeSortKey(keys: SortKey[], path: string): SortKey[] {
   return keys.filter((k) => k.path !== path);
 }
 
-/** Dời khóa path đi delta (±1) trong mảng, kẹp biên; không có/đụng biên → giữ nguyên. */
+/** Move a key by delta (±1) in the array, clamped to bounds; no-op when missing or already at an edge. */
 export function moveSortKey(keys: SortKey[], path: string, delta: number): SortKey[] {
   const i = keys.findIndex((k) => k.path === path);
   if (i === -1) return keys;
@@ -57,7 +59,7 @@ export function moveSortKey(keys: SortKey[], path: string, delta: number): SortK
   return next;
 }
 
-/** Sort doc ExtJSON giữ thứ tự ưu tiên; tự nối {_id:1} nếu chưa có khóa _id. Rỗng → null. */
+/** Build a sort ExtJSON doc in priority order; appends {_id:1} as tie-breaker when absent. Empty → null. */
 export function buildSort(keys: SortKey[]): string | null {
   if (keys.length === 0) return null;
   const obj: Record<string, number> = {};
@@ -66,7 +68,7 @@ export function buildSort(keys: SortKey[]): string | null {
   return JSON.stringify(obj);
 }
 
-/** Projection exclusion ExtJSON từ tập path ẩn (bỏ qua _id). Rỗng → null. */
+/** Build an exclusion projection ExtJSON from a set of hidden paths (skips _id). Empty → null. */
 export function buildProjection(hidden: Set<string>): string | null {
   const obj: Record<string, number> = {};
   for (const p of hidden) if (p !== "_id") obj[p] = 0;

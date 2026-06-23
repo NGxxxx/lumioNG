@@ -2,7 +2,7 @@ import { namespaceTree as defaultTree } from "./namespaceTree.svelte";
 
 type TreeLike = { readonly databases: { name: string; collections: string[] }[] };
 
-/** State của "vỏ" (chrome): connection hiện tại, kích thước sidebar/log, đếm db/collection. */
+/** App chrome state: active connection, sidebar/log dimensions, and db/collection counts. */
 export function createShell(tree: TreeLike = defaultTree) {
   let connection = $state<{ label: string; uri: string } | null>(null);
   let sessionOpen = $state(true);
@@ -63,5 +63,5 @@ export function createShell(tree: TreeLike = defaultTree) {
   };
 }
 
-/** Singleton dùng trong app (test tự tạo instance riêng qua createShell). */
+/** App-wide singleton (tests create their own instance via createShell). */
 export const shell = createShell();

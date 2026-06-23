@@ -11,6 +11,8 @@
     type LeafInputType,
     type AddableType,
   } from "../domain/bsontree";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let {
     label,
@@ -39,12 +41,12 @@
   const info = $derived(describeValue(value));
   const type = $derived(info.type);
 
-  // ----- trạng thái sửa lá -----
+  // ----- leaf edit state -----
   let editText = $state("");
   let dirty = $state(false);
   let editError = $state<string | null>(null);
 
-  // Đồng bộ text từ value khi value đổi từ ngoài (vd array splice) và không đang sửa dở.
+  // Sync edit text from value when value changes externally (e.g. array splice) and not mid-edit.
   $effect(() => {
     if (hasInput(type) && !dirty) editText = editTextOf(value);
   });
@@ -63,7 +65,7 @@
     }
   }
 
-  // Nếu lá đang lỗi mà bị gỡ khỏi cây → dọn cờ lỗi ở gốc.
+  // If a leaf with an active error is removed from the tree, clear the error flag at the root.
   $effect(() => {
     return () => {
       if (editError) onerror(path, false);
@@ -101,7 +103,7 @@
     onchange(c);
   }
 
-  // ----- thêm field/phần tử -----
+  // ----- add field / array item -----
   let newName = $state("");
   let newType = $state<AddableType>("string");
   let addError = $state<string | null>(null);
@@ -125,13 +127,13 @@
 {#snippet adder(isArray: boolean)}
   <div class="add">
     {#if !isArray}
-      <input class="name" placeholder="tên field…" bind:value={newName} />
+      <input class="name" placeholder={m.tree_node_field_name_placeholder()} bind:value={newName} />
     {/if}
     <select bind:value={newType}>
       {#each ADDABLE_TYPES as t}<option value={t}>{t}</option>{/each}
     </select>
-    <button onclick={isArray ? addItem : addField}>{isArray ? "+ Add item" : "+ Add field"}</button>
-    {#if addError}<span class="adderr">{addError}</span>{/if}
+    <button onclick={isArray ? addItem : addField}>{isArray ? m.tree_node_add_item() : m.tree_node_add_field()}</button>
+    {#if addError}<span class="adderr">{msgKey(addError)}</span>{/if}
   </div>
 {/snippet}
 
@@ -140,7 +142,7 @@
     <div class="node">
       <span class="label">{label}</span>
       <span class="badge">object</span>
-      {#if removable}<button class="x" onclick={onremove} aria-label="Remove">✕</button>{/if}
+      {#if removable}<button class="x" onclick={onremove} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
     </div>
   {/if}
   <ul class="tree">
@@ -164,7 +166,7 @@
   <div class="node">
     <span class="label">{label}</span>
     <span class="badge">array[{arrayItems().length}]</span>
-    {#if removable}<button class="x" onclick={onremove} aria-label="Remove">✕</button>{/if}
+    {#if removable}<button class="x" onclick={onremove} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
   </div>
   <ul class="tree">
     {#each arrayItems() as v, i (i)}
@@ -193,16 +195,16 @@
     {:else}
       <input class="leaf" bind:value={editText} oninput={onLeafInput} spellcheck="false" />
     {/if}
-    {#if removable}<button class="x" onclick={onremove} aria-label="Remove">✕</button>{/if}
-    {#if editError}<div class="cellerror">{editError}</div>{/if}
+    {#if removable}<button class="x" onclick={onremove} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
+    {#if editError}<div class="cellerror">{msgKey(editError)}</div>{/if}
   </div>
 {:else}
   <div class="node">
     <span class="label">{label}</span>
     <span class="badge">{type}</span>
     <span class="display">{info.display}</span>
-    {#if locked}<span class="lock" title="Bất biến">🔒</span>{/if}
-    {#if removable && !locked}<button class="x" onclick={onremove} aria-label="Remove">✕</button>{/if}
+    {#if locked}<span class="lock" title={m.tree_node_locked_title()}>🔒</span>{/if}
+    {#if removable && !locked}<button class="x" onclick={onremove} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
   </div>
 {/if}
 

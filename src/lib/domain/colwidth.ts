@@ -1,6 +1,6 @@
 import { getByPath, type ColumnField } from "./schema";
 import { describeValue } from "./extjson";
-import type { Doc } from "./columns";
+import type { Doc } from "./doc";
 
 const CHAR_PX = 7; // approximate px per character at the grid font size
 const PAD_PX = 20; // cell horizontal padding + a little breathing room

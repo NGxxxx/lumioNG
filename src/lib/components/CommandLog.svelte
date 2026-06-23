@@ -2,17 +2,18 @@
 <script lang="ts">
   import { commandLog } from "../stores/commandLog.svelte";
   import CommandLogView from "./CommandLogView.svelte";
+  import * as m from "$lib/paraglide/messages";
 
   let { height, onToggle }: { height: number; onToggle: () => void } = $props();
 </script>
 
 <div class="log" style="height:{height}px">
   <header>
-    <span class="title">Command log</span>
-    <span class="subtitle"><span class="dot">·</span>mongosh</span>
+    <span class="title">{m.command_log_title()}</span>
+    <span class="subtitle"><span class="dot">·</span>{m.command_log_subtitle()}</span>
     <span class="actions">
-      <button onclick={() => commandLog.clear()}>Clear</button>
-      <button aria-label="Toggle command log" onclick={onToggle}>▾</button>
+      <button onclick={() => commandLog.clear()}>{m.command_log_clear()}</button>
+      <button aria-label={m.command_log_toggle()} onclick={onToggle}>▾</button>
     </span>
   </header>
   <CommandLogView />

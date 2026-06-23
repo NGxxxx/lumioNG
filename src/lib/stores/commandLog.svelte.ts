@@ -3,7 +3,7 @@ export interface LogEntry {
   text: string;
 }
 
-/** Command log mongosh (chỉ-đọc): mỗi thao tác đẩy một dòng. Giới hạn N mục gần nhất. */
+/** Append-only mongosh command log; retains the N most recent entries. */
 export function createCommandLog(limit = 500) {
   let entries = $state<LogEntry[]>([]);
   let open = $state(true);
@@ -36,5 +36,5 @@ export function createCommandLog(limit = 500) {
   };
 }
 
-/** Singleton dùng trong app (test tự tạo instance riêng qua createCommandLog). */
+/** App-wide singleton (tests create their own instance via createCommandLog). */
 export const commandLog = createCommandLog();

@@ -14,7 +14,7 @@ vi.mock("../domain/docid", () => ({
 describe("DocumentForm — Raw JSON view", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("cú pháp JSON sai → chặn save, không gọi backend, hiện lỗi", async () => {
+  it("invalid JSON syntax → blocks save, does not call backend, shows error", async () => {
     const onsaved = vi.fn();
     const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved, oncancel: () => {} },
@@ -26,10 +26,10 @@ describe("DocumentForm — Raw JSON view", () => {
 
     expect(documents.insertDocument).not.toHaveBeenCalled();
     expect(onsaved).not.toHaveBeenCalled();
-    expect(getByText(/sai cú pháp/)).toBeTruthy();
+    expect(getByText(/syntax error/i)).toBeTruthy();
   });
 
-  it("JSON hợp lệ ở chế độ insert → gọi insertDocument với JSON", async () => {
+  it("valid JSON in insert mode → calls insertDocument with JSON", async () => {
     const onsaved = vi.fn();
     (documents.insertDocument as ReturnType<typeof vi.fn>).mockResolvedValue('{"$oid":"1"}');
     const { getByText, container } = render(DocumentForm, {
@@ -43,7 +43,7 @@ describe("DocumentForm — Raw JSON view", () => {
     expect(documents.insertDocument).toHaveBeenCalledWith("d", "c", '{"a":1}');
   });
 
-  it("JSON hợp lệ ở chế độ edit → gọi replaceDocument với _id và JSON đã sửa", async () => {
+  it("valid JSON in edit mode → calls replaceDocument with _id and updated JSON", async () => {
     const onsaved = vi.fn();
     (documents.replaceDocument as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     const { getByText, container } = render(DocumentForm, {
@@ -69,7 +69,7 @@ describe("DocumentForm — Raw JSON view", () => {
     );
   });
 
-  it("Raw JSON sai cú pháp → bấm Tree bị chặn, giữ Raw view + báo lỗi", async () => {
+  it("invalid raw JSON → switching to Tree is blocked, stays in Raw view and shows error", async () => {
     const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved: () => {}, oncancel: () => {} },
     });
@@ -77,16 +77,16 @@ describe("DocumentForm — Raw JSON view", () => {
     const textarea = container.querySelector("textarea")!;
     await fireEvent.input(textarea, { target: { value: "{ bad json" } });
     await fireEvent.click(getByText("Field tree"));
-    // vẫn còn textarea (chưa chuyển sang Tree) + có lỗi cú pháp
+    // textarea still present (did not switch to Tree) + syntax error shown
     expect(container.querySelector("textarea")).not.toBeNull();
-    expect(getByText(/sai cú pháp/)).toBeTruthy();
+    expect(getByText(/syntax error/i)).toBeTruthy();
   });
 });
 
 describe("DocumentForm — Tree view", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("mặc định mở Tree view (không có textarea), hiện field", () => {
+  it("opens in Tree view by default (no textarea), shows field", () => {
     const { container, getByText } = render(DocumentForm, {
       props: {
         mode: "edit",
@@ -101,7 +101,7 @@ describe("DocumentForm — Tree view", () => {
     expect(getByText("a")).toBeTruthy();
   });
 
-  it("sửa field trong tree → Save gọi replaceDocument với JSON đã đổi (giữ _id)", async () => {
+  it("editing a field in tree → Save calls replaceDocument with updated JSON (preserves _id)", async () => {
     const onsaved = vi.fn();
     (documents.replaceDocument as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     const { getByText, container } = render(DocumentForm, {
@@ -126,7 +126,7 @@ describe("DocumentForm — Tree view", () => {
     );
   });
 
-  it("field lỗi kiểu trong tree → Save vô hiệu, không gọi backend", async () => {
+  it("type-error field in tree → Save is disabled, backend not called", async () => {
     const onsaved = vi.fn();
     const { getByText, container } = render(DocumentForm, {
       props: {
@@ -148,7 +148,7 @@ describe("DocumentForm — Tree view", () => {
     expect(onsaved).not.toHaveBeenCalled();
   });
 
-  it("toggle Tree(lỗi)→Raw→Tree → Save bật lại (treeValid được reset)", async () => {
+  it("toggle Tree(error)→Raw→Tree → Save re-enables (treeValid is reset)", async () => {
     const { getByText, container } = render(DocumentForm, {
       props: {
         mode: "edit",
@@ -160,7 +160,7 @@ describe("DocumentForm — Tree view", () => {
       },
     });
     const input = container.querySelector("input.leaf")!;
-    await fireEvent.input(input, { target: { value: "abc" } }); // không hợp lệ -> treeValid=false
+    await fireEvent.input(input, { target: { value: "abc" } }); // invalid value -> treeValid=false
     expect((getByText("Save") as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.click(getByText("JSON"));
     await fireEvent.click(getByText("Field tree"));

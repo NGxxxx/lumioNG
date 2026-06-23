@@ -12,9 +12,9 @@ pub async fn coll_stats(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client().await?;
-    // `collStats` (run_command) đã deprecated → dùng aggregation $collStats.
-    // $collStats lồng số liệu trong `storageStats` (size, count, storageSize, indexSizes...).
-    // Ta phẳng hóa về top-level để giữ NGUYÊN hình dạng JSON cho frontend (domain/stats.ts).
+    // The `collStats` run_command is deprecated; use the $collStats aggregation stage instead.
+    // $collStats nests metrics under `storageStats` (size, count, storageSize, indexSizes...).
+    // Flatten to top-level to match the shape expected by the frontend (domain/stats.ts).
     let pipeline = vec![doc! { "$collStats": { "storageStats": {} } }];
     let mut cursor = client
         .database(&db)
@@ -24,9 +24,9 @@ pub async fn coll_stats(
     let first = cursor
         .try_next()
         .await?
-        .ok_or_else(|| AppError::Query("$collStats: không có kết quả".into()))?;
+        .ok_or_else(|| AppError::Query("$collStats: no result".into()))?;
 
-    // Phẳng: ns ở top-level; số liệu còn lại lấy từ storageStats.
+    // Flatten: ns at top-level; remaining metrics pulled from storageStats.
     let mut out = first
         .get_document("storageStats")
         .cloned()
@@ -54,7 +54,7 @@ pub async fn coll_options(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client().await?;
-    // listCollections trả { cursor: { firstBatch: [ { name, type, options, info, idIndex } ] } }.
+    // listCollections returns { cursor: { firstBatch: [ { name, type, options, info, idIndex } ] } }.
     let resp = client
         .database(&db)
         .run_command(doc! { "listCollections": 1, "filter": { "name": &coll } })
@@ -62,11 +62,11 @@ pub async fn coll_options(
     let first = resp
         .get_document("cursor")
         .and_then(|c| c.get_array("firstBatch"))
-        .map_err(|e| AppError::Query(format!("listCollections: phản hồi không hợp lệ: {e}")))?
+        .map_err(|e| AppError::Query(format!("listCollections: invalid response: {e}")))?
         .first()
         .and_then(|b| b.as_document());
     match first {
         Some(d) => doc_to_canonical_string(d),
-        None => Ok("{}".to_string()), // collection không tồn tại → options rỗng
+        None => Ok("{}".to_string()), // collection does not exist → empty options
     }
 }

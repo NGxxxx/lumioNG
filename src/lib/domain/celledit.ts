@@ -1,3 +1,4 @@
+/** Inline-cell editing: editability check, raw-text extraction, and typed value rebuild. */
 import { rebuildNumber, type NumericKind } from "./bsonnum";
 import { editTextOf } from "./bsontree";
 
@@ -5,7 +6,7 @@ export type RebuildResult =
   | { ok: true; value: unknown }
   | { ok: false; error: string };
 
-/** Text thô nạp vào input khi bắt đầu sửa (định nghĩa chung ở bsontree). */
+/** Raw text to seed the input when starting an edit (defined in bsontree). */
 export { editTextOf };
 
 const NUMERIC_KEYS = ["$numberInt", "$numberLong", "$numberDouble", "$numberDecimal"] as const;
@@ -24,31 +25,31 @@ function numericKey(value: unknown): (typeof NUMERIC_KEYS)[number] | null {
   return null;
 }
 
-/** Cell có thể sửa inline? _id và mọi kiểu không-scalar đều không. */
+/** Whether a cell can be edited inline; _id and all non-scalar types cannot. */
 export function isInlineEditable(key: string, value: unknown): boolean {
   if (key === "_id") return false;
   if (typeof value === "string" || typeof value === "boolean" || typeof value === "number") return true;
   return numericKey(value) !== null;
 }
 
-/** Dựng lại giá trị đúng kiểu BSON của `original` từ text user gõ. */
+/** Rebuild a value with the same BSON type as `original` from user-entered text. */
 export function rebuildValue(original: unknown, text: string): RebuildResult {
   if (typeof original === "string") return { ok: true, value: text };
 
   if (typeof original === "boolean") {
     if (text === "true") return { ok: true, value: true };
     if (text === "false") return { ok: true, value: false };
-    return { ok: false, error: 'Giá trị bool phải là "true" hoặc "false".' };
+    return { ok: false, error: "err_bool_invalid" };
   }
 
   if (typeof original === "number") {
     const n = Number(text);
-    if (text.trim() === "" || !Number.isFinite(n)) return { ok: false, error: "Số không hợp lệ." };
+    if (text.trim() === "" || !Number.isFinite(n)) return { ok: false, error: "err_number_invalid" };
     return { ok: true, value: n };
   }
 
   const nk = numericKey(original);
   if (nk) return rebuildNumber(KEY_TO_KIND[nk], text.trim());
 
-  return { ok: false, error: "Kiểu giá trị không hỗ trợ sửa inline." };
+  return { ok: false, error: "err_inline_unsupported" };
 }

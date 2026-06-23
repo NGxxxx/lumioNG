@@ -2,10 +2,10 @@ import { describe, it, expect } from "vitest";
 import { isInlineEditable, editTextOf, rebuildValue } from "./celledit";
 
 describe("isInlineEditable", () => {
-  it("false cho cột _id dù giá trị là string", () => {
+  it("false for _id column even when value is a string", () => {
     expect(isInlineEditable("_id", "abc")).toBe(false);
   });
-  it("true cho scalar và numeric wrapper", () => {
+  it("true for scalars and numeric wrappers", () => {
     expect(isInlineEditable("a", "hello")).toBe(true);
     expect(isInlineEditable("a", true)).toBe(true);
     expect(isInlineEditable("a", 3.14)).toBe(true);
@@ -14,7 +14,7 @@ describe("isInlineEditable", () => {
     expect(isInlineEditable("a", { $numberDouble: "3.14" })).toBe(true);
     expect(isInlineEditable("a", { $numberDecimal: "123.45" })).toBe(true);
   });
-  it("false cho objectId/date/binary/object/array/null", () => {
+  it("false for objectId/date/binary/object/array/null", () => {
     expect(isInlineEditable("a", { $oid: "507f1f77bcf86cd799439011" })).toBe(false);
     expect(isInlineEditable("a", { $date: "2020-01-01T00:00:00Z" })).toBe(false);
     expect(isInlineEditable("a", { $binary: { base64: "AA==", subType: "00" } })).toBe(false);
@@ -25,7 +25,7 @@ describe("isInlineEditable", () => {
 });
 
 describe("editTextOf", () => {
-  it("trả text thô đúng cho từng kiểu", () => {
+  it("returns correct raw text for each type", () => {
     expect(editTextOf("hi")).toBe("hi");
     expect(editTextOf(true)).toBe("true");
     expect(editTextOf(3.14)).toBe("3.14");
@@ -36,7 +36,7 @@ describe("editTextOf", () => {
   });
 });
 
-describe("rebuildValue round-trip giữ kiểu", () => {
+describe("rebuildValue round-trip preserves type", () => {
   const cases: unknown[] = [
     "hello",
     true,
@@ -52,35 +52,35 @@ describe("rebuildValue round-trip giữ kiểu", () => {
       expect(r).toEqual({ ok: true, value: original });
     });
   }
-  it("sửa giá trị $numberInt hợp lệ", () => {
+  it("edits a $numberInt to a new valid value", () => {
     expect(rebuildValue({ $numberInt: "2" }, "5")).toEqual({ ok: true, value: { $numberInt: "5" } });
   });
-  it("sửa string thành chuỗi mới", () => {
+  it("replaces a string value", () => {
     expect(rebuildValue("a", "b")).toEqual({ ok: true, value: "b" });
   });
 });
 
-describe("rebuildValue lỗi kiểu", () => {
-  it("chữ vào $numberInt → ok:false", () => {
+describe("rebuildValue type errors", () => {
+  it("non-numeric input for $numberInt → ok:false", () => {
     const r = rebuildValue({ $numberInt: "2" }, "abc");
     expect(r.ok).toBe(false);
   });
-  it("$numberInt ngoài dải 32-bit → ok:false", () => {
+  it("$numberInt out of 32-bit range → ok:false", () => {
     const r = rebuildValue({ $numberInt: "2" }, "3000000000");
     expect(r.ok).toBe(false);
   });
-  it("bool khác true/false → ok:false", () => {
+  it("bool other than true/false → ok:false", () => {
     const r = rebuildValue(true, "yes");
     expect(r.ok).toBe(false);
   });
-  it("$numberDecimal sai dạng → ok:false", () => {
+  it("$numberDecimal bad format → ok:false", () => {
     const r = rebuildValue({ $numberDecimal: "1.0" }, "1.2.3");
     expect(r.ok).toBe(false);
   });
-  it("$numberInt nhận giá trị min hợp lệ -2147483648", () => {
+  it("$numberInt accepts the minimum valid value -2147483648", () => {
     expect(rebuildValue({ $numberInt: "0" }, "-2147483648")).toEqual({ ok: true, value: { $numberInt: "-2147483648" } });
   });
-  it("$numberLong vượt dải 64-bit → ok:false", () => {
+  it("$numberLong out of 64-bit range → ok:false", () => {
     const r = rebuildValue({ $numberLong: "1" }, "99999999999999999999999");
     expect(r.ok).toBe(false);
   });

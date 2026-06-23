@@ -9,7 +9,7 @@ import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { collStatsCmd } from "../domain/mongosh";
 
-/** Trạng thái + nạp số liệu tab Info cho một collection. Component chỉ render. */
+/** State and loader for the collection Info tab. Components only render. */
 export function createCollectionInfo(db: string, coll: string) {
   let stats = $state<CollStatsInfo | null>(null);
   let options = $state<CollOptionsInfo | null>(null);

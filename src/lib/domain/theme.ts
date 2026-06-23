@@ -1,4 +1,4 @@
-/** Logic-màu thuần cho hiển thị BSON. Không phụ thuộc Svelte/Tauri. */
+/** Pure color logic for BSON display. No Svelte or Tauri dependencies. */
 
 export type ValueKind =
   | "string" | "number" | "bool" | "objectid" | "date"
@@ -35,7 +35,7 @@ const STATUS_PILL: Record<string, { color: string; bg: string }> = {
   cancelled: { color: "#c0392b", bg: "#fdeaea" },
 };
 
-/** Gợi ý màu pill theo quy ước trạng thái thường gặp; không khớp → trung tính. */
+/** Suggest a pill color based on common status conventions; unknown value → neutral. */
 export function statusPill(value: string): { color: string; bg: string } {
   return STATUS_PILL[value] ?? NEUTRAL_PILL;
 }
@@ -53,7 +53,7 @@ const VALUE_COLOR: Record<ValueKind, string> = {
   op: "#1565c0",
 };
 
-/** Màu cho một loại token giá trị JSON/mongosh. */
+/** Color for a JSON/mongosh value token kind. */
 export function jsonValueColor(kind: ValueKind): string {
   return VALUE_COLOR[kind];
 }

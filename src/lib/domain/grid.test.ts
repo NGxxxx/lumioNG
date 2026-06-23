@@ -10,75 +10,75 @@ import {
   type SortKey,
 } from "./grid";
 
-describe("cycleSort (không shift)", () => {
-  it("rỗng → asc field này", () => {
+describe("cycleSort (no shift)", () => {
+  it("empty → asc for this field", () => {
     expect(cycleSort([], "name", false)).toEqual([{ path: "name", dir: 1 }]);
   });
-  it("asc → desc cùng field", () => {
+  it("asc → desc for same field", () => {
     expect(cycleSort([{ path: "name", dir: 1 }], "name", false)).toEqual([{ path: "name", dir: -1 }]);
   });
-  it("desc → bỏ (rỗng)", () => {
+  it("desc → remove (empty)", () => {
     expect(cycleSort([{ path: "name", dir: -1 }], "name", false)).toEqual([]);
   });
-  it("click field khác → chỉ còn 1 khóa asc của field mới", () => {
+  it("different field clicked → single asc key for new field", () => {
     expect(cycleSort([{ path: "age", dir: -1 }], "name", false)).toEqual([{ path: "name", dir: 1 }]);
   });
-  it("đang đa khóa, click thường → chỉ còn 1 khóa asc", () => {
+  it("multi-key active, plain click → collapses to 1 asc key", () => {
     const keys: SortKey[] = [{ path: "a", dir: 1 }, { path: "b", dir: -1 }];
     expect(cycleSort(keys, "a", false)).toEqual([{ path: "a", dir: 1 }]);
   });
 });
 
 describe("cycleSort (shift)", () => {
-  it("field mới → append asc, giữ thứ tự khóa cũ", () => {
+  it("new field → appends asc, preserves existing key order", () => {
     const keys: SortKey[] = [{ path: "a", dir: 1 }];
     expect(cycleSort(keys, "b", true)).toEqual([{ path: "a", dir: 1 }, { path: "b", dir: 1 }]);
   });
-  it("field đã có asc → desc, không xáo trộn khóa khác", () => {
+  it("existing asc field → desc, other keys untouched", () => {
     const keys: SortKey[] = [{ path: "a", dir: 1 }, { path: "b", dir: 1 }];
     expect(cycleSort(keys, "a", true)).toEqual([{ path: "a", dir: -1 }, { path: "b", dir: 1 }]);
   });
-  it("field đã có desc → bỏ khỏi danh sách", () => {
+  it("existing desc field → removed from list", () => {
     const keys: SortKey[] = [{ path: "a", dir: -1 }, { path: "b", dir: 1 }];
     expect(cycleSort(keys, "a", true)).toEqual([{ path: "b", dir: 1 }]);
   });
 });
 
 describe("buildSort", () => {
-  it("rỗng → null", () => {
+  it("empty → null", () => {
     expect(buildSort([])).toBeNull();
   });
-  it("1 khóa → nối tie-breaker _id, giữ thứ tự", () => {
+  it("1 key → appends _id tie-breaker", () => {
     expect(buildSort([{ path: "age", dir: -1 }])).toBe('{"age":-1,"_id":1}');
   });
-  it("đa khóa giữ thứ tự ưu tiên", () => {
+  it("multiple keys preserve priority order", () => {
     expect(buildSort([{ path: "a", dir: 1 }, { path: "b", dir: -1 }])).toBe('{"a":1,"b":-1,"_id":1}');
   });
-  it("đã có khóa _id → không nối thêm", () => {
+  it("_id already present → no extra tie-breaker", () => {
     expect(buildSort([{ path: "_id", dir: -1 }])).toBe('{"_id":-1}');
   });
 });
 
 describe("buildProjection", () => {
-  it("rỗng → null", () => {
+  it("empty → null", () => {
     expect(buildProjection(new Set())).toBeNull();
   });
-  it("chỉ có _id → null (không loại _id)", () => {
+  it("only _id → null (_id is never excluded)", () => {
     expect(buildProjection(new Set(["_id"]))).toBeNull();
   });
-  it("vài path → exclusion doc, loại _id", () => {
+  it("several paths → exclusion doc, _id excluded from output", () => {
     expect(buildProjection(new Set(["a", "_id", "b"]))).toBe('{"a":0,"b":0}');
   });
 });
 
 describe("addSortKey", () => {
-  it("path mới → append asc, giữ thứ tự cũ", () => {
+  it("new path → appends asc, preserves existing order", () => {
     expect(addSortKey([{ path: "a", dir: 1 }], "b")).toEqual([
       { path: "a", dir: 1 },
       { path: "b", dir: 1 },
     ]);
   });
-  it("path đã có → giữ nguyên (không nhân đôi, không đổi dir)", () => {
+  it("existing path → no-op (no duplicate, no direction change)", () => {
     expect(addSortKey([{ path: "a", dir: -1 }], "a")).toEqual([{ path: "a", dir: -1 }]);
   });
 });
@@ -90,18 +90,18 @@ describe("toggleSortDir", () => {
   it("-1 → 1", () => {
     expect(toggleSortDir([{ path: "a", dir: -1 }], "a")).toEqual([{ path: "a", dir: 1 }]);
   });
-  it("path không có → giữ nguyên", () => {
+  it("path not found → no-op", () => {
     expect(toggleSortDir([{ path: "a", dir: 1 }], "b")).toEqual([{ path: "a", dir: 1 }]);
   });
 });
 
 describe("removeSortKey", () => {
-  it("bỏ path khớp", () => {
+  it("removes matching path", () => {
     expect(removeSortKey([{ path: "a", dir: 1 }, { path: "b", dir: 1 }], "a")).toEqual([
       { path: "b", dir: 1 },
     ]);
   });
-  it("path không có → giữ nguyên", () => {
+  it("path not found → no-op", () => {
     expect(removeSortKey([{ path: "a", dir: 1 }], "z")).toEqual([{ path: "a", dir: 1 }]);
   });
 });
@@ -112,27 +112,27 @@ describe("moveSortKey", () => {
     { path: "b", dir: 1 },
     { path: "c", dir: 1 },
   ];
-  it("delta -1 dời lên một bậc", () => {
+  it("delta -1 moves up one position", () => {
     expect(moveSortKey(keys, "b", -1)).toEqual([
       { path: "b", dir: 1 },
       { path: "a", dir: 1 },
       { path: "c", dir: 1 },
     ]);
   });
-  it("delta +1 dời xuống một bậc", () => {
+  it("delta +1 moves down one position", () => {
     expect(moveSortKey(keys, "b", 1)).toEqual([
       { path: "a", dir: 1 },
       { path: "c", dir: 1 },
       { path: "b", dir: 1 },
     ]);
   });
-  it("đụng biên đầu → giữ nguyên", () => {
+  it("at start boundary → no-op", () => {
     expect(moveSortKey(keys, "a", -1)).toEqual(keys);
   });
-  it("đụng biên cuối → giữ nguyên", () => {
+  it("at end boundary → no-op", () => {
     expect(moveSortKey(keys, "c", 1)).toEqual(keys);
   });
-  it("path không có → giữ nguyên", () => {
+  it("path not found → no-op", () => {
     expect(moveSortKey(keys, "z", 1)).toEqual(keys);
   });
 });

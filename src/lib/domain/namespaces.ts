@@ -1,17 +1,19 @@
-/** Validate tên collection theo quy tắc Mongo (tập thực dụng). Trả message lỗi hoặc null. */
+/** Validate collection and database names against MongoDB naming rules. */
+
+/** Returns a message key or null for the given collection name. */
 export function validateCollectionName(name: string): string | null {
-  if (name.length === 0) return "Tên collection không được rỗng.";
-  if (name.includes("$")) return "Tên collection không được chứa ký tự '$'.";
-  if (name.startsWith("system.")) return "Tên collection không được bắt đầu bằng 'system.'.";
-  if (name.includes("\0")) return "Tên collection không được chứa ký tự null.";
-  if (new TextEncoder().encode(name).length > 235) return "Tên collection quá dài.";
+  if (name.length === 0) return "err_coll_name_empty";
+  if (name.includes("$")) return "err_coll_name_dollar";
+  if (name.startsWith("system.")) return "err_coll_name_system";
+  if (name.includes("\0")) return "err_coll_name_null_char";
+  if (new TextEncoder().encode(name).length > 235) return "err_coll_name_too_long";
   return null;
 }
 
-/** Validate tên database. Trả message lỗi hoặc null. */
+/** Validate a database name against MongoDB rules. Returns a message key or null. */
 export function validateDatabaseName(name: string): string | null {
-  if (name.length === 0) return "Tên database không được rỗng.";
-  if (/[\/\\. "$*<>:|?]/.test(name)) return "Tên database chứa ký tự không hợp lệ (/ \\ . \" $ * < > : | ? hoặc khoảng trắng).";
-  if (new TextEncoder().encode(name).length > 63) return "Tên database quá dài (tối đa 63 byte).";
+  if (name.length === 0) return "err_db_name_empty";
+  if (/[\/\\. "$*<>:|?]/.test(name)) return "err_db_name_invalid_chars";
+  if (new TextEncoder().encode(name).length > 63) return "err_db_name_too_long";
   return null;
 }

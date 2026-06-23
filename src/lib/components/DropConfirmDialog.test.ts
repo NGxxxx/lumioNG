@@ -3,7 +3,7 @@ import { render, fireEvent } from "@testing-library/svelte";
 import DropConfirmDialog from "./DropConfirmDialog.svelte";
 
 describe("DropConfirmDialog", () => {
-  it("Drop disabled tới khi gõ đúng tên", async () => {
+  it("Drop disabled until correct name is typed", async () => {
     const onconfirm = vi.fn();
     const { getByText, getByLabelText } = render(DropConfirmDialog, {
       props: { title: "Drop collection", message: "msg", expectedName: "users", onconfirm, oncancel: vi.fn() },

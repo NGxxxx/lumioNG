@@ -96,8 +96,8 @@ mod tests {
     fn numbers_keep_type_in_canonical() {
         let doc = doc! { "i32": 42i32, "i64": 42i64, "f": 42f64 };
         let s = doc_to_canonical_string(&doc).unwrap();
-        assert!(s.contains("$numberInt"), "i32 phải là $numberInt: {s}");
-        assert!(s.contains("$numberLong"), "i64 phải là $numberLong: {s}");
-        assert!(s.contains("$numberDouble"), "f64 phải là $numberDouble: {s}");
+        assert!(s.contains("$numberInt"), "i32 must serialize as $numberInt: {s}");
+        assert!(s.contains("$numberLong"), "i64 must serialize as $numberLong: {s}");
+        assert!(s.contains("$numberDouble"), "f64 must serialize as $numberDouble: {s}");
     }
 }

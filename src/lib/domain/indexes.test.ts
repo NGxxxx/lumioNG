@@ -6,7 +6,7 @@ import {
   describeKeys,
 } from "./indexes";
 
-// Index doc theo Canonical ExtJSON (số bọc trong $numberInt).
+// Index documents in Canonical ExtJSON (numbers wrapped in $numberInt).
 const idIdx =
   '{"v":{"$numberInt":"2"},"key":{"_id":{"$numberInt":"1"}},"name":"_id_"}';
 const emailIdx =
@@ -19,20 +19,20 @@ const textIdx =
   '{"v":{"$numberInt":"2"},"key":{"body":"text"},"name":"body_text"}';
 
 describe("parseIndexList", () => {
-  it("đánh dấu _id_", () => {
+  it("marks the _id_ index", () => {
     const [r] = parseIndexList([idIdx]);
     expect(r.name).toBe("_id_");
     expect(r.isId).toBe(true);
     expect(r.entries).toEqual([{ field: "_id", value: 1 }]);
   });
 
-  it("cờ unique", () => {
+  it("unique flag", () => {
     const [r] = parseIndexList([emailIdx]);
     expect(r.unique).toBe(true);
     expect(r.isId).toBe(false);
   });
 
-  it("compound giữ thứ tự field + dấu", () => {
+  it("compound preserves field order and direction", () => {
     const [r] = parseIndexList([compoundIdx]);
     expect(r.entries).toEqual([
       { field: "age", value: -1 },
@@ -46,39 +46,39 @@ describe("parseIndexList", () => {
     expect(r.sparse).toBe(true);
   });
 
-  it("key phi-số giữ nguyên chuỗi", () => {
+  it("non-numeric key value is kept as a string", () => {
     const [r] = parseIndexList([textIdx]);
     expect(r.entries).toEqual([{ field: "body", value: "text" }]);
   });
 });
 
 describe("buildIndexKeys", () => {
-  it("giữ thứ tự field", () => {
+  it("preserves field order", () => {
     expect(buildIndexKeys([{ field: "email", dir: 1 }, { field: "age", dir: -1 }])).toBe(
       '{"email":1,"age":-1}',
     );
   });
-  it("trim tên field", () => {
+  it("trims field names", () => {
     expect(buildIndexKeys([{ field: "  x ", dir: 1 }])).toBe('{"x":1}');
   });
 });
 
 describe("validateIndexFields", () => {
-  it("hợp lệ → null", () => {
+  it("valid → null", () => {
     expect(validateIndexFields([{ field: "email", dir: 1 }])).toBeNull();
   });
-  it("không field → lỗi", () => {
-    expect(validateIndexFields([{ field: "  ", dir: 1 }])).not.toBeNull();
+  it("no non-empty field → err_index_no_field", () => {
+    expect(validateIndexFields([{ field: "  ", dir: 1 }])).toBe("err_index_no_field");
   });
-  it("field trùng → lỗi", () => {
+  it("duplicate field → err_index_field_duplicate", () => {
     expect(
       validateIndexFields([{ field: "a", dir: 1 }, { field: "a", dir: -1 }]),
-    ).not.toBeNull();
+    ).toBe("err_index_field_duplicate");
   });
 });
 
 describe("describeKeys", () => {
-  it("format hiển thị", () => {
+  it("formats for display", () => {
     expect(
       describeKeys([{ field: "email", value: 1 }, { field: "age", value: -1 }]),
     ).toBe("{ email: 1, age: -1 }");

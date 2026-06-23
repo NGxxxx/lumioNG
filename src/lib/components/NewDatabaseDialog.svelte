@@ -1,6 +1,8 @@
 <script lang="ts">
   import { errorMessage } from "../api/errors";
   import { portal } from "../actions/portal";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let {
     onsubmit,
@@ -41,14 +43,14 @@
   <div class="modal" role="dialog" aria-modal="true" aria-label="New database">
     <header>New database</header>
     <div class="body">
-      <p class="hint">MongoDB tạo database khi có collection đầu tiên — nhập cả hai.</p>
-      <label>Tên database<input bind:value={db} aria-label="db-input" /></label>
-      <label>Collection đầu tiên<input bind:value={coll} aria-label="coll-input" /></label>
-      {#if error}<div class="dlg-error">{error}</div>{/if}
+      <p class="hint">{m.new_db_hint()}</p>
+      <label>{m.new_db_name_label()}<input bind:value={db} aria-label="db-input" /></label>
+      <label>{m.new_db_first_collection_label()}<input bind:value={coll} aria-label="coll-input" /></label>
+      {#if error}<div class="dlg-error">{msgKey(error)}</div>{/if}
     </div>
     <footer>
-      <button onclick={oncancel}>Cancel</button>
-      <button class="primary" disabled={busy} onclick={submit}>Create</button>
+      <button onclick={oncancel}>{m.common_cancel()}</button>
+      <button class="primary" disabled={busy} onclick={submit}>{m.common_create()}</button>
     </footer>
   </div>
 </div>

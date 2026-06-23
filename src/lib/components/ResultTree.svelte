@@ -2,9 +2,10 @@
   import { untrack } from "svelte";
   import { get } from "svelte/store";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
-  import type { Doc } from "../domain/columns";
+  import type { Doc } from "../domain/doc";
   import { describeValue } from "../domain/extjson";
   import { jsonValueColor, type ValueKind } from "../domain/theme";
+  import * as m from "$lib/paraglide/messages";
 
   /**
    * Shared, virtualized tree view for both the collection data grid and query results.
@@ -105,7 +106,7 @@
 </script>
 
 {#if docs.length === 0}
-  <div class="empty">No results</div>
+  <div class="empty">{m.result_tree_empty()}</div>
 {:else}
   <div class="tree-scroller" bind:this={scrollerEl}>
     <div class="tree-sizer" style="height:{totalSize}px">

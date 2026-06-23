@@ -1,3 +1,4 @@
+/** Describe and display Canonical Extended JSON values; extract numeric wrapper values. */
 export type BsonType =
   | "objectId" | "date" | "int" | "long" | "double" | "decimal"
   | "binary" | "string" | "bool" | "null" | "object" | "array" | "unknown";
@@ -8,8 +9,8 @@ export interface ValueInfo {
 }
 
 /**
- * Rút số từ giá trị ExtJSON ($numberInt/$numberLong/$numberDouble/$numberDecimal)
- * hoặc số thô; null nếu không suy ra được (kể cả khi parse ra NaN).
+ * Extract a JS number from an ExtJSON wrapper ($numberInt/$numberLong/$numberDouble/$numberDecimal)
+ * or a raw number; returns null when the value cannot be resolved (including NaN after parse).
  */
 export function numFromExt(v: unknown): number | null {
   if (typeof v === "number") return v;

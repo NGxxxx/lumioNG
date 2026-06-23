@@ -1,6 +1,7 @@
 <script lang="ts">
   import { errorMessage } from "../api/errors";
   import { portal } from "../actions/portal";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     title,
@@ -48,13 +49,13 @@
     <header>{title}</header>
     <div class="body">
       <p>{message}</p>
-      <p>Gõ <code>{expectedName}</code> để xác nhận:</p>
+      <p>{m.drop_dialog_confirm_prefix()} <code>{expectedName}</code> {m.drop_dialog_confirm_suffix()}</p>
       <input bind:value={typed} aria-label="confirm-name" />
       {#if error}<div class="dlg-error">{error}</div>{/if}
     </div>
     <footer>
-      <button onclick={oncancel}>Cancel</button>
-      <button class="danger" disabled={!matches || busy} onclick={confirm}>Drop</button>
+      <button onclick={oncancel}>{m.common_cancel()}</button>
+      <button class="danger" disabled={!matches || busy} onclick={confirm}>{m.drop_dialog_drop()}</button>
     </footer>
   </div>
 </div>

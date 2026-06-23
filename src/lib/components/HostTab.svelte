@@ -4,6 +4,7 @@
   import { formatUptime } from "../domain/host";
   import { formatCount } from "../domain/stats";
   import { maskUri } from "../domain/uri";
+  import * as m from "$lib/paraglide/messages";
 
   let { connection }: { connection: { label: string; uri: string } | null } = $props();
 
@@ -18,7 +19,7 @@
   <div class="title">{connection?.label ?? "—"}</div>
   <div class="sub">{connection?.uri ? maskUri(connection.uri) : "—"}</div>
   {#if hostStatus.error}<div class="error">{hostStatus.error}</div>{/if}
-  {#if hostStatus.loading && !h}<div class="status">Loading…</div>{/if}
+  {#if hostStatus.loading && !h}<div class="status">{m.common_loading()}</div>{/if}
   {#if h}
     <table>
       <tbody>
@@ -34,7 +35,7 @@
         <tr><td class="k">network.numRequests</td><td class="v">{formatCount(h.network.numRequests)}</td></tr>
       </tbody>
     </table>
-    <h4>opcounters</h4>
+    <h4>{m.host_tab_opcounters()}</h4>
     <table>
       <tbody>
         {#each Object.entries(h.opcounters) as [k, val] (k)}

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { clampWidth, computeColumnWidths, MIN_COL_W, MAX_COL_W } from "./colwidth";
 import type { ColumnField } from "./schema";
-import type { Doc } from "./columns";
+import type { Doc } from "./doc";
 
 describe("clampWidth", () => {
   it("clamps below MIN up to MIN", () => {

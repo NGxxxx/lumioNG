@@ -1,4 +1,4 @@
-/** Dựng chuỗi breadcrumb "conn \ db \ coll" cho thanh trên cùng. Thuần. */
+/** Build the "conn \ db \ coll" breadcrumb string for the top bar. Pure. */
 export function buildBreadcrumb(p: { conn: string | null; db?: string | null; coll?: string | null }): string {
   if (!p.conn) return "Not connected";
   const parts = [p.conn];

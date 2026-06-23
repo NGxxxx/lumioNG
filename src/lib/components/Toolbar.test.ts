@@ -6,7 +6,7 @@ import Toolbar from "./Toolbar.svelte";
 const base = { connected: true, canNewDoc: true, onsession: vi.fn(), onrefresh: vi.fn(), onnewdocument: vi.fn(), onToggleLog: vi.fn() };
 
 describe("Toolbar", () => {
-  it("Session manager luôn enabled và gọi onsession", async () => {
+  it("Session manager is always enabled and calls onsession", async () => {
     const onsession = vi.fn();
     const { getByLabelText } = render(Toolbar, { props: { ...base, connected: false, onsession } });
     const btn = getByLabelText("Session manager") as HTMLButtonElement;
@@ -15,22 +15,22 @@ describe("Toolbar", () => {
     expect(onsession).toHaveBeenCalled();
   });
 
-  it("Refresh disabled khi chưa kết nối", () => {
+  it("Refresh is disabled when not connected", () => {
     const { getByLabelText } = render(Toolbar, { props: { ...base, connected: false } });
     expect((getByLabelText("Refresh") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("New document disabled khi không có collection đang chọn", () => {
+  it("New document is disabled when no collection is active", () => {
     const { getByLabelText } = render(Toolbar, { props: { ...base, canNewDoc: false } });
     expect((getByLabelText("New document") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("nút ngữ cảnh (Run query) disabled trong A1", () => {
+  it("contextual button (Run query) is disabled in default state", () => {
     const { getByLabelText } = render(Toolbar, { props: { ...base } });
     expect((getByLabelText("Run query") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("Command log luôn enabled và gọi onToggleLog", async () => {
+  it("Command log is always enabled and calls onToggleLog", async () => {
     const onToggleLog = vi.fn();
     const { getByLabelText } = render(Toolbar, { props: { ...base, onToggleLog } });
     const btn = getByLabelText("Command log") as HTMLButtonElement;

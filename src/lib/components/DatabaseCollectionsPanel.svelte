@@ -2,18 +2,19 @@
   import { onMount, untrack } from "svelte";
   import { createDatabaseCollections, type SortCol } from "../stores/databaseCollections.svelte";
   import { formatBytes, formatCount } from "../domain/stats";
+  import * as m from "$lib/paraglide/messages";
 
   let { db, onopen }: { db: string; onopen: (coll: string) => void } = $props();
   const v = untrack(() => createDatabaseCollections(db));
   onMount(() => v.init());
 
-  const cols: { key: SortCol; label: string }[] = [
-    { key: "name", label: "Collection" },
-    { key: "count", label: "Documents" },
-    { key: "avgObjSize", label: "Avg size" },
-    { key: "storageSize", label: "Storage size" },
-    { key: "nindexes", label: "#Indexes" },
-    { key: "totalIndexSize", label: "Index size" },
+  const cols: { key: SortCol; label: () => string }[] = [
+    { key: "name", label: () => m.db_collections_col_collection() },
+    { key: "count", label: () => m.db_collections_col_documents() },
+    { key: "avgObjSize", label: () => m.db_collections_col_avg_size() },
+    { key: "storageSize", label: () => m.db_collections_col_storage_size() },
+    { key: "nindexes", label: () => m.db_collections_col_indexes() },
+    { key: "totalIndexSize", label: () => m.db_collections_col_index_size() },
   ];
   const arrow = (k: SortCol) => (v.sortCol === k ? (v.sortDir === "asc" ? " ▲" : " ▼") : "");
 </script>
@@ -27,12 +28,12 @@
     </div>
   {/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  <div class="bar"><button onclick={() => v.loadAll()}>Load stats</button></div>
+  <div class="bar"><button onclick={() => v.loadAll()}>{m.db_collections_load_stats()}</button></div>
   <table class="grid">
     <thead>
       <tr>
         {#each cols as c (c.key)}
-          <th onclick={() => v.setSort(c.key)}>{c.label}{arrow(c.key)}</th>
+          <th onclick={() => v.setSort(c.key)}>{c.label()}{arrow(c.key)}</th>
         {/each}
       </tr>
     </thead>
@@ -48,11 +49,11 @@
             <td>{formatCount(st.nindexes)}</td>
             <td>{formatBytes(st.totalIndexSize)}</td>
           {:else if r.state === "loading"}
-            <td colspan="5" class="muted">Loading…</td>
+            <td colspan="5" class="muted">{m.common_loading()}</td>
           {:else if r.state === "error"}
             <td colspan="5" class="error-cell">{r.error}</td>
           {:else}
-            <td colspan="5"><button class="link" onclick={() => v.loadStats(r.name)}>Load stats</button></td>
+            <td colspan="5"><button class="link" onclick={() => v.loadStats(r.name)}>{m.db_collections_load_stats()}</button></td>
           {/if}
         </tr>
       {/each}

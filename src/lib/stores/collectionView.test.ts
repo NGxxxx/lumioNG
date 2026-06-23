@@ -44,7 +44,7 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValue(0);
   });
 
-  it("init: đếm tổng + nạp trang 1 (skip 0) + derive columns", async () => {
+  it("init: counts total, loads page 1 (skip 0), and derives columns", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
@@ -57,7 +57,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenCalledWith("d", "c", 0, 50, "{}", null, null);
   });
 
-  it("goToPage(3) gọi queryPage với skip đúng + replace docs", async () => {
+  it("goToPage(3) calls queryPage with the correct skip and replaces docs", async () => {
     cnt.mockResolvedValue(200); // pageCount = 4
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }]); // init trang 1
     samp.mockResolvedValueOnce([]);
@@ -70,7 +70,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenLastCalledWith("d", "c", 100, 50, "{}", null, null);
   });
 
-  it("goToPage vượt pageCount → kẹp về trang cuối", async () => {
+  it("goToPage past pageCount → clamps to the last page", async () => {
     cnt.mockResolvedValue(100); // pageCount = 2
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
@@ -81,7 +81,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenLastCalledWith("d", "c", 50, 50, "{}", null, null);
   });
 
-  it("nextPage/prevPage di chuyển trang", async () => {
+  it("nextPage/prevPage navigate between pages", async () => {
     cnt.mockResolvedValue(200);
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
@@ -93,7 +93,7 @@ describe("createCollectionView — paging", () => {
     expect(v.currentPage).toBe(1);
   });
 
-  it("loadPage lỗi → error được set", async () => {
+  it("loadPage error → error is set", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockRejectedValueOnce({ kind: "Query", message: "boom" });
     samp.mockResolvedValueOnce([]);
@@ -102,7 +102,7 @@ describe("createCollectionView — paging", () => {
     expect(v.error).toBe("Query: boom");
   });
 
-  it("applyFilter cú pháp sai → set filterError, không gọi queryPage", async () => {
+  it("applyFilter with invalid syntax → sets filterError, does not call queryPage", async () => {
     const v = createCollectionView("d", "c");
     v.filterText = "{bad";
     await v.applyFilter();
@@ -110,7 +110,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).not.toHaveBeenCalled();
   });
 
-  it("applyFilter hợp lệ → reset trang 1 + queryPage với filter mới", async () => {
+  it("applyFilter with valid input → resets to page 1 and queries with the new filter", async () => {
     cnt.mockResolvedValue(5);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]); // init
     samp.mockResolvedValue([{ _id: { $oid: "a" }, x: 1 }]);
@@ -126,7 +126,7 @@ describe("createCollectionView — paging", () => {
     expect(samp).toHaveBeenLastCalledWith("d", "c", '{"x":2}', 100);
   });
 
-  it("applyFilter khi đang nạp trang → bỏ kết quả cũ, dùng filter mới", async () => {
+  it("applyFilter while a page is loading → discards the stale result and uses the new filter", async () => {
     cnt.mockResolvedValue(5);
     let resolveOld!: (v: unknown) => void;
     qp.mockImplementationOnce(() => new Promise((r) => (resolveOld = r)));
@@ -136,40 +136,40 @@ describe("createCollectionView — paging", () => {
     v.filterText = '{"x":2}';
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, x: 2 }]);
     const p2 = v.applyFilter();
-    resolveOld([{ _id: { $oid: "a" }, x: 1 }]); // stale resolves sau khi đổi filter
+    resolveOld([{ _id: { $oid: "a" }, x: 1 }]); // stale result resolves after filter change
     await p1;
     await p2;
     expect(v.docs).toEqual([{ _id: { $oid: "b" }, x: 2 }]);
     expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, '{"x":2}', null, null);
   });
 
-  it("goToPage race: kết quả trang cũ đến sau → bị bỏ, docs là trang mới nhất", async () => {
-    cnt.mockResolvedValue(200); // pageCount = 4, đủ cho trang 2 và 3
-    qp.mockResolvedValueOnce([]); // init trang 1
+  it("goToPage race: stale page result arrives late → discarded, docs reflect the latest page", async () => {
+    cnt.mockResolvedValue(200); // pageCount = 4, enough for pages 2 and 3
+    qp.mockResolvedValueOnce([]); // init page 1
     samp.mockResolvedValueOnce([]);
     const v = createCollectionView("d", "c");
     await v.init();
 
-    // Bắt đầu goToPage(2) nhưng để queryPage treo
+    // Start goToPage(2) but let queryPage hang
     let resolvePage2!: (val: unknown) => void;
     qp.mockImplementationOnce(() => new Promise((r) => (resolvePage2 = r)));
 
-    const p2 = v.goToPage(2); // in-flight, chưa resolve
+    const p2 = v.goToPage(2); // in-flight, not yet resolved
 
-    // Gọi goToPage(3) ngay — resolve ngay lập tức
+    // Immediately call goToPage(3) — resolves right away
     qp.mockResolvedValueOnce([{ _id: { $oid: "p3" } }]);
-    await v.goToPage(3); // resolve nhanh, docs = page 3
+    await v.goToPage(3); // resolves fast, docs = page 3
 
-    // Bây giờ resolve muộn request của trang 2
+    // Now resolve the late page-2 request
     resolvePage2([{ _id: { $oid: "p2" } }]);
     await p2;
 
-    // Trang 2 phải bị bỏ; docs vẫn là kết quả trang 3
+    // Page 2 must be discarded; docs still hold page 3 results
     expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
     expect(v.currentPage).toBe(3);
   });
 
-  it("toggleSort → reset trang 1 + sort doc", async () => {
+  it("toggleSort → resets to page 1 and sorts docs", async () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, age: 1 }]); // init
     samp.mockResolvedValueOnce([]);
@@ -181,7 +181,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
   });
 
-  it("setPageSize đổi limit + reset trang 1", async () => {
+  it("setPageSize changes the limit and resets to page 1", async () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]); // init
     samp.mockResolvedValueOnce([]);
@@ -194,7 +194,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 10, "{}", null, null);
   });
 
-  it("confirmDelete gọi deleteDocument rồi reload (count + queryPage)", async () => {
+  it("confirmDelete calls deleteDocument then reloads (count + queryPage)", async () => {
     cnt.mockResolvedValueOnce(1); // init
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]); // init
     samp.mockResolvedValueOnce([]);
@@ -210,7 +210,7 @@ describe("createCollectionView — paging", () => {
     expect(v.totalCount).toBe(0);
   });
 
-  it("commitEdit hợp lệ → gọi replaceDocument và cập nhật cell", async () => {
+  it("commitEdit with valid value → calls replaceDocument and updates the cell", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
     samp.mockResolvedValueOnce([]);
@@ -225,7 +225,7 @@ describe("createCollectionView — paging", () => {
     expect(v.editing).toBeNull();
   });
 
-  it("init gọi sampleDocuments + set schema (columnFields có metadata)", async () => {
+  it("init calls sampleDocuments and sets schema (columnFields carry type metadata)", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
     samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
@@ -235,7 +235,7 @@ describe("createCollectionView — paging", () => {
     expect(v.columnFields.find((c) => c.path === "x")!.type).toBe("string");
   });
 
-  it("sample lỗi → schema null, cột degrade row-derived, không throw", async () => {
+  it("sample error → schema null, columns degrade to row-derived, does not throw", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockRejectedValueOnce({ kind: "Query", message: "boom" });
@@ -245,7 +245,7 @@ describe("createCollectionView — paging", () => {
     expect(v.columnFields.find((c) => c.path === "x")!.type).toBeUndefined();
   });
 
-  it("toggleHiddenDraft KHÔNG gọi queryPage cho tới applyProjection", async () => {
+  it("toggleHiddenDraft does NOT call queryPage until applyProjection", async () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1, secret: 9 }]); // init
     samp.mockResolvedValueOnce([]);
@@ -261,7 +261,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, "{}", null, '{"secret":0}');
   });
 
-  it("startEdit khi đang projection → re-fetch full doc trước khi sửa", async () => {
+  it("startEdit with an active projection → re-fetches the full doc before editing", async () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hi" }]); // init
     samp.mockResolvedValueOnce([]);
@@ -278,7 +278,7 @@ describe("createCollectionView — paging", () => {
     expect(v.editing).toEqual({ row: 0, key: "x" });
   });
 
-  it("startEdit khi KHÔNG projection → không gọi fetchFullDoc", async () => {
+  it("startEdit with no projection → does not call fetchFullDoc", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hi" }]);
     samp.mockResolvedValueOnce([]);
@@ -414,7 +414,7 @@ describe("Show ALL", () => {
     cnt.mockResolvedValue(0);
   });
 
-  it("dưới ngưỡng → export ngay, allShown=true", async () => {
+  it("below threshold → exports immediately, allShown=true", async () => {
     cnt.mockResolvedValueOnce(3);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
     const v = createCollectionView("d", "c");
@@ -425,7 +425,7 @@ describe("Show ALL", () => {
     expect(expQ).toHaveBeenCalledWith("d", "c", "{}", null, null);
   });
 
-  it("trên ngưỡng → set showAllPending, CHƯA export", async () => {
+  it("above threshold → sets showAllPending, does NOT export yet", async () => {
     cnt.mockResolvedValueOnce(6000);
     const v = createCollectionView("d", "c");
     await v.requestShowAll();
@@ -434,7 +434,7 @@ describe("Show ALL", () => {
     expect(expQ).not.toHaveBeenCalled();
   });
 
-  it("confirmShowAll sau cảnh báo → export + allShown", async () => {
+  it("confirmShowAll after warning → exports and sets allShown", async () => {
     cnt.mockResolvedValueOnce(6000);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
     const v = createCollectionView("d", "c");
@@ -445,7 +445,7 @@ describe("Show ALL", () => {
     expect(expQ).toHaveBeenCalled();
   });
 
-  it("cancelShowAll → bỏ pending, không export", async () => {
+  it("cancelShowAll → clears pending, does not export", async () => {
     cnt.mockResolvedValueOnce(6000);
     const v = createCollectionView("d", "c");
     await v.requestShowAll();
@@ -454,7 +454,7 @@ describe("Show ALL", () => {
     expect(v.allShown).toBe(false);
   });
 
-  it("đổi trang sau Show ALL → allShown về false", async () => {
+  it("navigating a page after Show ALL → allShown resets to false", async () => {
     cnt.mockResolvedValueOnce(3);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
     const v = createCollectionView("d", "c");
@@ -466,15 +466,15 @@ describe("Show ALL", () => {
     expect(v.allShown).toBe(false);
   });
 
-  it("requestShowAll race: lần sau thắng, lần trước bị bỏ (stale-guard)", async () => {
-    // Lần 1: count bị treo (above threshold nếu không bị guard → 6000)
+  it("requestShowAll race: second call wins, first is discarded by stale-guard", async () => {
+    // Call 1: count hangs (would be above threshold if not guarded → 6000)
     let resolveCount1!: (n: number) => void;
     cnt.mockImplementationOnce(() => new Promise<number>((r) => (resolveCount1 = r)));
 
     const v = createCollectionView("d", "c");
-    const p1 = v.requestShowAll(); // in-flight, chưa resolve count
+    const p1 = v.requestShowAll(); // in-flight, count not yet resolved
 
-    // Lần 2: count dưới ngưỡng (3) → export ngay, allShown = true
+    // Call 2: count below threshold (3) → exports immediately, allShown = true
     cnt.mockResolvedValueOnce(3);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
     await v.requestShowAll();
@@ -483,15 +483,15 @@ describe("Show ALL", () => {
     expect(v.showAllPending).toBeNull();
     expect(expQ).toHaveBeenCalledTimes(1);
 
-    // Resolve muộn count của lần 1 với giá trị TRÊN ngưỡng
-    // Nếu stale-guard thiếu → lần 1 sẽ ghi đè showAllPending = 6000
+    // Resolve the late count from call 1 with an above-threshold value
+    // Without the stale-guard, call 1 would overwrite showAllPending = 6000
     resolveCount1(6000);
     await p1;
 
-    // Stale-guard phải chặn: trạng thái không bị hỏng
+    // Stale-guard must block: state must remain clean
     expect(v.allShown).toBe(true);
     expect(v.showAllPending).toBeNull();
-    expect(expQ).toHaveBeenCalledTimes(1); // expQ chỉ gọi 1 lần (lần 2)
+    expect(expQ).toHaveBeenCalledTimes(1); // expQ called exactly once (call 2)
   });
 });
 
@@ -502,7 +502,7 @@ describe("command log instrumentation", () => {
     commandLog.clear();
   });
 
-  it("nạp trang đẩy findCmd vào command log", async () => {
+  it("loading a page pushes findCmd to the command log", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([]);
@@ -511,7 +511,7 @@ describe("command log instrumentation", () => {
     expect(commandLog.entries.some((e) => e.text === findCmd({ coll: "c", filter: "{}", projection: null, sort: null, limit: 50 }))).toBe(true);
   });
 
-  it("confirmDelete đẩy deleteOneCmd", async () => {
+  it("confirmDelete pushes deleteOneCmd to the command log", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([]);
@@ -664,7 +664,7 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     cnt.mockResolvedValue(0);
   });
 
-  it("addSort → thêm khóa asc, reset trang 1, reload với sort", async () => {
+  it("addSort → adds an asc key, resets to page 1, reloads with sort", async () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, age: 1 }]); // init
     samp.mockResolvedValueOnce([]);
@@ -677,7 +677,7 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
   });
 
-  it("toggleSortDirAt → đảo chiều khóa đang có", async () => {
+  it("toggleSortDirAt → reverses the direction of an existing sort key", async () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
@@ -688,7 +688,7 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     expect(v.sortKeys).toEqual([{ path: "age", dir: -1 }]);
   });
 
-  it("moveSort dời ưu tiên; removeSort bỏ khóa; clearSort xóa hết", async () => {
+  it("moveSort reorders priority; removeSort drops a key; clearSort removes all", async () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
@@ -704,7 +704,7 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     expect(v.sortKeys).toEqual([]);
   });
 
-  it("hideAllFieldsDraft ẩn mọi field trừ _id; showAllFieldsDraft xóa hết", async () => {
+  it("hideAllFieldsDraft hides all fields except _id; showAllFieldsDraft clears all", async () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1, y: 2 }]); // init
     samp.mockResolvedValueOnce([]);

@@ -1,38 +1,39 @@
+/** Validate and build ExtJSON values for BSON numeric types (shared by inline-edit and tree). */
 import type { RebuildResult } from "./celledit";
 
-/** Kiểu số BSON có luật validate riêng (dùng chung cho inline-edit và tree). */
+/** BSON numeric kinds that share validation rules across inline-edit and the tree. */
 export type NumericKind = "int" | "long" | "double" | "decimal";
 
 /**
- * Validate + dựng giá trị ExtJSON cho một kiểu số BSON từ text (đã được caller
- * truyền vào nguyên trạng). Giữ nguyên chuỗi lỗi/hành vi của celledit + bsontree.
- * - int: số nguyên 32-bit
- * - long: số nguyên trong dải 64-bit (BigInt)
+ * Validate and build an ExtJSON value for a BSON numeric kind from raw text.
+ * Shared error keys and behavior match celledit and bsontree:
+ * - int: 32-bit integer
+ * - long: integer within 64-bit range (BigInt)
  * - double: Number.isFinite
- * - decimal: dạng thập phân -?\d+(\.\d+)?
+ * - decimal: pattern -?\d+(\.\d+)?
  */
 export function rebuildNumber(kind: NumericKind, t: string): RebuildResult {
   switch (kind) {
     case "int": {
       const n = Number(t);
       if (!Number.isInteger(n) || n < -2147483648 || n > 2147483647)
-        return { ok: false, error: "Cần số nguyên 32-bit." };
+        return { ok: false, error: "err_number_int32" };
       return { ok: true, value: { $numberInt: String(n) } };
     }
     case "long": {
-      if (!/^-?\d+$/.test(t)) return { ok: false, error: "Cần số nguyên." };
+      if (!/^-?\d+$/.test(t)) return { ok: false, error: "err_number_integer" };
       const big = BigInt(t);
       if (big < -9223372036854775808n || big > 9223372036854775807n)
-        return { ok: false, error: "Số vượt quá dải 64-bit." };
+        return { ok: false, error: "err_number_int64_overflow" };
       return { ok: true, value: { $numberLong: t } };
     }
     case "double": {
       const n = Number(t);
-      if (t === "" || !Number.isFinite(n)) return { ok: false, error: "Số không hợp lệ." };
+      if (t === "" || !Number.isFinite(n)) return { ok: false, error: "err_number_invalid" };
       return { ok: true, value: { $numberDouble: t } };
     }
     case "decimal":
-      if (!/^-?\d+(\.\d+)?$/.test(t)) return { ok: false, error: "Số thập phân không hợp lệ." };
+      if (!/^-?\d+(\.\d+)?$/.test(t)) return { ok: false, error: "err_number_decimal_invalid" };
       return { ok: true, value: { $numberDecimal: t } };
   }
 }

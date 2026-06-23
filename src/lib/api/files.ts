@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 export type DialogFilter = { name: string; extensions: string[] };
 
-/** Mở save dialog; trả path hoặc null nếu người dùng hủy. */
+/** Opens a save dialog; returns the chosen path or null if the user cancels. */
 export async function saveDialog(
   defaultName: string,
   filters: DialogFilter[],
@@ -11,7 +11,7 @@ export async function saveDialog(
   return await save({ defaultPath: defaultName, filters });
 }
 
-/** Mở open dialog (chọn 1 file); trả path hoặc null nếu hủy. */
+/** Opens a single-file open dialog; returns the chosen path or null if cancelled. */
 export async function openDialog(filters: DialogFilter[]): Promise<string | null> {
   const result = await open({ multiple: false, directory: false, filters });
   return typeof result === "string" ? result : null;

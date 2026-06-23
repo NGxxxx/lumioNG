@@ -1,5 +1,7 @@
 <!-- src/lib/components/Toolbar.svelte -->
 <script lang="ts">
+  import * as m from "$lib/paraglide/messages";
+
   let {
     connected,
     canNewDoc,
@@ -36,8 +38,8 @@
 <div class="toolbar">
   <!-- Session manager (always enabled) -->
   <button
-    aria-label="Session manager"
-    title="Session manager"
+    aria-label={m.toolbar_session_manager()}
+    title={m.toolbar_session_manager()}
     class="btn-icon session"
     onclick={onsession}
   >
@@ -55,7 +57,7 @@
   <div class="sep"></div>
 
   <!-- Save (context-dependent, disabled) -->
-  <button aria-label="Save" title="Save" class="btn-icon" disabled>
+  <button aria-label={m.toolbar_save()} title={m.toolbar_save()} class="btn-icon" disabled>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M2 2h9l3 3v9H2z" fill="#5a8fd6" stroke="#3a6db0" stroke-width="0.8"/>
       <rect x="5" y="2" width="5" height="4" fill="#dde9f7"/>
@@ -65,8 +67,8 @@
 
   <!-- New document (disabled when !canNewDoc) -->
   <button
-    aria-label="New document"
-    title="New document"
+    aria-label={m.toolbar_new_document()}
+    title={m.toolbar_new_document()}
     class="btn-icon"
     disabled={!canNewDoc}
     onclick={onnewdocument}
@@ -79,7 +81,7 @@
   </button>
 
   <!-- Delete document (context-dependent, disabled) -->
-  <button aria-label="Delete document" title="Delete document" class="btn-icon" disabled>
+  <button aria-label={m.toolbar_delete_document()} title={m.toolbar_delete_document()} class="btn-icon" disabled>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M4 4h8l-1 10H5z" fill="#fff" stroke="#b04a4a" stroke-width="0.9"/>
       <path d="M3 4h10M6.5 4V2.5h3V4" stroke="#b04a4a" stroke-width="0.9" fill="none"/>
@@ -90,8 +92,8 @@
 
   <!-- Refresh (disabled when not connected) -->
   <button
-    aria-label="Refresh"
-    title="Refresh"
+    aria-label={m.toolbar_refresh()}
+    title={m.toolbar_refresh()}
     class="btn-icon"
     disabled={!connected}
     onclick={onrefresh}
@@ -103,21 +105,21 @@
   </button>
 
   <!-- Stop (context-dependent, disabled) -->
-  <button aria-label="Stop" title="Stop" class="btn-icon" disabled>
+  <button aria-label={m.toolbar_stop()} title={m.toolbar_stop()} class="btn-icon" disabled>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <rect x="3" y="3" width="10" height="10" rx="1.5" fill="#d14545"/>
     </svg>
   </button>
 
   <!-- Run query (enabled when canRun) -->
-  <button aria-label="Run query" title="Run query" class="btn-icon" disabled={!canRun} onclick={onrun}>
+  <button aria-label={m.toolbar_run_query()} title={m.toolbar_run_query()} class="btn-icon" disabled={!canRun} onclick={onrun}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M4 3l9 5-9 5z" fill="#1f9d4d"/>
     </svg>
   </button>
 
   <!-- Run selection (enabled when query tab has a highlighted statement) -->
-  <button aria-label="Run selection" title="Run selection" class="btn-icon" disabled={!canRunSelection} onclick={onrunselection}>
+  <button aria-label={m.toolbar_run_selection()} title={m.toolbar_run_selection()} class="btn-icon" disabled={!canRunSelection} onclick={onrunselection}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M3 3l6 5-6 5z" fill="#1f9d4d"/>
       <rect x="11" y="3" width="2.2" height="10" fill="#1f9d4d"/>
@@ -127,7 +129,7 @@
   <div class="sep"></div>
 
   <!-- Find / filter (context-dependent, disabled) -->
-  <button aria-label="Find" title="Find / filter" class="btn-icon" disabled>
+  <button aria-label={m.toolbar_find()} title={m.toolbar_find_title()} class="btn-icon" disabled>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <circle cx="7" cy="7" r="4.2" fill="none" stroke="#555" stroke-width="1.3"/>
       <path d="M10.2 10.2 L14 14" stroke="#555" stroke-width="1.5"/>
@@ -135,14 +137,14 @@
   </button>
 
   <!-- Aggregate (context-dependent, disabled) -->
-  <button aria-label="Aggregate" title="Aggregate" class="btn-icon" disabled>
+  <button aria-label={m.toolbar_aggregate()} title={m.toolbar_aggregate()} class="btn-icon" disabled>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M3 2h10l-4 6 4 6H3l4-6z" fill="none" stroke="#7b53b8" stroke-width="1.2"/>
     </svg>
   </button>
 
   <!-- Indexes (context-dependent, disabled) -->
-  <button aria-label="Indexes" title="Indexes" class="btn-icon" disabled>
+  <button aria-label={m.toolbar_indexes()} title={m.toolbar_indexes()} class="btn-icon" disabled>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M3 4h10M3 8h10M3 12h7" stroke="#c98a2b" stroke-width="1.4"/>
       <circle cx="13" cy="12" r="1.4" fill="none" stroke="#c98a2b" stroke-width="1.1"/>
@@ -152,7 +154,7 @@
   <div class="sep"></div>
 
   <!-- Edit document (enabled when exactly one data-view row with an _id is selected) -->
-  <button aria-label="Edit document" title="Edit document" class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
+  <button aria-label={m.toolbar_edit_document()} title={m.toolbar_edit_document()} class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M2 11l7-7 3 3-7 7H2z" fill="#f0d574" stroke="#b89534" stroke-width="0.9"/>
       <path d="M10 3l2-2 3 3-2 2z" fill="#9fb4cc" stroke="#5b7088" stroke-width="0.8"/>
@@ -160,7 +162,7 @@
   </button>
 
   <!-- Export (enabled in the data view; exports the selection if any, else the filtered set) -->
-  <button aria-label="Export" title="Export" class="btn-icon" disabled={!canExport} onclick={onexport}>
+  <button aria-label={m.toolbar_export()} title={m.toolbar_export()} class="btn-icon" disabled={!canExport} onclick={onexport}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M4 1.5h6l3 3v10H4z" fill="#fff" stroke="#888" stroke-width="0.9"/>
       <path d="M8 6v5M5.6 8.6L8 11l2.4-2.4" stroke="#2f7dd1" stroke-width="1.2" fill="none"/>
@@ -168,7 +170,7 @@
   </button>
 
   <!-- Command log (always enabled) -->
-  <button aria-label="Command log" title="Command log" class="btn-icon" onclick={onToggleLog}>
+  <button aria-label={m.toolbar_command_log()} title={m.toolbar_command_log()} class="btn-icon" onclick={onToggleLog}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <rect x="2" y="2" width="12" height="12" rx="1.5" fill="none" stroke="#666" stroke-width="1.1"/>
       <path d="M4 5h8M4 8h8M4 11h5" stroke="#666" stroke-width="1.1"/>

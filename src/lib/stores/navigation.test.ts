@@ -7,7 +7,7 @@ const insertDoc = (db: string, coll: string) =>
   ({ kind: "document", db, coll, mode: "insert", initial: null, idText: null }) as const;
 
 describe("navigation selection", () => {
-  it("ban đầu rỗng", () => {
+  it("initial state is empty", () => {
     const n = createNavigation();
     expect(n.selection).toBeNull();
     expect(n.level).toBe("none");
@@ -25,7 +25,7 @@ describe("navigation selection", () => {
     expect(n.active).toEqual({ zone: "context", kind: "database" });
   });
 
-  it("selectCollection → contextTabs đủ 4, active mặc định data", () => {
+  it("selectCollection → 4 contextTabs, active defaults to data", () => {
     const n = createNavigation();
     n.setConnected(true);
     n.selectCollection("shop", "users");
@@ -35,7 +35,7 @@ describe("navigation selection", () => {
     expect(n.active).toEqual({ zone: "context", kind: "data" });
   });
 
-  it("đổi collection giữ nguyên tab data", () => {
+  it("switching collection preserves the data tab", () => {
     const n = createNavigation();
     n.selectCollection("shop", "a");
     n.showContext("data");
@@ -43,7 +43,7 @@ describe("navigation selection", () => {
     expect(n.active).toEqual({ zone: "context", kind: "data" });
   });
 
-  it("đổi collection giữ nguyên tab collection", () => {
+  it("switching collection preserves the collection tab", () => {
     const n = createNavigation();
     n.selectCollection("shop", "a");
     n.showContext("collection");
@@ -51,7 +51,7 @@ describe("navigation selection", () => {
     expect(n.active).toEqual({ zone: "context", kind: "collection" });
   });
 
-  it("từ database tab, chọn collection → reset về data", () => {
+  it("selecting a collection from the database tab resets active to data", () => {
     const n = createNavigation();
     n.selectDatabase("shop");
     n.selectCollection("shop", "users");
@@ -70,7 +70,7 @@ describe("navigation selection", () => {
 });
 
 describe("navigation work tabs", () => {
-  it("openDocument insert luôn mới + active work", () => {
+  it("openDocument insert always opens a new tab and activates it", () => {
     const n = createNavigation();
     n.openDocument(insertDoc("d", "c"));
     n.openDocument(insertDoc("d", "c"));
@@ -78,7 +78,7 @@ describe("navigation work tabs", () => {
     expect(n.active).toEqual({ zone: "work", id: n.workTabs[1].id });
   });
 
-  it("openDocument edit dedup theo idText", () => {
+  it("openDocument edit deduplicates by idText", () => {
     const n = createNavigation();
     n.openDocument(editDoc('{"$oid":"1"}'));
     n.openDocument(editDoc('{"$oid":"1"}'));
@@ -86,7 +86,7 @@ describe("navigation work tabs", () => {
     expect(n.active).toEqual({ zone: "work", id: n.workTabs[0].id });
   });
 
-  it("activateWork đổi active", () => {
+  it("activateWork changes the active tab", () => {
     const n = createNavigation();
     n.openDocument(editDoc('{"$oid":"1"}'));
     n.openDocument(editDoc('{"$oid":"2"}'));
@@ -95,7 +95,7 @@ describe("navigation work tabs", () => {
     expect(n.active).toEqual({ zone: "work", id: first });
   });
 
-  it("closeWork active → lùi work tab kề", () => {
+  it("closeWork on active tab → falls back to the adjacent work tab", () => {
     const n = createNavigation();
     n.openDocument(editDoc('{"$oid":"1"}'));
     n.openDocument(editDoc('{"$oid":"2"}'));
@@ -104,7 +104,7 @@ describe("navigation work tabs", () => {
     expect(n.active).toEqual({ zone: "work", id: n.workTabs[0].id });
   });
 
-  it("closeWork work tab cuối → fallback context data khi đang chọn collection", () => {
+  it("closeWork last work tab → fallback to context data when a collection is selected", () => {
     const n = createNavigation();
     n.setConnected(true);
     n.selectCollection("d", "c");
@@ -114,14 +114,14 @@ describe("navigation work tabs", () => {
     expect(n.active).toEqual({ zone: "context", kind: "data" });
   });
 
-  it("closeWork work tab cuối, không selection → active null", () => {
+  it("closeWork last work tab with no selection → active becomes null", () => {
     const n = createNavigation();
     n.openDocument(insertDoc("d", "c"));
     n.closeWork(n.workTabs[0].id);
     expect(n.active).toBeNull();
   });
 
-  it("closeWork tab không active → giữ active", () => {
+  it("closeWork on an inactive tab → keeps active unchanged", () => {
     const n = createNavigation();
     n.openDocument(editDoc('{"$oid":"1"}'));
     n.openDocument(editDoc('{"$oid":"2"}'));
@@ -131,24 +131,24 @@ describe("navigation work tabs", () => {
   });
 });
 
-describe("contextTabs với connected/host/query", () => {
-  it("chưa connected → rỗng", () => {
+describe("contextTabs with connection and selection state", () => {
+  it("not connected → contextTabs is empty", () => {
     const n = createNavigation();
     n.selectCollection("shop", "orders");
     expect(n.contextTabs).toEqual([]);
   });
-  it("connected, chưa chọn → chỉ host", () => {
+  it("connected, no selection → host only", () => {
     const n = createNavigation();
     n.setConnected(true);
     expect(n.contextTabs).toEqual(["host"]);
   });
-  it("connected + db → host, database", () => {
+  it("connected + db selected → host, database", () => {
     const n = createNavigation();
     n.setConnected(true);
     n.selectDatabase("shop");
     expect(n.contextTabs).toEqual(["host", "database"]);
   });
-  it("connected + coll → host, database, collection, data (no query)", () => {
+  it("connected + collection selected → host, database, collection, data", () => {
     const n = createNavigation();
     n.setConnected(true);
     n.selectCollection("shop", "orders");
@@ -157,7 +157,7 @@ describe("contextTabs với connected/host/query", () => {
 });
 
 describe("navigation refresh + DDL reconcile", () => {
-  it("bumpCollection/collectionVersion theo db.coll", () => {
+  it("bumpCollection/collectionVersion track versions per db.coll", () => {
     const n = createNavigation();
     expect(n.collectionVersion("d", "c")).toBe(0);
     n.bumpCollection("d", "c");
@@ -165,7 +165,7 @@ describe("navigation refresh + DDL reconcile", () => {
     expect(n.collectionVersion("d", "x")).toBe(0);
   });
 
-  it("closeForCollection đóng work tab + hạ selection xuống db", () => {
+  it("closeForCollection closes work tabs and demotes selection to db level", () => {
     const n = createNavigation();
     n.selectCollection("d", "c");
     n.openDocument(insertDoc("d", "c"));
@@ -175,14 +175,14 @@ describe("navigation refresh + DDL reconcile", () => {
     expect(n.active).toEqual({ zone: "context", kind: "database" });
   });
 
-  it("closeForCollection không trúng selection thì giữ selection", () => {
+  it("closeForCollection with a non-matching selection leaves selection unchanged", () => {
     const n = createNavigation();
     n.selectCollection("d", "other");
     n.closeForCollection("d", "c");
     expect(n.selection).toEqual({ db: "d", coll: "other" });
   });
 
-  it("closeForDatabase đóng work tab của db + clear selection", () => {
+  it("closeForDatabase closes work tabs for the db and clears selection", () => {
     const n = createNavigation();
     n.selectCollection("d", "c");
     n.openDocument(insertDoc("d", "a"));
@@ -196,7 +196,7 @@ describe("navigation refresh + DDL reconcile", () => {
     expect(n.active).toBeNull();
   });
 
-  it("renameCollectionTabs đổi tên work tab + selection + bump version", () => {
+  it("renameCollectionTabs updates work tab names, selection, and bumps version", () => {
     const n = createNavigation();
     n.selectCollection("d", "old");
     n.openDocument(insertDoc("d", "old"));

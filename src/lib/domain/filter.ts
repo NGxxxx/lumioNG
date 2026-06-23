@@ -1,10 +1,11 @@
+/** Validate and normalize a user-supplied query filter (Extended JSON object). */
 export type ParseResult =
   | { ok: true; json: string }
   | { ok: false; error: string };
 
 /**
- * Kiểm CÚ PHÁP filter người dùng (Extended JSON object).
- * Rỗng → "{}". Tính hợp lệ của operator/kiểu BSON do Rust quyết định.
+ * Validate the syntax of a user-supplied filter (Extended JSON object).
+ * Empty input normalizes to "{}". Operator/BSON-type correctness is left to Rust.
  */
 export function parseFilter(text: string): ParseResult {
   const trimmed = text.trim();
@@ -14,11 +15,11 @@ export function parseFilter(text: string): ParseResult {
   try {
     parsed = JSON.parse(trimmed);
   } catch {
-    return { ok: false, error: "Filter không phải JSON hợp lệ." };
+    return { ok: false, error: "err_filter_invalid_json" };
   }
 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { ok: false, error: "Filter phải là một object JSON." };
+    return { ok: false, error: "err_filter_not_object" };
   }
 
   return { ok: true, json: trimmed };

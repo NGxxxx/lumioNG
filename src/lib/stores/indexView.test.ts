@@ -24,7 +24,7 @@ describe("createIndexView", () => {
     listIdx.mockResolvedValue([]);
   });
 
-  it("init nạp + parse danh sách", async () => {
+  it("init loads and parses the index list", async () => {
     listIdx.mockResolvedValueOnce([emailIdx]);
     const v = createIndexView("d", "c");
     await v.init();
@@ -33,33 +33,33 @@ describe("createIndexView", () => {
     expect(v.indexes[0].unique).toBe(true);
   });
 
-  it("create hợp lệ → validate→buildKeys→api→refresh", async () => {
+  it("create with valid fields: validate → buildKeys → api → refresh", async () => {
     const v = createIndexView("d", "c");
     await v.create([{ field: "email", dir: 1 }], true, null);
     expect(createIdx).toHaveBeenCalledWith("d", "c", '{"email":1}', true, null);
     expect(listIdx).toHaveBeenCalled();
   });
 
-  it("create field xấu → ném, không gọi api", async () => {
+  it("create with invalid field → throws, api not called", async () => {
     const v = createIndexView("d", "c");
     await expect(v.create([{ field: "  ", dir: 1 }], false, null)).rejects.toBeTruthy();
     expect(createIdx).not.toHaveBeenCalled();
   });
 
-  it("create trim name rỗng → gửi null", async () => {
+  it("create with blank name → sends null after trimming", async () => {
     const v = createIndexView("d", "c");
     await v.create([{ field: "email", dir: 1 }], false, "   ");
     expect(createIdx).toHaveBeenCalledWith("d", "c", '{"email":1}', false, null);
   });
 
-  it("drop → api + refresh", async () => {
+  it("drop calls api and refreshes", async () => {
     const v = createIndexView("d", "c");
     await v.drop("email_1");
     expect(dropIdx).toHaveBeenCalledWith("d", "c", "email_1");
     expect(listIdx).toHaveBeenCalled();
   });
 
-  it("refresh lỗi → set error, không ném", async () => {
+  it("refresh error sets error and does not throw", async () => {
     listIdx.mockRejectedValueOnce({ kind: "Query", message: "boom" });
     const v = createIndexView("d", "c");
     await v.refresh();
@@ -74,7 +74,7 @@ describe("indexView command log", () => {
     commandLog.clear();
   });
 
-  it("drop đẩy dropIndexCmd", async () => {
+  it("drop pushes dropIndexCmd to the command log", async () => {
     dropIdx.mockResolvedValueOnce(undefined);
     listIdx.mockResolvedValueOnce([]);
     const v = createIndexView("d", "c");

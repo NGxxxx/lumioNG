@@ -6,7 +6,8 @@
   import CommandLogView from "./CommandLogView.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import type { Doc } from "../domain/columns";
+  import type { Doc } from "../domain/doc";
+  import * as m from "$lib/paraglide/messages";
 
   let { id, seq, initialStatement, currentDb, onopendocument }:
     { id: number; seq: number; initialStatement: string; currentDb: string | null;
@@ -42,8 +43,8 @@
 
 <div class="query">
   <div class="bar">
-    <span class="title"><b>Query #{seq}</b></span>
-    {#if currentDb}<span class="db">db: {currentDb}</span>{/if}
+    <span class="title"><b>{m.query_tab_title({ seq })}</b></span>
+    {#if currentDb}<span class="db">{m.query_tab_db_label({ db: currentDb })}</span>{/if}
   </div>
 
   <textarea class="editor" bind:value={v.statementText} spellcheck="false" oncontextmenu={openMenu}
@@ -52,19 +53,19 @@
   {#if v.error}<div class="error">{v.error}</div>{/if}
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.capped}
-    <div class="cap">Showing first 200 results.
-      <button onclick={() => v.runNoLimit(currentDb)}>Run without limit</button>
+    <div class="cap">{m.query_tab_capped_notice()}
+      <button onclick={() => v.runNoLimit(currentDb)}>{m.query_tab_run_no_limit()}</button>
     </div>
   {/if}
 
   <div class="bottom">
     <div class="bottom-tabs">
-      <button class:active={bottomTab === "result"} onclick={() => (bottomTab = "result")}>Result</button>
-      <button class:active={bottomTab === "log"} onclick={() => (bottomTab = "log")}>Command log</button>
+      <button class:active={bottomTab === "result"} onclick={() => (bottomTab = "result")}>{m.query_tab_result()}</button>
+      <button class:active={bottomTab === "log"} onclick={() => (bottomTab = "log")}>{m.query_tab_command_log()}</button>
       {#if bottomTab === "result" && v.ran}
         <div class="view-toggle">
-          <button class:active={v.view === "grid"} onclick={() => (v.view = "grid")}>Grid</button>
-          <button class:active={v.view === "tree"} onclick={() => (v.view = "tree")}>Tree</button>
+          <button class:active={v.view === "grid"} onclick={() => (v.view = "grid")}>{m.query_tab_view_grid()}</button>
+          <button class:active={v.view === "tree"} onclick={() => (v.view = "tree")}>{m.query_tab_view_tree()}</button>
         </div>
       {/if}
     </div>
@@ -74,7 +75,7 @@
     {:else}
       <div class="result-pane">
         {#if v.loading}
-          <div class="status">Running…</div>
+          <div class="status">{m.query_tab_status_running()}</div>
         {:else if v.ran}
           {#if v.view === "grid"}
             <QueryResultGrid columns={v.columns} docs={v.pageDocs} colWidths={v.colWidths}
@@ -89,7 +90,7 @@
             {/if}
           {/if}
         {:else}
-          <div class="status">Edit the statement and run it (toolbar ▶ or right-click → Run).</div>
+          <div class="status">{m.query_tab_status_idle()}</div>
         {/if}
       </div>
       {#if v.ran}
@@ -99,11 +100,11 @@
           <span class="pg-info">{v.currentPage} / {v.pageCount}</span>
           <button onclick={() => v.goToPage(v.currentPage + 1)} disabled={v.currentPage >= v.pageCount}>›</button>
           <button onclick={() => v.goToPage(v.pageCount)} disabled={v.currentPage >= v.pageCount}>»</button>
-          <label class="pg-rows">Rows
+          <label class="pg-rows">{m.query_tab_rows_label()}
             <input type="number" min="1" value={v.pageSize}
               onchange={(e) => v.setPageSize(+e.currentTarget.value)} />
           </label>
-          <span class="pg-total">{v.totalCount} docs</span>
+          <span class="pg-total">{m.query_tab_docs_count({ count: v.totalCount })}</span>
         </div>
       {/if}
     {/if}
@@ -112,15 +113,15 @@
 
 {#if menu}
   <ContextMenu x={menu.x} y={menu.y}
-    items={[{ label: "Run", action: "run" }, { label: "Run selection", action: "runSelection", disabled: !v.hasSelection }]}
+    items={[{ label: m.query_tab_menu_run(), action: "run" }, { label: m.query_tab_menu_run_selection(), action: "runSelection", disabled: !v.hasSelection }]}
     onselect={onMenu} onclose={() => (menu = null)} />
 {/if}
 
 {#if v.confirmDelete}
   <ConfirmDialog
-    title="Xóa document đã chọn?"
-    message={`Bạn sắp xóa ${v.confirmDelete.count} document. Hành động này không hoàn tác được.`}
-    confirmLabel="Delete"
+    title={m.query_tab_confirm_delete_title()}
+    message={m.query_tab_confirm_delete_message({ count: v.confirmDelete.count })}
+    confirmLabel={m.common_delete()}
     danger
     onconfirm={v.confirmDeleteRun}
     oncancel={v.cancelDelete}

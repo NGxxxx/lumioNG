@@ -1,3 +1,4 @@
+/** Validate a structured connection profile before connecting. */
 import type { ConnectionProfile } from "./connuri";
 
 export type ValidationResult = { ok: true } | { ok: false; error: string };

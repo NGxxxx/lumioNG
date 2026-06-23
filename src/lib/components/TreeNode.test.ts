@@ -4,8 +4,8 @@ import TreeNode from "./TreeNode.svelte";
 
 const noop = () => {};
 
-describe("TreeNode lá", () => {
-  it("sửa string hợp lệ → onchange với chuỗi mới, không lỗi", async () => {
+describe("TreeNode leaf", () => {
+  it("editing a valid string → onchange with new value, no error", async () => {
     const onchange = vi.fn();
     const onerror = vi.fn();
     const { container } = render(TreeNode, {
@@ -17,7 +17,7 @@ describe("TreeNode lá", () => {
     expect(onerror).toHaveBeenLastCalledWith("name", false);
   });
 
-  it("sửa int sai → onerror(path,true), KHÔNG onchange, hiện lỗi", async () => {
+  it("invalid int → onerror(path,true), NO onchange, shows error", async () => {
     const onchange = vi.fn();
     const onerror = vi.fn();
     const { container, getByText } = render(TreeNode, {
@@ -30,7 +30,7 @@ describe("TreeNode lá", () => {
     expect(getByText(/32-bit/)).toBeTruthy();
   });
 
-  it("sửa int hợp lệ → onchange với {$numberInt}", async () => {
+  it("valid int → onchange with {$numberInt}", async () => {
     const onchange = vi.fn();
     const { container } = render(TreeNode, {
       props: { label: "n", value: { $numberInt: "2" }, path: "n", onchange, onremove: noop, onerror: noop },
@@ -40,7 +40,7 @@ describe("TreeNode lá", () => {
     expect(onchange).toHaveBeenCalledWith({ $numberInt: "5" });
   });
 
-  it("lá khóa (_id) → không có ô nhập, có 🔒", () => {
+  it("locked key (_id) → no input field, shows 🔒", () => {
     const { container, getByText } = render(TreeNode, {
       props: {
         label: "_id",
@@ -59,9 +59,9 @@ describe("TreeNode lá", () => {
 });
 
 describe("TreeNode object", () => {
-  // Dùng root:true (đúng như TreeEditor render) để không có nút Remove/header riêng
-  // của chính node object, tránh lệch chỉ số getAllByLabelText.
-  it("thêm field mới → onchange với key + giá trị rỗng đúng kiểu", async () => {
+  // Use root:true (as TreeEditor renders) so the object node itself has no Remove button or own header,
+  // avoiding index mismatches when querying getAllByLabelText.
+  it("adding a new field → onchange with key and empty default value", async () => {
     const onchange = vi.fn();
     const { container, getByText } = render(TreeNode, {
       props: { root: true, label: "", value: { a: "x" }, path: "", removable: false, onchange, onremove: noop, onerror: noop },
@@ -72,7 +72,7 @@ describe("TreeNode object", () => {
     expect(onchange).toHaveBeenCalledWith({ a: "x", newf: "" });
   });
 
-  it("thêm field trùng tên → báo lỗi, KHÔNG onchange", async () => {
+  it("duplicate field name → shows error, NO onchange", async () => {
     const onchange = vi.fn();
     const { container, getByText } = render(TreeNode, {
       props: { root: true, label: "", value: { a: "x" }, path: "", removable: false, onchange, onremove: noop, onerror: noop },
@@ -81,22 +81,22 @@ describe("TreeNode object", () => {
     await fireEvent.input(nameInput, { target: { value: "a" } });
     await fireEvent.click(getByText("+ Add field"));
     expect(onchange).not.toHaveBeenCalled();
-    expect(getByText(/đã tồn tại/)).toBeTruthy();
+    expect(getByText(/already exists/i)).toBeTruthy();
   });
 
-  it("xóa field con → onchange với object bỏ key đó", async () => {
+  it("removing a child field → onchange with object without that key", async () => {
     const onchange = vi.fn();
     const { getAllByLabelText } = render(TreeNode, {
       props: { root: true, label: "", value: { a: "x", b: "y" }, path: "", removable: false, onchange, onremove: noop, onerror: noop },
     });
-    // root không có nút Remove riêng → nút ✕ đầu tiên là của field "a"
+    // root has no own Remove button → first ✕ belongs to field "a"
     await fireEvent.click(getAllByLabelText("Remove")[0]);
     expect(onchange).toHaveBeenCalledWith({ b: "y" });
   });
 });
 
 describe("TreeNode array", () => {
-  it("thêm phần tử → onchange với mảng có phần tử rỗng mới", async () => {
+  it("adding an item → onchange with array containing new empty element", async () => {
     const onchange = vi.fn();
     const { getByText } = render(TreeNode, {
       props: { label: "arr", value: ["x"], path: "arr", removable: false, onchange, onremove: noop, onerror: noop },
@@ -105,19 +105,19 @@ describe("TreeNode array", () => {
     expect(onchange).toHaveBeenCalledWith(["x", ""]);
   });
 
-  it("xóa phần tử [0] → onchange với mảng đã splice", async () => {
+  it("removing element [0] → onchange with spliced array", async () => {
     const onchange = vi.fn();
     const { getAllByLabelText } = render(TreeNode, {
       props: { label: "arr", value: ["x", "y"], path: "arr", removable: false, onchange, onremove: noop, onerror: noop },
     });
-    // node mảng removable:false → không có nút Remove riêng; ✕ đầu tiên là phần tử [0]
+    // array node removable:false → no own Remove button; first ✕ belongs to element [0]
     await fireEvent.click(getAllByLabelText("Remove")[0]);
     expect(onchange).toHaveBeenCalledWith(["y"]);
   });
 });
 
 describe("TreeNode unmount", () => {
-  it("lá đang lỗi bị unmount → dọn cờ lỗi (onerror path,false)", async () => {
+  it("leaf with active error unmounted → clears error flag (onerror path,false)", async () => {
     const onerror = vi.fn();
     const { container, unmount } = render(TreeNode, {
       props: { label: "n", value: { $numberInt: "2" }, path: "n", onchange: noop, onremove: noop, onerror },

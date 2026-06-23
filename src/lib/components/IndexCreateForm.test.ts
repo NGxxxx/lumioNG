@@ -3,7 +3,7 @@ import { render, fireEvent } from "@testing-library/svelte";
 import IndexCreateForm from "./IndexCreateForm.svelte";
 
 describe("IndexCreateForm", () => {
-  it("submit gọi onsubmit với (rows, unique, name)", async () => {
+  it("submit calls onsubmit with (rows, unique, name)", async () => {
     const onsubmit = vi.fn().mockResolvedValue(undefined);
     const { getByText, getByLabelText } = render(IndexCreateForm, {
       props: { onsubmit, oncancel: vi.fn() },
@@ -13,7 +13,7 @@ describe("IndexCreateForm", () => {
     expect(onsubmit).toHaveBeenCalledWith([{ field: "email", dir: 1 }], false, "");
   });
 
-  it("＋ field thêm dòng field-1", async () => {
+  it("＋ field adds a field-1 row", async () => {
     const { getByText, getByLabelText } = render(IndexCreateForm, {
       props: { onsubmit: vi.fn().mockResolvedValue(undefined), oncancel: vi.fn() },
     });
@@ -21,12 +21,12 @@ describe("IndexCreateForm", () => {
     expect(getByLabelText("field-1")).toBeTruthy();
   });
 
-  it("onsubmit reject → lỗi inline", async () => {
-    const onsubmit = vi.fn().mockRejectedValue("Cần ít nhất một field.");
+  it("onsubmit reject shows inline error", async () => {
+    const onsubmit = vi.fn().mockRejectedValue("err_index_no_field");
     const { getByText, findByText } = render(IndexCreateForm, {
       props: { onsubmit, oncancel: vi.fn() },
     });
     await fireEvent.click(getByText("Create"));
-    expect(await findByText("Cần ít nhất một field.")).toBeTruthy();
+    expect(await findByText("At least one field is required.")).toBeTruthy();
   });
 });

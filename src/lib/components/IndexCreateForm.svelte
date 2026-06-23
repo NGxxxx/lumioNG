@@ -1,5 +1,7 @@
 <script lang="ts">
   import { errorMessage } from "../api/errors";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let {
     onsubmit,
@@ -52,13 +54,13 @@
       {/if}
     </div>
   {/each}
-  <button class="addfield" onclick={addRow}>＋ field</button>
-  <label class="opt"><input type="checkbox" bind:checked={unique} aria-label="unique" /> unique</label>
-  <label class="opt">Name (optional)<input bind:value={name} aria-label="index-name" /></label>
-  {#if error}<div class="dlg-error">{error}</div>{/if}
+  <button class="addfield" onclick={addRow}>{m.index_create_add_field()}</button>
+  <label class="opt"><input type="checkbox" bind:checked={unique} aria-label="unique" /> {m.index_create_unique_label()}</label>
+  <label class="opt">{m.index_create_name_label()}<input bind:value={name} aria-label="index-name" /></label>
+  {#if error}<div class="dlg-error">{msgKey(error)}</div>{/if}
   <footer>
-    <button onclick={oncancel}>Cancel</button>
-    <button class="primary" disabled={busy} onclick={submit}>Create</button>
+    <button onclick={oncancel}>{m.common_cancel()}</button>
+    <button class="primary" disabled={busy} onclick={submit}>{m.common_create()}</button>
   </footer>
 </div>
 

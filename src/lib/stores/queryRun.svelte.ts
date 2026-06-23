@@ -1,6 +1,7 @@
+import * as m from "$lib/paraglide/messages";
 import { aggregate, deleteMany } from "../api/documents";
 import { saveDialog, writeTextFile } from "../api/files";
-import type { Doc } from "../domain/columns";
+import type { Doc } from "../domain/doc";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { aggregateCmd, deleteManyCmd } from "../domain/mongosh";
@@ -148,7 +149,7 @@ export function createQueryRun(initialStatement: string) {
   }
 
   async function copy(text: string) {
-    try { await navigator.clipboard.writeText(text); } catch { ioError = "Không copy được."; }
+    try { await navigator.clipboard.writeText(text); } catch { ioError = m.common_clipboard_failed(); }
   }
 
   async function writeFile(text: string, ext: "json" | "csv") {
@@ -191,7 +192,7 @@ export function createQueryRun(initialStatement: string) {
   async function deleteSelected(picked: Doc[]) {
     if (!srcDb || !srcColl) return;
     const ids: string[] = [];
-    for (const d of picked) { const id = idJson(d); if (id === null) { ioError = "Một số dòng thiếu _id."; return; } ids.push(id); }
+    for (const d of picked) { const id = idJson(d); if (id === null) { ioError = m.query_run_selection_missing_id(); return; } ids.push(id); }
     const filter = idInFilter(ids);
     try {
       await deleteMany(srcDb, srcColl, filter, false);

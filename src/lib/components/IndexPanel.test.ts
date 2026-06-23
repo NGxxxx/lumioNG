@@ -23,7 +23,7 @@ vi.mock("../stores/indexView.svelte", () => ({
 import IndexPanel from "./IndexPanel.svelte";
 
 describe("IndexPanel", () => {
-  it("nút Drop disabled cho _id_, enabled cho index khác", () => {
+  it("Drop button disabled for _id_, enabled for other indexes", () => {
     mockIndexes = [
       { name: "_id_", entries: [{ field: "_id", value: 1 }], unique: false, sparse: false, ttl: null, isId: true },
       { name: "email_1", entries: [{ field: "email", value: 1 }], unique: true, sparse: false, ttl: null, isId: false },

@@ -14,6 +14,7 @@
   import { findCmd, importCmd, exportBsonCmd } from "../domain/mongosh";
   import { commandLog } from "../stores/commandLog.svelte";
   import { errorMessage } from "../api/errors";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     connection = null,
@@ -48,50 +49,50 @@
   let io = $state<string | null>(null);
   let ioErr = $state<string | null>(null);
 
-  const connItems = [
-    { label: "New database…", action: "newDb" },
-    { label: "Refresh", action: "refresh" },
-    { label: "Manage sessions…", action: "manageSessions" },
-    { label: "Disconnect", action: "disconnect" },
-  ];
-  const dbItems = [
-    { label: "New collection…", action: "newColl" },
-    { label: "Copy name", action: "copyName" },
-    { label: "Refresh", action: "refresh" },
-    { label: "Drop database…", action: "dropDb" },
-  ];
-  const collItems = [
-    { label: "New aggregate…", action: "newQuery" },
-    { label: "Export…", action: "export" },
-    { label: "Import…", action: "import" },
-    { label: "Copy name", action: "copyName" },
-    { label: "Rename collection…", action: "rename" },
-    { label: "Truncate…", action: "truncate" },
-    { label: "Drop collection…", action: "dropColl" },
-  ];
+  const connItems = $derived([
+    { label: m.namespace_panel_menu_new_db(), action: "newDb" },
+    { label: m.menu_refresh(), action: "refresh" },
+    { label: m.namespace_panel_menu_manage_sessions(), action: "manageSessions" },
+    { label: m.namespace_panel_menu_disconnect(), action: "disconnect" },
+  ]);
+  const dbItems = $derived([
+    { label: m.namespace_panel_menu_new_coll(), action: "newColl" },
+    { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
+    { label: m.menu_refresh(), action: "refresh" },
+    { label: m.namespace_panel_menu_drop_db(), action: "dropDb" },
+  ]);
+  const collItems = $derived([
+    { label: m.namespace_panel_menu_new_aggregate(), action: "newQuery" },
+    { label: m.namespace_panel_menu_export(), action: "export" },
+    { label: m.namespace_panel_menu_import(), action: "import" },
+    { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
+    { label: m.namespace_panel_menu_rename(), action: "rename" },
+    { label: m.namespace_panel_menu_truncate(), action: "truncate" },
+    { label: m.namespace_panel_menu_drop_coll(), action: "dropColl" },
+  ]);
 
   function onMenuSelect(action: string) {
-    const m = menu;
+    const target = menu;
     menu = null;
-    if (!m) return;
-    if (m.kind === "conn") {
+    if (!target) return;
+    if (target.kind === "conn") {
       if (action === "newDb") dialog = { type: "newDb" };
       else if (action === "refresh") namespaceTree.refresh();
       else if (action === "manageSessions") onmanagesessions?.();
       else if (action === "disconnect") ondisconnect?.();
-    } else if (m.kind === "db") {
-      if (action === "newColl") dialog = { type: "newColl", db: m.db };
-      else if (action === "copyName") navigator.clipboard.writeText(m.db);
+    } else if (target.kind === "db") {
+      if (action === "newColl") dialog = { type: "newColl", db: target.db };
+      else if (action === "copyName") navigator.clipboard.writeText(target.db);
       else if (action === "refresh") namespaceTree.refresh();
-      else if (action === "dropDb") dialog = { type: "dropDb", db: m.db };
+      else if (action === "dropDb") dialog = { type: "dropDb", db: target.db };
     } else {
-      if (action === "newQuery") onnewquery?.({ db: m.db, coll: m.coll });
-      else if (action === "export") dialog = { type: "export", db: m.db, coll: m.coll };
-      else if (action === "import") runImport(m.db, m.coll);
-      else if (action === "copyName") navigator.clipboard.writeText(`${m.db}.${m.coll}`);
-      else if (action === "rename") dialog = { type: "rename", db: m.db, coll: m.coll };
-      else if (action === "truncate") dialog = { type: "truncate", db: m.db, coll: m.coll };
-      else if (action === "dropColl") dialog = { type: "dropColl", db: m.db, coll: m.coll };
+      if (action === "newQuery") onnewquery?.({ db: target.db, coll: target.coll });
+      else if (action === "export") dialog = { type: "export", db: target.db, coll: target.coll };
+      else if (action === "import") runImport(target.db, target.coll);
+      else if (action === "copyName") navigator.clipboard.writeText(`${target.db}.${target.coll}`);
+      else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll };
+      else if (action === "truncate") dialog = { type: "truncate", db: target.db, coll: target.coll };
+      else if (action === "dropColl") dialog = { type: "dropColl", db: target.db, coll: target.coll };
     }
   }
 
@@ -103,12 +104,12 @@
     try {
       if (format === "bson") {
         const n = await exportBson(db, coll, "{}", null, null, path);
-        io = `Đã export ${n} document.`;
+        io = m.namespace_panel_export_done({ count: n });
         commandLog.push(exportBsonCmd(db, coll, path));
       } else {
         const data = await exportQuery(db, coll, "{}", null, null);
         await writeTextFile(path, format === "json" ? toJsonArray(data) : toCsv(data));
-        io = `Đã export ${data.length} document.`;
+        io = m.namespace_panel_export_done({ count: data.length });
         commandLog.push(findCmd({ coll, filter: "{}" }));
       }
     } catch (e) { ioErr = errorMessage(e); }
@@ -124,7 +125,7 @@
         : await importDocuments(db, coll, path);
       commandLog.push(importCmd(db, coll, path));
       const detail = res.errors.length ? ` ${res.errors.join("; ")}` : "";
-      io = `Đã chèn ${res.inserted}, bỏ qua ${res.failed} lỗi.${detail}`;
+      io = m.namespace_panel_import_done({ inserted: res.inserted, failed: res.failed }) + detail;
       await namespaceTree.refresh();
     } catch (e) { ioErr = errorMessage(e); }
   }
@@ -139,11 +140,11 @@
   </svg>
   <input
     type="text"
-    placeholder="Filter collections…"
+    placeholder={m.namespace_panel_filter_placeholder()}
     bind:value={query}
     onkeydown={(e) => { if (e.key === "Escape") { query = ""; (e.currentTarget as HTMLInputElement).blur(); } }}
   />
-  {#if query}<button class="ns-clear" aria-label="Clear filter" onclick={() => (query = "")}>×</button>{/if}
+  {#if query}<button class="ns-clear" aria-label={m.namespace_panel_clear_filter()} onclick={() => (query = "")}>×</button>{/if}
 </div>
 
 <NamespaceTree
@@ -177,8 +178,8 @@
 {:else if dialog?.type === "newColl"}
   {@const d = dialog}
   <NameDialog
-    title="New collection"
-    label="Tên collection"
+    title={m.namespace_panel_new_coll_title()}
+    label={m.namespace_panel_new_coll_label()}
     onsubmit={async (name) => {
       await namespaceTree.createCollection(d.db, name);
       dialog = null;
@@ -188,8 +189,8 @@
 {:else if dialog?.type === "rename"}
   {@const d = dialog}
   <NameDialog
-    title="Rename collection"
-    label="Tên mới"
+    title={m.namespace_panel_rename_title()}
+    label={m.namespace_panel_rename_label()}
     initial={d.coll}
     onsubmit={async (name) => {
       await namespaceTree.renameCollection(d.db, d.coll, name);
@@ -200,8 +201,8 @@
 {:else if dialog?.type === "dropColl"}
   {@const d = dialog}
   <DropConfirmDialog
-    title="Drop collection"
-    message={`Xóa collection "${d.coll}" trong "${d.db}"? Không hoàn tác.`}
+    title={m.drop_dialog_drop() + " collection"}
+    message={m.namespace_panel_drop_coll_message({ coll: d.coll, db: d.db })}
     expectedName={d.coll}
     onconfirm={async () => {
       await namespaceTree.dropCollection(d.db, d.coll);
@@ -212,8 +213,8 @@
 {:else if dialog?.type === "dropDb"}
   {@const d = dialog}
   <DropConfirmDialog
-    title="Drop database"
-    message={`Xóa database "${d.db}" và toàn bộ collection bên trong? Không hoàn tác.`}
+    title={m.drop_dialog_drop() + " database"}
+    message={m.namespace_panel_drop_db_message({ db: d.db })}
     expectedName={d.db}
     onconfirm={async () => {
       await namespaceTree.dropDatabase(d.db);
@@ -228,8 +229,8 @@
     oncancel={() => (dialog = null)} />
 {:else if dialog?.type === "truncate"}
   {@const d = dialog}
-  <DropConfirmDialog title="Truncate collection"
-    message={`Xóa toàn bộ document trong "${d.coll}" (giữ index)? Không hoàn tác.`}
+  <DropConfirmDialog title={m.namespace_panel_truncate_title()}
+    message={m.namespace_panel_truncate_message({ coll: d.coll })}
     expectedName={d.coll}
     onconfirm={async () => { await namespaceTree.truncate(d.db, d.coll); dialog = null; }}
     oncancel={() => (dialog = null)} />

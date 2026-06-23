@@ -1,6 +1,7 @@
 <!-- src/lib/components/StatusBar.svelte -->
 <script lang="ts">
   import { formatUptime } from "../domain/host";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     connected,
@@ -33,29 +34,29 @@
   <div class="seg">
     <span class="dot" class:on={connected}></span>
     {#if connected}
-      {label} · {collCount} collections
+      {m.status_bar_collections({ label, count: collCount })}
     {:else}
-      Disconnected
+      {m.status_bar_disconnected()}
     {/if}
   </div>
 
   <!-- Segment 2: cell position placeholder -->
-  <div class="seg">—:—</div>
+  <div class="seg">{m.status_bar_cell_pos()}</div>
 
   <!-- Segment 3: connected time placeholder -->
-  <div class="seg">Connected: —</div>
+  <div class="seg">{m.status_bar_connected_time()}</div>
 
   <!-- Segment 4: MongoDB version -->
-  <div class="seg">MongoDB {version ?? "—"}</div>
+  <div class="seg">{m.status_bar_mongodb_version({ version: version ?? "—" })}</div>
 
   <!-- Segment 5: uptime -->
-  <div class="seg">Uptime: {formatUptime(uptimeSeconds ?? null)}</div>
+  <div class="seg">{m.status_bar_uptime({ uptime: formatUptime(uptimeSeconds ?? null) })}</div>
 
   <!-- Segment 6: server time -->
-  <div class="seg">Server time: {serverTime}</div>
+  <div class="seg">{m.status_bar_server_time({ time: serverTime })}</div>
 
   <!-- Right: idle status -->
-  <div class="seg idle">Idle.</div>
+  <div class="seg idle">{m.status_bar_idle()}</div>
 </div>
 
 <style>

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { createCommandLog } from "./commandLog.svelte";
 
 describe("createCommandLog", () => {
-  it("push thêm mục, đánh số tăng dần từ 1", () => {
+  it("push appends entries with incrementing counter starting at 1", () => {
     const log = createCommandLog();
     log.push("a");
     log.push("b");
@@ -12,7 +12,7 @@ describe("createCommandLog", () => {
     ]);
   });
 
-  it("vượt limit thì cắt mục cũ nhất, số n vẫn tăng", () => {
+  it("exceeding the limit trims oldest entries while counter keeps incrementing", () => {
     const log = createCommandLog(2);
     log.push("a");
     log.push("b");
@@ -23,14 +23,14 @@ describe("createCommandLog", () => {
     ]);
   });
 
-  it("clear xóa hết", () => {
+  it("clear empties all entries", () => {
     const log = createCommandLog();
     log.push("a");
     log.clear();
     expect(log.entries).toEqual([]);
   });
 
-  it("toggle đảo trạng thái open", () => {
+  it("toggle flips the open state", () => {
     const log = createCommandLog();
     expect(log.open).toBe(true);
     log.toggle();

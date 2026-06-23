@@ -1,4 +1,4 @@
-import type { Doc } from "./columns";
+import type { Doc } from "./doc";
 
 /** Serialize a document's _id back to a Canonical Extended JSON string; null if absent. */
 export function idJson(doc: Doc): string | null {

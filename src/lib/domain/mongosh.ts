@@ -1,4 +1,4 @@
-/** Dựng chuỗi lệnh mongosh tương đương cho command log (chỉ-đọc). Thuần, không Tauri/Svelte. */
+/** Build equivalent mongosh command strings for the command log (read-only). Pure; no Tauri/Svelte. */
 
 const c = (coll: string) => `db.getCollection("${coll}")`;
 

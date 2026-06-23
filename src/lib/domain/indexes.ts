@@ -1,14 +1,15 @@
+/** Parse, build, validate, and display MongoDB index definitions. */
 import { numFromExt } from "./extjson";
 
 export type IndexKeyValue = number | string;
 
 export interface IndexInfo {
   name: string;
-  entries: { field: string; value: IndexKeyValue }[]; // GIỮ THỨ TỰ field
+  entries: { field: string; value: IndexKeyValue }[]; // preserves field order
   unique: boolean;
   sparse: boolean;
-  ttl: number | null; // expireAfterSeconds nếu có
-  isId: boolean; // name === "_id_"
+  ttl: number | null; // expireAfterSeconds when present
+  isId: boolean; // true when name === "_id_"
 }
 
 function normalizeKeyValue(v: unknown): IndexKeyValue {
@@ -16,7 +17,7 @@ function normalizeKeyValue(v: unknown): IndexKeyValue {
   return n !== null ? n : String(v); // "text" / "2dsphere" / "hashed" ...
 }
 
-/** Parse danh sách index doc (Canonical ExtJSON) → IndexInfo[]. */
+/** Parse a list of index documents (Canonical ExtJSON) → IndexInfo[]. */
 export function parseIndexList(jsonStrings: string[]): IndexInfo[] {
   return jsonStrings.map((s) => {
     const doc = JSON.parse(s) as Record<string, unknown>;
@@ -37,25 +38,25 @@ export function parseIndexList(jsonStrings: string[]): IndexInfo[] {
   });
 }
 
-/** Dựng ExtJSON keys string giữ đúng thứ tự field (không phụ thuộc thứ tự khóa object JS). */
+/** Build an ExtJSON keys string preserving field order (not relying on JS object key order). */
 export function buildIndexKeys(fields: { field: string; dir: 1 | -1 }[]): string {
   const parts = fields.map((f) => `${JSON.stringify(f.field.trim())}:${f.dir}`);
   return `{${parts.join(",")}}`;
 }
 
-/** Trả message lỗi hoặc null. ≥1 field không rỗng; không trùng field. */
+/** Returns a message key or null. Requires ≥1 non-empty field; no duplicate fields. */
 export function validateIndexFields(fields: { field: string; dir: 1 | -1 }[]): string | null {
   const names = fields.map((f) => f.field.trim()).filter((n) => n.length > 0);
-  if (names.length === 0) return "Cần ít nhất một field.";
+  if (names.length === 0) return "err_index_no_field";
   const seen = new Set<string>();
   for (const n of names) {
-    if (seen.has(n)) return `Field trùng: "${n}".`;
+    if (seen.has(n)) return "err_index_field_duplicate";
     seen.add(n);
   }
   return null;
 }
 
-/** "{ email: 1, age: -1 }" cho hiển thị. */
+/** Format entries as "{ email: 1, age: -1 }" for display. */
 export function describeKeys(entries: IndexInfo["entries"]): string {
   return `{ ${entries.map((e) => `${e.field}: ${e.value}`).join(", ")} }`;
 }

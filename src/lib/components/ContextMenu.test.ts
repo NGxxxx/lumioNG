@@ -3,7 +3,7 @@ import { render, fireEvent } from "@testing-library/svelte";
 import ContextMenu from "./ContextMenu.svelte";
 
 describe("ContextMenu", () => {
-  it("click item bật → onselect với action", async () => {
+  it("clicking an enabled item → calls onselect with action", async () => {
     const onselect = vi.fn();
     const onclose = vi.fn();
     const { getByText } = render(ContextMenu, {
@@ -13,7 +13,7 @@ describe("ContextMenu", () => {
     expect(onselect).toHaveBeenCalledWith("copyValue");
   });
 
-  it("item disabled → không gọi onselect", async () => {
+  it("disabled item → does not call onselect", async () => {
     const onselect = vi.fn();
     const onclose = vi.fn();
     const { getByText } = render(ContextMenu, {

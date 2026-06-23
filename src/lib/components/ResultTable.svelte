@@ -4,7 +4,7 @@
   import { get } from "svelte/store";
   import { createCollectionView } from "../stores/collectionView.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
-  import type { Doc } from "../domain/columns";
+  import type { Doc } from "../domain/doc";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -17,6 +17,8 @@
   import type { ValueKind } from "../domain/theme";
   import { describeValue } from "../domain/extjson";
   import ResultTree from "./ResultTree.svelte";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let {
     db,
@@ -62,7 +64,7 @@
     window.addEventListener("mouseup", up);
   }
 
-  /** Đóng dropdown khi click ra ngoài cụm nút/popover. */
+  /** Close dropdown when clicking outside the button/popover group. */
   function clickOutside(node: HTMLElement, onOut: () => void) {
     function handle(e: PointerEvent) {
       if (!node.contains(e.target as Node)) onOut();
@@ -138,10 +140,10 @@
       visibleColumns.reduce((sum, c) => sum + (v.colWidths[c.path] ?? FALLBACK_COL_W), 0),
   );
 
-  /** Field summary: số field hiện / tổng. */
+  /** Field summary: visible / total. */
   const fieldsSummary = $derived(`${visibleColumns.length}/${v.columnFields.length}`);
 
-  /** Sort summary: field đầu + chiều, kèm "+N" nếu nhiều khóa. */
+  /** Sort summary: first field + direction, with "+N" if multiple keys. */
   const sortSummary = $derived.by(() => {
     if (v.sortKeys.length === 0) return "";
     const first = v.sortKeys[0];
@@ -150,7 +152,7 @@
     return ` ${first.path}${arrow}${extra > 0 ? ` +${extra}` : ""}`;
   });
 
-  /** Field chưa nằm trong sort (cho picker "Thêm field"). */
+  /** Fields not yet in sort (for the "+ Add field" picker). */
   const sortableFields = $derived(
     v.columnFields.filter((c) => !v.sortKeys.some((k) => k.path === c.path)),
   );
@@ -249,31 +251,31 @@
     />
     <button class="btn-run" onclick={v.applyFilter}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z" fill="#fff"/></svg>
-      Run
+      {m.result_table_run()}
     </button>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div class="dropwrap" use:clickOutside={closeDropdown} onkeydown={(e) => { if (e.key === "Escape") closeDropdown(); }} role="group" tabindex="-1">
-      <button class="drop-btn" onclick={() => toggleDropdown("sort")} title="Sắp xếp">
-        Sort{sortSummary} ▾
+      <button class="drop-btn" onclick={() => toggleDropdown("sort")} title={m.result_table_sort_title()}>
+        {m.result_table_sort_title()}{sortSummary} ▾
       </button>
       {#if openDropdown === "sort"}
         <div class="dropdown sort-dd">
           {#if v.sortKeys.length === 0}
-            <div class="dd-empty">Chưa sắp xếp</div>
+            <div class="dd-empty">{m.result_table_sort_empty()}</div>
           {:else}
             {#each v.sortKeys as k, i}
               <div class="dd-row">
                 <span class="dd-rank">{i + 1}.</span>
                 <span class="dd-field">{k.path}</span>
-                <button class="dd-ic" title="Đảo chiều" onclick={() => v.toggleSortDirAt(k.path)}>{k.dir === 1 ? "▲" : "▼"}</button>
-                <button class="dd-ic" title="Lên" onclick={() => v.moveSort(k.path, -1)} disabled={i === 0}>↑</button>
-                <button class="dd-ic" title="Xuống" onclick={() => v.moveSort(k.path, 1)} disabled={i === v.sortKeys.length - 1}>↓</button>
-                <button class="dd-ic dd-x" title="Bỏ" onclick={() => v.removeSort(k.path)}>×</button>
+                <button class="dd-ic" title={m.result_table_sort_reverse()} onclick={() => v.toggleSortDirAt(k.path)}>{k.dir === 1 ? "▲" : "▼"}</button>
+                <button class="dd-ic" title={m.result_table_sort_move_up()} onclick={() => v.moveSort(k.path, -1)} disabled={i === 0}>↑</button>
+                <button class="dd-ic" title={m.result_table_sort_move_down()} onclick={() => v.moveSort(k.path, 1)} disabled={i === v.sortKeys.length - 1}>↓</button>
+                <button class="dd-ic dd-x" title={m.result_table_sort_remove()} onclick={() => v.removeSort(k.path)}>×</button>
               </div>
             {/each}
           {/if}
           {#if sortableFields.length > 0}
-            <label class="dd-add">+ Thêm field
+            <label class="dd-add">{m.result_table_sort_add_field()}
               <select
                 onchange={(e) => {
                   const p = e.currentTarget.value;
@@ -289,18 +291,18 @@
             </label>
           {/if}
           {#if v.sortKeys.length > 0}
-            <button class="dd-clear" onclick={v.clearSort}>Clear all</button>
+            <button class="dd-clear" onclick={v.clearSort}>{m.result_table_sort_clear_all()}</button>
           {/if}
         </div>
       {/if}
-      <button class="drop-btn" onclick={() => toggleDropdown("fields")} title="Chọn field hiển thị">
-        Fields {fieldsSummary} ▾
+      <button class="drop-btn" onclick={() => toggleDropdown("fields")} title={m.result_table_fields_title()}>
+        {m.result_table_fields_title()} {fieldsSummary} ▾
       </button>
       {#if openDropdown === "fields"}
         <div class="dropdown fields-dd">
           <div class="dd-allnone">
-            <button onclick={v.showAllFieldsDraft}>Show all</button>
-            <button onclick={v.hideAllFieldsDraft}>Hide all</button>
+            <button onclick={v.showAllFieldsDraft}>{m.result_table_fields_show_all()}</button>
+            <button onclick={v.hideAllFieldsDraft}>{m.result_table_fields_hide_all()}</button>
           </div>
           <div class="fields-list">
             {#each v.columnFields as c}
@@ -311,11 +313,11 @@
                   disabled={c.path === "_id"}
                   onchange={() => v.toggleHiddenDraft(c.path)}
                 />
-                {c.path}{#if c.path === "_id"}<span class="locked">(locked)</span>{/if}
+                {c.path}{#if c.path === "_id"}<span class="locked">{m.result_table_fields_locked()}</span>{/if}
               </label>
             {/each}
           </div>
-          <button class="chooser-apply" onclick={applyFields}>Apply</button>
+          <button class="chooser-apply" onclick={applyFields}>{m.result_table_fields_apply()}</button>
         </div>
       {/if}
     </div>
@@ -324,26 +326,26 @@
         class="toggle-btn"
         class:toggle-active={view === "grid"}
         onclick={() => { view = "grid"; }}
-        title="Grid view"
+        title={m.result_table_view_grid()}
       >
         <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="currentColor" stroke-width="0.9"/></svg>
-        Grid
+        {m.result_table_view_grid()}
       </button>
       <button
         class="toggle-btn"
         class:toggle-active={view === "tree"}
         onclick={() => { view = "tree"; }}
-        title="Tree view"
+        title={m.result_table_view_tree()}
       >
         <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16"><path d="M6 2.5C4 2.5 4 5 4 6.5S2.5 8 2.5 8 4 8.5 4 10s0 3.5 2 3.5M10 2.5c2 0 2 2.5 2 4s1.5 1.5 1.5 1.5S12 8.5 12 10s0 3.5-2 3.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
-        Tree
+        {m.result_table_view_tree()}
       </button>
     </div>
   </div>
-  {#if v.filterError}<div class="error">{v.filterError}</div>{/if}
+  {#if v.filterError}<div class="error">{msgKey(v.filterError)}</div>{/if}
 
   {#if view === "grid"}
-  <div class="scroller" role="grid" tabindex="0" aria-label="Bảng kết quả" onkeydown={onGridKey} bind:this={scrollerEl}>
+  <div class="scroller" role="grid" tabindex="0" aria-label={m.result_table_aria_grid()} onkeydown={onGridKey} bind:this={scrollerEl}>
     <table style="width:{gridTotalWidth}px">
       <colgroup>
         <col class="col-rownum" />
@@ -357,7 +359,7 @@
           {#each visibleColumns as c}
             <th
               class="th-data"
-              title="Click: sort · Shift+click: add column"
+              title={m.result_table_col_header_tooltip()}
               onclick={(e) => { if (resizingCol) return; v.toggleSort(c.path, e.shiftKey); }}
             ><span class="colname">{c.path}</span>{#if sortDirOf(c.path)}<span class="sortarrow"
                 >{sortDirOf(c.path) === 1 ? "▲" : "▼"}</span
@@ -366,7 +368,7 @@
                 >{c.type}{#if c.mixed}*{/if}</span
               >{/if}{#if c.presence !== undefined && c.presence < 1}<span
                 class="presence"
-                title={`Hiện diện ${Math.round(c.presence * 100)}% mẫu`}>{Math.round(c.presence * 100)}%</span
+                title={m.result_table_presence_tooltip({ pct: Math.round(c.presence * 100) })}>{Math.round(c.presence * 100)}%</span
               >{/if}<span
                 class="col-resize"
                 role="presentation"
@@ -401,7 +403,7 @@
                     onblur={v.cancelEdit}
                     use:focusSelect
                   />
-                  {#if v.editError}<div class="cellerror">{v.editError}</div>{/if}
+                  {#if v.editError}<div class="cellerror">{msgKey(v.editError)}</div>{/if}
                 {:else}
                   {@const val = getByPath(d, k)}
                   {#if val !== undefined}
@@ -427,7 +429,7 @@
     </table>
     {#if v.loading}
       <div class="loading-overlay" role="status" aria-live="polite">
-        <span class="spinner"></span><span>Đang tải…</span>
+        <span class="spinner"></span><span>{m.common_loading()}</span>
       </div>
     {/if}
   </div>
@@ -436,36 +438,36 @@
   <div class="tree-wrap">
     <ResultTree docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
       onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
-    {#if v.loading}<div class="status">Đang tải…</div>{/if}
+    {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
   </div>
   {/if}
   {#if v.allShown}
     <div class="pager">
-      <button class="pg-btn" onclick={v.firstPage} title="Back to paging">↩ Paged</button>
-      <label class="pg-rows">Rows
+      <button class="pg-btn" onclick={v.firstPage} title={m.result_table_pager_back_to_paged()}>{m.result_table_pager_back_to_paged()}</button>
+      <label class="pg-rows">{m.result_table_pager_rows()}
         <input type="number" min="1" value={v.pageSize}
           onchange={(e) => v.setPageSize(Math.max(1, +e.currentTarget.value || 50))} />
       </label>
-      <span class="pg-total">all {v.totalCount} docs</span>
+      <span class="pg-total">{m.result_table_pager_all_docs({ count: v.totalCount })}</span>
     </div>
   {:else}
     <div class="pager">
-      <button class="pg-btn" onclick={v.firstPage} disabled={v.currentPage <= 1} title="First">«</button>
-      <button class="pg-btn" onclick={v.prevPage} disabled={v.currentPage <= 1} title="Prev">‹</button>
+      <button class="pg-btn" onclick={v.firstPage} disabled={v.currentPage <= 1} title={m.result_table_pager_first()}>«</button>
+      <button class="pg-btn" onclick={v.prevPage} disabled={v.currentPage <= 1} title={m.result_table_pager_prev()}>‹</button>
       <span class="pg-info">
         <input class="pg-jump" type="number" min="1" max={v.pageCount} value={v.currentPage}
           onchange={(e) => v.goToPage(Math.max(1, +e.currentTarget.value || 1))} />
         / {v.pageCount}
       </span>
-      <button class="pg-btn" onclick={v.nextPage} disabled={v.currentPage >= v.pageCount} title="Next">›</button>
-      <button class="pg-btn" onclick={v.lastPage} disabled={v.currentPage >= v.pageCount} title="Last">»</button>
+      <button class="pg-btn" onclick={v.nextPage} disabled={v.currentPage >= v.pageCount} title={m.result_table_pager_next()}>›</button>
+      <button class="pg-btn" onclick={v.lastPage} disabled={v.currentPage >= v.pageCount} title={m.result_table_pager_last()}>»</button>
       <span class="pg-sep">|</span>
-      <label class="pg-rows">Rows
+      <label class="pg-rows">{m.result_table_pager_rows()}
         <input type="number" min="1" value={v.pageSize}
           onchange={(e) => v.setPageSize(Math.max(1, +e.currentTarget.value || 50))} />
       </label>
-      <button class="pg-btn" onclick={v.requestShowAll}>Show all</button>
-      <span class="pg-total">{v.totalCount} docs</span>
+      <button class="pg-btn" onclick={v.requestShowAll}>{m.result_table_pager_show_all()}</button>
+      <span class="pg-total">{m.result_table_pager_docs({ count: v.totalCount })}</span>
     </div>
   {/if}
 </div>
@@ -493,8 +495,8 @@
 
 {#if v.bulkTypeConfirm}
   <DropConfirmDialog
-    title={v.bulkMode === "delete" ? "Xóa toàn bộ collection?" : "Cập nhật toàn bộ collection?"}
-    message={`Filter rỗng — thao tác áp dụng cho TOÀN BỘ collection "${coll}". Không hoàn tác được.`}
+    title={v.bulkMode === "delete" ? m.result_table_bulk_delete_title() : m.result_table_bulk_update_title()}
+    message={m.result_table_bulk_confirm_message({ coll })}
     expectedName={coll}
     onconfirm={v.confirmBulkAll}
     oncancel={v.cancelBulkAll}
@@ -503,10 +505,10 @@
 
 {#if v.confirmDoc}
   <ConfirmDialog
-    title="Xóa document?"
-    message="Bạn sắp xóa document này. Hành động này không hoàn tác được."
-    detail={`_id = ${idJson(v.confirmDoc) ?? "(không có _id)"}`}
-    confirmLabel="Delete"
+    title={m.result_table_delete_doc_title()}
+    message={m.result_table_delete_doc_message()}
+    detail={`_id = ${idJson(v.confirmDoc) ?? "(no _id)"}`}
+    confirmLabel={m.common_delete()}
     danger
     onconfirm={v.confirmDelete}
     oncancel={v.cancelDelete}
@@ -515,9 +517,9 @@
 
 {#if v.confirmSelectionDelete !== null}
   <ConfirmDialog
-    title="Xóa các document đã chọn?"
-    message={`Bạn sắp xóa ${v.confirmSelectionDelete} document đã chọn. Hành động này không hoàn tác được.`}
-    confirmLabel="Delete"
+    title={m.result_table_delete_selection_title()}
+    message={m.result_table_delete_selection_message({ count: v.confirmSelectionDelete })}
+    confirmLabel={m.common_delete()}
     danger
     onconfirm={v.confirmDeleteSelected}
     oncancel={v.cancelDeleteSelected}
@@ -526,9 +528,9 @@
 
 {#if v.showAllPending !== null}
   <ConfirmDialog
-    title="Hiển tất cả?"
-    message={`${v.showAllPending} dòng có thể làm chậm UI. Vẫn hiển thị tất cả?`}
-    confirmLabel="Hiển tất cả"
+    title={m.result_table_show_all_title()}
+    message={m.result_table_show_all_message({ count: v.showAllPending })}
+    confirmLabel={m.result_table_show_all_confirm()}
     onconfirm={v.confirmShowAll}
     oncancel={v.cancelShowAll}
   />
@@ -555,8 +557,11 @@
 {/if}
 
 <style>
+  /* ── Layout ── */
   .result { display: flex; flex-direction: column; height: 100%; }
   .scroller { overflow: auto; flex: 1; position: relative; }
+
+  /* ── Loading overlay ── */
   .loading-overlay {
     position: absolute; inset: 0; z-index: 5;
     display: flex; align-items: center; justify-content: center; gap: 8px;
@@ -564,9 +569,11 @@
   }
   .spinner { width: 14px; height: 14px; border: 2px solid #cfd8e3; border-top-color: #4c7; border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Table base ── */
   table { border-collapse: collapse; table-layout: fixed; font-size: 12px; white-space: nowrap; }
 
-  /* === Header === */
+  /* ── Header ── */
   th {
     background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom));
     border: 1px solid #d0d0d0;
@@ -592,7 +599,7 @@
     padding: 4px 6px;
   }
 
-  /* === Cells === */
+  /* ── Cells ── */
   td {
     border: 1px solid var(--cell-border);
     padding: 3px 9px;
@@ -628,7 +635,7 @@
   .data-cell .cell.object { color: #8a6cb5; font-style: italic; font-size: 11px; }
   .data-cell .cell.array { color: #a07b2f; font-style: italic; font-size: 11px; }
 
-  /* === Pill for status column === */
+  /* ── Pill (status column) ── */
   .pill {
     display: inline-block;
     padding: 1px 8px;
@@ -638,18 +645,18 @@
     margin: 2px 9px;
   }
 
-  /* === Edit cell === */
+  /* ── Edit cell ── */
   .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; padding: 2px 4px; }
   .cellerror { color: #b71c1c; font-size: 11px; margin-top: 2px; }
 
-  /* === Column header decorations === */
+  /* ── Column header decorations ── */
   .colname { font-weight: 600; }
   .badge { margin-left: 6px; font-size: 10px; color: #555; background: #e8e8e8; border-radius: 3px; padding: 0 4px; font-family: ui-monospace, monospace; }
   .presence { margin-left: 4px; font-size: 10px; color: #999; }
   .sortarrow { margin-left: 4px; font-size: 10px; color: #1565c0; }
   .sortrank { margin-left: 2px; font-size: 9px; color: #1565c0; vertical-align: super; }
 
-  /* === Filter bar === */
+  /* ── Filter bar ── */
   .filterbar {
     display: flex;
     align-items: center;
@@ -688,7 +695,7 @@
   }
   .btn-run:hover { background: #1a8a43; }
 
-  /* === Grid/Tree toggle === */
+  /* ── Grid / Tree toggle ── */
   .view-toggle { display: flex; align-items: center; gap: 1px; margin-left: 4px; }
   .toggle-btn {
     display: flex;
@@ -710,13 +717,14 @@
     color: var(--tab-active-fg);
   }
 
-  /* === Error / status messages === */
+  /* ── Error / status messages ── */
   .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; }
   .io-ok { background: #e8f5e9; color: #1b5e20; padding: 6px 10px; font-size: 12px; }
   /* Tree-view loading hint: overlay so it doesn't disturb the 100%-height virtual scroller. */
   .status { position: absolute; top: 6px; right: 12px; padding: 3px 8px; color: #777; font-size: 12px;
     background: rgba(255, 255, 255, 0.75); border-radius: 3px; z-index: 5; }
 
+  /* ── Column chooser ── */
   .chooser-row { display: block; font-size: 12px; padding: 2px 0; white-space: nowrap; }
   .chooser-apply {
     display: block;
@@ -732,6 +740,7 @@
   }
   .chooser-apply:hover { background: #e6e6e6; }
 
+  /* ── Pager ── */
   .pager {
     display: flex;
     align-items: center;
@@ -760,11 +769,11 @@
   .pg-rows { display: flex; align-items: center; gap: 4px; color: #555; }
   .pg-rows input { width: 56px; height: 20px; text-align: center; }
 
-  /* === Tree view === (rendering lives in the shared, virtualized ResultTree.svelte) */
+  /* ── Tree view ── (rendering lives in the shared, virtualized ResultTree.svelte) */
   .tree-wrap { flex: 1; min-height: 0; position: relative; }
   .tree-wrap > :global(.tree-scroller) { height: 100%; }
 
-  /* === Header dropdowns (Sort / Fields) === */
+  /* ── Header dropdowns (Sort / Fields) ── */
   .dropwrap { position: relative; display: flex; align-items: center; gap: 4px; margin-left: 4px; }
   .dropwrap:focus { outline: none; }
   .drop-btn {
@@ -803,6 +812,7 @@
   .dd-add select { margin-left: 6px; font-size: 12px; }
   .dd-clear { margin-top: 6px; width: 100%; font-size: 11px; cursor: pointer; }
 
+  /* ── Column resize handle ── */
   .col-rownum { width: 42px; }
   /* .col-resize anchors off the base `th { position: sticky }` positioning context. */
   .col-resize {

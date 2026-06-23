@@ -3,6 +3,7 @@
   import { createCollectionSchema } from "../stores/collectionSchema.svelte";
   import { bsonTypeBadge } from "../domain/theme";
   import { formatPercent } from "../domain/stats";
+  import * as m from "$lib/paraglide/messages";
 
   let { db, coll }: { db: string; coll: string } = $props();
   const v = untrack(() => createCollectionSchema(db, coll));
@@ -11,17 +12,17 @@
 
 <div class="schemapanel">
   <div class="bar">
-    <label>Sample size
+    <label>{m.schema_panel_sample_size_label()}
       <input type="number" min="1" value={v.sampleSize}
         onchange={(e) => v.setSampleSize(Number((e.target as HTMLInputElement).value))} />
     </label>
-    <button onclick={() => v.refresh()}>Re-sample</button>
-    {#if v.actualSampled}<span class="muted">sampled {v.actualSampled} docs</span>{/if}
+    <button onclick={() => v.refresh()}>{m.schema_panel_resample()}</button>
+    {#if v.actualSampled}<span class="muted">{m.schema_panel_sampled_docs({ count: v.actualSampled })}</span>{/if}
   </div>
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  {#if v.loading}<div class="status">Loading…</div>{/if}
+  {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
   <table class="schema">
-    <thead><tr><th>Field</th><th>Type</th><th>Presence</th><th>Mixed</th></tr></thead>
+    <thead><tr><th>{m.schema_panel_col_field()}</th><th>{m.schema_panel_col_type()}</th><th>{m.schema_panel_col_presence()}</th><th>{m.schema_panel_col_mixed()}</th></tr></thead>
     <tbody>
       {#each v.fields as f (f.path)}
         {@const badge = bsonTypeBadge(f.type)}
@@ -29,7 +30,7 @@
           <td class="field">{f.path}</td>
           <td><span class="badge" style="color:{badge.color};background:{badge.bg}">{f.type}</span></td>
           <td>{formatPercent(f.presence)}</td>
-          <td>{f.mixed ? "yes" : ""}</td>
+          <td>{f.mixed ? m.common_yes() : ""}</td>
         </tr>
       {/each}
     </tbody>

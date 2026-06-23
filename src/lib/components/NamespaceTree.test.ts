@@ -46,23 +46,23 @@ describe("NamespaceTree", () => {
     }
   });
 
-  it("left-click collection vẫn gọi onselect", async () => {
+  it("left-click collection still calls onselect", async () => {
     const onselect = vi.fn();
     const { getByText } = render(NamespaceTree, { props: { databases, onselect } });
     await fireEvent.click(getByText("users"));
     expect(onselect).toHaveBeenCalledWith({ db: "shop", coll: "users" });
   });
 
-  it("caret thu/mở: click db ẩn rồi hiện lại collection", async () => {
+  it("caret collapse/expand: clicking db hides then shows collection again", async () => {
     const { getByText, queryByText } = render(NamespaceTree, { props: { databases } });
     expect(getByText("users")).toBeTruthy();
     await fireEvent.click(getByText("shop"));
-    expect(queryByText("users")).toBeNull(); // đã thu
+    expect(queryByText("users")).toBeNull(); // collapsed
     await fireEvent.click(getByText("shop"));
-    expect(getByText("users")).toBeTruthy(); // mở lại
+    expect(getByText("users")).toBeTruthy(); // expanded again
   });
 
-  it("footer đếm databases + collections", () => {
+  it("footer shows database and collection counts", () => {
     const dbs = [
       { name: "a", collections: ["x", "y"] },
       { name: "b", collections: ["z"] },
@@ -71,12 +71,12 @@ describe("NamespaceTree", () => {
     expect(getByText("2 databases · 3 collections")).toBeTruthy();
   });
 
-  it("hiện node connection khi có prop connection", () => {
+  it("shows connection node when connection prop is provided", () => {
     const { getByText } = render(NamespaceTree, { props: { databases, connection: { label: "Local" } } });
     expect(getByText("Local")).toBeTruthy();
   });
 
-  it("left-click db → onselectdb (vẫn toggle thu/mở)", async () => {
+  it("left-click db → onselectdb (still toggles collapse/expand)", async () => {
     const onselectdb = vi.fn();
     const { getByText } = render(NamespaceTree, { props: { databases, onselectdb } });
     await fireEvent.click(getByText("shop"));

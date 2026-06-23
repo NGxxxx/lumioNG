@@ -3,7 +3,7 @@ import { render, fireEvent } from "@testing-library/svelte";
 import NameDialog from "./NameDialog.svelte";
 
 describe("NameDialog", () => {
-  it("submit gọi onsubmit với value đã trim", async () => {
+  it("submit calls onsubmit with trimmed value", async () => {
     const onsubmit = vi.fn().mockResolvedValue(undefined);
     const { getByText, getByLabelText } = render(NameDialog, {
       props: { title: "New collection", label: "Tên", onsubmit, oncancel: vi.fn() },
@@ -13,7 +13,7 @@ describe("NameDialog", () => {
     expect(onsubmit).toHaveBeenCalledWith("users");
   });
 
-  it("onsubmit reject → hiển thị lỗi inline", async () => {
+  it("onsubmit rejection → shows inline error", async () => {
     const onsubmit = vi.fn().mockRejectedValue("tên xấu");
     const { getByText, getByLabelText, findByText } = render(NameDialog, {
       props: { title: "New collection", label: "Tên", onsubmit, oncancel: vi.fn() },

@@ -11,7 +11,7 @@ import {
 describe("formatBytes", () => {
   it("null → —", () => expect(formatBytes(null)).toBe("—"));
   it("0 → 0 B", () => expect(formatBytes(0)).toBe("0 B"));
-  it("dưới 1KB → B", () => expect(formatBytes(512)).toBe("512 B"));
+  it("below 1KB → B", () => expect(formatBytes(512)).toBe("512 B"));
   it("KB", () => expect(formatBytes(1536)).toBe("1.5 KB"));
   it("MB", () => expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB"));
   it("GB", () => expect(formatBytes(3 * 1024 * 1024 * 1024)).toBe("3.0 GB"));
@@ -19,7 +19,7 @@ describe("formatBytes", () => {
 
 describe("formatCount", () => {
   it("null → —", () => expect(formatCount(null)).toBe("—"));
-  it("nhóm hàng nghìn", () => expect(formatCount(1234567)).toBe("1,234,567"));
+  it("thousands-grouped", () => expect(formatCount(1234567)).toBe("1,234,567"));
 });
 
 const collStatsJson = JSON.stringify({
@@ -35,7 +35,7 @@ const collStatsJson = JSON.stringify({
 });
 
 describe("parseCollStats", () => {
-  it("trích đủ field + indexSizes thành mảng", () => {
+  it("extracts all fields and indexSizes as an array", () => {
     const s = parseCollStats(collStatsJson);
     expect(s.ns).toBe("shop.users");
     expect(s.count).toBe(1500);
@@ -50,7 +50,7 @@ describe("parseCollStats", () => {
       { name: "email_1", bytes: 16384 },
     ]);
   });
-  it("thiếu field → null, indexSizes rỗng", () => {
+  it("missing fields → null, indexSizes empty", () => {
     const s = parseCollStats("{}");
     expect(s.count).toBeNull();
     expect(s.storageSize).toBeNull();
@@ -60,7 +60,7 @@ describe("parseCollStats", () => {
 });
 
 describe("parseDbStats", () => {
-  it("trích đủ field", () => {
+  it("extracts all fields", () => {
     const json = JSON.stringify({
       db: "shop",
       collections: { $numberInt: "5" },
@@ -77,7 +77,7 @@ describe("parseDbStats", () => {
     expect(s.dataSize).toBe(1048576);
     expect(s.indexes).toBe(8);
   });
-  it("thiếu field → null", () => {
+  it("missing fields → null", () => {
     expect(parseDbStats("{}").objects).toBeNull();
   });
 });
@@ -95,7 +95,7 @@ describe("formatPercent", () => {
 });
 
 describe("parseCollOptions", () => {
-  it("có validator → pretty JSON + level/action", () => {
+  it("with validator → pretty JSON and level/action", () => {
     const json = JSON.stringify({
       name: "users",
       type: "collection",
@@ -109,10 +109,10 @@ describe("parseCollOptions", () => {
     expect(o.validationLevel).toBe("strict");
     expect(o.validationAction).toBe("error");
     expect(o.validatorJson).toContain("$jsonSchema");
-    expect(o.validatorJson).toContain("\n"); // pretty (nhiều dòng)
+    expect(o.validatorJson).toContain("\n"); // pretty-printed (multiple lines)
     expect(o.capped).toBe(false);
   });
-  it("không validator → validatorJson null", () => {
+  it("no validator → validatorJson null", () => {
     const json = JSON.stringify({ name: "x", type: "collection", options: {} });
     const o = parseCollOptions(json);
     expect(o.validatorJson).toBeNull();
@@ -129,7 +129,7 @@ describe("parseCollOptions", () => {
     expect(o.max).toBe(1000);
     expect(o.rawJson).toContain("\n");
   });
-  it("doc rỗng (\"{}\") → options rỗng", () => {
+  it("empty doc (\"{}\") → empty options", () => {
     const o = parseCollOptions("{}");
     expect(o.capped).toBe(false);
     expect(o.validatorJson).toBeNull();

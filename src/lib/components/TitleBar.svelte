@@ -1,6 +1,7 @@
 <script lang="ts">
   import { buildBreadcrumb } from "$lib/domain/breadcrumb";
   import { minimize, toggleMaximize } from "$lib/api/window";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     conn,
@@ -35,13 +36,13 @@
   </svg>
   <span class="crumb">{crumb} — {APP_VERSION}</span>
   <div class="wbtns">
-    <button class="wbtn" title="Minimize" onclick={minimize} aria-label="Minimize">
+    <button class="wbtn" title={m.title_bar_minimize()} onclick={minimize} aria-label={m.title_bar_minimize()}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="#555" /></svg>
     </button>
-    <button class="wbtn" title="Maximize" onclick={toggleMaximize} aria-label="Maximize">
+    <button class="wbtn" title={m.title_bar_maximize()} onclick={toggleMaximize} aria-label={m.title_bar_maximize()}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="#555" stroke-width="1" /></svg>
     </button>
-    <button class="wbtn close" title="Close" onclick={onquit} aria-label="Close">
+    <button class="wbtn close" title={m.title_bar_close()} onclick={onquit} aria-label={m.title_bar_close()}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="#555" stroke-width="1.1" /></svg>
     </button>
   </div>

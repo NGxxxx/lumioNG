@@ -4,15 +4,15 @@ use mongodb::bson::{Bson, Document};
 /// Parse a Canonical Extended JSON string into a BSON value (inverse of serialize).
 pub fn canonical_string_to_bson(s: &str) -> Result<Bson, AppError> {
     let value: serde_json::Value =
-        serde_json::from_str(s).map_err(|e| AppError::Parse(format!("JSON không hợp lệ: {e}")))?;
-    Bson::try_from(value).map_err(|e| AppError::Parse(format!("Extended JSON không hợp lệ: {e}")))
+        serde_json::from_str(s).map_err(|e| AppError::Parse(format!("invalid JSON: {e}")))?;
+    Bson::try_from(value).map_err(|e| AppError::Parse(format!("invalid Extended JSON: {e}")))
 }
 
 /// Parse a Canonical Extended JSON string and require a top-level document.
 pub fn canonical_string_to_doc(s: &str) -> Result<Document, AppError> {
     match canonical_string_to_bson(s)? {
         Bson::Document(d) => Ok(d),
-        _ => Err(AppError::Parse("cần một document JSON ở cấp cao nhất".into())),
+        _ => Err(AppError::Parse("expected a JSON document at the top level".into())),
     }
 }
 

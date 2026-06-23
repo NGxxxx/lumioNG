@@ -12,10 +12,11 @@
   import { hostStatus } from "$lib/stores/hostStatus.svelte";
   import { quit } from "$lib/api/window";
   import { disconnect as apiDisconnect } from "$lib/api/connection";
-  import type { Doc } from "$lib/domain/columns";
+  import type { Doc } from "$lib/domain/doc";
   import type { ContextKind, QueryTab as QueryTabType } from "$lib/stores/navigation.svelte";
   import SessionManager from "$lib/components/SessionManager.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
+  import * as m from "$lib/paraglide/messages";
   import NamespacePanel from "$lib/components/NamespacePanel.svelte";
   import ResultTable from "$lib/components/ResultTable.svelte";
   import DocumentForm from "$lib/components/DocumentForm.svelte";
@@ -36,6 +37,8 @@
     collection: "Collection",
     data: "Data",
   };
+  // Note: CONTEXT_LABEL uses English literals intentionally — these are structural keys
+  // passed as tab labels to TabBar. They are not in the i18n scope of this task.
 
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
@@ -109,7 +112,7 @@
     openDocument(s.db, s.coll, initial, "insert");
   }
 
-  // Splitter sidebar (kéo ngang)
+  // Horizontal splitter for the sidebar.
   function startSidebarDrag(e: MouseEvent) {
     e.preventDefault();
     const startX = e.clientX;
@@ -125,7 +128,7 @@
     window.addEventListener("mouseup", up);
   }
 
-  // Splitter command log (kéo dọc)
+  // Vertical splitter for the command log panel.
   function startLogDrag(e: MouseEvent) {
     e.preventDefault();
     const startY = e.clientY;
@@ -254,7 +257,7 @@
           </div>
         {/each}
         {#if active === null}
-          <div class="empty">Chọn một database hoặc collection để bắt đầu</div>
+          <div class="empty">{m.page_empty_state()}</div>
         {/if}
       </div>
       {#if shell.logOpen && !queryActive}
@@ -288,10 +291,10 @@
   {/if}
   {#if confirmQuit}
     <ConfirmDialog
-      title="Thoát LumioNG?"
-      message="Bạn có chắc muốn thoát ứng dụng? Công việc chưa lưu sẽ mất."
-      confirmLabel="Thoát"
-      cancelLabel="Hủy"
+      title={m.page_quit_title()}
+      message={m.page_quit_message()}
+      confirmLabel={m.page_quit_confirm()}
+      cancelLabel={m.page_quit_cancel()}
       danger
       onconfirm={quit}
       oncancel={() => (confirmQuit = false)}

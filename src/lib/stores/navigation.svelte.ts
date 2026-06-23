@@ -1,4 +1,4 @@
-import type { Doc } from "../domain/columns";
+import type { Doc } from "../domain/doc";
 import { nextQuerySeq } from "../domain/queryseq";
 
 export type ContextKind = "host" | "database" | "collection" | "data";
@@ -27,7 +27,7 @@ export type Active =
   | { zone: "work"; id: number }
   | null;
 
-/** Nguồn sự thật cho tree selection + dải tab lai (context + work). */
+/** Source of truth for tree selection and the hybrid tab strip (context + work). */
 export function createNavigation() {
   let selDb = $state<string | null>(null);
   let selColl = $state<string | null>(null);
@@ -192,5 +192,5 @@ export function createNavigation() {
   };
 }
 
-/** Singleton dùng trong app (test tự tạo instance riêng qua createNavigation). */
+/** App-wide singleton (tests create their own instance via createNavigation). */
 export const navigation = createNavigation();

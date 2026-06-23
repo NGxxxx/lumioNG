@@ -1,11 +1,12 @@
+import * as m from "$lib/paraglide/messages";
 import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany, exportQuery, exportBson } from "../api/documents";
 import { saveDialog, writeTextFile } from "../api/files";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
-import { rangeBetween, idInFilter } from "../domain/selection";
-import { type Doc } from "../domain/columns";
+import { rangeBetween, idInFilter, resolveIds, effectiveRows as effectiveRowsOf } from "../domain/selection";
+import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
@@ -27,8 +28,8 @@ import { commandLog } from "./commandLog.svelte";
 import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd, exportBsonCmd } from "../domain/mongosh";
 
 /**
- * Trạng thái + hành động của một collection view (data, paging, inline edit,
- * context menu, xóa). Component chỉ render và bind; không giữ logic.
+ * State and actions for one collection view: data, paging, inline edit,
+ * context menu, and delete. Components only render and bind; no logic here.
  */
 export function createCollectionView(db: string, coll: string) {
   // $state.raw (not $state): docs are always replaced wholesale (loadPage/showAll/filter
@@ -129,7 +130,7 @@ export function createCollectionView(db: string, coll: string) {
       schema = inferSchema(sample);
     } catch {
       if (gen !== generation) return;
-      schema = null; // degrade: cột rơi về row-derived
+      schema = null; // degrade: columns fall back to row-derived
     }
   }
 
@@ -140,7 +141,7 @@ export function createCollectionView(db: string, coll: string) {
     await schemaP;
   }
 
-  /** Nạp đúng trang hiện tại (replace docs). */
+  /** Load the current page (replaces docs). */
   async function loadPage() {
     loading = true;
     allShown = false;
@@ -179,7 +180,7 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
-  /** Đếm tổng (theo filter đang áp) + kẹp trang hiện tại vào khoảng hợp lệ. */
+  /** Recount documents under the active filter and clamp currentPage to the valid range. */
   async function refreshCount() {
     const gen = generation;
     try {
@@ -204,7 +205,7 @@ export function createCollectionView(db: string, coll: string) {
   const firstPage = () => goToPage(1);
   const lastPage = () => goToPage(pgCount);
 
-  /** Show ALL: đếm trước; vượt ngưỡng thì chờ xác nhận, ngược lại nạp luôn. */
+  /** Show ALL: count first; prompt for confirmation when above threshold, otherwise load immediately. */
   async function requestShowAll() {
     error = null;
     generation++;
@@ -224,7 +225,7 @@ export function createCollectionView(db: string, coll: string) {
     }
   }
 
-  /** Nạp toàn bộ kết quả (export_query) vào grid; ẩn pager. */
+  /** Fetch all matching docs into the grid (export_query); hides the pager. */
   async function confirmShowAll() {
     showAllPending = null;
     loading = true;
@@ -258,14 +259,14 @@ export function createCollectionView(db: string, coll: string) {
     showAllPending = null;
   }
 
-  /** Reload tại chỗ (cùng filter): refresh count + nạp lại trang hiện tại (đã clamp). */
+  /** In-place reload (same filter): refresh count and reload the current page (clamped). */
   async function reloadDocs() {
     generation++;
     await refreshCount();
     await loadPage();
   }
 
-  /** Đồng bộ nháp = trạng thái đang áp (gọi khi mở column chooser). */
+  /** Sync the draft to the currently applied state (call when opening the column chooser). */
   function resetProjectionDraft() {
     hiddenDraft = new Set(hidden);
   }
@@ -277,13 +278,13 @@ export function createCollectionView(db: string, coll: string) {
     hiddenDraft = next;
   }
 
-  /** Commit nháp → projection thật + reload. */
+  /** Commit draft → live projection and reload. */
   async function applyProjection() {
     hidden = new Set(hiddenDraft);
     await reloadDocs();
   }
 
-  /** Trả nguyên doc đầy đủ field; chỉ re-fetch khi đang ẩn field (projection). */
+  /** Returns the full document; re-fetches only when a projection is active. */
   async function fullDocFor(d: Doc): Promise<Doc> {
     if (hidden.size === 0) return d;
     const id = idJson(d);
@@ -291,12 +292,12 @@ export function createCollectionView(db: string, coll: string) {
     return (await fetchFullDoc(db, coll, id)) ?? d;
   }
 
-  /** Doc đầy đủ để mở tab edit (component tự mở). */
+  /** Full document for opening an edit tab (component handles the actual open). */
   async function openDoc(d: Doc): Promise<Doc> {
     return await fullDocFor(d);
   }
 
-  /** Áp một bộ sortKeys mới: reset trang 1 + reload (dùng chung cho header-click và dropdown). */
+  /** Apply a new sortKeys set: reset to page 1 and reload (shared by header-click and dropdown). */
   async function applySortChange(next: SortKey[]) {
     sortKeys = next;
     generation++;
@@ -314,12 +315,12 @@ export function createCollectionView(db: string, coll: string) {
     applySortChange(moveSortKey(sortKeys, path, delta));
   const clearSort = () => applySortChange([]);
 
-  /** Hiện mọi field (xóa draft ẩn). */
+  /** Show all fields (clear the hidden draft). */
   function showAllFieldsDraft() {
     hiddenDraft = new Set();
   }
 
-  /** Ẩn mọi field trừ _id (buildProjection vốn không loại _id). */
+  /** Hide all fields except _id (buildProjection never excludes _id). */
   function hideAllFieldsDraft() {
     hiddenDraft = new Set(columnFields.map((c) => c.path).filter((p) => p !== "_id"));
   }
@@ -348,7 +349,7 @@ export function createCollectionView(db: string, coll: string) {
   }
 
   async function startEdit(row: number, key: string) {
-    if (key.includes(".")) return; // chưa hỗ trợ sửa inline field lồng nhau
+    if (key.includes(".")) return; // nested fields not yet supported for inline edit
     if (hidden.size > 0) {
       const fullRow = await fullDocFor(docs[row]);
       if (fullRow !== docs[row]) {
@@ -380,7 +381,7 @@ export function createCollectionView(db: string, coll: string) {
     const newDoc: Doc = { ...docs[row], [key]: r.value };
     const id = idJson(newDoc);
     if (id === null) {
-      editError = "Document không có _id để cập nhật.";
+      editError = m.collection_view_no_id_update();
       return;
     }
     saving = true;
@@ -441,32 +442,18 @@ export function createCollectionView(db: string, coll: string) {
 
   /** Resolve selected rows to id ExtJSON; reports `missing` if any lacks _id. */
   function selectedIds(): { ids: string[] } | { missing: true } {
-    const ids: string[] = [];
-    for (const row of selected) {
-      const id = idJson(docs[row]);
-      if (id === null) return { missing: true };
-      ids.push(id);
-    }
-    return { ids };
+    return resolveIds(docs, selected);
   }
 
   /** Effective selection for right-click: the multi-select if the menu row is in it, else the menu row alone. */
   function effectiveRows(): number[] {
-    if (!menu) return [...selected];
-    if (selected.has(menu.row)) return [...selected];
-    return [menu.row];
+    return effectiveRowsOf(menu ? menu.row : null, selected);
   }
   function effectiveSelectionCount(): number {
     return effectiveRows().length;
   }
   function effectiveIds(): { ids: string[] } | { missing: true } {
-    const ids: string[] = [];
-    for (const row of effectiveRows()) {
-      const id = idJson(docs[row]);
-      if (id === null) return { missing: true };
-      ids.push(id);
-    }
-    return { ids };
+    return resolveIds(docs, effectiveRows());
   }
 
   function menuItems(): MenuItem[] {
@@ -514,13 +501,13 @@ export function createCollectionView(db: string, coll: string) {
     try {
       await navigator.clipboard.writeText(text);
     } catch {
-      error = "Không copy được vào clipboard.";
+      error = m.common_clipboard_failed();
     }
   }
 
   /**
-   * Trả doc cần mở khi action là "open", hoặc `{ insert }` (kèm doc dựng sẵn) cho New/Duplicate.
-   * New document → skeleton đủ field theo schema; Duplicate → bản sao doc (bỏ _id).
+   * Returns the doc to open for "open", or `{ insert }` (with a pre-built doc) for New/Duplicate.
+   * New document → skeleton with all schema fields; Duplicate → copy of the doc without _id.
    */
   function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | null {
     if (!menu) return null;
@@ -592,7 +579,7 @@ export function createCollectionView(db: string, coll: string) {
       if ("missing" in sel) {
         bulkFilter = "";
         bulkCount = null;
-        bulkError = "Một số dòng đang chọn thiếu _id.";
+        bulkError = m.collection_view_selection_missing_id();
         return;
       }
       bulkFilter = idInFilter(sel.ids);
@@ -653,7 +640,7 @@ export function createCollectionView(db: string, coll: string) {
       try {
         const res = await updateMany(db, coll, filter, r.json, allowAll);
         commandLog.push(updateManyCmd(coll, filter, r.json));
-        bulkResult = `Đã cập nhật ${res.modified} (khớp ${res.matched}) document.`;
+        bulkResult = m.collection_view_bulk_updated({ modified: res.modified, matched: res.matched });
         await reloadDocs();
         bulkCount = null;
       } catch (e) {
@@ -666,7 +653,7 @@ export function createCollectionView(db: string, coll: string) {
       try {
         const n = await deleteMany(db, coll, filter, allowAll);
         commandLog.push(deleteManyCmd(coll, filter));
-        bulkResult = `Đã xóa ${n} document.`;
+        bulkResult = m.collection_view_bulk_deleted({ n });
         await reloadDocs();
         bulkCount = null;
       } catch (e) {
@@ -693,7 +680,7 @@ export function createCollectionView(db: string, coll: string) {
     const req = exportRequest;
     exportRequest = null;
     if (!req) return;
-    if (pendingExportFilter === null) { ioError = "Một số dòng đang chọn thiếu _id."; return; }
+    if (pendingExportFilter === null) { ioError = m.collection_view_selection_missing_id(); return; }
     const filter = pendingExportFilter;
     const useSort = req.kind === "filter" ? buildSort(sortKeys) : null;
     const useProj = req.kind === "filter" ? buildProjection(hidden) : null;
@@ -704,13 +691,13 @@ export function createCollectionView(db: string, coll: string) {
     try {
       if (format === "bson") {
         const n = await exportBson(db, coll, filter, useSort, useProj, path);
-        ioMessage = `Đã export ${n} document.`;
+        ioMessage = m.collection_view_exported({ n });
         commandLog.push(exportBsonCmd(db, coll, path));
       } else {
         const data = await exportQuery(db, coll, filter, useSort, useProj);
         const content = format === "json" ? toJsonArray(data) : toCsv(data);
         await writeTextFile(path, content);
-        ioMessage = `Đã export ${data.length} document.`;
+        ioMessage = m.collection_view_exported({ n: data.length });
         commandLog.push(findCmd({ coll, filter, sort: useSort, projection: useProj }));
       }
     } catch (e) {
@@ -740,7 +727,7 @@ export function createCollectionView(db: string, coll: string) {
     confirmSelectionDelete = null;
     const sel = selectedIds();
     if ("missing" in sel) {
-      error = "Một số dòng đang chọn thiếu _id để xóa.";
+      error = m.collection_view_selection_missing_id_delete();
       return;
     }
     const filter = idInFilter(sel.ids);
@@ -767,7 +754,7 @@ export function createCollectionView(db: string, coll: string) {
     if (!d) return;
     const id = idJson(d);
     if (id === null) {
-      error = "Document không có _id để xóa.";
+      error = m.collection_view_no_id_delete();
       return;
     }
     try {

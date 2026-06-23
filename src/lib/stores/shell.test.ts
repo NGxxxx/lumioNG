@@ -10,7 +10,7 @@ function fakeTree(databases: any[]) {
 }
 
 describe("createShell", () => {
-  it("dbCount/collCount cộng từ namespaceTree", () => {
+  it("dbCount/collCount are derived from namespaceTree", () => {
     const tree = fakeTree([
       { name: "a", collections: ["x", "y"] },
       { name: "b", collections: ["z"] },
@@ -40,7 +40,7 @@ describe("createShell", () => {
     expect(s.sessionOpen).toBe(true);
   });
 
-  it("setSidebarWidth/setLogHeight bị kẹp biên", () => {
+  it("setSidebarWidth/setLogHeight clamp to bounds", () => {
     const s = createShell(fakeTree([]));
     s.setSidebarWidth(10);
     expect(s.sidebarWidth).toBe(160);

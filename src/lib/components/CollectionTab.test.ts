@@ -17,7 +17,7 @@ import { navigation } from "../stores/navigation.svelte";
 describe("CollectionTab", () => {
   beforeEach(() => navigation.setCollectionSection("info"));
 
-  it("mặc định Info: chưa hiện nút Create index; bấm Indexes → hiện", async () => {
+  it("defaults to Info: Create index button absent; clicking Indexes shows it", async () => {
     const { getByText, queryByText } = render(CollectionTab, { props: { db: "d", coll: "c" } });
     expect(queryByText("＋ Create index")).toBeNull();
     await fireEvent.click(getByText("Indexes"));

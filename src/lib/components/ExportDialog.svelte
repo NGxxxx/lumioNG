@@ -1,5 +1,6 @@
 <script lang="ts">
   import { portal } from "../actions/portal";
+  import * as m from "$lib/paraglide/messages";
 
   type Scope =
     | { kind: "collection"; coll: string }
@@ -15,10 +16,12 @@
 
   const summary = $derived(
     scope.kind === "selection"
-      ? `Export ${scope.count} selected document${scope.count === 1 ? "" : "s"}`
+      ? scope.count === 1
+        ? m.export_dialog_summary_selection_one({ count: scope.count })
+        : m.export_dialog_summary_selection_many({ count: scope.count })
       : scope.kind === "filter"
-        ? "Export all documents matching the current filter"
-        : `Export collection "${scope.coll}"`,
+        ? m.export_dialog_summary_filter()
+        : m.export_dialog_summary_collection({ coll: scope.coll }),
   );
 </script>
 
@@ -26,19 +29,19 @@
 
 <div class="backdrop" use:portal role="presentation" onclick={(e) => { if (e.target === e.currentTarget) oncancel(); }}>
   <div class="modal" role="dialog" aria-modal="true" aria-label="Export">
-    <header>Export data</header>
+    <header>{m.export_dialog_title()}</header>
     <div class="body">
       <p class="summary">{summary}</p>
       <fieldset>
-        <legend>Format</legend>
+        <legend>{m.export_dialog_format_legend()}</legend>
         <label><input type="radio" name="fmt" value="json" checked bind:group={format} /> JSON</label>
         <label><input type="radio" name="fmt" value="csv" bind:group={format} /> CSV</label>
         <label><input type="radio" name="fmt" value="bson" bind:group={format} /> BSON (mongodump)</label>
       </fieldset>
     </div>
     <footer>
-      <button onclick={oncancel}>Cancel</button>
-      <button class="primary" onclick={() => onexport(format)}>Export</button>
+      <button onclick={oncancel}>{m.common_cancel()}</button>
+      <button class="primary" onclick={() => onexport(format)}>{m.export_dialog_export()}</button>
     </footer>
   </div>
 </div>

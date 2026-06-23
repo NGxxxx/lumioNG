@@ -1,12 +1,13 @@
 <script lang="ts">
   import { portal } from "../actions/portal";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     title,
     message,
     detail = null,
-    confirmLabel = "OK",
-    cancelLabel = "Cancel",
+    confirmLabel,
+    cancelLabel,
     danger = false,
     onconfirm,
     oncancel,
@@ -20,6 +21,9 @@
     onconfirm: () => void;
     oncancel: () => void;
   } = $props();
+
+  const resolvedConfirmLabel = $derived(confirmLabel ?? m.common_ok());
+  const resolvedCancelLabel = $derived(cancelLabel ?? m.common_cancel());
 </script>
 
 <svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
@@ -39,8 +43,8 @@
       {#if detail}<p><code>{detail}</code></p>{/if}
     </div>
     <footer>
-      <button onclick={oncancel}>{cancelLabel}</button>
-      <button class:danger onclick={onconfirm}>{confirmLabel}</button>
+      <button onclick={oncancel}>{resolvedCancelLabel}</button>
+      <button class:danger onclick={onconfirm}>{resolvedConfirmLabel}</button>
     </footer>
   </div>
 </div>

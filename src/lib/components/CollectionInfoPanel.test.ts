@@ -26,7 +26,7 @@ vi.mock("../stores/collectionInfo.svelte", () => ({
 import CollectionInfoPanel from "./CollectionInfoPanel.svelte";
 
 describe("CollectionInfoPanel", () => {
-  it("hiện 'Không có validator' khi validatorJson null", () => {
+  it("shows 'No validator' when validatorJson is null", () => {
     mockStats = {
       ns: "d.c",
       count: 3,
@@ -48,10 +48,10 @@ describe("CollectionInfoPanel", () => {
       rawJson: "{}",
     };
     const { getByText } = render(CollectionInfoPanel, { props: { db: "d", coll: "c" } });
-    expect(getByText("Không có validator")).toBeTruthy();
+    expect(getByText("No validator")).toBeTruthy();
   });
 
-  it("hiện capped options + raw options khi có", () => {
+  it("shows capped options and raw options when present", () => {
     mockStats = {
       ns: "d.c",
       count: 0,

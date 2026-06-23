@@ -2,6 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { createCollectionInfo } from "../stores/collectionInfo.svelte";
   import { formatBytes, formatCount } from "../domain/stats";
+  import * as m from "$lib/paraglide/messages";
 
   let { db, coll }: { db: string; coll: string } = $props();
 
@@ -14,26 +15,26 @@
 
 <div class="infopanel">
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  {#if v.loading}<div class="status">Đang tải…</div>{/if}
+  {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
 
   {#if v.stats}
     {@const s = v.stats}
-    <h3>Storage</h3>
+    <h3>{m.collection_info_storage_heading()}</h3>
     <table class="kv">
       <tbody>
-        <tr><th>Namespace</th><td>{s.ns}</td></tr>
-        <tr><th>Documents</th><td>{formatCount(s.count)}</td></tr>
-        <tr><th>Data size</th><td>{formatBytes(s.size)}</td></tr>
-        <tr><th>Avg obj size</th><td>{formatBytes(s.avgObjSize)}</td></tr>
-        <tr><th>Storage size</th><td>{formatBytes(s.storageSize)}</td></tr>
-        <tr><th>Total index size</th><td>{formatBytes(s.totalIndexSize)}</td></tr>
-        <tr><th>Indexes</th><td>{formatCount(s.nindexes)}</td></tr>
-        <tr><th>Capped</th><td>{s.capped ? "yes" : "no"}</td></tr>
+        <tr><th>{m.collection_info_namespace()}</th><td>{s.ns}</td></tr>
+        <tr><th>{m.collection_info_documents()}</th><td>{formatCount(s.count)}</td></tr>
+        <tr><th>{m.collection_info_data_size()}</th><td>{formatBytes(s.size)}</td></tr>
+        <tr><th>{m.collection_info_avg_obj_size()}</th><td>{formatBytes(s.avgObjSize)}</td></tr>
+        <tr><th>{m.collection_info_storage_size()}</th><td>{formatBytes(s.storageSize)}</td></tr>
+        <tr><th>{m.collection_info_total_index_size()}</th><td>{formatBytes(s.totalIndexSize)}</td></tr>
+        <tr><th>{m.collection_info_indexes()}</th><td>{formatCount(s.nindexes)}</td></tr>
+        <tr><th>{m.collection_info_capped()}</th><td>{s.capped ? m.common_yes() : m.common_no()}</td></tr>
       </tbody>
     </table>
 
     {#if s.indexSizes.length}
-      <h3>Index sizes</h3>
+      <h3>{m.collection_info_index_sizes_heading()}</h3>
       <table class="kv">
         <tbody>
           {#each s.indexSizes as ix (ix.name)}
@@ -46,25 +47,25 @@
 
   {#if v.options}
     {@const o = v.options}
-    <h3>Options &amp; validator</h3>
+    <h3>{m.collection_info_options_heading()}</h3>
     <table class="kv">
       <tbody>
-        <tr><th>Validation level</th><td>{o.validationLevel ?? "—"}</td></tr>
-        <tr><th>Validation action</th><td>{o.validationAction ?? "—"}</td></tr>
-        <tr><th>Capped</th><td>{o.capped ? "yes" : "no"}</td></tr>
+        <tr><th>{m.collection_info_validation_level()}</th><td>{o.validationLevel ?? "—"}</td></tr>
+        <tr><th>{m.collection_info_validation_action()}</th><td>{o.validationAction ?? "—"}</td></tr>
+        <tr><th>{m.collection_info_capped()}</th><td>{o.capped ? m.common_yes() : m.common_no()}</td></tr>
         {#if o.capped}
-          <tr><th>Capped size</th><td>{formatBytes(o.size)}</td></tr>
-          <tr><th>Max documents</th><td>{formatCount(o.max)}</td></tr>
+          <tr><th>{m.collection_info_capped_size()}</th><td>{formatBytes(o.size)}</td></tr>
+          <tr><th>{m.collection_info_max_documents()}</th><td>{formatCount(o.max)}</td></tr>
         {/if}
       </tbody>
     </table>
     {#if o.validatorJson}
       <pre>{o.validatorJson}</pre>
     {:else}
-      <div class="muted">Không có validator</div>
+      <div class="muted">{m.collection_info_no_validator()}</div>
     {/if}
     {#if o.rawJson !== "{}"}
-      <h3>Raw options</h3>
+      <h3>{m.collection_info_raw_options_heading()}</h3>
       <pre>{o.rawJson}</pre>
     {/if}
   {/if}

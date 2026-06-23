@@ -3,6 +3,7 @@
   import { createIndexView } from "../stores/indexView.svelte";
   import { describeKeys, type IndexInfo } from "../domain/indexes";
   import IndexCreateForm from "./IndexCreateForm.svelte";
+  import * as m from "$lib/paraglide/messages";
 
   let { db, coll }: { db: string; coll: string } = $props();
 
@@ -25,7 +26,7 @@
 
 <div class="indexpanel">
   <div class="toolbar">
-    <button onclick={() => (creating = true)}>＋ Create index</button>
+    <button onclick={() => (creating = true)}>{m.index_panel_create()}</button>
   </div>
   {#if v.error}<div class="error">{v.error}</div>{/if}
   {#if creating}
@@ -40,7 +41,7 @@
   <div class="scroller">
     <table>
       <thead>
-        <tr><th>Name</th><th>Keys</th><th>Flags</th><th class="act"></th></tr>
+        <tr><th>{m.index_panel_col_name()}</th><th>{m.index_panel_col_keys()}</th><th>{m.index_panel_col_flags()}</th><th class="act"></th></tr>
       </thead>
       <tbody>
         {#each v.indexes as idx (idx.name)}
@@ -49,13 +50,13 @@
             <td class="keys">{describeKeys(idx.entries)}</td>
             <td>{flags(idx)}</td>
             <td class="act">
-              <button class="danger" disabled={idx.isId} onclick={() => (confirmDrop = idx.name)}>Drop</button>
+              <button class="danger" disabled={idx.isId} onclick={() => (confirmDrop = idx.name)}>{m.index_panel_drop()}</button>
             </td>
           </tr>
         {/each}
       </tbody>
     </table>
-    {#if v.loading}<div class="status">Đang tải…</div>{/if}
+    {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
   </div>
 </div>
 
@@ -70,17 +71,17 @@
       if (e.target === e.currentTarget) confirmDrop = null;
     }}
   >
-    <div class="modal" role="dialog" aria-modal="true" aria-label="Drop index">
-      <header>Drop index?</header>
-      <div class="body">Xóa index <code>{target}</code>? Có thể tạo lại sau.</div>
+    <div class="modal" role="dialog" aria-modal="true" aria-label={m.index_panel_drop_title()}>
+      <header>{m.index_panel_drop_title()}</header>
+      <div class="body">{m.index_panel_drop_body_prefix()} <code>{target}</code>{m.index_panel_drop_body_suffix()}</div>
       <footer>
-        <button onclick={() => (confirmDrop = null)}>Cancel</button>
+        <button onclick={() => (confirmDrop = null)}>{m.common_cancel()}</button>
         <button
           class="danger"
           onclick={async () => {
             await v.drop(target);
             confirmDrop = null;
-          }}>Drop</button>
+          }}>{m.index_panel_drop()}</button>
       </footer>
     </div>
   </div>

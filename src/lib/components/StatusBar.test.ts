@@ -4,7 +4,7 @@ import { render } from "@testing-library/svelte";
 import StatusBar from "./StatusBar.svelte";
 
 describe("StatusBar", () => {
-  it("hiện selDb + collCount khi connected và có selDb", () => {
+  it("shows selDb + collCount when connected and selDb is set", () => {
     const { getByText } = render(StatusBar, {
       props: { connected: true, connectionLabel: "Local", dbCount: 2, collCount: 5, selDb: "shop", selColl: "users" },
     });
@@ -15,14 +15,14 @@ describe("StatusBar", () => {
     expect(getByText("Idle.")).toBeTruthy();
   });
 
-  it("hiện connectionLabel khi connected nhưng chưa chọn db", () => {
+  it("shows connectionLabel when connected but no db selected", () => {
     const { getByText } = render(StatusBar, {
       props: { connected: true, connectionLabel: "Local", dbCount: 2, collCount: 3, selDb: null, selColl: null },
     });
     expect(getByText(/Local · 3 collections/)).toBeTruthy();
   });
 
-  it("hiện Disconnected khi chưa kết nối", () => {
+  it("shows Disconnected when not connected", () => {
     const { getByText } = render(StatusBar, {
       props: { connected: false, connectionLabel: null, dbCount: 0, collCount: 0, selDb: null, selColl: null },
     });

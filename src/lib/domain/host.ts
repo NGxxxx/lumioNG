@@ -1,3 +1,4 @@
+/** Parse serverStatus/buildInfo/hostInfo into a curated HostInfo structure for the Host tab. */
 import { numFromExt } from "./extjson";
 
 export interface HostInfo {

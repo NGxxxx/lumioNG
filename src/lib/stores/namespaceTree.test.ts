@@ -37,34 +37,34 @@ describe("createNamespaceTree", () => {
     listNs.mockResolvedValue([]);
   });
 
-  it("refresh nạp databases", async () => {
+  it("refresh loads databases", async () => {
     listNs.mockResolvedValueOnce([{ name: "d", collections: ["c"] }]);
     const nt = createNamespaceTree(createNavigation());
     await nt.refresh();
     expect(nt.databases).toEqual([{ name: "d", collections: ["c"] }]);
   });
 
-  it("refresh lỗi → set error, không ném", async () => {
+  it("refresh error sets error and does not throw", async () => {
     listNs.mockRejectedValueOnce({ kind: "Query", message: "boom" });
     const nt = createNamespaceTree(createNavigation());
     await nt.refresh();
     expect(nt.error).toContain("boom");
   });
 
-  it("createCollection hợp lệ → gọi api + refresh", async () => {
+  it("createCollection with valid name calls api and refreshes", async () => {
     const nt = createNamespaceTree(createNavigation());
     await nt.createCollection("d", "users");
     expect(createColl).toHaveBeenCalledWith("d", "users");
     expect(listNs).toHaveBeenCalled();
   });
 
-  it("createCollection tên xấu → ném, không gọi api", async () => {
+  it("createCollection with invalid name throws and does not call api", async () => {
     const nt = createNamespaceTree(createNavigation());
     await expect(nt.createCollection("d", "a$b")).rejects.toBeTruthy();
     expect(createColl).not.toHaveBeenCalled();
   });
 
-  it("createDatabase validate cả db lẫn coll", async () => {
+  it("createDatabase validates both db and collection names", async () => {
     const nt = createNamespaceTree(createNavigation());
     await expect(nt.createDatabase("a/b", "c")).rejects.toBeTruthy();
     expect(createColl).not.toHaveBeenCalled();
@@ -72,7 +72,7 @@ describe("createNamespaceTree", () => {
     expect(createColl).toHaveBeenCalledWith("shop", "users");
   });
 
-  it("dropCollection → api + đóng work tab khớp + hạ selection + refresh", async () => {
+  it("dropCollection calls api, closes matching work tabs, reduces selection, and refreshes", async () => {
     const nav = createNavigation();
     nav.selectCollection("d", "c");
     nav.openDocument({ kind: "document", db: "d", coll: "c", mode: "insert", initial: null, idText: null });
@@ -84,7 +84,7 @@ describe("createNamespaceTree", () => {
     expect(listNs).toHaveBeenCalled();
   });
 
-  it("renameCollection → api + selection theo tên mới", async () => {
+  it("renameCollection calls api and updates selection to the new name", async () => {
     const nav = createNavigation();
     nav.selectCollection("d", "old");
     const nt = createNamespaceTree(nav);
@@ -93,7 +93,7 @@ describe("createNamespaceTree", () => {
     expect(nav.selection).toEqual({ db: "d", coll: "new" });
   });
 
-  it("dropDatabase → api + đóng work tab + clear selection", async () => {
+  it("dropDatabase calls api, closes work tabs, and clears selection", async () => {
     const nav = createNavigation();
     nav.selectCollection("d", "a");
     nav.openDocument({ kind: "document", db: "d", coll: "a", mode: "insert", initial: null, idText: null });
@@ -130,37 +130,37 @@ describe("namespaceTree command log", () => {
     commandLog.clear();
   });
 
-  it("createCollection đẩy createCollectionCmd", async () => {
+  it("createCollection pushes createCollectionCmd to the command log", async () => {
     const nt = createNamespaceTree(createNavigation());
     await nt.createCollection("shop", "users");
     expect(commandLog.entries.at(-1)!.text).toBe(createCollectionCmd("users"));
   });
 
-  it("createDatabase đẩy createCollectionCmd", async () => {
+  it("createDatabase pushes createCollectionCmd to the command log", async () => {
     const nt = createNamespaceTree(createNavigation());
     await nt.createDatabase("shop", "orders");
     expect(commandLog.entries.at(-1)!.text).toBe(createCollectionCmd("orders"));
   });
 
-  it("dropCollection đẩy dropCollectionCmd", async () => {
+  it("dropCollection pushes dropCollectionCmd to the command log", async () => {
     const nt = createNamespaceTree(createNavigation());
     await nt.dropCollection("shop", "users");
     expect(commandLog.entries.at(-1)!.text).toBe(dropCollectionCmd("users"));
   });
 
-  it("renameCollection đẩy renameCollectionCmd(from, to)", async () => {
+  it("renameCollection pushes renameCollectionCmd(from, to) to the command log", async () => {
     const nt = createNamespaceTree(createNavigation());
     await nt.renameCollection("shop", "old", "new");
     expect(commandLog.entries.at(-1)!.text).toBe(renameCollectionCmd("old", "new"));
   });
 
-  it("dropDatabase đẩy dropDatabaseCmd", async () => {
+  it("dropDatabase pushes dropDatabaseCmd to the command log", async () => {
     const nt = createNamespaceTree(createNavigation());
     await nt.dropDatabase("shop");
     expect(commandLog.entries.at(-1)!.text).toBe(dropDatabaseCmd());
   });
 
-  it("truncate đẩy truncateCollectionCmd", async () => {
+  it("truncate pushes truncateCollectionCmd to the command log", async () => {
     truncateMock.mockResolvedValue(5);
     const nt = createNamespaceTree(createNavigation());
     await nt.truncate("shop", "orders");

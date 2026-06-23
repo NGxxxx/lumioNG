@@ -7,6 +7,7 @@
 
 <script lang="ts">
   import type { DbInfo } from "../api/connection";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     databases = [],
@@ -118,7 +119,7 @@
       {/each}
     {/if}
   {/each}
-  <div class="footer">{databases.length} databases · {collCount} collections</div>
+  <div class="footer">{m.namespace_tree_footer({ dbs: databases.length, colls: collCount })}</div>
 </div>
 
 <style>

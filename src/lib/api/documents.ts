@@ -1,9 +1,9 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Doc } from "../domain/columns";
+import type { Doc } from "../domain/doc";
 
 /**
- * Trả documents parse từ chuỗi Canonical Extended JSON.
- * Phân trang skip/limit: `skip` = số doc bỏ qua (FE tính từ trang). `sort` rỗng → {_id:1}.
+ * Returns documents parsed from Canonical Extended JSON strings.
+ * Pagination via skip/limit: `skip` = docs to skip (computed by the frontend from page). Empty `sort` defaults to {_id:1}.
  */
 export async function queryPage(
   db: string,
@@ -43,7 +43,7 @@ export async function deleteDocument(db: string, coll: string, idJson: string): 
   await invoke("delete_document", { db, coll, idJson });
 }
 
-/** Lấy lại nguyên doc theo _id (không projection) — full doc để edit/replace an toàn. */
+/** Fetches the full document by _id (no projection) — safe for edit/replace. */
 export async function fetchFullDoc(db: string, coll: string, idJson: string): Promise<Doc | null> {
   const rows = await invoke<string[]>("query_page", {
     db,
@@ -57,7 +57,7 @@ export async function fetchFullDoc(db: string, coll: string, idJson: string): Pr
   return rows.length ? (JSON.parse(rows[0]) as Doc) : null;
 }
 
-/** Mẫu schema: trả về `size` document ngẫu nhiên (áp filter nếu có). */
+/** Returns `size` random documents for schema sampling (filter applied if provided). */
 export async function sampleDocuments(
   db: string,
   coll: string,
@@ -68,12 +68,12 @@ export async function sampleDocuments(
   return rows.map((s) => JSON.parse(s) as Doc);
 }
 
-/** Đếm số document khớp filter (ExtJSON). */
+/** Counts documents matching the filter (Canonical ExtJSON). */
 export async function countDocuments(db: string, coll: string, filter = "{}"): Promise<number> {
   return await invoke<number>("count_documents", { db, coll, filter });
 }
 
-/** updateMany theo filter; allowAll=true mới cho phép filter rỗng. Trả số matched/modified. */
+/** Updates many documents by filter; `allowAll=true` required to allow an empty filter. Returns matched/modified counts. */
 export async function updateMany(
   db: string,
   coll: string,
@@ -90,7 +90,7 @@ export async function updateMany(
   });
 }
 
-/** deleteMany theo filter; allowAll=true mới cho phép filter rỗng. Trả số deleted. */
+/** Deletes many documents by filter; `allowAll=true` required to allow an empty filter. Returns deleted count. */
 export async function deleteMany(
   db: string,
   coll: string,
@@ -100,7 +100,7 @@ export async function deleteMany(
   return await invoke<number>("delete_many", { db, coll, filter, allowAll });
 }
 
-/** Toàn bộ doc khớp filter (kèm sort/projection đang áp) — KHÔNG phân trang. */
+/** All documents matching the filter (with current sort/projection applied) — no pagination. */
 export async function exportQuery(
   db: string,
   coll: string,
@@ -118,7 +118,7 @@ export interface ImportResult {
   errors: string[];
 }
 
-/** Đọc file (mảng JSON hoặc JSONL) → insert_many(ordered=false). */
+/** Reads a file (JSON array or JSONL) and inserts via insert_many(ordered=false). */
 export async function importDocuments(
   db: string,
   coll: string,

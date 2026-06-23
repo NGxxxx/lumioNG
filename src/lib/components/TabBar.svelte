@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Active, ContextKind, WorkTab } from "../stores/navigation.svelte";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     contextTabs,
@@ -23,8 +24,8 @@
     return s.length > 14 ? s.slice(0, 12) + "…" : s;
   }
   function workTitle(t: WorkTab): string {
-    if (t.kind === "query") return `Query #${t.seq}`;
-    if (t.mode === "insert") return `${t.coll} / new`;
+    if (t.kind === "query") return m.tab_bar_query_title({ seq: t.seq });
+    if (t.mode === "insert") return m.tab_bar_doc_new({ coll: t.coll });
     return `${t.coll} / ${t.idText ? shorten(t.idText) : "?"}`;
   }
 </script>
@@ -70,10 +71,10 @@
   {#each workTabs as t (t.id)}
     <div class="tab work" class:active={active?.zone === "work" && active.id === t.id}>
       <button class="label" onclick={() => onActivateWork(t.id)} title={workTitle(t)}>{workTitle(t)}</button>
-      <button class="x" onclick={() => onCloseWork(t.id)} aria-label="Close tab">×</button>
+      <button class="x" onclick={() => onCloseWork(t.id)} aria-label={m.tab_bar_close()}>×</button>
     </div>
   {/each}
-  <button class="tab newq" onclick={onNewQuery} title="New aggregate query">+</button>
+  <button class="tab newq" onclick={onNewQuery} title={m.tab_bar_new_query()}>+</button>
 </div>
 
 <style>

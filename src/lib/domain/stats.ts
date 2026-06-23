@@ -1,6 +1,7 @@
+/** Parse and format MongoDB stats documents (collStats, dbStats, collOptions) and byte/count display. */
 import { numFromExt } from "./extjson";
 
-/** Format bytes: null→"—", <1KB→"N B", còn lại KB/MB/GB/TB (1 chữ số thập phân). */
+/** Format bytes: null→"—", <1KB→"N B", otherwise KB/MB/GB/TB (1 decimal place). */
 export function formatBytes(n: number | null): string {
   if (n === null || Number.isNaN(n)) return "—";
   if (n < 1024) return `${n} B`;
@@ -14,7 +15,7 @@ export function formatBytes(n: number | null): string {
   return `${val.toFixed(1)} ${units[i]}`;
 }
 
-/** Format số đếm: null→"—", nhóm hàng nghìn (vd 1234567→"1,234,567"). */
+/** Format a count: null→"—", thousands-grouped (e.g. 1234567→"1,234,567"). */
 export function formatCount(n: number | null): string {
   if (n === null || Number.isNaN(n)) return "—";
   return n.toLocaleString("en-US");

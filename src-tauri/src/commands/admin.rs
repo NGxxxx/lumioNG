@@ -37,7 +37,7 @@ pub async fn rename_collection(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.client().await?;
-    // renameCollection là lệnh chạy trên db "admin"; chỉ đổi tên trong cùng DB.
+    // renameCollection must run against the "admin" db; renames within the same DB only.
     client
         .database("admin")
         .run_command(doc! {

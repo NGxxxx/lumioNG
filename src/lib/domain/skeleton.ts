@@ -1,6 +1,6 @@
 import { emptyValue, type AddableType } from "./bsontree";
 import type { BsonType } from "./extjson";
-import type { Doc } from "./columns";
+import type { Doc } from "./doc";
 
 /** Map an inferred BSON type to the closest skeleton placeholder type; unsupported → null. */
 function skeletonType(t?: BsonType): AddableType {

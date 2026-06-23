@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { createConnectionRegistry } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
+  import * as m from "$lib/paraglide/messages";
 
   let {
     onconnected,
@@ -72,8 +73,8 @@
   <div class="panel">
     <!-- Header -->
     <div class="header">
-      <span class="header-title">Session manager</span>
-      <button class="close-btn" onclick={onclose} title="Close" aria-label="Close">
+      <span class="header-title">{m.session_manager_title()}</span>
+      <button class="close-btn" onclick={onclose} title={m.session_manager_close()} aria-label={m.session_manager_close()}>
         <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11">
           <path d="M1 1 L10 10 M10 1 L1 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
         </svg>
@@ -94,19 +95,19 @@
             <input
               class="filter-input"
               bind:value={filterText}
-              placeholder="Filter"
-              aria-label="Filter sessions"
+              placeholder={m.session_manager_filter_placeholder()}
+              aria-label={m.session_manager_filter_aria()}
             />
           </div>
           {#if filterText}
-            <button class="filter-clear" onclick={() => (filterText = "")} title="Clear filter">✕</button>
+            <button class="filter-clear" onclick={() => (filterText = "")} title={m.session_manager_filter_clear_title()}>✕</button>
           {/if}
         </div>
 
         <!-- Column headers -->
         <div class="list-header">
-          <span class="col-name">Session name</span>
-          <span class="col-last">Last connect</span>
+          <span class="col-name">{m.session_manager_col_name()}</span>
+          <span class="col-last">{m.session_manager_col_last()}</span>
         </div>
 
         <!-- Session list -->
@@ -118,7 +119,7 @@
               class:selected={selectedId === c.id}
               onclick={() => selectSession(c)}
               ondblclick={() => openSessionRow(c)}
-              title={`${c.host} — double-click to connect`}
+              title={`${c.host} — ${m.session_manager_row_connect_hint()}`}
             >
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" class="session-icon">
                 <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
@@ -129,7 +130,7 @@
             </div>
           {/each}
           {#if filteredList.length === 0}
-            <div class="session-empty">No saved sessions</div>
+            <div class="session-empty">{m.session_manager_empty()}</div>
           {/if}
         </div>
       </div>
@@ -137,59 +138,59 @@
       <!-- Right column: form -->
       <div class="right-col">
         <div class="form-grid">
-          <span class="form-label">Session name:</span>
-          <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" aria-label="Session name" />
+          <span class="form-label">{m.session_manager_label_session_name()}</span>
+          <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" aria-label={m.session_manager_col_name()} />
 
-          <span class="form-label">Connection type:</span>
-          <select class="form-input" bind:value={r.scheme} aria-label="Connection type">
-            <option value="mongodb">Direct connection (mongodb://)</option>
-            <option value="mongodb+srv">DNS Seed List (mongodb+srv://)</option>
+          <span class="form-label">{m.session_manager_label_conn_type()}</span>
+          <select class="form-input" bind:value={r.scheme} aria-label={m.session_manager_label_conn_type()}>
+            <option value="mongodb">{m.session_manager_conn_direct()}</option>
+            <option value="mongodb+srv">{m.session_manager_conn_srv()}</option>
           </select>
 
-          <span class="form-label">Hostname / IP:</span>
-          <input class="form-input mono" bind:value={r.host} placeholder="localhost" aria-label="Hostname / IP" />
+          <span class="form-label">{m.session_manager_label_hostname()}</span>
+          <input class="form-input mono" bind:value={r.host} placeholder="localhost" aria-label={m.session_manager_label_hostname()} />
 
-          <span class="form-label">Port:</span>
+          <span class="form-label">{m.session_manager_label_port()}</span>
           <input
             class="form-input mono short"
             type="number"
             bind:value={r.port}
             disabled={r.scheme === "mongodb+srv"}
             placeholder="27017"
-            aria-label="Port"
+            aria-label={m.session_manager_label_port()}
           />
 
-          <span class="form-label">Authentication:</span>
-          <select class="form-input" bind:value={r.authMethod} aria-label="Authentication">
-            <option value="none">None</option>
-            <option value="password">Username &amp; Password</option>
+          <span class="form-label">{m.session_manager_label_auth()}</span>
+          <select class="form-input" bind:value={r.authMethod} aria-label={m.session_manager_label_auth()}>
+            <option value="none">{m.session_manager_auth_none()}</option>
+            <option value="password">{m.session_manager_auth_password()}</option>
           </select>
 
-          <span class="form-label">User:</span>
-          <input class="form-input" bind:value={r.user} disabled={r.authMethod === "none"} aria-label="User" />
+          <span class="form-label">{m.session_manager_label_user()}</span>
+          <input class="form-input" bind:value={r.user} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_user()} />
 
-          <span class="form-label">Password:</span>
-          <input class="form-input" type="password" bind:value={r.password} disabled={r.authMethod === "none"} aria-label="Password" />
+          <span class="form-label">{m.session_manager_label_password()}</span>
+          <input class="form-input" type="password" bind:value={r.password} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_password()} />
 
-          <span class="form-label">Auth database:</span>
-          <input class="form-input mono" bind:value={r.authSource} placeholder="admin" aria-label="Auth database" />
+          <span class="form-label">{m.session_manager_label_auth_db()}</span>
+          <input class="form-input mono" bind:value={r.authSource} placeholder="admin" aria-label={m.session_manager_label_auth_db()} />
 
-          <span class="form-label">Replica set:</span>
-          <input class="form-input mono" bind:value={r.replicaSet} placeholder="(optional)" aria-label="Replica set" />
+          <span class="form-label">{m.session_manager_label_replica_set()}</span>
+          <input class="form-input mono" bind:value={r.replicaSet} placeholder="(optional)" aria-label={m.session_manager_label_replica_set()} />
 
-          <span class="form-label">TLS / SSL:</span>
+          <span class="form-label">{m.session_manager_label_tls()}</span>
           <label class="form-check">
-            <input type="checkbox" bind:checked={r.tls} aria-label="TLS / SSL" />
-            <span>Enable TLS</span>
+            <input type="checkbox" bind:checked={r.tls} aria-label={m.session_manager_label_tls()} />
+            <span>{m.session_manager_tls_enable()}</span>
           </label>
 
-          <span class="form-label">Extra options:</span>
-          <input class="form-input mono" bind:value={r.extraOptions} placeholder="readPreference=secondary&appName=x" aria-label="Extra options" />
+          <span class="form-label">{m.session_manager_label_extra()}</span>
+          <input class="form-input mono" bind:value={r.extraOptions} placeholder="readPreference=secondary&appName=x" aria-label={m.session_manager_label_extra()} />
 
-          <span class="form-label">Import from URI:</span>
+          <span class="form-label">{m.session_manager_label_import_uri()}</span>
           <div class="import-row">
-            <input class="form-input mono" bind:value={importUri} placeholder="paste a mongodb:// URI" aria-label="Import from URI" />
-            <button type="button" class="import-btn" onclick={doImport}>Import</button>
+            <input class="form-input mono" bind:value={importUri} placeholder="paste a mongodb:// URI" aria-label={m.session_manager_label_import_uri()} />
+            <button type="button" class="import-btn" onclick={doImport}>{m.session_manager_import_btn()}</button>
           </div>
         </div>
 
@@ -206,17 +207,17 @@
     <div class="footer">
       <div class="footer-left">
         <button class="foot-btn new-btn" onclick={newSession}>
-          <span class="plus">+</span>New
+          <span class="plus">+</span>{m.session_manager_btn_new()}
         </button>
         <button class="foot-btn" onclick={r.save} disabled={!r.label.trim() && !r.host.trim()}>
-          {r.editingId !== null ? "Update" : "Save"}
+          {r.editingId !== null ? m.session_manager_btn_update() : m.session_manager_btn_save()}
         </button>
         <button
           class="foot-btn del-btn"
           onclick={() => { if (selectedId !== null) { r.remove(selectedId); selectedId = null; r.clearForm(); } }}
           disabled={selectedId === null}
         >
-          <span class="del-x">✕</span>Delete
+          <span class="del-x">✕</span>{m.session_manager_btn_delete()}
         </button>
       </div>
       <div class="footer-right">
@@ -225,15 +226,16 @@
           onclick={openSession}
           disabled={r.connecting || !r.host.trim()}
         >
-          {r.connecting ? "Connecting…" : "Open"}
+          {r.connecting ? m.session_manager_btn_connecting() : m.session_manager_btn_open()}
         </button>
-        <button class="foot-btn cancel-btn" onclick={onclose}>Cancel</button>
+        <button class="foot-btn cancel-btn" onclick={onclose}>{m.session_manager_btn_cancel()}</button>
       </div>
     </div>
   </div>
 </div>
 
 <style>
+  /* ── Overlay & panel ── */
   @keyframes msFade {
     from { opacity: 0; }
     to   { opacity: 1; }
@@ -264,7 +266,7 @@
     overflow: hidden;
   }
 
-  /* Header */
+  /* ── Header ── */
   .header {
     display: flex;
     align-items: center;
@@ -298,14 +300,14 @@
     color: #fff;
   }
 
-  /* Body */
+  /* ── Body ── */
   .body {
     flex: 1;
     display: flex;
     min-height: 0;
   }
 
-  /* Left column */
+  /* ── Left column: session list ── */
   .left-col {
     width: 330px;
     flex: none;
@@ -315,6 +317,7 @@
     background: var(--panel);
   }
 
+  /* ── Filter bar ── */
   .filter-bar {
     display: flex;
     gap: 6px;
@@ -361,6 +364,7 @@
   }
   .filter-clear:hover { background: #fdeeee; }
 
+  /* ── Session list rows ── */
   .list-header {
     display: flex;
     padding: 0 8px 4px;
@@ -398,7 +402,7 @@
   .session-last { width: 90px; color: #888; font-size: 11px; }
   .session-empty { padding: 16px 8px; color: var(--muted); font-size: 12px; }
 
-  /* Right column */
+  /* ── Right column: connection form ── */
   .right-col {
     flex: 1;
     display: flex;
@@ -409,6 +413,7 @@
     overflow: auto;
   }
 
+  /* ── Form grid & inputs ── */
   .form-grid {
     display: grid;
     grid-template-columns: 140px 1fr;
@@ -456,7 +461,7 @@
     font-size: 12px;
   }
 
-  /* Footer */
+  /* ── Footer ── */
   .footer {
     display: flex;
     align-items: center;
@@ -470,6 +475,7 @@
   .footer-left { display: flex; gap: 5px; align-items: center; }
   .footer-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
 
+  /* ── Footer buttons ── */
   .foot-btn {
     display: flex;
     align-items: center;

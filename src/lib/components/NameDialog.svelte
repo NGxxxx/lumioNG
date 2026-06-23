@@ -2,6 +2,8 @@
   import { untrack } from "svelte";
   import { errorMessage } from "../api/errors";
   import { portal } from "../actions/portal";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let {
     title,
@@ -48,11 +50,11 @@
     <header>{title}</header>
     <div class="body">
       <label>{label}<input bind:value aria-label="name-input" /></label>
-      {#if error}<div class="dlg-error">{error}</div>{/if}
+      {#if error}<div class="dlg-error">{msgKey(error)}</div>{/if}
     </div>
     <footer>
-      <button onclick={oncancel}>Cancel</button>
-      <button class="primary" disabled={busy} onclick={submit}>OK</button>
+      <button onclick={oncancel}>{m.common_cancel()}</button>
+      <button class="primary" disabled={busy} onclick={submit}>{m.common_ok()}</button>
     </footer>
   </div>
 </div>

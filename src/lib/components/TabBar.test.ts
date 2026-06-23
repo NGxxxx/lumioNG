@@ -10,7 +10,7 @@ const ctx: { kind: ContextKind; label: string }[] = [
 ];
 
 describe("TabBar", () => {
-  it("context tab không có nút đóng; render đủ nhãn", () => {
+  it("context tab has no close button; renders all labels", () => {
     const { getByText, queryByLabelText } = render(TabBar, {
       props: {
         contextTabs: ctx,
@@ -44,7 +44,7 @@ describe("TabBar", () => {
     expect(onShowContext).toHaveBeenCalledWith("collection");
   });
 
-  it("work tab có nút đóng; click → onCloseWork(id); click nhãn → onActivateWork(id)", async () => {
+  it("work tab has close button; click → onCloseWork(id); click label → onActivateWork(id)", async () => {
     const onCloseWork = vi.fn();
     const onActivateWork = vi.fn();
     const work: WorkTab[] = [{ id: 7, kind: "document", db: "d", coll: "orders", mode: "insert", initial: null, idText: null }];

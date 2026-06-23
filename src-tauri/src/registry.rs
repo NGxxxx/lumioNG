@@ -96,7 +96,7 @@ pub fn remove(list: Vec<SavedConnection>, id: u32) -> Vec<SavedConnection> {
     list.into_iter().filter(|c| c.id != id).collect()
 }
 
-/// File thiếu → Ok(vec![]); JSON hỏng → Parse; lỗi đọc khác → Io.
+/// Missing file → Ok(vec![]); malformed JSON → Parse error; other read errors → Io error.
 pub fn load(path: &Path) -> Result<Vec<SavedConnection>, AppError> {
     match std::fs::read_to_string(path) {
         Ok(s) => serde_json::from_str(&s).map_err(|e| AppError::Parse(e.to_string())),

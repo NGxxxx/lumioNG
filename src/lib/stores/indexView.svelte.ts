@@ -5,8 +5,8 @@ import { commandLog } from "./commandLog.svelte";
 import { createIndexCmd, dropIndexCmd } from "../domain/mongosh";
 
 /**
- * Trạng thái + hành động của tab Indexes cho một collection.
- * Component chỉ render và gọi action; logic parse/build/validate nằm ở domain.
+ * State and actions for the Indexes tab of a collection.
+ * Components only render and invoke actions; parse/build/validate logic lives in domain.
  */
 export function createIndexView(db: string, coll: string) {
   let indexes = $state<IndexInfo[]>([]);

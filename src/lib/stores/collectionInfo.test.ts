@@ -22,7 +22,7 @@ describe("createCollectionInfo", () => {
     collOptions.mockResolvedValue("{}");
   });
 
-  it("init gọi cả hai api + parse", async () => {
+  it("init calls both api endpoints and parses results", async () => {
     collStats.mockResolvedValueOnce(statsJson);
     collOptions.mockResolvedValueOnce(optsJson);
     const v = createCollectionInfo("d", "c");
@@ -34,7 +34,7 @@ describe("createCollectionInfo", () => {
     expect(v.error).toBeNull();
   });
 
-  it("lỗi api → set error, không ném", async () => {
+  it("api error sets error and does not throw", async () => {
     collStats.mockRejectedValueOnce({ kind: "Query", message: "boom" });
     const v = createCollectionInfo("d", "c");
     await v.refresh();

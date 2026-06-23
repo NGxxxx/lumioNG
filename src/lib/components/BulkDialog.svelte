@@ -1,5 +1,7 @@
 <script lang="ts">
   import { portal } from "../actions/portal";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let {
     mode,
@@ -62,35 +64,34 @@
     <header>{heading}</header>
     <div class="body">
       {#if scope === "selection"}
-        <div class="row">{selectionCount} dòng đã chọn.</div>
+        <div class="row">{m.bulk_dialog_rows_selected({ count: selectionCount })}</div>
       {:else}
-        <div class="row">Filter đang áp: <code>{appliedFilter}</code></div>
+        <div class="row">{m.bulk_dialog_applied_filter()} <code>{appliedFilter}</code></div>
         {#if isEmpty}
           <div class="warn">
-            Filter rỗng — khi Run, bạn sẽ phải gõ tên collection để xác nhận áp dụng cho
-            <b>TOÀN BỘ</b> collection.
+            {m.bulk_dialog_empty_warning()}
           </div>
         {/if}
       {/if}
       {#if mode === "update"}
-        <label class="ulabel">Update document (operator)
+        <label class="ulabel">{m.bulk_dialog_update_label()}
           <textarea bind:value={updateText} rows="4" placeholder={'{ "$set": { "field": value } }'}></textarea>
         </label>
-        {#if updateError}<div class="err">{updateError}</div>{/if}
+        {#if updateError}<div class="err">{msgKey(updateError)}</div>{/if}
       {/if}
       {#if scope === "filter"}
         <div class="counter">
-          <button onclick={oncount} disabled={counting}>Count</button>
-          {#if count !== null}<span>Khớp {count} document.</span>{/if}
+          <button onclick={oncount} disabled={counting}>{m.common_count()}</button>
+          {#if count !== null}<span>{m.bulk_dialog_matched({ count })}</span>{/if}
         </div>
       {/if}
       {#if result}<div class="ok">{result}</div>{/if}
       {#if error}<div class="err">{error}</div>{/if}
     </div>
     <footer>
-      <button onclick={onclose}>Close</button>
+      <button onclick={onclose}>{m.common_close()}</button>
       <button class="danger" disabled={!canRun} onclick={onrun}>
-        {running ? "Đang chạy…" : mode === "update" ? "Update" : "Delete"}
+        {running ? m.common_running() : mode === "update" ? m.common_update() : m.common_delete()}
       </button>
     </footer>
   </div>

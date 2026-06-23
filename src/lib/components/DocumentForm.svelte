@@ -3,11 +3,13 @@
   import { insertDocument, replaceDocument } from "../api/documents";
   import { errorMessage } from "../api/errors";
   import { idJson } from "../domain/docid";
-  import type { Doc } from "../domain/columns";
+  import type { Doc } from "../domain/doc";
   import { parseDocumentText } from "../domain/docparse";
   import { commandLog } from "../stores/commandLog.svelte";
   import { insertCmd, replaceCmd } from "../domain/mongosh";
   import TreeEditor from "./TreeEditor.svelte";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let {
     mode,
@@ -25,10 +27,10 @@
     oncancel: () => void;
   } = $props();
 
-  // Nguồn sự thật: object cây. Deep-clone qua JSON để an toàn mọi môi trường.
-  // Props bất biến trong vòng đời (tab remount theo id) → chỉ lấy giá trị khởi tạo.
-  // `initial` dùng cho cả edit (doc gốc) lẫn insert có sẵn (skeleton New / bản sao Duplicate);
-  // insert không kèm initial → form trống.
+  // Source of truth: tree object. Deep-clone via JSON for safety across all environments.
+  // Props are immutable for the component lifetime (tab remounts by id) — read only initial values.
+  // `initial` serves both edit (original doc) and pre-filled insert (New skeleton / Duplicate copy);
+  // insert without initial → empty form.
   let docValue = $state<Doc>(
     untrack(() => (initial ? JSON.parse(JSON.stringify(initial)) : {})),
   );
@@ -62,7 +64,7 @@
   function toTree() {
     const r = parseDocumentText(text);
     if (!r.ok) {
-      error = r.error;
+      error = r.detail ? `${msgKey(r.error)}: ${r.detail}` : msgKey(r.error);
       return;
     }
     docValue = r.doc;
@@ -78,7 +80,7 @@
     if (view === "raw") {
       const r = parseDocumentText(text);
       if (!r.ok) {
-        error = r.error;
+        error = r.detail ? `${msgKey(r.error)}: ${r.detail}` : msgKey(r.error);
         return;
       }
       payload = r.doc;
@@ -95,7 +97,7 @@
         commandLog.push(insertCmd(coll, docJson));
       } else {
         if (idText === null) {
-          error = "Document không có _id để cập nhật.";
+          error = m.document_form_no_id_error();
           return;
         }
         await replaceDocument(db, coll, idText, docJson);
@@ -118,7 +120,7 @@
       <path d="M10 3l2-2 3 3-2 2z" fill="#9fb4cc" stroke="#5b7088" stroke-width="0.8"/>
     </svg>
     <span class="header-title">
-      {mode === "insert" ? "New document" : "Edit document"} — {db}.{coll}
+      {mode === "insert" ? m.document_form_title_insert() : m.document_form_title_edit()} — {db}.{coll}
     </span>
   </header>
 
@@ -127,12 +129,12 @@
       class="subtab"
       class:subtab-active={view === "raw"}
       onclick={toRaw}
-    >JSON</button>
+    >{m.document_form_tab_json()}</button>
     <button
       class="subtab"
       class:subtab-active={view === "tree"}
       onclick={toTree}
-    >Field tree</button>
+    >{m.document_form_tab_tree()}</button>
   </div>
 
   <div class="editor-body">
@@ -151,21 +153,21 @@
   </div>
 
   {#if error}<div class="error">{error}</div>{/if}
-  {#if view === "tree" && !treeValid}<div class="error">Còn field chưa hợp lệ — sửa xong mới lưu được.</div>{/if}
+  {#if view === "tree" && !treeValid}<div class="error">{m.document_form_invalid_fields_error()}</div>{/if}
 
   <footer>
     <span class="footer-status">
       {#if view === "tree"}
-        {treeValid ? "Valid" : "Invalid"} · {fieldCount} fields
+        {treeValid ? m.document_form_status_valid() : m.document_form_status_invalid()} · {m.document_form_status_fields({ count: fieldCount })}
       {:else}
-        {jsonValid ? `Valid JSON · ${fieldCount} fields` : "Invalid JSON"}
+        {jsonValid ? `${m.document_form_status_valid_json()} · ${m.document_form_status_fields({ count: fieldCount })}` : m.document_form_status_invalid_json()}
       {/if}
     </span>
     <div class="footer-actions">
       <button class="btn-save" onclick={save} disabled={saving || (view === "tree" && !treeValid)}>
-        {saving ? "Đang lưu…" : "Save"}
+        {saving ? m.document_form_saving() : m.common_save()}
       </button>
-      <button class="btn-cancel" onclick={oncancel} disabled={saving}>Cancel</button>
+      <button class="btn-cancel" onclick={oncancel} disabled={saving}>{m.common_cancel()}</button>
     </div>
   </footer>
 </div>

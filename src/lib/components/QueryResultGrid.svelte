@@ -1,8 +1,9 @@
 <script lang="ts">
   import { getByPath, type ColumnField } from "../domain/schema";
-  import type { Doc } from "../domain/columns";
+  import type { Doc } from "../domain/doc";
   import BsonCell from "./BsonCell.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
+  import * as m from "$lib/paraglide/messages";
 
   let { columns, docs, colWidths, onResize, onReset,
         selected, menu, menuItems, onRowClick, onOpenMenu, onMenuSelect, onCloseMenu }: {
@@ -45,7 +46,7 @@
 </script>
 
 {#if columns.length === 0}
-  <div class="empty">No results</div>
+  <div class="empty">{m.query_result_grid_empty()}</div>
 {:else}
   <div class="scroller">
     <table style="width:{totalWidth}px">
