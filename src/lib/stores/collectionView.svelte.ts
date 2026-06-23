@@ -25,6 +25,7 @@ import { buildSkeleton, duplicateForInsert } from "../domain/skeleton";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
 import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd, exportBsonCmd } from "../domain/mongosh";
 
 /**
@@ -147,6 +148,7 @@ export function createCollectionView(db: string, coll: string) {
     allShown = false;
     error = null;
     const gen = generation;
+    activity.begin(m.status_bar_loading());
     try {
       const skip = skipFor(currentPage, pageSize);
       commandLog.push(
@@ -177,6 +179,7 @@ export function createCollectionView(db: string, coll: string) {
       error = errorMessage(e);
     } finally {
       if (gen === generation) loading = false;
+      activity.end();
     }
   }
 
@@ -231,6 +234,7 @@ export function createCollectionView(db: string, coll: string) {
     loading = true;
     error = null;
     const gen = generation;
+    activity.begin(m.status_bar_loading());
     try {
       const all = await exportQuery(
         db,
@@ -252,6 +256,7 @@ export function createCollectionView(db: string, coll: string) {
       error = errorMessage(e);
     } finally {
       if (gen === generation) loading = false;
+      activity.end();
     }
   }
 

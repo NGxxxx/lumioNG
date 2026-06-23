@@ -80,6 +80,19 @@ export function parseHostInfo(
   };
 }
 
+/** Format an elapsed duration in seconds as "H:MM:SS" (hours grow unbounded). For the
+ *  status bar's "connected for" clock, which ticks every second. */
+export function formatDuration(seconds: number | null): string {
+  if (seconds === null || Number.isNaN(seconds)) return "—";
+  const s = Math.floor(seconds);
+  if (s < 0) return "—";
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${h}:${pad(m)}:${pad(sec)}`;
+}
+
 /** Format an uptime in seconds as "1d 2h 3m" (drops leading zero units, always shows minutes). */
 export function formatUptime(seconds: number | null): string {
   if (seconds === null || Number.isNaN(seconds)) return "—";

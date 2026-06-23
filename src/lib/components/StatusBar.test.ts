@@ -10,9 +10,21 @@ describe("StatusBar", () => {
     });
     // Segment 1: selDb takes precedence over connectionLabel
     expect(getByText(/shop · 5 collections/)).toBeTruthy();
-    // Placeholder segments must show em-dash, not fabricated numbers
-    expect(getByText("—:—")).toBeTruthy();
+    // No connectedAt prop → connected-time clock shows em-dash, not a fabricated value
+    expect(getByText("Connected: —")).toBeTruthy();
+    // No activity in progress → idle label
     expect(getByText("Idle.")).toBeTruthy();
+  });
+
+  it("shows the activity label instead of Idle when one is in progress", () => {
+    const { getByText, queryByText } = render(StatusBar, {
+      props: {
+        connected: true, connectionLabel: "Local", dbCount: 1, collCount: 1,
+        selDb: "shop", selColl: null, activityLabel: "Running query…",
+      },
+    });
+    expect(getByText("Running query…")).toBeTruthy();
+    expect(queryByText("Idle.")).toBeNull();
   });
 
   it("shows connectionLabel when connected but no db selected", () => {

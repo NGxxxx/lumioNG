@@ -252,12 +252,13 @@
 
   "status_bar_disconnected": "Disconnected",
   "status_bar_collections": "{label} · {count} collections",
-  "status_bar_cell_pos": "—:—",
-  "status_bar_connected_time": "Connected: —",
+  "status_bar_connected_time": "Connected: {time}",
   "status_bar_mongodb_version": "MongoDB {version}",
   "status_bar_uptime": "Uptime: {uptime}",
   "status_bar_server_time": "Server time: {time}",
   "status_bar_idle": "Idle.",
+  "status_bar_loading": "Loading…",
+  "status_bar_running_query": "Running query…",
 
   "tab_bar_close": "Close tab",
   "tab_bar_new_query": "New aggregate query",

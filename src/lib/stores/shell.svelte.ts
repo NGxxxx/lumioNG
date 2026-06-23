@@ -5,6 +5,7 @@ type TreeLike = { readonly databases: { name: string; collections: string[] }[] 
 /** App chrome state: active connection, sidebar/log dimensions, and db/collection counts. */
 export function createShell(tree: TreeLike = defaultTree) {
   let connection = $state<{ label: string; uri: string } | null>(null);
+  let connectedAt = $state<number | null>(null); // epoch ms of the active connection (status-bar clock)
   let sessionOpen = $state(true);
   let sidebarWidth = $state(240);
   let logOpen = $state(true);
@@ -15,6 +16,7 @@ export function createShell(tree: TreeLike = defaultTree) {
 
   function setConnection(c: { label: string; uri: string } | null) {
     connection = c;
+    connectedAt = c ? Date.now() : null;
   }
   function toggleSession() {
     sessionOpen = !sessionOpen;
@@ -35,6 +37,9 @@ export function createShell(tree: TreeLike = defaultTree) {
   return {
     get connection() {
       return connection;
+    },
+    get connectedAt() {
+      return connectedAt;
     },
     get sessionOpen() {
       return sessionOpen;

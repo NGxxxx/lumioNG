@@ -4,6 +4,7 @@ import { saveDialog, writeTextFile } from "../api/files";
 import type { Doc } from "../domain/doc";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
 import { aggregateCmd, deleteManyCmd } from "../domain/mongosh";
 import { parseAggregateStatement, pipelineHasTrailingLimit } from "../domain/aggregate";
 import { mergeColumns, getByPath, type ColumnField } from "../domain/schema";
@@ -65,6 +66,7 @@ export function createQueryRun(initialStatement: string) {
     }
     const limit = forceNoLimit || pipelineHasTrailingLimit(parsed.pipelineText) ? null : SAFETY_CAP;
     loading = true;
+    activity.begin(m.status_bar_running_query());
     try {
       const res = await aggregate(db, parsed.coll, parsed.pipelineText, limit);
       docs = res;
@@ -83,6 +85,7 @@ export function createQueryRun(initialStatement: string) {
       error = errorMessage(e);
     } finally {
       loading = false;
+      activity.end();
     }
   }
 

@@ -10,6 +10,7 @@
   import { shell } from "$lib/stores/shell.svelte";
   import { activeDataView } from "$lib/stores/activeDataView.svelte";
   import { hostStatus } from "$lib/stores/hostStatus.svelte";
+  import { activity } from "$lib/stores/activity.svelte";
   import { quit } from "$lib/api/window";
   import { disconnect as apiDisconnect } from "$lib/api/connection";
   import type { Doc } from "$lib/domain/doc";
@@ -285,6 +286,8 @@
     version={hostStatus.info?.version ?? null}
     uptimeSeconds={hostStatus.info?.uptimeSeconds ?? null}
     serverTimeIso={hostStatus.info?.localTimeIso ?? null}
+    connectedAt={shell.connectedAt}
+    activityLabel={activity.label}
   />
   {#if shell.sessionOpen}
     <SessionManager onconnected={onConnected} onclose={() => shell.toggleSession()} />

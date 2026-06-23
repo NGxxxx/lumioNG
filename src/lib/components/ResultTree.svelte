@@ -73,7 +73,11 @@
   }
 
   // === Virtualization (variable row height → measureElement) ===
-  const ROW_EST = 24; // collapsed-row estimate; expanded rows are measured
+  // Collapsed rows are uniform and locked to ROW_EST px in CSS (.tree-doc fixed height), so the
+  // virtualizer's estimate matches their *measured* height exactly — no totalSize churn while
+  // scrolling => the scrollbar thumb tracks the drag 1:1. Only expanded rows measure taller.
+  // MUST match `.tree-doc { height }` in the CSS below.
+  const ROW_EST = 27; // collapsed-row height (px); expanded rows are measured
   const OVERSCAN = 6;
   let scrollerEl = $state<HTMLDivElement | null>(null);
 
@@ -118,6 +122,7 @@
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="tree-doc"
+          class:open={isOpen}
           data-index={vi.index}
           use:measure
           style="transform:translateY({vi.start}px)"
@@ -176,8 +181,16 @@
     left: 0;
     width: 100%;
     box-sizing: border-box;
+    /* Collapsed rows are a fixed height so measured == ROW_EST estimate (no scroll-thumb drift).
+       Open rows grow to fit their fields. Keep this height in sync with ROW_EST in the script. */
+    height: 27px;
+    overflow: hidden;
     border-bottom: 1px solid #f0f0f0;
     padding: 2px 0;
+  }
+  .tree-doc.open {
+    height: auto;
+    overflow: visible;
   }
   .tree-header {
     display: flex;

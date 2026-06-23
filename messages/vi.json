@@ -252,12 +252,13 @@
 
   "status_bar_disconnected": "Chưa kết nối",
   "status_bar_collections": "{label} · {count} collection",
-  "status_bar_cell_pos": "—:—",
-  "status_bar_connected_time": "Đã kết nối: —",
+  "status_bar_connected_time": "Đã kết nối: {time}",
   "status_bar_mongodb_version": "MongoDB {version}",
   "status_bar_uptime": "Thời gian hoạt động: {uptime}",
   "status_bar_server_time": "Giờ máy chủ: {time}",
   "status_bar_idle": "Sẵn sàng.",
+  "status_bar_loading": "Đang tải…",
+  "status_bar_running_query": "Đang chạy truy vấn…",
 
   "tab_bar_close": "Đóng tab",
   "tab_bar_new_query": "Truy vấn aggregate mới",
