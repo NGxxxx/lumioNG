@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getByPath, flattenPaths, inferSchema, mergeColumns } from "./schema";
+import { getByPath, getBySegments, flattenPaths, inferSchema, mergeColumns } from "./schema";
 
 describe("getByPath", () => {
   it("reads a top-level field", () => {
@@ -15,6 +15,17 @@ describe("getByPath", () => {
   it("scalar/array mid-path → undefined", () => {
     expect(getByPath({ a: 5 }, "a.b")).toBeUndefined();
     expect(getByPath({ a: [1, 2] }, "a.b")).toBeUndefined();
+  });
+});
+
+describe("getBySegments", () => {
+  it("reads a nested value from pre-split segments", () => {
+    expect(getBySegments({ address: { city: "HCM" } }, ["address", "city"])).toBe("HCM");
+  });
+  it("matches getByPath semantics for missing and scalar-mid-path", () => {
+    expect(getBySegments({ address: { city: "HCM" } }, ["address", "zip"])).toBeUndefined();
+    expect(getBySegments({ a: 5 }, ["a", "b"])).toBeUndefined();
+    expect(getBySegments({ a: [1, 2] }, ["a", "b"])).toBeUndefined();
   });
 });
 

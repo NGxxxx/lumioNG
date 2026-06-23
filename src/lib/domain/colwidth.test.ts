@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampWidth, computeColumnWidths, MIN_COL_W, MAX_COL_W } from "./colwidth";
+import { clampWidth, computeColumnWidths, COLWIDTH_SAMPLE, MIN_COL_W, MAX_COL_W } from "./colwidth";
 import type { ColumnField } from "./schema";
 import type { Doc } from "./doc";
 
@@ -43,5 +43,13 @@ describe("computeColumnWidths", () => {
     const docs: Doc[] = [{ other: 1 }, { maybe: "hi" }]; // only 'hi' (len 2) counts
     // header 5 vs content 2 → header wins → 5*7+20 = 55
     expect(computeColumnWidths(fields, docs).maybe).toBe(55);
+  });
+  it("scans only the first COLWIDTH_SAMPLE docs for content width", () => {
+    const fields: ColumnField[] = [{ path: "v" }];
+    const docs: Doc[] = [];
+    for (let i = 0; i < COLWIDTH_SAMPLE; i++) docs.push({ v: "x" }); // short, within sample
+    docs.push({ v: "y".repeat(300) }); // long, just past the sample → must be ignored
+    // header "v" (1) ≥ sampled content (1) → 1*7+20 = 27 → clamp to MIN; a full scan would hit MAX
+    expect(computeColumnWidths(fields, docs).v).toBe(MIN_COL_W);
   });
 });
