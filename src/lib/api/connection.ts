@@ -5,14 +5,14 @@ export interface DbInfo {
   collections: string[];
 }
 
-export async function connect(uri: string): Promise<void> {
-  await invoke("connect", { uri });
+export async function connect(sessionId: string, uri: string): Promise<void> {
+  await invoke("connect", { sessionId, uri });
 }
 
-export async function disconnect(): Promise<void> {
-  await invoke("disconnect");
+export async function disconnect(sessionId: string): Promise<void> {
+  await invoke("disconnect", { sessionId });
 }
 
-export async function listNamespaces(): Promise<DbInfo[]> {
-  return await invoke<DbInfo[]>("list_namespaces");
+export async function listNamespaces(sessionId: string): Promise<DbInfo[]> {
+  return await invoke<DbInfo[]>("list_namespaces", { sessionId });
 }

@@ -3,13 +3,19 @@ import { render } from "@testing-library/svelte";
 import type { HostInfo } from "../domain/host";
 
 let mockInfo: HostInfo | null = null;
-vi.mock("../stores/hostStatus.svelte", () => ({
-  hostStatus: {
-    get info() { return mockInfo; },
-    get error() { return null; },
-    get loading() { return false; },
-    load: vi.fn(),
-    clear: vi.fn(),
+
+vi.mock("../stores/sessionManager.svelte", () => ({
+  sessionManager: {
+    get active() {
+      return {
+        host: {
+          get info() { return mockInfo; },
+          get error() { return null; },
+          get loading() { return false; },
+        },
+      };
+    },
+    get sessions() { return []; },
   },
 }));
 

@@ -6,14 +6,11 @@ import {
   type SavedConnection,
   type ConnectionInput,
 } from "../api/connections";
-import { connect } from "../api/connection";
 import { errorMessage } from "../api/errors";
 import { validateProfile } from "../domain/connections";
 import { buildProfileUri, parseUri, type ConnectionProfile } from "../domain/connuri";
 import { obfuscate, deobfuscate } from "../domain/secret";
-import { maskUri } from "../domain/uri";
-import { commandLog } from "./commandLog.svelte";
-import { connectCmd } from "../domain/mongosh";
+
 
 /** Registry of saved connections + the structured add/edit form + connect. Components only bind. */
 export function createConnectionRegistry() {
@@ -21,7 +18,6 @@ export function createConnectionRegistry() {
   let error = $state<string | null>(null);
   let formError = $state<string | null>(null);
   let editingId = $state<number | null>(null);
-  let connecting = $state(false);
 
   // form fields
   let label = $state("");
@@ -131,20 +127,16 @@ export function createConnectionRegistry() {
     password = pw;
   }
 
-  async function connectTo(): Promise<boolean> {
-    connecting = true;
+  /** Build and validate the URI. Returns `{ ok: true, uri }` or `{ ok: false }` (sets `error`). */
+  function connectTo(): { ok: true; uri: string } | { ok: false } {
     error = null;
-    try {
-      const uri = currentUri();
-      await connect(uri);
-      commandLog.push(connectCmd(maskUri(uri)));
-      return true;
-    } catch (e) {
-      error = errorMessage(e);
-      return false;
-    } finally {
-      connecting = false;
+    const uri = currentUri();
+    // Minimal sanity check: scheme and host must be present (buildProfileUri already did this).
+    if (!host.trim()) {
+      error = "Host is required.";
+      return { ok: false };
     }
+    return { ok: true, uri };
   }
 
   return {
@@ -152,7 +144,6 @@ export function createConnectionRegistry() {
     get error() { return error; },
     get formError() { return formError; },
     get editingId() { return editingId; },
-    get connecting() { return connecting; },
     get label() { return label; }, set label(v: string) { label = v; },
     // scheme/authMethod setters accept `string` so `bind:value` on a <select> type-checks cleanly.
     get scheme() { return scheme; }, set scheme(v: string) { scheme = v as "mongodb" | "mongodb+srv"; },

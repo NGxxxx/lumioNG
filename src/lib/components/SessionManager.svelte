@@ -8,7 +8,7 @@
     onconnected,
     onclose,
   }: {
-    onconnected: (c: { label: string; uri: string }) => void;
+    onconnected: (c: { connId: number | null; label: string; uri: string }) => Promise<boolean>;
     onclose: () => void;
   } = $props();
 
@@ -20,6 +20,10 @@
   let filterText = $state("");
   // Import URI local state
   let importUri = $state("");
+  // Local connecting flag: true while focusOrOpen is in-flight
+  let connecting = $state(false);
+  // Connection error from focusOrOpen (distinct from r.error which is validation/CRUD errors)
+  let connectError = $state<string | null>(null);
 
   const filteredList = $derived(
     filterText.trim()
@@ -48,10 +52,19 @@
 
   async function openSession() {
     if (!r.host.trim()) return;
-    const connLabel = r.label.trim() || r.currentUri();
-    if (await r.connectTo()) {
-      onconnected({ label: connLabel, uri: r.currentUri() });
-      onclose();
+    const result = r.connectTo();
+    if (!result.ok) return; // validation error shown via r.error
+    connectError = null;
+    connecting = true;
+    try {
+      const connLabel = r.label.trim() || result.uri;
+      // Pass the saved connection's numeric id (null for ad-hoc connections with no saved record).
+      const connId = selectedId !== null ? selectedId : (r.editingId ?? null);
+      const ok = await onconnected({ connId, label: connLabel, uri: result.uri });
+      if (ok) onclose();
+      else connectError = "Connection failed. Check your connection settings and try again.";
+    } finally {
+      connecting = false;
     }
   }
 
@@ -200,6 +213,9 @@
         {#if r.error}
           <div class="form-error">{r.error}</div>
         {/if}
+        {#if connectError}
+          <div class="form-error">{connectError}</div>
+        {/if}
       </div>
     </div>
 
@@ -224,9 +240,9 @@
         <button
           class="foot-btn open-btn"
           onclick={openSession}
-          disabled={r.connecting || !r.host.trim()}
+          disabled={connecting || !r.host.trim()}
         >
-          {r.connecting ? m.session_manager_btn_connecting() : m.session_manager_btn_open()}
+          {connecting ? m.session_manager_btn_connecting() : m.session_manager_btn_open()}
         </button>
         <button class="foot-btn cancel-btn" onclick={onclose}>{m.session_manager_btn_cancel()}</button>
       </div>

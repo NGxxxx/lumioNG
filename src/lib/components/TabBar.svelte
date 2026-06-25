@@ -2,9 +2,12 @@
   import type { Active, ContextKind, WorkTab } from "../stores/navigation.svelte";
   import * as m from "$lib/paraglide/messages";
 
+  type SessionInfo = { id: string; label: string; color: string };
+
   let {
     contextTabs,
     workTabs,
+    sessions = [],
     active,
     onShowContext,
     onActivateWork,
@@ -13,12 +16,17 @@
   }: {
     contextTabs: { kind: ContextKind; label: string }[];
     workTabs: WorkTab[];
+    sessions?: SessionInfo[];
     active: Active;
     onShowContext: (kind: ContextKind) => void;
     onActivateWork: (id: number) => void;
     onCloseWork: (id: number) => void;
     onNewQuery: () => void;
   } = $props();
+
+  function sessionOf(sessionId: string): SessionInfo | undefined {
+    return sessions.find((s) => s.id === sessionId);
+  }
 
   function shorten(s: string): string {
     return s.length > 14 ? s.slice(0, 12) + "…" : s;
@@ -69,7 +77,18 @@
     <div class="divider"></div>
   {/if}
   {#each workTabs as t (t.id)}
-    <div class="tab work" class:active={active?.zone === "work" && active.id === t.id}>
+    {@const sess = sessionOf(t.sessionId)}
+    <div
+      class="tab work"
+      class:active={active?.zone === "work" && active.id === t.id}
+      title={sess?.label}
+    >
+      <span
+        class="session-dot"
+        style="background:{sess?.color ?? '#aaa'}"
+        data-color={sess?.color ?? '#aaa'}
+        aria-hidden="true"
+      ></span>
       <button class="label" onclick={() => onActivateWork(t.id)} title={workTitle(t)}>{workTitle(t)}</button>
       <button class="x" onclick={() => onCloseWork(t.id)} aria-label={m.tab_bar_close()}>×</button>
     </div>
@@ -169,4 +188,12 @@
 
   .newq { align-self: flex-end; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: #555; cursor: pointer; }
   .newq:hover { background: var(--panel); }
+
+  .session-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 50%;
+    flex: none;
+    display: inline-block;
+  }
 </style>

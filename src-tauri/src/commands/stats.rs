@@ -7,11 +7,12 @@ use tauri::State;
 
 #[tauri::command]
 pub async fn coll_stats(
+    session_id: String,
     db: String,
     coll: String,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     // The `collStats` run_command is deprecated; use the $collStats aggregation stage instead.
     // $collStats nests metrics under `storageStats` (size, count, storageSize, indexSizes...).
     // Flatten to top-level to match the shape expected by the frontend (domain/stats.ts).
@@ -38,8 +39,12 @@ pub async fn coll_stats(
 }
 
 #[tauri::command]
-pub async fn db_stats(db: String, state: State<'_, AppState>) -> Result<String, AppError> {
-    let client = state.client().await?;
+pub async fn db_stats(
+    session_id: String,
+    db: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
     let resp = client
         .database(&db)
         .run_command(doc! { "dbStats": 1 })
@@ -49,11 +54,12 @@ pub async fn db_stats(db: String, state: State<'_, AppState>) -> Result<String, 
 
 #[tauri::command]
 pub async fn coll_options(
+    session_id: String,
     db: String,
     coll: String,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     // listCollections returns { cursor: { firstBatch: [ { name, type, options, info, idIndex } ] } }.
     let resp = client
         .database(&db)

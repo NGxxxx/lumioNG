@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { createCollectionInfo } from "../stores/collectionInfo.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import { formatBytes, formatCount } from "../domain/stats";
   import * as m from "$lib/paraglide/messages";
 
   let { db, coll }: { db: string; coll: string } = $props();
 
-  const v = untrack(() => createCollectionInfo(db, coll));
+  const v = untrack(() => createCollectionInfo(sessionManager.active?.id ?? "", db, coll));
 
   onMount(() => {
     v.init();

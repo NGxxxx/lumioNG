@@ -1,11 +1,12 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { createDatabaseCollections, type SortCol } from "../stores/databaseCollections.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import { formatBytes, formatCount } from "../domain/stats";
   import * as m from "$lib/paraglide/messages";
 
   let { db, onopen }: { db: string; onopen: (coll: string) => void } = $props();
-  const v = untrack(() => createDatabaseCollections(db));
+  const v = untrack(() => createDatabaseCollections(sessionManager.active?.id ?? "", db));
   onMount(() => v.init());
 
   const cols: { key: SortCol; label: () => string }[] = [

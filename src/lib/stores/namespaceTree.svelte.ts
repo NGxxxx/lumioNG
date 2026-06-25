@@ -3,7 +3,6 @@ import { listNamespaces, type DbInfo } from "../api/connection";
 import * as admin from "../api/admin";
 import { errorMessage } from "../api/errors";
 import { validateCollectionName, validateDatabaseName } from "../domain/namespaces";
-import { navigation as defaultNav } from "./navigation.svelte";
 import { commandLog } from "./commandLog.svelte";
 import {
   createCollectionCmd,
@@ -13,19 +12,26 @@ import {
   truncateCollectionCmd,
 } from "../domain/mongosh";
 
-type NavLike = {
+export type NavLike = {
   closeForCollection(db: string, coll: string): void;
   closeForDatabase(db: string): void;
   renameCollectionTabs(db: string, oldColl: string, newColl: string): void;
 };
 
-export function createNamespaceTree(nav: NavLike = defaultNav) {
+/** No-op nav for the kept singleton (which never drives a real session's tabs). */
+const defaultNav: NavLike = {
+  closeForCollection() {},
+  closeForDatabase() {},
+  renameCollectionTabs() {},
+};
+
+export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav) {
   let databases = $state<DbInfo[]>([]);
   let error = $state<string | null>(null);
 
   async function refresh() {
     try {
-      databases = await listNamespaces();
+      databases = await listNamespaces(sessionId);
       error = null;
     } catch (e) {
       error = errorMessage(e);
@@ -35,8 +41,8 @@ export function createNamespaceTree(nav: NavLike = defaultNav) {
   async function createCollection(db: string, coll: string) {
     const msg = validateCollectionName(coll);
     if (msg) throw msg;
-    await admin.createCollection(db, coll);
-    commandLog.push(createCollectionCmd(coll));
+    await admin.createCollection(sessionId, db, coll);
+    commandLog.push(createCollectionCmd(coll), sessionId);
     await refresh();
   }
 
@@ -45,14 +51,14 @@ export function createNamespaceTree(nav: NavLike = defaultNav) {
     if (dbMsg) throw dbMsg;
     const collMsg = validateCollectionName(coll);
     if (collMsg) throw collMsg;
-    await admin.createCollection(db, coll);
-    commandLog.push(createCollectionCmd(coll));
+    await admin.createCollection(sessionId, db, coll);
+    commandLog.push(createCollectionCmd(coll), sessionId);
     await refresh();
   }
 
   async function dropCollection(db: string, coll: string) {
-    await admin.dropCollection(db, coll);
-    commandLog.push(dropCollectionCmd(coll));
+    await admin.dropCollection(sessionId, db, coll);
+    commandLog.push(dropCollectionCmd(coll), sessionId);
     nav.closeForCollection(db, coll);
     await refresh();
   }
@@ -60,22 +66,22 @@ export function createNamespaceTree(nav: NavLike = defaultNav) {
   async function renameCollection(db: string, from: string, to: string) {
     const msg = validateCollectionName(to);
     if (msg) throw msg;
-    await admin.renameCollection(db, from, to);
-    commandLog.push(renameCollectionCmd(from, to));
+    await admin.renameCollection(sessionId, db, from, to);
+    commandLog.push(renameCollectionCmd(from, to), sessionId);
     nav.renameCollectionTabs(db, from, to);
     await refresh();
   }
 
   async function dropDatabase(db: string) {
-    await admin.dropDatabase(db);
-    commandLog.push(dropDatabaseCmd());
+    await admin.dropDatabase(sessionId, db);
+    commandLog.push(dropDatabaseCmd(), sessionId);
     nav.closeForDatabase(db);
     await refresh();
   }
 
   async function truncate(db: string, coll: string) {
-    await admin.truncateCollection(db, coll);
-    commandLog.push(truncateCollectionCmd(coll));
+    await admin.truncateCollection(sessionId, db, coll);
+    commandLog.push(truncateCollectionCmd(coll), sessionId);
     await refresh();
   }
 
@@ -103,5 +109,5 @@ export function createNamespaceTree(nav: NavLike = defaultNav) {
   };
 }
 
-/** App-wide singleton (tests create their own instance via createNamespaceTree). */
-export const namespaceTree = createNamespaceTree();
+/** Singleton used by not-yet-migrated modules (tests create their own via createNamespaceTree). */
+export const namespaceTree = createNamespaceTree("");

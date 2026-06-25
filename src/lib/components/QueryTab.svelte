@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { getQueryRun } from "../stores/queryRuns.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import QueryResultGrid from "./QueryResultGrid.svelte";
   import ResultTree from "./ResultTree.svelte";
   import CommandLogView from "./CommandLogView.svelte";
@@ -14,7 +15,7 @@
     { id: number; seq: number; initialStatement: string; currentDb: string | null;
       onopendocument?: (db: string, coll: string, doc: Doc, mode: "edit") => void } = $props();
 
-  const v = untrack(() => getQueryRun(id, initialStatement));
+  const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
   let bottomTab = $state<"result" | "log">("result");
   let menu = $state<{ x: number; y: number } | null>(null);
 

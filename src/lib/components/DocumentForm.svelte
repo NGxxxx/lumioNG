@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { insertDocument, replaceDocument } from "../api/documents";
   import { errorMessage } from "../api/errors";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import { idJson } from "../domain/docid";
   import type { Doc } from "../domain/doc";
   import { parseDocumentText } from "../domain/docparse";
@@ -92,16 +93,17 @@
     const docJson = JSON.stringify(payload);
     try {
       saving = true;
+      const sid = sessionManager.active?.id ?? "";
       if (mode === "insert") {
-        await insertDocument(db, coll, docJson);
-        commandLog.push(insertCmd(coll, docJson));
+        await insertDocument(sid, db, coll, docJson);
+        commandLog.push(insertCmd(coll, docJson), sid);
       } else {
         if (idText === null) {
           error = m.document_form_no_id_error();
           return;
         }
-        await replaceDocument(db, coll, idText, docJson);
-        commandLog.push(replaceCmd(coll, idText, docJson));
+        await replaceDocument(sid, db, coll, idText, docJson);
+        commandLog.push(replaceCmd(coll, idText, docJson), sid);
       }
       onsaved();
     } catch (e) {

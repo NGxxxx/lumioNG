@@ -1,13 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export async function serverStatus(): Promise<string> {
-  return await invoke<string>("server_status");
+export async function serverStatus(sessionId: string): Promise<string> {
+  return await invoke<string>("server_status", { sessionId });
 }
 
-export async function buildInfo(): Promise<string> {
-  return await invoke<string>("build_info");
+export async function buildInfo(sessionId: string): Promise<string> {
+  return await invoke<string>("build_info", { sessionId });
 }
 
-export async function hostInfo(): Promise<string> {
-  return await invoke<string>("host_info");
+export async function hostInfo(sessionId: string): Promise<string> {
+  return await invoke<string>("host_info", { sessionId });
 }

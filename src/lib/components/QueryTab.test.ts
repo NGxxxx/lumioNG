@@ -1,6 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 
+vi.mock("../stores/sessionManager.svelte", () => ({
+  sessionManager: { active: null },
+}));
+
 const run = vi.fn();
 const stub = {
   get statementText() { return 'db.getCollection("x").aggregate([])'; },

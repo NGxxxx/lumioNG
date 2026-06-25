@@ -32,7 +32,7 @@ import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countC
  * State and actions for one collection view: data, paging, inline edit,
  * context menu, and delete. Components only render and bind; no logic here.
  */
-export function createCollectionView(db: string, coll: string) {
+export function createCollectionView(sessionId: string, db: string, coll: string) {
   // $state.raw (not $state): docs are always replaced wholesale (loadPage/showAll/filter
   // assign a fresh array; inline edits mutate then reassign `[...docs]`). Deep-proxying every
   // doc here is what made a 25k-row "Show all" balloon to >1GB — each nested field became a
@@ -124,7 +124,7 @@ export function createCollectionView(db: string, coll: string) {
   async function loadSchema() {
     const gen = generation;
     try {
-      const sample = await sampleDocuments(db, coll, appliedFilter, 100);
+      const sample = await sampleDocuments(sessionId, db, coll, appliedFilter, 100);
       if (gen !== generation) return;
       schema = inferSchema(sample);
     } catch {
@@ -158,8 +158,10 @@ export function createCollectionView(db: string, coll: string) {
           skip,
           limit: pageSize,
         }),
+        sessionId,
       );
       const batch = await queryPage(
+        sessionId,
         db,
         coll,
         skip,
@@ -185,7 +187,7 @@ export function createCollectionView(db: string, coll: string) {
   async function refreshCount() {
     const gen = generation;
     try {
-      const n = await countDocuments(db, coll, appliedFilter);
+      const n = await countDocuments(sessionId, db, coll, appliedFilter);
       if (gen !== generation) return;
       totalCount = n;
       currentPage = clampPage(currentPage, pageCount(totalCount, pageSize));
@@ -212,7 +214,7 @@ export function createCollectionView(db: string, coll: string) {
     generation++;
     const gen = generation;
     try {
-      const n = await countDocuments(db, coll, appliedFilter);
+      const n = await countDocuments(sessionId, db, coll, appliedFilter);
       if (gen !== generation) return;
       totalCount = n;
       if (n > SHOW_ALL_WARN_THRESHOLD) {
@@ -235,6 +237,7 @@ export function createCollectionView(db: string, coll: string) {
     activity.begin(m.status_bar_loading());
     try {
       const all = await exportQueryProgress(
+        sessionId,
         db,
         coll,
         appliedFilter,
@@ -245,6 +248,7 @@ export function createCollectionView(db: string, coll: string) {
       if (gen !== generation) return;
       commandLog.push(
         findCmd({ coll, filter: appliedFilter, projection: buildProjection(hidden), sort: buildSort(sortKeys) }),
+        sessionId,
       );
       docs = all;
       ensureColWidths();
@@ -293,7 +297,7 @@ export function createCollectionView(db: string, coll: string) {
     if (hidden.size === 0) return d;
     const id = idJson(d);
     if (id === null) return d;
-    return (await fetchFullDoc(db, coll, id)) ?? d;
+    return (await fetchFullDoc(sessionId, db, coll, id)) ?? d;
   }
 
   /** Full document for opening an edit tab (component handles the actual open). */
@@ -390,8 +394,8 @@ export function createCollectionView(db: string, coll: string) {
     }
     saving = true;
     try {
-      await replaceDocument(db, coll, id, JSON.stringify(newDoc));
-      commandLog.push(replaceCmd(coll, id, JSON.stringify(newDoc)));
+      await replaceDocument(sessionId, db, coll, id, JSON.stringify(newDoc));
+      commandLog.push(replaceCmd(coll, id, JSON.stringify(newDoc)), sessionId);
       docs[row] = newDoc;
       docs = [...docs];
       editing = null;
@@ -616,8 +620,8 @@ export function createCollectionView(db: string, coll: string) {
     bulkError = null;
     bulkResult = null;
     try {
-      bulkCount = await countDocuments(db, coll, bulkFilter);
-      commandLog.push(countCmd(coll, bulkFilter));
+      bulkCount = await countDocuments(sessionId, db, coll, bulkFilter);
+      commandLog.push(countCmd(coll, bulkFilter), sessionId);
     } catch (e) {
       bulkError = errorMessage(e);
     } finally {
@@ -654,8 +658,8 @@ export function createCollectionView(db: string, coll: string) {
       bulkUpdateError = null;
       bulkRunning = true;
       try {
-        const res = await updateMany(db, coll, filter, r.json, allowAll);
-        commandLog.push(updateManyCmd(coll, filter, r.json));
+        const res = await updateMany(sessionId, db, coll, filter, r.json, allowAll);
+        commandLog.push(updateManyCmd(coll, filter, r.json), sessionId);
         bulkResult = m.collection_view_bulk_updated({ modified: res.modified, matched: res.matched });
         await reloadDocs();
         bulkCount = null;
@@ -667,8 +671,8 @@ export function createCollectionView(db: string, coll: string) {
     } else if (bulkMode === "delete") {
       bulkRunning = true;
       try {
-        const n = await deleteMany(db, coll, filter, allowAll);
-        commandLog.push(deleteManyCmd(coll, filter));
+        const n = await deleteMany(sessionId, db, coll, filter, allowAll);
+        commandLog.push(deleteManyCmd(coll, filter), sessionId);
         bulkResult = m.collection_view_bulk_deleted({ n });
         await reloadDocs();
         bulkCount = null;
@@ -732,8 +736,8 @@ export function createCollectionView(db: string, coll: string) {
     }
     const filter = idInFilter(sel.ids);
     try {
-      await deleteMany(db, coll, filter, false);
-      commandLog.push(deleteManyCmd(coll, filter));
+      await deleteMany(sessionId, db, coll, filter, false);
+      commandLog.push(deleteManyCmd(coll, filter), sessionId);
       await reloadDocs(); // reloadDocs → loadPage → clearSelection
     } catch (e) {
       error = errorMessage(e);
@@ -758,8 +762,8 @@ export function createCollectionView(db: string, coll: string) {
       return;
     }
     try {
-      await deleteDocument(db, coll, id);
-      commandLog.push(deleteOneCmd(coll, id));
+      await deleteDocument(sessionId, db, coll, id);
+      commandLog.push(deleteOneCmd(coll, id), sessionId);
       await reloadDocs();
     } catch (e) {
       error = errorMessage(e);

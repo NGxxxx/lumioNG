@@ -1,22 +1,15 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 
-vi.mock("../stores/namespaceTree.svelte", () => ({
-  namespaceTree: {
-    get databases() {
-      return [{ name: "shop", collections: ["users"] }];
-    },
-    get error() {
-      return null;
-    },
-    refresh: vi.fn(),
-    createDatabase: vi.fn(),
-    createCollection: vi.fn(),
-    dropCollection: vi.fn(),
-    renameCollection: vi.fn(),
-    dropDatabase: vi.fn(),
-    truncate: vi.fn(),
-  },
+vi.mock("../api/connection", () => ({
+  connect: vi.fn().mockResolvedValue(undefined),
+  disconnect: vi.fn().mockResolvedValue(undefined),
+  listNamespaces: vi.fn().mockResolvedValue([{ name: "shop", collections: ["users"] }]),
+}));
+vi.mock("../api/server", () => ({
+  serverStatus: vi.fn().mockResolvedValue("{}"),
+  buildInfo: vi.fn().mockResolvedValue("{}"),
+  hostInfo: vi.fn().mockResolvedValue("{}"),
 }));
 
 vi.mock("../api/files", () => ({
@@ -33,8 +26,16 @@ vi.mock("../api/documents", () => ({
 }));
 
 import NamespacePanel from "./NamespacePanel.svelte";
+import { sessionManager } from "../stores/sessionManager.svelte";
 
 describe("NamespacePanel", () => {
+  beforeEach(async () => {
+    // One active session whose tree lists shop.users (focusOrOpen refreshes the tree).
+    for (const s of [...sessionManager.sessions]) await sessionManager.closeSession(s.id);
+    await sessionManager.focusOrOpen({ connId: 1, uri: "mongodb://h", label: "local" });
+    sessionManager.active!.nav.setConnected(true);
+  });
+
   it("collection menu shows Export/Import/Truncate; db menu has no Stats", async () => {
     const { getByText, queryByText } = render(NamespacePanel, { props: {} });
 
@@ -71,5 +72,69 @@ describe("NamespacePanel", () => {
     expect(getByText("Copy name")).toBeTruthy();
     expect(getByText("Refresh")).toBeTruthy();
     expect(getByText("Drop database…")).toBeTruthy();
+  });
+
+  it("clicking error-status session header calls reconnect, not focusSession", async () => {
+    const reconnectSpy = vi.spyOn(sessionManager, "reconnect").mockResolvedValue(undefined);
+    const focusSpy = vi.spyOn(sessionManager, "focusSession");
+
+    // Force the session into error status
+    const sess = sessionManager.sessions[0];
+    (sess as unknown as Record<string, unknown>).status = "error";
+
+    const { getByText } = render(NamespacePanel, { props: {} });
+
+    // Click on the session label (inside the session-header div)
+    await fireEvent.click(getByText("local"));
+
+    expect(reconnectSpy).toHaveBeenCalledWith(sess.id);
+    expect(focusSpy).not.toHaveBeenCalled();
+
+    reconnectSpy.mockRestore();
+    focusSpy.mockRestore();
+  });
+
+  it("clicking connected session header calls focusSession, not reconnect", async () => {
+    const reconnectSpy = vi.spyOn(sessionManager, "reconnect");
+    const focusSpy = vi.spyOn(sessionManager, "focusSession");
+
+    // Session is already "connected" (set in beforeEach via setConnected)
+    const sess = sessionManager.sessions[0];
+    expect(sess.status).toBe("connected");
+
+    const { getByText } = render(NamespacePanel, { props: {} });
+
+    await fireEvent.click(getByText("local"));
+
+    expect(focusSpy).toHaveBeenCalledWith(sess.id);
+    expect(reconnectSpy).not.toHaveBeenCalled();
+
+    reconnectSpy.mockRestore();
+    focusSpy.mockRestore();
+  });
+
+  it("caret toggles collapse without changing activeId", async () => {
+    // Open two sessions so we can distinguish focus changes
+    await sessionManager.focusOrOpen({ connId: 2, uri: "mongodb://h2", label: "remote" });
+    const secondId = sessionManager.sessions[1].id;
+    // Focus the second session
+    sessionManager.focusSession(secondId);
+    expect(sessionManager.activeId).toBe(secondId);
+
+    const { getAllByLabelText } = render(NamespacePanel, { props: {} });
+
+    // Both sessions start expanded ("Collapse session" caret label)
+    const collapseBtns = getAllByLabelText("Collapse session");
+    expect(collapseBtns).toHaveLength(2);
+
+    // Click the first session's caret to collapse it
+    await fireEvent.click(collapseBtns[0]);
+
+    // Active session must NOT have changed — caret click only toggles, does not focus
+    expect(sessionManager.activeId).toBe(secondId);
+
+    // The first session is now collapsed: its caret label becomes "Expand session"
+    const expandBtns = getAllByLabelText("Expand session");
+    expect(expandBtns).toHaveLength(1);
   });
 });

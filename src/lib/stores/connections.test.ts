@@ -6,10 +6,7 @@ vi.mock("../api/connections", () => ({
   saveConnection: vi.fn(),
   deleteConnection: vi.fn(),
 }));
-vi.mock("../api/connection", () => ({ connect: vi.fn() }));
-
 import * as conns from "../api/connections";
-import * as conn from "../api/connection";
 import type { SavedConnection } from "../api/connections";
 import { createConnectionRegistry } from "./connections.svelte";
 import { commandLog } from "./commandLog.svelte";
@@ -18,7 +15,6 @@ import { obfuscate, deobfuscate } from "../domain/secret";
 const list = conns.listConnections as ReturnType<typeof vi.fn>;
 const save = conns.saveConnection as ReturnType<typeof vi.fn>;
 const del = conns.deleteConnection as ReturnType<typeof vi.fn>;
-const connect = conn.connect as ReturnType<typeof vi.fn>;
 
 function saved(over: Partial<SavedConnection> = {}): SavedConnection {
   return {
@@ -87,16 +83,16 @@ describe("createConnectionRegistry", () => {
     expect(r.password).toBe("pw");
   });
 
-  it("connectTo builds the URI from fields and logs it masked", async () => {
-    connect.mockResolvedValueOnce(undefined);
+  it("connectTo builds the URI (no backend call, logging moved to sessionManager)", () => {
     const r = createConnectionRegistry();
     r.host = "h"; r.port = 27017; r.authMethod = "password"; r.user = "bob"; r.password = "hunter2";
-    const ok = await r.connectTo();
-    expect(ok).toBe(true);
-    expect(connect).toHaveBeenCalledWith("mongodb://bob:hunter2@h:27017/");
-    const logged = commandLog.entries.at(-1)!.text;
-    expect(logged).toContain("mongodb://bob:****@h:27017");
-    expect(logged).not.toContain("hunter2");
+    const result = r.connectTo();
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.uri).toContain("bob:hunter2@h:27017");
+    }
+    // connectCmd logging happens in sessionManager.focusOrOpen, not here
+    expect(commandLog.entries.length).toBe(0);
   });
 
   it("importFromUri fills fields and password", () => {

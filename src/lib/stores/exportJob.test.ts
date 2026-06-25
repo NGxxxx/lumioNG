@@ -24,20 +24,20 @@ beforeEach(() => {
 const qSource = { kind: "query" as const, filter: "{}", sort: null, projection: null };
 
 it("json target: backend writes file, row done with count", async () => {
-  const job = createExportJob({
+  const job = createExportJob("conn:1", {
     format: "json", dir: "/out",
     targets: [{ db: "shop", coll: "users", source: qSource }],
   });
   await job.run();
   expect(api.exportJsonProgress).toHaveBeenCalledWith(
-    "shop", "users", "{}", null, null, "/out/shop.users.json", expect.any(Function));
+    "conn:1", "shop", "users", "{}", null, null, "/out/shop.users.json", expect.any(Function));
   expect(job.rows[0].status).toBe("done");
   expect(job.rows[0].done).toBe(3);
   expect(job.done).toBe(true);
 });
 
 it("csv target: exportQueryProgress then writeTextFile", async () => {
-  const job = createExportJob({
+  const job = createExportJob("conn:1", {
     format: "csv", filePath: "/out/x.csv",
     targets: [{ db: "shop", coll: "users", source: qSource }],
   });
@@ -48,7 +48,7 @@ it("csv target: exportQueryProgress then writeTextFile", async () => {
 });
 
 it("memory source: serialize provided docs, no backend call", async () => {
-  const job = createExportJob({
+  const job = createExportJob("conn:1", {
     format: "json", filePath: "/out/r.json",
     targets: [{ db: "", coll: "results", source: { kind: "memory", docs: [{ a: 1 }] } }],
   });
@@ -60,7 +60,7 @@ it("memory source: serialize provided docs, no backend call", async () => {
 
 it("one failure does not abort the batch", async () => {
   api.exportJsonProgress.mockRejectedValueOnce(new Error("boom"));
-  const job = createExportJob({
+  const job = createExportJob("conn:1", {
     format: "json", dir: "/out",
     targets: [
       { db: "a", coll: "x", source: qSource },
@@ -75,7 +75,7 @@ it("one failure does not abort the batch", async () => {
 });
 
 it("cancel stops before the next target", async () => {
-  const job = createExportJob({
+  const job = createExportJob("conn:1", {
     format: "json", dir: "/out",
     targets: [
       { db: "a", coll: "x", source: qSource },
@@ -89,25 +89,25 @@ it("cancel stops before the next target", async () => {
 });
 
 it("bson target: exportBsonProgress called, row done with count", async () => {
-  const job = createExportJob({
+  const job = createExportJob("conn:1", {
     format: "bson", dir: "/out",
     targets: [{ db: "shop", coll: "orders", source: qSource }],
   });
   await job.run();
   expect(api.exportBsonProgress).toHaveBeenCalledWith(
-    "shop", "orders", "{}", null, null, "/out/shop.orders.bson", expect.any(Function));
+    "conn:1", "shop", "orders", "{}", null, null, "/out/shop.orders.bson", expect.any(Function));
   expect(job.rows[0].status).toBe("done");
   expect(job.rows[0].done).toBe(2);
 });
 
 it("live progress: onProg callback updates done/total", async () => {
   api.exportJsonProgress.mockImplementationOnce(
-    async (db: string, coll: string, f: string, s: string | null, p: string | null, path: string, onProg: (done: number, total: number) => void) => {
+    async (sessionId: string, db: string, coll: string, f: string, s: string | null, p: string | null, path: string, onProg: (done: number, total: number) => void) => {
       onProg(5, 10);
       return 10;
     },
   );
-  const job = createExportJob({
+  const job = createExportJob("conn:1", {
     format: "json", dir: "/out",
     targets: [{ db: "shop", coll: "users", source: qSource }],
   });

@@ -39,7 +39,7 @@ export interface ExportJobConfig {
   filePath?: string;
 }
 
-export function createExportJob(config: ExportJobConfig) {
+export function createExportJob(sessionId: string, config: ExportJobConfig) {
   let rows = $state.raw<ExportRow[]>(
     config.targets.map((t) => ({ db: t.db, coll: t.coll, status: "pending", done: 0, total: 0, error: null })),
   );
@@ -73,23 +73,23 @@ export function createExportJob(config: ExportJobConfig) {
         const content = config.format === "csv" ? toCsv(data) : toJsonArray(data);
         await writeTextFile(path, content);
         update(i, { status: "done", done: data.length, total: data.length });
-        commandLog.push(findCmd({ coll: t.coll, filter: "{}" }));
+        commandLog.push(findCmd({ coll: t.coll, filter: "{}" }), sessionId);
         return;
       }
       const { filter, sort, projection } = t.source;
       if (config.format === "bson") {
-        const n = await exportBsonProgress(t.db, t.coll, filter, sort, projection, path, onProg);
+        const n = await exportBsonProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg);
         update(i, { status: "done", done: n, total: n });
-        commandLog.push(exportBsonCmd(t.db, t.coll, path));
+        commandLog.push(exportBsonCmd(t.db, t.coll, path), sessionId);
       } else if (config.format === "json") {
-        const n = await exportJsonProgress(t.db, t.coll, filter, sort, projection, path, onProg);
+        const n = await exportJsonProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg);
         update(i, { status: "done", done: n, total: n });
-        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }));
+        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }), sessionId);
       } else {
-        const data = await exportQueryProgress(t.db, t.coll, filter, sort, projection, onProg);
+        const data = await exportQueryProgress(sessionId, t.db, t.coll, filter, sort, projection, onProg);
         await writeTextFile(path, toCsv(data));
         update(i, { status: "done", done: data.length, total: data.length });
-        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }));
+        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }), sessionId);
       }
     } catch (e) {
       update(i, { status: "error", error: errorMessage(e) });

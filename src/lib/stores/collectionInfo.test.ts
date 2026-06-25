@@ -25,10 +25,10 @@ describe("createCollectionInfo", () => {
   it("init calls both api endpoints and parses results", async () => {
     collStats.mockResolvedValueOnce(statsJson);
     collOptions.mockResolvedValueOnce(optsJson);
-    const v = createCollectionInfo("d", "c");
+    const v = createCollectionInfo("conn:1", "d", "c");
     await v.init();
-    expect(collStats).toHaveBeenCalledWith("d", "c");
-    expect(collOptions).toHaveBeenCalledWith("d", "c");
+    expect(collStats).toHaveBeenCalledWith("conn:1", "d", "c");
+    expect(collOptions).toHaveBeenCalledWith("conn:1", "d", "c");
     expect(v.stats?.count).toBe(3);
     expect(v.options?.validationLevel).toBe("strict");
     expect(v.error).toBeNull();
@@ -36,7 +36,7 @@ describe("createCollectionInfo", () => {
 
   it("api error sets error and does not throw", async () => {
     collStats.mockRejectedValueOnce({ kind: "Query", message: "boom" });
-    const v = createCollectionInfo("d", "c");
+    const v = createCollectionInfo("conn:1", "d", "c");
     await v.refresh();
     expect(v.error).toContain("boom");
   });

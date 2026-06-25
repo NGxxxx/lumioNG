@@ -6,7 +6,7 @@ import CommandLogView from "./CommandLogView.svelte";
 describe("CommandLogView", () => {
   beforeEach(() => commandLog.clear());
   it("renders each command entry", () => {
-    commandLog.push("db.test.find({})");
+    commandLog.push("db.test.find({})", "s");
     const { getByText } = render(CommandLogView);
     expect(getByText("db.test.find({})")).toBeTruthy();
   });

@@ -24,9 +24,9 @@ describe("createQueryRun", () => {
 
   it("parses the statement and runs with the safety cap", async () => {
     aggregate.mockResolvedValueOnce([{ _id: 1 }, { _id: 2 }]);
-    const v = createQueryRun(STMT);
+    const v = createQueryRun("conn:1", STMT);
     await v.run("shop");
-    expect(aggregate).toHaveBeenCalledWith("shop", "orders", '[{ "$match": {} }]', 200);
+    expect(aggregate).toHaveBeenCalledWith("conn:1", "shop", "orders", '[{ "$match": {} }]', 200);
     expect(v.docs.length).toBe(2);
     expect(v.columns.length).toBeGreaterThan(0);
     expect(v.capped).toBe(false);
@@ -34,27 +34,27 @@ describe("createQueryRun", () => {
   });
 
   it("respects a trailing $limit (no injected cap)", async () => {
-    const v = createQueryRun('db.getCollection("orders").aggregate([{ "$limit": 5 }])');
+    const v = createQueryRun("conn:1", 'db.getCollection("orders").aggregate([{ "$limit": 5 }])');
     await v.run("shop");
-    expect(aggregate).toHaveBeenCalledWith("shop", "orders", '[{ "$limit": 5 }]', null);
+    expect(aggregate).toHaveBeenCalledWith("conn:1", "shop", "orders", '[{ "$limit": 5 }]', null);
   });
 
   it("flags capped when the result hits the cap", async () => {
     aggregate.mockResolvedValueOnce(Array.from({ length: 200 }, (_, i) => ({ _id: i })));
-    const v = createQueryRun(STMT);
+    const v = createQueryRun("conn:1", STMT);
     await v.run("shop");
     expect(v.capped).toBe(true);
   });
 
   it("errors without a database and does not call aggregate", async () => {
-    const v = createQueryRun(STMT);
+    const v = createQueryRun("conn:1", STMT);
     await v.run(null);
     expect(aggregate).not.toHaveBeenCalled();
     expect(v.error).toContain("database");
   });
 
   it("surfaces a parse error", async () => {
-    const v = createQueryRun('db.getCollection("x").find({})');
+    const v = createQueryRun("conn:1", 'db.getCollection("x").find({})');
     await v.run("shop");
     expect(aggregate).not.toHaveBeenCalled();
     expect(v.error).toBeTruthy();
@@ -62,7 +62,7 @@ describe("createQueryRun", () => {
 
   it("pages client-side", async () => {
     aggregate.mockResolvedValueOnce(Array.from({ length: 120 }, (_, i) => ({ _id: i })));
-    const v = createQueryRun(STMT);
+    const v = createQueryRun("conn:1", STMT);
     await v.run("shop");
     v.setPageSize(50);
     expect(v.pageCount).toBe(3);
@@ -73,7 +73,7 @@ describe("createQueryRun", () => {
 
   it("derives and overrides column widths", async () => {
     aggregate.mockResolvedValueOnce([{ _id: 1, name: "x" }]);
-    const v = createQueryRun(STMT);
+    const v = createQueryRun("conn:1", STMT);
     await v.run("shop");
     expect(v.colWidths._id).toBeGreaterThan(0);
     v.setColWidth("name", 300);
@@ -83,14 +83,14 @@ describe("createQueryRun", () => {
 
 describe("queryRun source + menu", () => {
   it("captures source db/coll after a run", async () => {
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     expect(r.srcDb).toBe("mydb");
     expect(r.srcColl).toBe("people");
   });
 
   it("menu offers edit/delete only when the row has _id", async () => {
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "name");
     const labels = r.menuItems().map((m) => m.action);
@@ -102,7 +102,7 @@ describe("queryRun source + menu", () => {
 
   it("onMenuSelect deleteSelected requests confirmation then deletes and clears selection", async () => {
     vi.mocked(aggregate).mockResolvedValueOnce([{ _id: { $oid: "abc123" }, name: "Test" }]);
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "_id");
     r.onMenuSelect("deleteSelected");
@@ -121,7 +121,7 @@ describe("queryRun source + menu", () => {
       { _id: { $oid: "a1" }, name: "Alice" },
       { _id: { $oid: "b2" }, name: "Bob" },
     ]);
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     // select row 0 only
     r.clickRow(0, { ctrl: false, shift: false });
@@ -149,7 +149,7 @@ describe("queryRun source + menu", () => {
       { _id: { $oid: "a1" }, name: "Alice" },
       { _id: { $oid: "b2" }, name: "Bob" },
     ]);
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     r.clickRow(0, { ctrl: false, shift: false });
     r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "_id");
@@ -164,7 +164,7 @@ describe("queryRun source + menu", () => {
 
   it("canExport is false before a run and true once there are results", async () => {
     vi.mocked(aggregate).mockResolvedValueOnce([{ _id: { $oid: "a1" } }]);
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     expect(r.canExport).toBe(false);
     await r.run("mydb");
     expect(r.canExport).toBe(true);
@@ -175,7 +175,7 @@ describe("queryRun source + menu", () => {
       { _id: { $oid: "a1" }, name: "Alice" },
       { _id: { $oid: "b2" }, name: "Bob" },
     ]);
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     r.requestExport();
     expect(r.exportRequest).not.toBeNull();
@@ -187,7 +187,7 @@ describe("queryRun source + menu", () => {
       { _id: { $oid: "a1" }, name: "Alice" },
       { _id: { $oid: "b2" }, name: "Bob" },
     ]);
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     r.clickRow(1, { ctrl: false, shift: false });
     r.requestExport();
@@ -200,7 +200,7 @@ describe("queryRun source + menu", () => {
       { _id: { $oid: "aaa" }, name: "WithId" },
       { name: "NoId" },
     ]);
-    const r = createQueryRun("db.people.aggregate([])");
+    const r = createQueryRun("conn:1", "db.people.aggregate([])");
     await r.run("mydb");
     // select row 0 (has _id), then ctrl-click row 1 (no _id)
     r.clickRow(0, { ctrl: false, shift: false });

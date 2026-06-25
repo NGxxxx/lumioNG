@@ -41,44 +41,44 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     expect(v.docs.length).toBe(1);
     expect(v.totalCount).toBe(1);
     expect(v.currentPage).toBe(1);
     expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "x"]);
-    expect(qp).toHaveBeenCalledWith("d", "c", 0, 50, "{}", null, null);
+    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 0, 50, "{}", null, null);
   });
 
   it("goToPage(3) calls queryPage with the correct skip and replaces docs", async () => {
     cnt.mockResolvedValue(200); // pageCount = 4
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }]); // init trang 1
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     qp.mockResolvedValueOnce([{ _id: { $oid: "p3" } }]);
     await v.goToPage(3);
     expect(v.currentPage).toBe(3);
     expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 100, 50, "{}", null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 100, 50, "{}", null, null);
   });
 
   it("goToPage past pageCount → clamps to the last page", async () => {
     cnt.mockResolvedValue(100); // pageCount = 2
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.goToPage(99);
     expect(v.currentPage).toBe(2);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 50, 50, "{}", null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 50, 50, "{}", null, null);
   });
 
   it("nextPage/prevPage navigate between pages", async () => {
     cnt.mockResolvedValue(200);
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.nextPage();
     expect(v.currentPage).toBe(2);
@@ -90,13 +90,13 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockRejectedValueOnce({ kind: "Query", message: "boom" });
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     expect(v.error).toBe("Query: boom");
   });
 
   it("applyFilter with invalid syntax → sets filterError, does not call queryPage", async () => {
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     v.filterText = "{bad";
     await v.applyFilter();
     expect(v.filterError).not.toBeNull();
@@ -107,7 +107,7 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValue(5);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]); // init
     samp.mockResolvedValue([{ _id: { $oid: "a" }, x: 1 }]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, x: 2 }]);
     v.filterText = '{"x":2}';
@@ -115,8 +115,8 @@ describe("createCollectionView — paging", () => {
     expect(v.filterError).toBeNull();
     expect(v.currentPage).toBe(1);
     expect(v.docs.length).toBe(1);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, '{"x":2}', null, null);
-    expect(samp).toHaveBeenLastCalledWith("d", "c", '{"x":2}', 100);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, '{"x":2}', null, null);
+    expect(samp).toHaveBeenLastCalledWith("conn:1", "d", "c", '{"x":2}', 100);
   });
 
   it("applyFilter while a page is loading → discards the stale result and uses the new filter", async () => {
@@ -124,7 +124,7 @@ describe("createCollectionView — paging", () => {
     let resolveOld!: (v: unknown) => void;
     qp.mockImplementationOnce(() => new Promise((r) => (resolveOld = r)));
     samp.mockResolvedValue([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     const p1 = v.goToPage(1); // in flight (filter "{}")
     v.filterText = '{"x":2}';
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, x: 2 }]);
@@ -133,14 +133,14 @@ describe("createCollectionView — paging", () => {
     await p1;
     await p2;
     expect(v.docs).toEqual([{ _id: { $oid: "b" }, x: 2 }]);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, '{"x":2}', null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, '{"x":2}', null, null);
   });
 
   it("goToPage race: stale page result arrives late → discarded, docs reflect the latest page", async () => {
     cnt.mockResolvedValue(200); // pageCount = 4, enough for pages 2 and 3
     qp.mockResolvedValueOnce([]); // init page 1
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
 
     // Start goToPage(2) but let queryPage hang
@@ -166,39 +166,39 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, age: 1 }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, age: 2 }]);
     await v.toggleSort("age", false);
     expect(v.docs).toEqual([{ _id: { $oid: "b" }, age: 2 }]);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
   });
 
   it("setPageSize changes the limit and resets to page 1", async () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, x: 2 }]);
     await v.setPageSize(10);
     expect(v.pageSize).toBe(10);
     expect(v.currentPage).toBe(1);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 10, "{}", null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 10, "{}", null, null);
   });
 
   it("confirmDelete calls deleteDocument then reloads (count + queryPage)", async () => {
     cnt.mockResolvedValueOnce(1); // init
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     del.mockResolvedValueOnce(undefined);
     cnt.mockResolvedValueOnce(0); // reload count
     qp.mockResolvedValueOnce([]); // reload page
     v.requestDelete(v.docs[0]);
     await v.confirmDelete();
-    expect(del).toHaveBeenCalledWith("d", "c", '{"$oid":"a"}');
+    expect(del).toHaveBeenCalledWith("conn:1", "d", "c", '{"$oid":"a"}');
     expect(v.docs.length).toBe(0);
     expect(v.totalCount).toBe(0);
   });
@@ -208,7 +208,7 @@ describe("createCollectionView — paging", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
     samp.mockResolvedValueOnce([]);
     repl.mockResolvedValueOnce(undefined);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.startEdit(0, "x");
     v.editText = "world";
@@ -222,9 +222,9 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
     samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
-    expect(samp).toHaveBeenCalledWith("d", "c", "{}", 100);
+    expect(samp).toHaveBeenCalledWith("conn:1", "d", "c", "{}", 100);
     expect(v.columnFields.find((c) => c.path === "x")!.type).toBe("string");
   });
 
@@ -232,7 +232,7 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockRejectedValueOnce({ kind: "Query", message: "boom" });
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "x"]);
     expect(v.columnFields.find((c) => c.path === "x")!.type).toBeUndefined();
@@ -242,7 +242,7 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1, secret: 9 }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     const callsAfterInit = qp.mock.calls.length;
     v.resetProjectionDraft();
@@ -251,14 +251,14 @@ describe("createCollectionView — paging", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     await v.applyProjection();
     expect(v.hidden.has("secret")).toBe(true);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, "{}", null, '{"secret":0}');
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", null, '{"secret":0}');
   });
 
   it("startEdit with an active projection → re-fetches the full doc before editing", async () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hi" }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hi" }]); // reload sau applyProjection
     full.mockResolvedValueOnce({ _id: { $oid: "a" }, x: "hi", secret: 9 });
@@ -266,7 +266,7 @@ describe("createCollectionView — paging", () => {
     v.toggleHiddenDraft("secret");
     await v.applyProjection();
     await v.startEdit(0, "x");
-    expect(full).toHaveBeenCalledWith("d", "c", '{"$oid":"a"}');
+    expect(full).toHaveBeenCalledWith("conn:1", "d", "c", '{"$oid":"a"}');
     expect(v.docs[0]).toEqual({ _id: { $oid: "a" }, x: "hi", secret: 9 });
     expect(v.editing).toEqual({ row: 0, key: "x" });
   });
@@ -275,7 +275,7 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hi" }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.startEdit(0, "x");
     expect(full).not.toHaveBeenCalled();
@@ -291,7 +291,7 @@ describe("bulk operations", () => {
   });
 
   it("openBulk sets mode + filter scope and resets", () => {
-    const v = createCollectionView("db", "c");
+    const v = createCollectionView("conn:1", "db", "c");
     v.openBulk("delete");
     expect(v.bulkMode).toBe("delete");
     expect(v.bulkScope).toBe("filter");
@@ -300,15 +300,15 @@ describe("bulk operations", () => {
 
   it("countBulk counts with the applied filter", async () => {
     cnt.mockResolvedValueOnce(7);
-    const v = createCollectionView("db", "c");
+    const v = createCollectionView("conn:1", "db", "c");
     v.openBulk("delete");
     await v.countBulk();
-    expect(countDocuments).toHaveBeenCalledWith("db", "c", "{}");
+    expect(countDocuments).toHaveBeenCalledWith("conn:1", "db", "c", "{}");
     expect(v.bulkCount).toBe(7);
   });
 
   it("runBulk delete with empty filter opens the type-confirm gate (no api call)", async () => {
-    const v = createCollectionView("db", "c");
+    const v = createCollectionView("conn:1", "db", "c");
     v.openBulk("delete");
     cnt.mockResolvedValueOnce(3);
     await v.countBulk();
@@ -321,20 +321,20 @@ describe("bulk operations", () => {
     vi.mocked(deleteMany).mockResolvedValueOnce(3);
     cnt.mockResolvedValue(0);
     qp.mockResolvedValueOnce([]);
-    const v = createCollectionView("db", "c");
+    const v = createCollectionView("conn:1", "db", "c");
     v.openBulk("delete");
     cnt.mockResolvedValueOnce(3);
     await v.countBulk();
     await v.runBulk(); // opens gate
     await v.confirmBulkAll();
-    expect(deleteMany).toHaveBeenCalledWith("db", "c", "{}", true);
+    expect(deleteMany).toHaveBeenCalledWith("conn:1", "db", "c", "{}", true);
     expect(v.bulkTypeConfirm).toBe(false);
     expect(v.bulkResult).toContain("3");
     expect(v.bulkCount).toBeNull();
   });
 
   it("cancelBulkAll closes the gate without running", async () => {
-    const v = createCollectionView("db", "c");
+    const v = createCollectionView("conn:1", "db", "c");
     v.openBulk("delete");
     cnt.mockResolvedValueOnce(3);
     await v.countBulk();
@@ -348,7 +348,7 @@ describe("bulk operations", () => {
     cnt.mockResolvedValueOnce(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.clickRow(0, { ctrl: false, shift: false });
     v.clickRow(1, { ctrl: true, shift: false });
@@ -361,7 +361,7 @@ describe("bulk operations", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }]);
     await v.runBulk();
     expect(updateMany).toHaveBeenCalledWith(
-      "d", "c", '{"_id":{"$in":[{"$oid":"a"},{"$oid":"b"}]}}', '{"$set":{"x":1}}', false,
+      "conn:1", "d", "c", '{"_id":{"$in":[{"$oid":"a"},{"$oid":"b"}]}}', '{"$set":{"x":1}}', false,
     );
     expect(v.selectedCount).toBe(0);
   });
@@ -370,7 +370,7 @@ describe("bulk operations", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.clickRow(0, { ctrl: false, shift: false });
     v.openBulk("update", "selection");
@@ -384,7 +384,7 @@ describe("bulk operations", () => {
     cnt.mockResolvedValue(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }]); // applyFilter reload
     samp.mockResolvedValueOnce([]);
@@ -397,7 +397,7 @@ describe("bulk operations", () => {
     qp.mockResolvedValueOnce([]);
     await v.runBulk();
     expect(v.bulkTypeConfirm).toBe(false);
-    expect(deleteMany).toHaveBeenCalledWith("d", "c", '{"x":1}', false);
+    expect(deleteMany).toHaveBeenCalledWith("conn:1", "d", "c", '{"x":1}', false);
   });
 });
 
@@ -410,17 +410,17 @@ describe("Show ALL", () => {
   it("below threshold → exports immediately, allShown=true", async () => {
     cnt.mockResolvedValueOnce(3);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.requestShowAll();
     expect(v.allShown).toBe(true);
     expect(v.showAllPending).toBeNull();
     expect(v.docs.length).toBe(3);
-    expect(expQ).toHaveBeenCalledWith("d", "c", "{}", null, null, expect.any(Function));
+    expect(expQ).toHaveBeenCalledWith("conn:1", "d", "c", "{}", null, null, expect.any(Function));
   });
 
   it("above threshold → sets showAllPending, does NOT export yet", async () => {
     cnt.mockResolvedValueOnce(6000);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.requestShowAll();
     expect(v.showAllPending).toBe(6000);
     expect(v.allShown).toBe(false);
@@ -430,7 +430,7 @@ describe("Show ALL", () => {
   it("confirmShowAll after warning → exports and sets allShown", async () => {
     cnt.mockResolvedValueOnce(6000);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.requestShowAll();
     await v.confirmShowAll();
     expect(v.showAllPending).toBeNull();
@@ -440,7 +440,7 @@ describe("Show ALL", () => {
 
   it("cancelShowAll → clears pending, does not export", async () => {
     cnt.mockResolvedValueOnce(6000);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.requestShowAll();
     v.cancelShowAll();
     expect(v.showAllPending).toBeNull();
@@ -450,7 +450,7 @@ describe("Show ALL", () => {
   it("navigating a page after Show ALL → allShown resets to false", async () => {
     cnt.mockResolvedValueOnce(3);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.requestShowAll();
     expect(v.allShown).toBe(true);
     cnt.mockResolvedValue(3);
@@ -464,7 +464,7 @@ describe("Show ALL", () => {
     let resolveCount1!: (n: number) => void;
     cnt.mockImplementationOnce(() => new Promise<number>((r) => (resolveCount1 = r)));
 
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     const p1 = v.requestShowAll(); // in-flight, count not yet resolved
 
     // Call 2: count below threshold (3) → exports immediately, allShown = true
@@ -499,7 +499,7 @@ describe("command log instrumentation", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     expect(commandLog.entries.some((e) => e.text === findCmd({ coll: "c", filter: "{}", projection: null, sort: null, limit: 50 }))).toBe(true);
   });
@@ -508,7 +508,7 @@ describe("command log instrumentation", () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     del.mockResolvedValueOnce(undefined);
     cnt.mockResolvedValueOnce(0);
@@ -530,7 +530,7 @@ describe("row selection", () => {
     cnt.mockResolvedValueOnce(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     return v;
   }
@@ -597,7 +597,7 @@ describe("row selection", () => {
     cnt.mockResolvedValueOnce(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { x: 1 }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.selectAll();
     expect(v.selectedIds()).toEqual({ missing: true });
@@ -614,7 +614,7 @@ describe("delete selected", () => {
     cnt.mockResolvedValueOnce(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.clickRow(0, { ctrl: false, shift: false });
     v.clickRow(2, { ctrl: true, shift: false });
@@ -626,7 +626,7 @@ describe("delete selected", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" } }]);
     await v.confirmDeleteSelected();
 
-    expect(deleteMany).toHaveBeenCalledWith("d", "c", '{"_id":{"$in":[{"$oid":"a"},{"$oid":"c"}]}}', false);
+    expect(deleteMany).toHaveBeenCalledWith("conn:1", "d", "c", '{"_id":{"$in":[{"$oid":"a"},{"$oid":"c"}]}}', false);
     expect(v.confirmSelectionDelete).toBeNull();
     expect(v.selectedCount).toBe(0);
   });
@@ -635,7 +635,7 @@ describe("delete selected", () => {
     cnt.mockResolvedValueOnce(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { x: 1 }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.selectAll();
     v.requestDeleteSelected();
@@ -645,7 +645,7 @@ describe("delete selected", () => {
   });
 
   it("requestDeleteSelected does nothing with an empty selection", async () => {
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     v.requestDeleteSelected();
     expect(v.confirmSelectionDelete).toBeNull();
   });
@@ -661,20 +661,20 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, age: 1 }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, age: 2 }]);
     await v.addSort("age");
     expect(v.sortKeys).toEqual([{ path: "age", dir: 1 }]);
     expect(v.currentPage).toBe(1);
-    expect(qp).toHaveBeenLastCalledWith("d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
   });
 
   it("toggleSortDirAt → reverses the direction of an existing sort key", async () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.addSort("age");
     await v.toggleSortDirAt("age");
@@ -685,7 +685,7 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     cnt.mockResolvedValue(3);
     qp.mockResolvedValue([]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.addSort("a");
     await v.addSort("b");
@@ -701,7 +701,7 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1, y: 2 }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.hideAllFieldsDraft();
     expect(v.hiddenDraft.has("_id")).toBe(false);
@@ -722,7 +722,7 @@ describe("selection-aware context menu", () => {
     cnt.mockResolvedValueOnce(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }, { _id: { $oid: "b" }, x: 2 }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     return v;
   }
@@ -801,7 +801,7 @@ describe("createCollectionView — column widths", () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alice" }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     expect(Object.keys(v.colWidths).sort()).toEqual(["_id", "name"]);
     expect(v.colWidths.name).toBeGreaterThanOrEqual(48);
@@ -811,7 +811,7 @@ describe("createCollectionView — column widths", () => {
     cnt.mockResolvedValue(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alice" }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     const def = v.colWidths.name;
     v.setColWidth("name", 9999);
@@ -826,7 +826,7 @@ describe("createCollectionView — column widths", () => {
     cnt.mockResolvedValue(200);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alice" }]); // init
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.setColWidth("name", 300);
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, name: "Bob" }]);
@@ -848,7 +848,7 @@ describe("effective selection + export request", () => {
     cnt.mockResolvedValueOnce(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }, { _id: { $oid: "b" }, x: 2 }]);
     samp.mockResolvedValueOnce([]);
-    const v = createCollectionView("d", "c");
+    const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     return v;
   }

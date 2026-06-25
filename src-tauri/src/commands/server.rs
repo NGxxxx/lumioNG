@@ -5,8 +5,11 @@ use mongodb::bson::doc;
 use tauri::State;
 
 #[tauri::command]
-pub async fn server_status(state: State<'_, AppState>) -> Result<String, AppError> {
-    let client = state.client().await?;
+pub async fn server_status(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
     let resp = client
         .database("admin")
         .run_command(doc! { "serverStatus": 1 })
@@ -15,8 +18,11 @@ pub async fn server_status(state: State<'_, AppState>) -> Result<String, AppErro
 }
 
 #[tauri::command]
-pub async fn build_info(state: State<'_, AppState>) -> Result<String, AppError> {
-    let client = state.client().await?;
+pub async fn build_info(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
     let resp = client
         .database("admin")
         .run_command(doc! { "buildInfo": 1 })
@@ -25,8 +31,11 @@ pub async fn build_info(state: State<'_, AppState>) -> Result<String, AppError> 
 }
 
 #[tauri::command]
-pub async fn host_info(state: State<'_, AppState>) -> Result<String, AppError> {
-    let client = state.client().await?;
+pub async fn host_info(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
     let resp = client
         .database("admin")
         .run_command(doc! { "hostInfo": 1 })

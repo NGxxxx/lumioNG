@@ -123,6 +123,7 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
 
 #[tauri::command]
 pub async fn import_documents(
+    session_id: String,
     db: String,
     coll: String,
     path: String,
@@ -145,7 +146,7 @@ pub async fn import_documents(
         }
     }
 
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     Ok(insert_parsed(&collection, parsed, parsed_raw_idx, errors).await)
 }
@@ -153,6 +154,7 @@ pub async fn import_documents(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn export_json_progress(
+    session_id: String,
     db: String,
     coll: String,
     filter: Option<String>,
@@ -162,7 +164,7 @@ pub async fn export_json_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
@@ -198,6 +200,7 @@ pub async fn export_json_progress(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn export_bson_progress(
+    session_id: String,
     db: String,
     coll: String,
     filter: Option<String>,
@@ -207,7 +210,7 @@ pub async fn export_bson_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
@@ -241,6 +244,7 @@ pub async fn export_bson_progress(
 
 #[tauri::command]
 pub async fn export_query_progress(
+    session_id: String,
     db: String,
     coll: String,
     filter: Option<String>,
@@ -249,7 +253,7 @@ pub async fn export_query_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
@@ -274,6 +278,7 @@ pub async fn export_query_progress(
 
 #[tauri::command]
 pub async fn import_bson(
+    session_id: String,
     db: String,
     coll: String,
     path: String,
@@ -282,7 +287,7 @@ pub async fn import_bson(
     let bytes = std::fs::read(&path).map_err(|e| AppError::Io(e.to_string()))?;
     let parsed = read_bson_docs(&bytes)?;
     let parsed_raw_idx: Vec<usize> = (0..parsed.len()).collect();
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     Ok(insert_parsed(&collection, parsed, parsed_raw_idx, Vec::new()).await)
 }

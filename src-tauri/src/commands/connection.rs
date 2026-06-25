@@ -8,7 +8,11 @@ use std::path::PathBuf;
 use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
-pub async fn connect(uri: String, state: State<'_, AppState>) -> Result<(), AppError> {
+pub async fn connect(
+    session_id: String,
+    uri: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
     let client = Client::with_uri_str(&uri)
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
@@ -20,13 +24,13 @@ pub async fn connect(uri: String, state: State<'_, AppState>) -> Result<(), AppE
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
 
-    *state.client.lock().await = Some(client);
+    state.sessions.lock().await.insert(session_id, client);
     Ok(())
 }
 
 #[tauri::command]
-pub async fn disconnect(state: State<'_, AppState>) -> Result<(), AppError> {
-    *state.client.lock().await = None;
+pub async fn disconnect(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
+    state.sessions.lock().await.remove(&session_id);
     Ok(())
 }
 
@@ -39,8 +43,11 @@ pub struct DbInfo {
 const SYSTEM_DBS: [&str; 3] = ["admin", "local", "config"];
 
 #[tauri::command]
-pub async fn list_namespaces(state: State<'_, AppState>) -> Result<Vec<DbInfo>, AppError> {
-    let client = state.client().await?;
+pub async fn list_namespaces(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<DbInfo>, AppError> {
+    let client = state.client(&session_id).await?;
 
     let db_names = client.list_database_names().await?;
     let mut out = Vec::new();

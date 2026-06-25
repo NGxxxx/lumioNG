@@ -8,10 +8,10 @@ export type QueryRun = ReturnType<typeof createQueryRun>;
 const runs = new Map<number, QueryRun>();
 
 /** Get (creating + caching on first call) the run store for a query tab id. */
-export function getQueryRun(id: number, initialStatement: string): QueryRun {
+export function getQueryRun(id: number, sessionId: string, initialStatement: string): QueryRun {
   let r = runs.get(id);
   if (!r) {
-    r = createQueryRun(initialStatement);
+    r = createQueryRun(sessionId, initialStatement);
     runs.set(id, r);
   }
   return r;

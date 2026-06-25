@@ -17,7 +17,7 @@ export interface CollRow {
 export type SortCol = "name" | "count" | "avgObjSize" | "storageSize" | "nindexes" | "totalIndexSize";
 
 /** State + loaders for the Database tab's collection grid (names eager, stats lazy). */
-export function createDatabaseCollections(db: string, tree: TreeLike = namespaceTree) {
+export function createDatabaseCollections(sessionId: string, db: string, tree: TreeLike = namespaceTree) {
   let rows = $state<CollRow[]>([]);
   let summary = $state<DbStatsInfo | null>(null);
   let error = $state<string | null>(null);
@@ -33,8 +33,8 @@ export function createDatabaseCollections(db: string, tree: TreeLike = namespace
     loading = true;
     rows = names().map((name) => ({ name, state: "idle", stats: null, error: null }));
     try {
-      summary = parseDbStats(await dbStats(db));
-      commandLog.push(dbStatsCmd());
+      summary = parseDbStats(await dbStats(sessionId, db));
+      commandLog.push(dbStatsCmd(), sessionId);
       error = null;
     } catch (e) {
       error = errorMessage(e);
@@ -48,8 +48,8 @@ export function createDatabaseCollections(db: string, tree: TreeLike = namespace
     if (!row || row.state === "loading") return;
     row.state = "loading";
     try {
-      const s = parseCollStats(await collStats(db, name));
-      commandLog.push(collStatsCmd(name));
+      const s = parseCollStats(await collStats(sessionId, db, name));
+      commandLog.push(collStatsCmd(name), sessionId);
       row.stats = s;
       row.state = "loaded";
       row.error = null;

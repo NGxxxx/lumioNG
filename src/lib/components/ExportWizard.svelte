@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { portal } from "../actions/portal";
-  import { namespaceTree } from "../stores/namespaceTree.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
   import { targetKey, buildTargets, buildExportProjection, pickColumns, type ExportWizardInput } from "../domain/exportPlan";
   import { saveDialog, openDirDialog } from "../api/files";
@@ -25,8 +25,12 @@
 
   const isMemory = $derived(input.mode === "scopedMemory");
 
+  // Tree-driven ("pick") mode exports the ACTIVE session, matching the `active!.id`
+  // used for the export api call below. Guard so a null active session shows no DBs.
+  const databases = $derived(sessionManager.active?.tree?.databases ?? []);
+
   function collsOf(db: string): string[] {
-    return namespaceTree.databases.find((d) => d.name === db)?.collections ?? [];
+    return databases.find((d) => d.name === db)?.collections ?? [];
   }
   function dbSelectedCount(db: string): number {
     return collsOf(db).filter((c) => checked.has(targetKey(db, c))).length;
@@ -50,7 +54,7 @@
   }
   function selectAll() {
     const next = new Set<string>();
-    for (const d of namespaceTree.databases) for (const c of d.collections) next.add(targetKey(d.name, c));
+    for (const d of databases) for (const c of d.collections) next.add(targetKey(d.name, c));
     checked = next;
   }
   function clearAll() {
@@ -77,14 +81,14 @@
     const allPaths = cols.map((c) => c.path);
 
     if (input.mode === "pick") {
-      const targets = buildTargets(namespaceTree.databases, checked);
+      const targets = buildTargets(databases, checked);
       if (targets.length === 0) { error = m.export_wizard_no_targets(); return; }
       if (dir === null) { await chooseFolder(); if (dir === null) return; }
       const exTargets: ExportTarget[] = targets.map((t) => ({
         db: t.db, coll: t.coll,
         source: { kind: "query", filter: "{}", sort: null, projection: null },
       }));
-      job = createExportJob({ targets: exTargets, format, dir: dir! });
+      job = createExportJob(sessionManager.active!.id, { targets: exTargets, format, dir: dir! });
       await job.run();
       return;
     }
@@ -103,7 +107,7 @@
         source: { kind: "query", filter: input.filter, sort: input.sort, projection: buildExportProjection(allPaths, selectedPaths) },
       };
     }
-    job = createExportJob({ targets: [target], format, filePath: path });
+    job = createExportJob(sessionManager.active!.id, { targets: [target], format, filePath: path });
     await job.run();
   }
 
@@ -135,7 +139,7 @@
                 <span class="count">{m.export_wizard_selected_count({ n: checked.size })}</span>
               </div>
               <div class="scroll">
-                {#each namespaceTree.databases as d (d.name)}
+                {#each databases as d (d.name)}
                   {@const total = d.collections.length}
                   {@const sel = dbSelectedCount(d.name)}
                   <label class="db">

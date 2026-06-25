@@ -38,12 +38,13 @@ pub(crate) fn ensure_filter_allowed(filter: &Document, allow_all: bool) -> Resul
 
 #[tauri::command]
 pub async fn insert_document(
+    session_id: String,
     db: String,
     coll: String,
     doc_json: String,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
@@ -53,13 +54,14 @@ pub async fn insert_document(
 
 #[tauri::command]
 pub async fn replace_document(
+    session_id: String,
     db: String,
     coll: String,
     id_json: String,
     doc_json: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let id_bson = canonical_string_to_bson(&id_json)?;
@@ -79,12 +81,13 @@ pub async fn replace_document(
 
 #[tauri::command]
 pub async fn delete_document(
+    session_id: String,
     db: String,
     coll: String,
     id_json: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
 
     let id_bson = canonical_string_to_bson(&id_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
@@ -97,6 +100,7 @@ pub async fn delete_document(
 
 #[tauri::command]
 pub async fn update_many(
+    session_id: String,
     db: String,
     coll: String,
     filter: Option<String>,
@@ -104,7 +108,7 @@ pub async fn update_many(
     allow_all: bool,
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     ensure_filter_allowed(&f, allow_all)?;
@@ -118,13 +122,14 @@ pub async fn update_many(
 
 #[tauri::command]
 pub async fn delete_many(
+    session_id: String,
     db: String,
     coll: String,
     filter: Option<String>,
     allow_all: bool,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     ensure_filter_allowed(&f, allow_all)?;

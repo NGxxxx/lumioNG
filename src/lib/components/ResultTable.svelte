@@ -4,6 +4,7 @@
   import { get } from "svelte/store";
   import { createCollectionView } from "../stores/collectionView.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import type { Doc } from "../domain/doc";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
@@ -30,7 +31,7 @@
     onopendocument: (doc: Doc | null, mode: "edit" | "insert") => void;
   } = $props();
 
-  const v = untrack(() => createCollectionView(db, coll));
+  const v = untrack(() => createCollectionView(sessionManager.active?.id ?? "", db, coll));
   let openDropdown = $state<"sort" | "fields" | null>(null);
 
   function toggleDropdown(which: "sort" | "fields") {

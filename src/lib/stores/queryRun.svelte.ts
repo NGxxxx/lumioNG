@@ -18,7 +18,7 @@ import type { MenuItem } from "../components/ContextMenu.svelte";
 const SAFETY_CAP = 200;
 
 /** Per-tab state for one aggregate Query tab: parse + run + client-side paging + column widths. */
-export function createQueryRun(initialStatement: string) {
+export function createQueryRun(sessionId: string, initialStatement: string) {
   let statementText = $state(initialStatement);
   // $state.raw: result docs are replaced wholesale, never mutated in place. Avoids deep-proxying
   // every nested field (the main RAM sink for large result sets). See collectionView for rationale.
@@ -69,14 +69,14 @@ export function createQueryRun(initialStatement: string) {
     loading = true;
     activity.begin(m.status_bar_running_query());
     try {
-      const res = await aggregate(db, parsed.coll, parsed.pipelineText, limit);
+      const res = await aggregate(sessionId, db, parsed.coll, parsed.pipelineText, limit);
       docs = res;
       columns = mergeColumns(null, res);
       defaultColWidths = computeColumnWidths(columns, res);
       colWidths = { ...defaultColWidths };
       capped = limit !== null && res.length === limit;
       pageReq = 1;
-      commandLog.push(aggregateCmd(parsed.coll, parsed.pipelineText));
+      commandLog.push(aggregateCmd(parsed.coll, parsed.pipelineText), sessionId);
       error = null;
       ran = true;
       srcDb = db;
@@ -216,8 +216,8 @@ export function createQueryRun(initialStatement: string) {
     for (const d of picked) { const id = idJson(d); if (id === null) { ioError = m.query_run_selection_missing_id(); return; } ids.push(id); }
     const filter = idInFilter(ids);
     try {
-      await deleteMany(srcDb, srcColl, filter, false);
-      commandLog.push(deleteManyCmd(srcColl, filter));
+      await deleteMany(sessionId, srcDb, srcColl, filter, false);
+      commandLog.push(deleteManyCmd(srcColl, filter), sessionId);
       docs = docs.filter((d) => { const id = idJson(d); return id === null || !ids.includes(id); });
       selected = new Set();
       anchor = null;

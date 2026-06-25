@@ -9,11 +9,12 @@ use tauri::State;
 
 #[tauri::command]
 pub async fn list_indexes(
+    session_id: String,
     db: String,
     coll: String,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     // listIndexes returns { cursor: { firstBatch: [ <index doc>... ] } }.
     let resp = client
         .database(&db)
@@ -34,6 +35,7 @@ pub async fn list_indexes(
 
 #[tauri::command]
 pub async fn create_index(
+    session_id: String,
     db: String,
     coll: String,
     keys: String,
@@ -41,7 +43,7 @@ pub async fn create_index(
     name: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let keys_doc = canonical_string_to_doc(&keys)?;
     // IndexOptions/IndexModel use builder setters that accept Option directly.
     // name = None ⇒ driver auto-generates a default name (field_dir_...).
@@ -60,12 +62,13 @@ pub async fn create_index(
 
 #[tauri::command]
 pub async fn drop_index(
+    session_id: String,
     db: String,
     coll: String,
     name: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     client
         .database(&db)
         .collection::<Document>(&coll)

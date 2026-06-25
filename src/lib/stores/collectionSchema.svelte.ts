@@ -5,7 +5,7 @@ import { commandLog } from "./commandLog.svelte";
 import { sampleCmd } from "../domain/mongosh";
 
 /** State + loader for the Collection tab's schema-as-table view. */
-export function createCollectionSchema(db: string, coll: string, defaultSize = 100) {
+export function createCollectionSchema(sessionId: string, db: string, coll: string, defaultSize = 100) {
   let fields = $state<FieldSchema[]>([]);
   let sampleSize = $state(defaultSize);
   let actualSampled = $state(0);
@@ -15,11 +15,11 @@ export function createCollectionSchema(db: string, coll: string, defaultSize = 1
   async function refresh() {
     loading = true;
     try {
-      const docs = await sampleDocuments(db, coll, "{}", sampleSize);
+      const docs = await sampleDocuments(sessionId, db, coll, "{}", sampleSize);
       const schema = inferSchema(docs);
       fields = schema.fields;
       actualSampled = schema.sampleSize;
-      commandLog.push(sampleCmd(coll, sampleSize));
+      commandLog.push(sampleCmd(coll, sampleSize), sessionId);
       error = null;
     } catch (e) {
       error = errorMessage(e);

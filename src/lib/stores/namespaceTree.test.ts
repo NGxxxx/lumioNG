@@ -13,8 +13,7 @@ vi.mock("../api/connection", () => ({
 
 import * as admin from "../api/admin";
 import * as connection from "../api/connection";
-import { createNamespaceTree } from "./namespaceTree.svelte";
-import { createNavigation } from "./navigation.svelte";
+import { createNamespaceTree, type NavLike } from "./namespaceTree.svelte";
 import { commandLog } from "./commandLog.svelte";
 import {
   createCollectionCmd,
@@ -31,6 +30,21 @@ const dropDb = admin.dropDatabase as ReturnType<typeof vi.fn>;
 const truncateMock = admin.truncateCollection as ReturnType<typeof vi.fn>;
 const listNs = connection.listNamespaces as ReturnType<typeof vi.fn>;
 
+/** Tracking nav double: records the cleanup calls the tree forwards on DDL. */
+function mockNav() {
+  const calls = {
+    closeForCollection: [] as Array<[string, string]>,
+    closeForDatabase: [] as string[],
+    renameCollectionTabs: [] as Array<[string, string, string]>,
+  };
+  const nav: NavLike = {
+    closeForCollection: (db, coll) => calls.closeForCollection.push([db, coll]),
+    closeForDatabase: (db) => calls.closeForDatabase.push(db),
+    renameCollectionTabs: (db, o, n) => calls.renameCollectionTabs.push([db, o, n]),
+  };
+  return { nav, calls };
+}
+
 describe("createNamespaceTree", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -39,82 +53,76 @@ describe("createNamespaceTree", () => {
 
   it("refresh loads databases", async () => {
     listNs.mockResolvedValueOnce([{ name: "d", collections: ["c"] }]);
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.refresh();
     expect(nt.databases).toEqual([{ name: "d", collections: ["c"] }]);
   });
 
   it("refresh error sets error and does not throw", async () => {
     listNs.mockRejectedValueOnce({ kind: "Query", message: "boom" });
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.refresh();
     expect(nt.error).toContain("boom");
   });
 
   it("createCollection with valid name calls api and refreshes", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.createCollection("d", "users");
-    expect(createColl).toHaveBeenCalledWith("d", "users");
-    expect(listNs).toHaveBeenCalled();
+    expect(createColl).toHaveBeenCalledWith("conn:1", "d", "users");
+    expect(listNs).toHaveBeenCalledWith("conn:1");
   });
 
   it("createCollection with invalid name throws and does not call api", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await expect(nt.createCollection("d", "a$b")).rejects.toBeTruthy();
     expect(createColl).not.toHaveBeenCalled();
   });
 
   it("createDatabase validates both db and collection names", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await expect(nt.createDatabase("a/b", "c")).rejects.toBeTruthy();
     expect(createColl).not.toHaveBeenCalled();
     await nt.createDatabase("shop", "users");
-    expect(createColl).toHaveBeenCalledWith("shop", "users");
+    expect(createColl).toHaveBeenCalledWith("conn:1", "shop", "users");
   });
 
-  it("dropCollection calls api, closes matching work tabs, reduces selection, and refreshes", async () => {
-    const nav = createNavigation();
-    nav.selectCollection("d", "c");
-    nav.openDocument({ kind: "document", db: "d", coll: "c", mode: "insert", initial: null, idText: null });
-    const nt = createNamespaceTree(nav);
+  it("dropCollection calls api, forwards tab cleanup, and refreshes", async () => {
+    const { nav, calls } = mockNav();
+    const nt = createNamespaceTree("conn:1", nav);
     await nt.dropCollection("d", "c");
-    expect(dropColl).toHaveBeenCalledWith("d", "c");
-    expect(nav.workTabs.length).toBe(0);
-    expect(nav.selection).toEqual({ db: "d", coll: null });
-    expect(listNs).toHaveBeenCalled();
+    expect(dropColl).toHaveBeenCalledWith("conn:1", "d", "c");
+    expect(calls.closeForCollection).toEqual([["d", "c"]]);
+    expect(listNs).toHaveBeenCalledWith("conn:1");
   });
 
-  it("renameCollection calls api and updates selection to the new name", async () => {
-    const nav = createNavigation();
-    nav.selectCollection("d", "old");
-    const nt = createNamespaceTree(nav);
+  it("renameCollection calls api and forwards tab rename", async () => {
+    const { nav, calls } = mockNav();
+    const nt = createNamespaceTree("conn:1", nav);
     await nt.renameCollection("d", "old", "new");
-    expect(renameColl).toHaveBeenCalledWith("d", "old", "new");
-    expect(nav.selection).toEqual({ db: "d", coll: "new" });
+    expect(renameColl).toHaveBeenCalledWith("conn:1", "d", "old", "new");
+    expect(calls.renameCollectionTabs).toEqual([["d", "old", "new"]]);
   });
 
-  it("dropDatabase calls api, closes work tabs, and clears selection", async () => {
-    const nav = createNavigation();
-    nav.selectCollection("d", "a");
-    nav.openDocument({ kind: "document", db: "d", coll: "a", mode: "insert", initial: null, idText: null });
-    const nt = createNamespaceTree(nav);
+  it("dropDatabase calls api, forwards tab cleanup, and refreshes", async () => {
+    const { nav, calls } = mockNav();
+    const nt = createNamespaceTree("conn:1", nav);
     await nt.dropDatabase("d");
-    expect(dropDb).toHaveBeenCalledWith("d");
-    expect(nav.workTabs.length).toBe(0);
-    expect(nav.selection).toBeNull();
+    expect(dropDb).toHaveBeenCalledWith("conn:1", "d");
+    expect(calls.closeForDatabase).toEqual(["d"]);
+    expect(listNs).toHaveBeenCalledWith("conn:1");
   });
 
   it("truncate calls admin.truncateCollection and refreshes", async () => {
     truncateMock.mockResolvedValue(3);
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.truncate("db", "coll");
-    expect(truncateMock).toHaveBeenCalledWith("db", "coll");
-    expect(listNs).toHaveBeenCalled(); // refresh
+    expect(truncateMock).toHaveBeenCalledWith("conn:1", "db", "coll");
+    expect(listNs).toHaveBeenCalledWith("conn:1");
   });
 
   it("clear empties cached databases (disconnect)", async () => {
     listNs.mockResolvedValueOnce([{ name: "d", collections: ["c"] }]);
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.refresh();
     expect(nt.databases.length).toBe(1);
     nt.clear();
@@ -131,38 +139,38 @@ describe("namespaceTree command log", () => {
   });
 
   it("createCollection pushes createCollectionCmd to the command log", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.createCollection("shop", "users");
     expect(commandLog.entries.at(-1)!.text).toBe(createCollectionCmd("users"));
   });
 
   it("createDatabase pushes createCollectionCmd to the command log", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.createDatabase("shop", "orders");
     expect(commandLog.entries.at(-1)!.text).toBe(createCollectionCmd("orders"));
   });
 
   it("dropCollection pushes dropCollectionCmd to the command log", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.dropCollection("shop", "users");
     expect(commandLog.entries.at(-1)!.text).toBe(dropCollectionCmd("users"));
   });
 
   it("renameCollection pushes renameCollectionCmd(from, to) to the command log", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.renameCollection("shop", "old", "new");
     expect(commandLog.entries.at(-1)!.text).toBe(renameCollectionCmd("old", "new"));
   });
 
   it("dropDatabase pushes dropDatabaseCmd to the command log", async () => {
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.dropDatabase("shop");
     expect(commandLog.entries.at(-1)!.text).toBe(dropDatabaseCmd());
   });
 
   it("truncate pushes truncateCollectionCmd to the command log", async () => {
     truncateMock.mockResolvedValue(5);
-    const nt = createNamespaceTree(createNavigation());
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.truncate("shop", "orders");
     expect(commandLog.entries.at(-1)!.text).toBe(truncateCollectionCmd("orders"));
   });

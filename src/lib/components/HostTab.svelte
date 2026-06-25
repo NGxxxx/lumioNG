@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { hostStatus } from "../stores/hostStatus.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import { formatUptime } from "../domain/host";
   import { formatCount } from "../domain/stats";
   import { maskUri } from "../domain/uri";
@@ -8,18 +7,15 @@
 
   let { connection }: { connection: { label: string; uri: string } | null } = $props();
 
-  onMount(() => {
-    if (!hostStatus.info && !hostStatus.loading) hostStatus.load();
-  });
-
-  const h = $derived(hostStatus.info);
+  const activeHost = $derived(sessionManager.active?.host ?? null);
+  const h = $derived(activeHost?.info ?? null);
 </script>
 
 <div class="host">
   <div class="title">{connection?.label ?? "—"}</div>
   <div class="sub">{connection?.uri ? maskUri(connection.uri) : "—"}</div>
-  {#if hostStatus.error}<div class="error">{hostStatus.error}</div>{/if}
-  {#if hostStatus.loading && !h}<div class="status">{m.common_loading()}</div>{/if}
+  {#if activeHost?.error}<div class="error">{activeHost.error}</div>{/if}
+  {#if activeHost?.loading && !h}<div class="status">{m.common_loading()}</div>{/if}
   {#if h}
     <table>
       <tbody>

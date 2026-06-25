@@ -61,13 +61,14 @@ fn build_sample_pipeline(user: Document, size: i64) -> Vec<Document> {
 
 #[tauri::command]
 pub async fn aggregate(
+    session_id: String,
     db: String,
     coll: String,
     pipeline: String,
     limit: Option<i64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
     let mut stages = parse_pipeline(&pipeline)?;
@@ -86,6 +87,7 @@ pub async fn aggregate(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn query_page(
+    session_id: String,
     db: String,
     coll: String,
     skip: i64,                  // 0-based row offset (frontend converts 1-based page to skip)
@@ -95,7 +97,7 @@ pub async fn query_page(
     projection: Option<String>, // ExtJSON exclusion doc, e.g. {"big":0}
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
     let (filter_doc, sort_doc, proj_doc) =
@@ -120,13 +122,14 @@ pub async fn query_page(
 
 #[tauri::command]
 pub async fn sample_documents(
+    session_id: String,
     db: String,
     coll: String,
     filter: Option<String>,
     size: i64,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
     let user_filter = parse_user_filter(filter.as_deref())?;
@@ -143,12 +146,13 @@ pub async fn sample_documents(
 
 #[tauri::command]
 pub async fn count_documents(
+    session_id: String,
     db: String,
     coll: String,
     filter: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client().await?;
+    let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     Ok(collection.count_documents(f).await?)

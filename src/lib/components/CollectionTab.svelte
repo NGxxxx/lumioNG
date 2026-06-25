@@ -1,23 +1,28 @@
 <script lang="ts">
-  import { navigation } from "../stores/navigation.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
+  import type { CollectionSection } from "../stores/navigation.svelte";
   import CollectionInfoPanel from "./CollectionInfoPanel.svelte";
   import IndexPanel from "./IndexPanel.svelte";
   import SchemaPanel from "./SchemaPanel.svelte";
   import * as m from "$lib/paraglide/messages";
 
   let { db, coll }: { db: string; coll: string } = $props();
+
+  const nav = $derived(sessionManager.active?.nav ?? null);
+  const section = $derived<CollectionSection>(nav?.collectionSection ?? "info");
+  const setSection = (s: CollectionSection) => nav?.setCollectionSection(s);
 </script>
 
 <div class="colltab">
   <div class="subtabs">
-    <button class:active={navigation.collectionSection === "info"} onclick={() => navigation.setCollectionSection("info")}>{m.collection_tab_info()}</button>
-    <button class:active={navigation.collectionSection === "schema"} onclick={() => navigation.setCollectionSection("schema")}>{m.collection_tab_schema()}</button>
-    <button class:active={navigation.collectionSection === "indexes"} onclick={() => navigation.setCollectionSection("indexes")}>{m.collection_tab_indexes()}</button>
+    <button class:active={section === "info"} onclick={() => setSection("info")}>{m.collection_tab_info()}</button>
+    <button class:active={section === "schema"} onclick={() => setSection("schema")}>{m.collection_tab_schema()}</button>
+    <button class:active={section === "indexes"} onclick={() => setSection("indexes")}>{m.collection_tab_indexes()}</button>
   </div>
   <div class="subpane">
-    {#if navigation.collectionSection === "info"}
+    {#if section === "info"}
       <CollectionInfoPanel {db} {coll} />
-    {:else if navigation.collectionSection === "schema"}
+    {:else if section === "schema"}
       <SchemaPanel {db} {coll} />
     {:else}
       <IndexPanel {db} {coll} />

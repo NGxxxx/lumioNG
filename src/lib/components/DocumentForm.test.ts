@@ -10,6 +10,9 @@ vi.mock("../api/documents", () => ({
 vi.mock("../domain/docid", () => ({
   idJson: vi.fn(() => '{"$oid":"abc"}'),
 }));
+vi.mock("../stores/sessionManager.svelte", () => ({
+  sessionManager: { active: null },
+}));
 
 describe("DocumentForm — Raw JSON view", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -40,7 +43,7 @@ describe("DocumentForm — Raw JSON view", () => {
     await fireEvent.input(textarea, { target: { value: '{"a":1}' } });
     await fireEvent.click(getByText("Save"));
 
-    expect(documents.insertDocument).toHaveBeenCalledWith("d", "c", '{"a":1}');
+    expect(documents.insertDocument).toHaveBeenCalledWith("", "d", "c", '{"a":1}');
   });
 
   it("valid JSON in edit mode → calls replaceDocument with _id and updated JSON", async () => {
@@ -62,6 +65,7 @@ describe("DocumentForm — Raw JSON view", () => {
     await fireEvent.click(getByText("Save"));
 
     expect(documents.replaceDocument).toHaveBeenCalledWith(
+      "",
       "d",
       "c",
       '{"$oid":"abc"}',
@@ -119,6 +123,7 @@ describe("DocumentForm — Tree view", () => {
     await fireEvent.click(getByText("Save"));
 
     expect(documents.replaceDocument).toHaveBeenCalledWith(
+      "",
       "d",
       "c",
       '{"$oid":"abc"}',

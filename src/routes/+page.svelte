@@ -4,15 +4,12 @@
   import { inferSchema } from "$lib/domain/schema";
   import { buildSkeleton } from "$lib/domain/skeleton";
   import { sampleDocuments } from "$lib/api/documents";
-  import { navigation } from "$lib/stores/navigation.svelte";
+  import { sessionManager } from "$lib/stores/sessionManager.svelte";
   import { getQueryRun, disposeQueryRun } from "$lib/stores/queryRuns.svelte";
-  import { namespaceTree } from "$lib/stores/namespaceTree.svelte";
   import { shell } from "$lib/stores/shell.svelte";
   import { activeDataView } from "$lib/stores/activeDataView.svelte";
-  import { hostStatus } from "$lib/stores/hostStatus.svelte";
   import { activity } from "$lib/stores/activity.svelte";
   import { quit } from "$lib/api/window";
-  import { disconnect as apiDisconnect } from "$lib/api/connection";
   import type { Doc } from "$lib/domain/doc";
   import type { ContextKind, QueryTab as QueryTabType } from "$lib/stores/navigation.svelte";
   import SessionManager from "$lib/components/SessionManager.svelte";
@@ -44,35 +41,45 @@
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
 
-  const active = $derived(navigation.active);
-  const sel = $derived(navigation.selection);
-  const contextTabs = $derived(navigation.contextTabs.map((kind) => ({ kind, label: CONTEXT_LABEL[kind] })));
+  const sm = sessionManager;
+  // The whole UI is driven by the active session; in this task the sidebar still renders a
+  // single tree (the active session's). Multi-root rendering arrives in Task 5.
+  const session = $derived(sm.active);
+  const nav = $derived(session?.nav ?? null);
+  const tree = $derived(session?.tree ?? null);
+  const host = $derived(session?.host ?? null);
+
+  const active = $derived(sm.activeZone);
+  const sel = $derived(nav?.selection ?? null);
+  const navContextTabs = $derived(nav?.contextTabs ?? []);
+  const contextTabs = $derived(navContextTabs.map((kind) => ({ kind, label: CONTEXT_LABEL[kind] })));
   const queryActive = $derived(
     active?.zone === "work" &&
-      navigation.workTabs.find((t) => t.id === active.id)?.kind === "query",
+      sm.workTabs.find((t) => t.id === active.id)?.kind === "query",
   );
   const activeQueryTab = $derived(
     active?.zone === "work"
-      ? ((navigation.workTabs.find((t) => t.id === active.id && t.kind === "query") ?? null) as QueryTabType | null)
+      ? ((sm.workTabs.find((t) => t.id === active.id && t.kind === "query") ?? null) as QueryTabType | null)
       : null,
   );
   // Resolve the active query tab's run store (getQueryRun caches, so this is idempotent).
   // Reading it here keeps the toolbar's Run / Run-selection state reactive to editor changes.
   const activeQueryRun = $derived(
-    activeQueryTab ? getQueryRun(activeQueryTab.id, activeQueryTab.initialStatement) : null,
+    activeQueryTab ? getQueryRun(activeQueryTab.id, activeQueryTab.sessionId, activeQueryTab.initialStatement) : null,
   );
   // Toolbar Edit/Export act on the collection data view, and only when it's the active context.
   const dataViewActive = $derived(active?.zone === "context" && active.kind === "data");
 
-  async function onConnected(conn: { label: string; uri: string }) {
-    shell.setConnection(conn);
-    navigation.setConnected(true);
-    await namespaceTree.refresh();
-    hostStatus.load(); // fire-and-forget; feeds Host tab + status bar
+  async function onConnected(conn: { connId: number | null; label: string; uri: string }): Promise<boolean> {
+    // focusOrOpen is the sole owner of the backend connect call; it returns true on success.
+    // Passing the real connId allows focusOrOpen to dedup saved connections (focus existing session).
+    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label });
+    if (ok) shell.setConnection(conn);
+    return ok;
   }
 
   function openDocument(db: string, coll: string, doc: Doc | null, mode: "edit" | "insert") {
-    navigation.openDocument({
+    sm.openDocument({
       kind: "document",
       db,
       coll,
@@ -83,31 +90,26 @@
   }
 
   async function doRefresh() {
-    await namespaceTree.refresh();
-    const s = navigation.selection;
-    if (s?.coll) navigation.bumpCollection(s.db, s.coll);
+    await tree?.refresh();
+    const s = nav?.selection;
+    if (s?.coll) nav?.bumpCollection(s.db, s.coll);
   }
 
   async function doDisconnect() {
-    try {
-      await apiDisconnect();
-    } finally {
-      for (const t of [...navigation.workTabs]) { disposeQueryRun(t.id); navigation.closeWork(t.id); }
-      navigation.setConnected(false);
-      shell.setConnection(null);
-      namespaceTree.clear();
-      hostStatus.clear();
-      // Do not auto-open the session modal — the user reopens it manually when needed.
-    }
+    const id = sm.activeId;
+    for (const t of sm.workTabs.filter((t) => t.sessionId === id)) disposeQueryRun(t.id);
+    if (id) await sm.closeSession(id);
+    if (sm.sessions.length === 0) shell.setConnection(null);
+    // Do not auto-open the session modal — the user reopens it manually when needed.
   }
 
   async function newDocActive() {
-    const s = navigation.selection;
+    const s = nav?.selection;
     if (!s?.coll) return;
     // Pre-fill all known fields (sampled schema) so the user only fills values; blank on failure.
     let initial: Doc | null = null;
     try {
-      const sample = await sampleDocuments(s.db, s.coll, "{}", 100);
+      const sample = await sampleDocuments(sm.active?.id ?? "", s.db, s.coll, "{}", 100);
       initial = buildSkeleton(inferSchema(sample).fields);
     } catch { /* fall back to an empty form */ }
     openDocument(s.db, s.coll, initial, "insert");
@@ -179,9 +181,9 @@
     <aside style="width:{shell.sidebarWidth}px">
       <NamespacePanel
         connection={shell.connection}
-        onselect={(d) => navigation.selectCollection(d.db, d.coll)}
-        onselectdb={(d) => navigation.selectDatabase(d.db)}
-        onnewquery={(d) => { navigation.selectCollection(d.db, d.coll); navigation.openQuery(aggregateTemplate(d.coll)); }}
+        onselect={(d) => nav?.selectCollection(d.db, d.coll)}
+        onselectdb={(d) => nav?.selectDatabase(d.db)}
+        onnewquery={(d) => { nav?.selectCollection(d.db, d.coll); sm.openQuery(aggregateTemplate(d.coll)); }}
         onmanagesessions={() => shell.openSession()}
         ondisconnect={doDisconnect}
       />
@@ -198,46 +200,47 @@
     <section>
       <TabBar
         {contextTabs}
-        workTabs={navigation.workTabs}
+        workTabs={sm.workTabs}
+        sessions={sm.sessions}
         {active}
-        onShowContext={(kind) => navigation.showContext(kind)}
-        onActivateWork={(id) => navigation.activateWork(id)}
-        onCloseWork={(id) => { disposeQueryRun(id); navigation.closeWork(id); }}
-        onNewQuery={() => navigation.openQuery(aggregateTemplate(""))}
+        onShowContext={(kind) => sm.showContext(kind)}
+        onActivateWork={(id) => sm.activateWork(id)}
+        onCloseWork={(id) => { disposeQueryRun(id); sm.closeWork(id); }}
+        onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
       />
       <div class="panes">
-        {#if navigation.contextTabs.includes("host")}
+        {#if navContextTabs.includes("host")}
           <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "host")}>
             <HostTab connection={shell.connection} />
           </div>
         {/if}
-        {#if sel && navigation.contextTabs.includes("database")}
+        {#if sel && navContextTabs.includes("database")}
           {@const db = sel.db}
           <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "database")}>
             {#key db}
-              <DatabaseCollectionsPanel {db} onopen={(c) => navigation.selectCollection(db, c)} />
+              <DatabaseCollectionsPanel {db} onopen={(c) => nav?.selectCollection(db, c)} />
             {/key}
           </div>
         {/if}
-        {#if sel?.coll && navigation.contextTabs.includes("collection")}
+        {#if sel?.coll && navContextTabs.includes("collection")}
           {@const db = sel.db}
           {@const coll = sel.coll}
           <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "collection")}>
-            {#key `${db}/${coll}#${navigation.collectionVersion(db, coll)}`}
+            {#key `${db}/${coll}#${nav?.collectionVersion(db, coll) ?? 0}`}
               <CollectionTab {db} {coll} />
             {/key}
           </div>
         {/if}
-        {#if sel?.coll && navigation.contextTabs.includes("data")}
+        {#if sel?.coll && navContextTabs.includes("data")}
           {@const db = sel.db}
           {@const coll = sel.coll}
           <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "data")}>
-            {#key `${db}/${coll}#${navigation.collectionVersion(db, coll)}`}
+            {#key `${db}/${coll}#${nav?.collectionVersion(db, coll) ?? 0}`}
               <ResultTable {db} {coll} onopendocument={(doc, mode) => openDocument(db, coll, doc, mode)} />
             {/key}
           </div>
         {/if}
-        {#each navigation.workTabs as tab (tab.id)}
+        {#each sm.workTabs as tab (tab.id)}
           <div class="tabpane" hidden={!(active?.zone === "work" && active.id === tab.id)}>
             {#if tab.kind === "query"}
               <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement} currentDb={sel?.db ?? null}
@@ -249,10 +252,10 @@
                 coll={tab.coll}
                 initial={tab.initial}
                 onsaved={() => {
-                  navigation.bumpCollection(tab.db, tab.coll);
-                  navigation.closeWork(tab.id);
+                  nav?.bumpCollection(tab.db, tab.coll);
+                  sm.closeWork(tab.id);
                 }}
-                oncancel={() => navigation.closeWork(tab.id)}
+                oncancel={() => sm.closeWork(tab.id)}
               />
             {/if}
           </div>
@@ -283,10 +286,10 @@
     collCount={shell.collCount}
     selDb={sel?.db ?? null}
     selColl={sel?.coll ?? null}
-    version={hostStatus.info?.version ?? null}
-    uptimeSeconds={hostStatus.info?.uptimeSeconds ?? null}
-    serverTimeIso={hostStatus.info?.localTimeIso ?? null}
-    connectedAt={shell.connectedAt}
+    version={host?.info?.version ?? null}
+    uptimeSeconds={host?.info?.uptimeSeconds ?? null}
+    serverTimeIso={host?.info?.localTimeIso ?? null}
+    connectedAt={session?.connectedAt ?? null}
     activityLabel={activity.label}
   />
   {#if shell.sessionOpen}

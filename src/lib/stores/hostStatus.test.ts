@@ -18,8 +18,9 @@ describe("createHostStatus", () => {
   });
 
   it("load populates curated info", async () => {
-    const v = createHostStatus();
+    const v = createHostStatus("conn:1");
     await v.load();
+    expect(serverStatus).toHaveBeenCalledWith("conn:1");
     expect(v.info?.version).toBe("7.0.5");
     expect(v.info?.hostname).toBe("db-1");
     expect(v.error).toBeNull();
@@ -27,7 +28,7 @@ describe("createHostStatus", () => {
 
   it("hostInfo rejection still yields info (soft-fail)", async () => {
     hostInfo.mockRejectedValueOnce({ kind: "Query", message: "not authorized" });
-    const v = createHostStatus();
+    const v = createHostStatus("conn:1");
     await v.load();
     expect(v.info?.version).toBe("7.0.5");
     expect(v.info?.hostname).toBeNull();
@@ -35,7 +36,7 @@ describe("createHostStatus", () => {
   });
 
   it("clear resets state", async () => {
-    const v = createHostStatus();
+    const v = createHostStatus("conn:1");
     await v.load();
     v.clear();
     expect(v.info).toBeNull();

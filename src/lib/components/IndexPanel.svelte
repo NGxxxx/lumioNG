@@ -1,13 +1,14 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { createIndexView } from "../stores/indexView.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import { describeKeys, type IndexInfo } from "../domain/indexes";
   import IndexCreateForm from "./IndexCreateForm.svelte";
   import * as m from "$lib/paraglide/messages";
 
   let { db, coll }: { db: string; coll: string } = $props();
 
-  const v = untrack(() => createIndexView(db, coll));
+  const v = untrack(() => createIndexView(sessionManager.active?.id ?? "", db, coll));
   let creating = $state(false);
   let confirmDrop = $state<string | null>(null);
 

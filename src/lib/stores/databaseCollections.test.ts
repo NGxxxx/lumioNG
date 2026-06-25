@@ -18,7 +18,7 @@ describe("createDatabaseCollections", () => {
   });
 
   it("init lists rows from the tree and loads the dbStats summary", async () => {
-    const v = createDatabaseCollections("shop", tree);
+    const v = createDatabaseCollections("conn:1", "shop", tree);
     await v.init();
     expect(v.rows.map((r) => r.name)).toEqual(["orders", "users"]); // name asc default
     expect(v.rows.every((r) => r.state === "idle")).toBe(true);
@@ -26,11 +26,11 @@ describe("createDatabaseCollections", () => {
   });
 
   it("loadStats fills one row", async () => {
-    const v = createDatabaseCollections("shop", tree);
+    const v = createDatabaseCollections("conn:1", "shop", tree);
     await v.init();
     await v.loadStats("users");
     const row = v.rows.find((r) => r.name === "users")!;
-    expect(collStats).toHaveBeenCalledWith("shop", "users");
+    expect(collStats).toHaveBeenCalledWith("conn:1", "shop", "users");
     expect(row.state).toBe("loaded");
     expect(row.stats?.count).toBe(5);
   });
@@ -38,7 +38,7 @@ describe("createDatabaseCollections", () => {
   it("setSort toggles direction and sorts by count with nulls last", async () => {
     collStats
       .mockResolvedValueOnce(JSON.stringify({ ns: "shop.orders", count: { $numberInt: "9" } }));
-    const v = createDatabaseCollections("shop", tree);
+    const v = createDatabaseCollections("conn:1", "shop", tree);
     await v.init();
     await v.loadStats("orders"); // users stays idle (count null)
     v.setSort("count");          // asc → nulls last → orders(9) first, users(null) last
@@ -52,7 +52,7 @@ describe("createDatabaseCollections", () => {
     collStats
       .mockResolvedValueOnce(JSON.stringify({ ns: "shop.orders", count: { $numberInt: "9" } }))
       .mockResolvedValueOnce(JSON.stringify({ ns: "shop.users", count: { $numberInt: "5" } }));
-    const v = createDatabaseCollections("shop", tree);
+    const v = createDatabaseCollections("conn:1", "shop", tree);
     await v.init();
     await v.loadStats("orders");
     await v.loadStats("users");
@@ -64,7 +64,7 @@ describe("createDatabaseCollections", () => {
 
   it("loadStats error sets row error state", async () => {
     collStats.mockRejectedValueOnce({ kind: "Query", message: "nope" });
-    const v = createDatabaseCollections("shop", tree);
+    const v = createDatabaseCollections("conn:1", "shop", tree);
     await v.init();
     await v.loadStats("users");
     const row = v.rows.find((r) => r.name === "users")!;

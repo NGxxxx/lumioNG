@@ -3,7 +3,7 @@ import { parseHostInfo, type HostInfo } from "../domain/host";
 import { errorMessage } from "../api/errors";
 
 /** Loads + holds curated server metrics; feeds the Host tab and the status bar. */
-export function createHostStatus() {
+export function createHostStatus(sessionId: string) {
   let info = $state<HostInfo | null>(null);
   let error = $state<string | null>(null);
   let loading = $state(false);
@@ -11,11 +11,11 @@ export function createHostStatus() {
   async function load() {
     loading = true;
     try {
-      const [ss, bi] = await Promise.all([serverStatus(), buildInfo()]);
+      const [ss, bi] = await Promise.all([serverStatus(sessionId), buildInfo(sessionId)]);
       // hostInfo may require privileges the user lacks → treat as absent.
       let hi: string | null = null;
       try {
-        hi = await hostInfo();
+        hi = await hostInfo(sessionId);
       } catch {
         hi = null;
       }
@@ -42,5 +42,5 @@ export function createHostStatus() {
   };
 }
 
-/** Singleton used by the app (tests build their own via createHostStatus). */
-export const hostStatus = createHostStatus();
+/** Singleton used by not-yet-migrated modules (tests build their own via createHostStatus). */
+export const hostStatus = createHostStatus("");

@@ -7,7 +7,7 @@ describe("CommandLog", () => {
   beforeEach(() => commandLog.clear());
 
   it("renders pushed command entries", () => {
-    commandLog.push('db.getCollection("c").find({})');
+    commandLog.push('db.getCollection("c").find({})', "s");
     const { getByText } = render(CommandLog, { props: { height: 140, onToggle: vi.fn() } });
     expect(getByText('db.getCollection("c").find({})')).toBeTruthy();
   });
@@ -20,7 +20,7 @@ describe("CommandLog", () => {
   });
 
   it("Clear button empties the log", async () => {
-    commandLog.push("x");
+    commandLog.push("x", "s");
     const { getByText } = render(CommandLog, { props: { height: 140, onToggle: vi.fn() } });
     await fireEvent.click(getByText("Clear"));
     expect(commandLog.entries.length).toBe(0);
