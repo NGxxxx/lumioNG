@@ -75,22 +75,22 @@
   .statusbar {
     display: flex;
     align-items: center;
-    height: 24px;
+    height: 1.5rem;
     flex: none;
     background: var(--bg, #f0f0f0);
     border-top: 1px solid #d8d8d8;
-    font-size: 11px;
+    font-size: 0.6875rem;
     color: #555;
     user-select: none;
   }
 
   .seg {
-    padding: 0 10px;
+    padding: 0 0.625rem;
     border-right: 1px solid #dcdcdc;
     height: 100%;
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 0.375rem;
   }
 
   .idle {
@@ -104,8 +104,8 @@
   }
 
   .dot {
-    width: 7px;
-    height: 7px;
+    width: 0.4375rem;
+    height: 0.4375rem;
     border-radius: 50%;
     background: #ccc;
     display: inline-block;

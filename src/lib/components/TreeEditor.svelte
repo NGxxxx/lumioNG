@@ -38,5 +38,5 @@
 </div>
 
 <style>
-  .tree-editor { padding: 8px 12px; overflow: auto; flex: 1; min-height: 0; }
+  .tree-editor { padding: 0.5rem 0.75rem; overflow: auto; flex: 1; min-height: 0; }
 </style>

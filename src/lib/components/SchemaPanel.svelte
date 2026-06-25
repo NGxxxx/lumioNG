@@ -38,15 +38,15 @@
 </div>
 
 <style>
-  .schemapanel { overflow: auto; height: 100%; padding: 12px 16px; font-size: 13px; }
-  .bar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
-  .bar input { width: 70px; }
+  .schemapanel { overflow: auto; height: 100%; padding: 0.75rem 1rem; font-size: 0.8125rem; }
+  .bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.625rem; }
+  .bar input { width: 4.375rem; }
   .muted { color: var(--muted); }
   table.schema { border-collapse: collapse; width: 100%; }
-  table.schema th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 4px 12px 4px 0; border-bottom: 1px solid var(--cell-border); }
-  table.schema td { padding: 4px 12px 4px 0; font-family: ui-monospace, monospace; border-bottom: 1px solid var(--row-divider); }
+  table.schema th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.25rem 0.75rem 0.25rem 0; border-bottom: 1px solid var(--cell-border); }
+  table.schema td { padding: 0.25rem 0.75rem 0.25rem 0; font-family: ui-monospace, monospace; border-bottom: 1px solid var(--row-divider); }
   .field { color: var(--text-strong); }
-  .badge { padding: 1px 7px; border-radius: 9px; font-size: 11px; }
-  .error { background: var(--error-bg); color: var(--error); padding: 6px 10px; }
-  .status { padding: 8px 0; color: var(--muted); font-size: 12px; }
+  .badge { padding: 0.0625rem 0.4375rem; border-radius: 0.5625rem; font-size: 0.6875rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
+  .status { padding: 0.5rem 0; color: var(--muted); font-size: 0.75rem; }
 </style>

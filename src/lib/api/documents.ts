@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, Channel } from "@tauri-apps/api/core";
 import type { Doc } from "../domain/doc";
 
 /**
@@ -100,15 +100,56 @@ export async function deleteMany(
   return await invoke<number>("delete_many", { db, coll, filter, allowAll });
 }
 
-/** All documents matching the filter (with current sort/projection applied) — no pagination. */
-export async function exportQuery(
+type ProgressCb = (done: number, total: number) => void;
+
+function progressChannel(onProgress: ProgressCb): Channel<{ done: number; total: number }> {
+  const ch = new Channel<{ done: number; total: number }>();
+  ch.onmessage = (m) => onProgress(m.done, m.total);
+  return ch;
+}
+
+/** Stream a collection to a JSON array file in the backend. Returns the document count. */
+export async function exportJsonProgress(
   db: string,
   coll: string,
-  filter = "{}",
-  sort: string | null = null,
-  projection: string | null = null,
+  filter: string,
+  sort: string | null,
+  projection: string | null,
+  path: string,
+  onProgress: ProgressCb,
+): Promise<number> {
+  return await invoke<number>("export_json_progress", {
+    db, coll, filter, sort, projection, path, onProgress: progressChannel(onProgress),
+  });
+}
+
+/** Stream a collection to a concatenated-BSON file in the backend. Returns the document count. */
+export async function exportBsonProgress(
+  db: string,
+  coll: string,
+  filter: string,
+  sort: string | null,
+  projection: string | null,
+  path: string,
+  onProgress: ProgressCb,
+): Promise<number> {
+  return await invoke<number>("export_bson_progress", {
+    db, coll, filter, sort, projection, path, onProgress: progressChannel(onProgress),
+  });
+}
+
+/** Fetch all matching docs as parsed ExtJSON (CSV path); reports progress while reading. */
+export async function exportQueryProgress(
+  db: string,
+  coll: string,
+  filter: string,
+  sort: string | null,
+  projection: string | null,
+  onProgress: ProgressCb,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("export_query", { db, coll, filter, sort, projection });
+  const rows = await invoke<string[]>("export_query_progress", {
+    db, coll, filter, sort, projection, onProgress: progressChannel(onProgress),
+  });
   return rows.map((s) => JSON.parse(s) as Doc);
 }
 
@@ -125,18 +166,6 @@ export async function importDocuments(
   path: string,
 ): Promise<ImportResult> {
   return await invoke<ImportResult>("import_documents", { db, coll, path });
-}
-
-/** Export docs matching filter (with sort/projection) as concatenated BSON to `path`. Returns count. */
-export async function exportBson(
-  db: string,
-  coll: string,
-  filter = "{}",
-  sort: string | null = null,
-  projection: string | null = null,
-  path: string,
-): Promise<number> {
-  return await invoke<number>("export_bson", { db, coll, filter, sort, projection, path });
 }
 
 /** Import a concatenated-BSON (.bson) file via insert_many(ordered=false). */

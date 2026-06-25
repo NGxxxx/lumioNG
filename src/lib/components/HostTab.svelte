@@ -47,13 +47,13 @@
 </div>
 
 <style>
-  .host { height: 100%; box-sizing: border-box; overflow: auto; background: var(--panel); padding: 14px 18px; }
-  .title { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
-  .sub { color: #777; margin-bottom: 14px; }
-  h4 { margin: 16px 0 6px; font-size: 12px; color: #444; }
-  table { border-collapse: collapse; width: 560px; font-size: 12px; }
-  .k { padding: 4px 10px; border: 1px solid var(--cell-border); color: #555; width: 240px; }
-  .v { padding: 4px 10px; border: 1px solid var(--cell-border); color: #1a1a1a; font-family: var(--mono); }
-  .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; margin-bottom: 10px; }
+  .host { height: 100%; box-sizing: border-box; overflow: auto; background: var(--panel); padding: 0.875rem 1.125rem; }
+  .title { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.1875rem; }
+  .sub { color: #777; margin-bottom: 0.875rem; }
+  h4 { margin: 1rem 0 0.375rem; font-size: 0.75rem; color: #444; }
+  table { border-collapse: collapse; width: 35rem; font-size: 0.75rem; }
+  .k { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: #555; width: 15rem; }
+  .v { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: #1a1a1a; font-family: var(--mono); }
+  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; margin-bottom: 0.625rem; }
   .status { color: var(--muted); }
 </style>

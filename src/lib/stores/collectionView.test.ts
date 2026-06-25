@@ -10,18 +10,15 @@ vi.mock("../api/documents", () => ({
   countDocuments: vi.fn(),
   updateMany: vi.fn(),
   deleteMany: vi.fn(),
-  exportQuery: vi.fn(),
-  exportBson: vi.fn(),
+  exportQueryProgress: vi.fn(),
 }));
 
 vi.mock("../api/files", () => ({
-  saveDialog: vi.fn(),
   openDialog: vi.fn(),
-  writeTextFile: vi.fn(),
+  openDirDialog: vi.fn(),
 }));
 
 import * as documents from "../api/documents";
-import * as files from "../api/files";
 import { createCollectionView } from "./collectionView.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { findCmd, deleteOneCmd } from "../domain/mongosh";
@@ -31,12 +28,8 @@ const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
 const repl = documents.replaceDocument as ReturnType<typeof vi.fn>;
 const samp = documents.sampleDocuments as ReturnType<typeof vi.fn>;
 const full = documents.fetchFullDoc as ReturnType<typeof vi.fn>;
-const expQ = documents.exportQuery as ReturnType<typeof vi.fn>;
-const exportBsonMock = documents.exportBson as ReturnType<typeof vi.fn>;
-const exportQueryMock = documents.exportQuery as ReturnType<typeof vi.fn>;
+const expQ = documents.exportQueryProgress as ReturnType<typeof vi.fn>;
 const cnt = documents.countDocuments as ReturnType<typeof vi.fn>;
-const saveDlg = files.saveDialog as ReturnType<typeof vi.fn>;
-const writeF = files.writeTextFile as ReturnType<typeof vi.fn>;
 
 describe("createCollectionView — paging", () => {
   beforeEach(() => {
@@ -422,7 +415,7 @@ describe("Show ALL", () => {
     expect(v.allShown).toBe(true);
     expect(v.showAllPending).toBeNull();
     expect(v.docs.length).toBe(3);
-    expect(expQ).toHaveBeenCalledWith("d", "c", "{}", null, null);
+    expect(expQ).toHaveBeenCalledWith("d", "c", "{}", null, null, expect.any(Function));
   });
 
   it("above threshold → sets showAllPending, does NOT export yet", async () => {
@@ -750,17 +743,22 @@ describe("selection-aware context menu", () => {
     expect(v.selectedCount).toBe(2);
   });
 
-  it("menuItems shows update/delete selected with effective count, no open when n>1", async () => {
+  it("menuItems groups update/delete into submenus with effective count, no open when n>1", async () => {
     const v = await withTwoDocs();
     v.selectAll();
     v.openMenu(ev(), 0, "x");
     const items = v.menuItems();
     const actions = items.map((i) => i.action);
-    expect(actions).toContain("updateSelected");
-    expect(actions).toContain("deleteSelected");
-    const updateItem = items.find((i) => i.action === "updateSelected")!;
-    expect(updateItem.label).toContain("2");
     expect(actions).not.toContain("open"); // 2 rows selected → no single-open
+    const update = items.find((i) => i.label === "Update");
+    const del = items.find((i) => i.label === "Delete");
+    expect(update?.children?.some((c) => c.action === "updateSelected")).toBe(true);
+    expect(update?.children?.some((c) => c.action === "updateAll")).toBe(true);
+    expect(del?.children?.some((c) => c.action === "deleteSelected")).toBe(true);
+    expect(del?.children?.some((c) => c.action === "deleteAll")).toBe(true);
+    // effective count shown on the "selected" children
+    const updSel = update?.children?.find((c) => c.action === "updateSelected")!;
+    expect(updSel.label).toContain("2");
   });
 
   it("onMenuSelect deleteSelected opens the delete-confirm", async () => {
@@ -855,26 +853,18 @@ describe("effective selection + export request", () => {
     return v;
   }
 
-  it("runExport selection → exportQuery called with _id $in filter, json content written", async () => {
+  it("exportInput selection → scopedCollection with _id $in filter", async () => {
     const v = await withTwoDocs();
     v.clickRow(0, { ctrl: false, shift: false });
     v.openMenu(ev(), 0, "x");
-    saveDlg.mockResolvedValueOnce("/tmp/c.json");
-    exportQueryMock.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
-    writeF.mockResolvedValueOnce(undefined);
     v.requestExport("selection");
-    await v.runExport("json");
-    expect(exportQueryMock).toHaveBeenCalledWith(expect.any(String), expect.any(String),
-      expect.stringContaining('"$in"'), null, null);
-    expect(writeF).toHaveBeenCalled();
-  });
-
-  it("runExport filter bson → exportBson called", async () => {
-    const v = await withTwoDocs();
-    saveDlg.mockResolvedValueOnce("/tmp/c.bson");
-    exportBsonMock.mockResolvedValueOnce(2);
-    v.requestExport("filter");
-    await v.runExport("bson");
-    expect(exportBsonMock).toHaveBeenCalled();
+    const input = v.exportInput();
+    expect(input?.mode).toBe("scopedCollection");
+    expect(input).not.toBeNull();
+    if (input && input.mode === "scopedCollection") {
+      expect(input.filter).toContain('"$in"');
+      expect(input.db).toBe("d");
+      expect(input.coll).toBe("c");
+    }
   });
 });

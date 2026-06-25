@@ -8,7 +8,7 @@ vi.mock("../api/documents", () => ({
   exportBson: vi.fn(async () => 0),
   deleteMany: vi.fn(async () => 0),
 }));
-vi.mock("../api/files", () => ({ saveDialog: vi.fn(async () => null), writeTextFile: vi.fn(async () => {}) }));
+// Note: api/files is no longer imported by queryRun.svelte.ts (export now opens the wizard in-memory).
 
 import * as api from "../api/documents";
 import { createQueryRun } from "./queryRun.svelte";
@@ -114,6 +114,85 @@ describe("queryRun source + menu", () => {
     expect(vi.mocked(api.deleteMany)).toHaveBeenCalledOnce();
     expect(r.selected.size).toBe(0);
     expect(r.confirmDelete).toBeNull();
+  });
+
+  it("exportSelected sets exportRequest to the picked rows and exportInput returns scopedMemory", async () => {
+    vi.mocked(aggregate).mockResolvedValueOnce([
+      { _id: { $oid: "a1" }, name: "Alice" },
+      { _id: { $oid: "b2" }, name: "Bob" },
+    ]);
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    // select row 0 only
+    r.clickRow(0, { ctrl: false, shift: false });
+    r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "_id");
+    r.onMenuSelect("exportSelected");
+    // exportRequest holds the picked row
+    expect(r.exportRequest).not.toBeNull();
+    expect(r.exportRequest!.rows.length).toBe(1);
+    // exportInput returns a scopedMemory input
+    const input = r.exportInput();
+    expect(input).not.toBeNull();
+    expect(input!.mode).toBe("scopedMemory");
+    const sm = input as Extract<NonNullable<typeof input>, { mode: "scopedMemory" }>;
+    expect(sm.coll).toBe("people");
+    expect(sm.docs.length).toBe(1);
+    expect(sm.columns.every((c) => c.visible)).toBe(true);
+    // cancelExport clears the request
+    r.cancelExport();
+    expect(r.exportRequest).toBeNull();
+    expect(r.exportInput()).toBeNull();
+  });
+
+  it("exportAll sets exportRequest to all docs", async () => {
+    vi.mocked(aggregate).mockResolvedValueOnce([
+      { _id: { $oid: "a1" }, name: "Alice" },
+      { _id: { $oid: "b2" }, name: "Bob" },
+    ]);
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    r.clickRow(0, { ctrl: false, shift: false });
+    r.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 0, clientY: 0 } as unknown as MouseEvent, 0, "_id");
+    r.onMenuSelect("exportAll");
+    expect(r.exportRequest).not.toBeNull();
+    expect(r.exportRequest!.rows.length).toBe(2); // all docs
+    const input = r.exportInput();
+    expect(input!.mode).toBe("scopedMemory");
+    const sm = input as Extract<NonNullable<typeof input>, { mode: "scopedMemory" }>;
+    expect(sm.docs.length).toBe(2);
+  });
+
+  it("canExport is false before a run and true once there are results", async () => {
+    vi.mocked(aggregate).mockResolvedValueOnce([{ _id: { $oid: "a1" } }]);
+    const r = createQueryRun("db.people.aggregate([])");
+    expect(r.canExport).toBe(false);
+    await r.run("mydb");
+    expect(r.canExport).toBe(true);
+  });
+
+  it("requestExport (toolbar) exports all results when nothing is selected", async () => {
+    vi.mocked(aggregate).mockResolvedValueOnce([
+      { _id: { $oid: "a1" }, name: "Alice" },
+      { _id: { $oid: "b2" }, name: "Bob" },
+    ]);
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    r.requestExport();
+    expect(r.exportRequest).not.toBeNull();
+    expect(r.exportRequest!.rows.length).toBe(2);
+  });
+
+  it("requestExport (toolbar) exports only the selected rows when a selection exists", async () => {
+    vi.mocked(aggregate).mockResolvedValueOnce([
+      { _id: { $oid: "a1" }, name: "Alice" },
+      { _id: { $oid: "b2" }, name: "Bob" },
+    ]);
+    const r = createQueryRun("db.people.aggregate([])");
+    await r.run("mydb");
+    r.clickRow(1, { ctrl: false, shift: false });
+    r.requestExport();
+    expect(r.exportRequest!.rows.length).toBe(1);
+    expect(r.exportRequest!.rows[0].name).toBe("Bob");
   });
 
   it("deleteSelected is disabled when any selected row lacks _id (mixed selection)", async () => {

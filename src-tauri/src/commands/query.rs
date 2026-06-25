@@ -154,33 +154,6 @@ pub async fn count_documents(
     Ok(collection.count_documents(f).await?)
 }
 
-#[tauri::command]
-pub async fn export_query(
-    db: String,
-    coll: String,
-    filter: Option<String>,
-    sort: Option<String>,
-    projection: Option<String>,
-    state: State<'_, AppState>,
-) -> Result<Vec<String>, AppError> {
-    let client = state.client().await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-
-    let (filter_doc, sort_doc, proj_doc) =
-        build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
-
-    let mut q = collection.find(filter_doc).sort(sort_doc);
-    if let Some(p) = proj_doc {
-        q = q.projection(p);
-    }
-    let mut cursor = q.await?;
-
-    let mut docs = Vec::new();
-    while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(&d)?);
-    }
-    Ok(docs)
-}
 
 #[cfg(test)]
 mod tests {

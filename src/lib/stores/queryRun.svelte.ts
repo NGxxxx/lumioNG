@@ -1,6 +1,6 @@
 import * as m from "$lib/paraglide/messages";
 import { aggregate, deleteMany } from "../api/documents";
-import { saveDialog, writeTextFile } from "../api/files";
+import type { ExportWizardInput } from "../domain/exportPlan";
 import type { Doc } from "../domain/doc";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
@@ -40,6 +40,7 @@ export function createQueryRun(initialStatement: string) {
   let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
   let ioError = $state<string | null>(null);
   let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
+  let exportRequest = $state<{ rows: Doc[] } | null>(null);
 
   // Editor selection range (chars into statementText), kept in sync by the textarea.
   // Enables "Run selection": run only the highlighted statement instead of the whole editor.
@@ -155,12 +156,6 @@ export function createQueryRun(initialStatement: string) {
     try { await navigator.clipboard.writeText(text); } catch { ioError = m.common_clipboard_failed(); }
   }
 
-  async function writeFile(text: string, ext: "json" | "csv") {
-    const path = await saveDialog(`${srcColl ?? "results"}.${ext}`, [{ name: ext.toUpperCase(), extensions: [ext] }]);
-    if (path === null) return;
-    try { await writeTextFile(path, text); } catch (e) { ioError = e instanceof Error ? e.message : String(e); }
-  }
-
   function onMenuSelect(action: string): { open: Doc } | null {
     if (!menu) return null;
     const doc = pageDocs[menu.row];
@@ -173,12 +168,35 @@ export function createQueryRun(initialStatement: string) {
       case "copyId": copy(idJson(doc) ?? ""); break;
       case "copyJson": copy(toJsonArray(picked)); break;
       case "copyCsv": copy(toCsv(picked)); break;
-      case "exportSelected": writeFile(toJsonArray(picked), "json"); break;
-      case "exportAll": writeFile(toJsonArray(docs), "json"); break;
+      case "exportSelected": exportRequest = { rows: picked }; break;
+      case "exportAll": exportRequest = { rows: docs }; break;
       case "deleteSelected": requestDelete(picked); break;
     }
     menu = null;
     return null;
+  }
+
+  function exportInput(): ExportWizardInput | null {
+    if (!exportRequest) return null;
+    const colPaths = columns.map((c) => ({ path: c.path, visible: true }));
+    const n = exportRequest.rows.length;
+    return {
+      mode: "scopedMemory",
+      coll: srcColl ?? "results",
+      docs: exportRequest.rows,
+      columns: colPaths,
+      summary: n === 1
+        ? m.export_dialog_summary_selection_one({ count: n })
+        : m.export_dialog_summary_selection_many({ count: n }),
+    };
+  }
+  function cancelExport() { exportRequest = null; }
+
+  /** Toolbar Export: open the wizard for the current selection if any, otherwise all results. */
+  function requestExport() {
+    if (docs.length === 0) return;
+    const rows = selected.size > 0 ? [...selected].map((i) => pageDocs[i]).filter(Boolean) : docs;
+    exportRequest = { rows };
   }
 
   function requestDelete(picked: Doc[]) {
@@ -242,5 +260,10 @@ export function createQueryRun(initialStatement: string) {
     get confirmDelete() { return confirmDelete; },
     cancelDelete,
     confirmDeleteRun,
+    get exportRequest() { return exportRequest; },
+    get canExport() { return docs.length > 0; },
+    exportInput,
+    cancelExport,
+    requestExport,
   };
 }

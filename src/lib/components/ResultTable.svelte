@@ -12,7 +12,7 @@
   import { getByPath } from "../domain/schema";
   import BulkDialog from "./BulkDialog.svelte";
   import { isEmptyFilter } from "../domain/bulk";
-  import ExportDialog from "./ExportDialog.svelte";
+  import ExportWizard from "./ExportWizard.svelte";
   import { statusPill, jsonValueColor } from "../domain/theme";
   import type { ValueKind } from "../domain/theme";
   import { describeValue } from "../domain/extjson";
@@ -232,7 +232,6 @@
 </script>
 
 <div class="result">
-  {#if v.ioMessage}<div class="io-ok">{v.ioMessage}</div>{/if}
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
   <!-- Filter bar: find { … } monospace display + Run button -->
@@ -547,13 +546,8 @@
 {/if}
 
 {#if v.exportRequest}
-  <ExportDialog
-    scope={v.exportRequest.kind === "selection"
-      ? { kind: "selection", count: v.exportRequest.count }
-      : { kind: "filter" }}
-    onexport={(format) => v.runExport(format)}
-    oncancel={v.cancelExport}
-  />
+  {@const input = v.exportInput()}
+  {#if input}<ExportWizard {input} onclose={v.cancelExport} />{/if}
 {/if}
 
 <style>
@@ -564,20 +558,20 @@
   /* ── Loading overlay ── */
   .loading-overlay {
     position: absolute; inset: 0; z-index: 5;
-    display: flex; align-items: center; justify-content: center; gap: 8px;
-    background: rgba(255,255,255,.55); color: #555; font-size: 12px;
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    background: rgba(255,255,255,.55); color: #555; font-size: 0.75rem;
   }
-  .spinner { width: 14px; height: 14px; border: 2px solid #cfd8e3; border-top-color: #4c7; border-radius: 50%; animation: spin .7s linear infinite; }
+  .spinner { width: 0.875rem; height: 0.875rem; border: 2px solid #cfd8e3; border-top-color: #4c7; border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Table base ── */
-  table { border-collapse: collapse; table-layout: fixed; font-size: 12px; white-space: nowrap; }
+  table { border-collapse: collapse; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; }
 
   /* ── Header ── */
   th {
     background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom));
     border: 1px solid #d0d0d0;
-    padding: 4px 9px;
+    padding: 0.25rem 0.5625rem;
     font-weight: 600;
     position: sticky;
     top: 0;
@@ -588,7 +582,7 @@
     text-align: left;
   }
   .th-rownum {
-    width: 42px;
+    width: 2.625rem;
     text-align: right;
     color: #888;
     font-weight: 500;
@@ -596,13 +590,13 @@
     left: 0;
     top: 0;
     z-index: 3;
-    padding: 4px 6px;
+    padding: 0.25rem 0.375rem;
   }
 
   /* ── Cells ── */
   td {
     border: 1px solid var(--cell-border);
-    padding: 3px 9px;
+    padding: 0.1875rem 0.5625rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -614,8 +608,8 @@
     position: sticky;
     left: 0;
     z-index: 1;
-    padding: 3px 6px;
-    font-size: 11px;
+    padding: 0.1875rem 0.375rem;
+    font-size: 0.6875rem;
   }
   /* Fixed data-row height so virtualization can trust ROW_H without measuring. Spacer rows
      (padTop/padBottom) have no data-index, so their explicit pixel heights are unaffected. */
@@ -626,89 +620,89 @@
   /* Inlined BsonCell (no component per cell): base + per-BSON-type modifiers. Scalar colors come
      from the inline style attr; object/array colors come from the type-class rules below. */
   .data-cell .cell {
-    padding: 0 9px; display: inline-block; height: 22px; line-height: 22px;
-    max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    vertical-align: bottom; font-family: ui-monospace, monospace; font-size: 12px;
+    padding: 0 0.5625rem; display: inline-block; height: 22px; line-height: 22px;
+    max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    vertical-align: bottom; font-family: ui-monospace, monospace; font-size: 0.75rem;
   }
   .data-cell .cell.string { font-family: system-ui, sans-serif; }
   .data-cell .cell.null { font-style: italic; }
-  .data-cell .cell.object { color: #8a6cb5; font-style: italic; font-size: 11px; }
-  .data-cell .cell.array { color: #a07b2f; font-style: italic; font-size: 11px; }
+  .data-cell .cell.object { color: #8a6cb5; font-style: italic; font-size: 0.6875rem; }
+  .data-cell .cell.array { color: #a07b2f; font-style: italic; font-size: 0.6875rem; }
 
   /* ── Pill (status column) ── */
   .pill {
     display: inline-block;
-    padding: 1px 8px;
-    border-radius: 9px;
-    font-size: 11px;
+    padding: 0.0625rem 0.5rem;
+    border-radius: 0.5625rem;
+    font-size: 0.6875rem;
     font-weight: 600;
-    margin: 2px 9px;
+    margin: 0.125rem 0.5625rem;
   }
 
   /* ── Edit cell ── */
-  .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 12px; padding: 2px 4px; }
-  .cellerror { color: #b71c1c; font-size: 11px; margin-top: 2px; }
+  .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.125rem 0.25rem; }
+  .cellerror { color: #b71c1c; font-size: 0.6875rem; margin-top: 0.125rem; }
 
   /* ── Column header decorations ── */
   .colname { font-weight: 600; }
-  .badge { margin-left: 6px; font-size: 10px; color: #555; background: #e8e8e8; border-radius: 3px; padding: 0 4px; font-family: ui-monospace, monospace; }
-  .presence { margin-left: 4px; font-size: 10px; color: #999; }
-  .sortarrow { margin-left: 4px; font-size: 10px; color: #1565c0; }
-  .sortrank { margin-left: 2px; font-size: 9px; color: #1565c0; vertical-align: super; }
+  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: #555; background: #e8e8e8; border-radius: 0.1875rem; padding: 0 0.25rem; font-family: ui-monospace, monospace; }
+  .presence { margin-left: 0.25rem; font-size: 0.625rem; color: #999; }
+  .sortarrow { margin-left: 0.25rem; font-size: 0.625rem; color: #1565c0; }
+  .sortrank { margin-left: 0.125rem; font-size: 0.5625rem; color: #1565c0; vertical-align: super; }
 
   /* ── Filter bar ── */
   .filterbar {
     display: flex;
     align-items: center;
-    gap: 6px;
-    height: 30px;
+    gap: 0.375rem;
+    height: 1.875rem;
     flex: none;
     background: #f7f9fb;
     border-bottom: 1px solid #e2e2e2;
-    padding: 0 10px;
+    padding: 0 0.625rem;
   }
-  .filter-label { color: #777; font-size: 12px; }
+  .filter-label { color: #777; font-size: 0.75rem; }
   .filter-input {
     flex: 1;
-    height: 21px;
+    height: 1.3125rem;
     background: #fff;
     border: 1px solid #c4c4c4;
-    border-radius: 2px;
-    padding: 0 8px;
+    border-radius: 0.125rem;
+    padding: 0 0.5rem;
     font-family: Consolas, monospace;
-    font-size: 12px;
+    font-size: 0.75rem;
     box-sizing: border-box;
   }
   .btn-run {
     display: flex;
     align-items: center;
-    gap: 5px;
-    height: 22px;
-    padding: 0 12px;
+    gap: 0.3125rem;
+    height: 1.375rem;
+    padding: 0 0.75rem;
     background: #1f9d4d;
     color: #fff;
     border: none;
-    border-radius: 3px;
+    border-radius: 0.1875rem;
     cursor: pointer;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .btn-run:hover { background: #1a8a43; }
 
   /* ── Grid / Tree toggle ── */
-  .view-toggle { display: flex; align-items: center; gap: 1px; margin-left: 4px; }
+  .view-toggle { display: flex; align-items: center; gap: 0.0625rem; margin-left: 0.25rem; }
   .toggle-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
-    height: 22px;
-    padding: 0 8px;
-    font-size: 12px;
+    gap: 0.25rem;
+    height: 1.375rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
     border: 1px solid #ccc;
     background: #f0f0f0;
     cursor: pointer;
     color: #444;
-    border-radius: 2px;
+    border-radius: 0.125rem;
   }
   .toggle-btn:hover { background: #e4e4e4; }
   .toggle-active {
@@ -718,22 +712,22 @@
   }
 
   /* ── Error / status messages ── */
-  .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; }
-  .io-ok { background: #e8f5e9; color: #1b5e20; padding: 6px 10px; font-size: 12px; }
+  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; }
+  .io-ok { background: #e8f5e9; color: #1b5e20; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   /* Tree-view loading hint: overlay so it doesn't disturb the 100%-height virtual scroller. */
-  .status { position: absolute; top: 6px; right: 12px; padding: 3px 8px; color: #777; font-size: 12px;
-    background: rgba(255, 255, 255, 0.75); border-radius: 3px; z-index: 5; }
+  .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: #777; font-size: 0.75rem;
+    background: rgba(255, 255, 255, 0.75); border-radius: 0.1875rem; z-index: 5; }
 
   /* ── Column chooser ── */
-  .chooser-row { display: block; font-size: 12px; padding: 2px 0; white-space: nowrap; }
+  .chooser-row { display: block; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }
   .chooser-apply {
     display: block;
-    margin: 8px 0 2px auto;
-    height: 22px;
-    padding: 0 10px;
-    font-size: 12px;
+    margin: 0.5rem 0 0.125rem auto;
+    height: 1.375rem;
+    padding: 0 0.625rem;
+    font-size: 0.75rem;
     border: 1px solid #ccc;
-    border-radius: 2px;
+    border-radius: 0.125rem;
     background: #f0f0f0;
     color: #444;
     cursor: pointer;
@@ -744,82 +738,82 @@
   .pager {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
     flex: none;
-    height: 30px;
-    padding: 0 10px;
+    height: 1.875rem;
+    padding: 0 0.625rem;
     border-top: 1px solid #e2e2e2;
     background: #f7f9fb;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
   .pg-btn {
-    height: 22px;
-    padding: 0 8px;
+    height: 1.375rem;
+    padding: 0 0.5rem;
     border: 1px solid #ccc;
     background: #f0f0f0;
-    border-radius: 2px;
+    border-radius: 0.125rem;
     cursor: pointer;
     color: #444;
   }
   .pg-btn:disabled { opacity: 0.45; cursor: default; }
-  .pg-info { display: flex; align-items: center; gap: 4px; color: #555; }
-  .pg-jump { width: 52px; height: 20px; text-align: center; }
+  .pg-info { display: flex; align-items: center; gap: 0.25rem; color: #555; }
+  .pg-jump { width: 3.25rem; height: 1.25rem; text-align: center; }
   .pg-total { margin-left: auto; color: #888; }
   .pg-sep { color: #ccc; }
-  .pg-rows { display: flex; align-items: center; gap: 4px; color: #555; }
-  .pg-rows input { width: 56px; height: 20px; text-align: center; }
+  .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: #555; }
+  .pg-rows input { width: 3.5rem; height: 1.25rem; text-align: center; }
 
   /* ── Tree view ── (rendering lives in the shared, virtualized ResultTree.svelte) */
   .tree-wrap { flex: 1; min-height: 0; position: relative; }
   .tree-wrap > :global(.tree-scroller) { height: 100%; }
 
   /* ── Header dropdowns (Sort / Fields) ── */
-  .dropwrap { position: relative; display: flex; align-items: center; gap: 4px; margin-left: 4px; }
+  .dropwrap { position: relative; display: flex; align-items: center; gap: 0.25rem; margin-left: 0.25rem; }
   .dropwrap:focus { outline: none; }
   .drop-btn {
-    height: 22px; padding: 0 8px; font-size: 12px;
+    height: 1.375rem; padding: 0 0.5rem; font-size: 0.75rem;
     border: 1px solid #ccc; background: #f0f0f0; color: #444;
-    border-radius: 2px; cursor: pointer; white-space: nowrap;
+    border-radius: 0.125rem; cursor: pointer; white-space: nowrap;
   }
   .drop-btn:hover { background: #e4e4e4; }
   .dropdown {
-    position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 2px;
-    background: #fff; border: 1px solid #ccc; padding: 6px;
-    min-width: 180px; max-height: 320px; overflow: auto;
+    position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 0.125rem;
+    background: #fff; border: 1px solid #ccc; padding: 0.375rem;
+    min-width: 11.25rem; max-height: 20rem; overflow: auto;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
-  .dd-allnone { display: flex; gap: 6px; padding-bottom: 6px; margin-bottom: 4px; border-bottom: 1px solid #eee; }
-  .dd-allnone button { flex: 1; font-size: 11px; padding: 2px 0; cursor: pointer; }
-  .locked { color: #aaa; font-size: 10px; margin-left: 4px; }
+  .dd-allnone { display: flex; gap: 0.375rem; padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid #eee; }
+  .dd-allnone button { flex: 1; font-size: 0.6875rem; padding: 0.125rem 0; cursor: pointer; }
+  .locked { color: #aaa; font-size: 0.625rem; margin-left: 0.25rem; }
   /* Fields popover: pin Show/Hide-all + Apply, scroll only the field list. */
   .fields-dd { display: flex; flex-direction: column; overflow: hidden; }
   .fields-dd .dd-allnone { flex: none; }
   .fields-list { flex: 1; min-height: 0; overflow: auto; }
-  .fields-dd .chooser-apply { flex: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #eee; }
+  .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid #eee; }
 
-  .dd-empty { color: #999; font-size: 12px; padding: 2px 2px 6px; }
-  .dd-row { display: flex; align-items: center; gap: 4px; font-size: 12px; padding: 2px 0; white-space: nowrap; }
-  .dd-rank { color: #999; width: 16px; }
+  .dd-empty { color: #999; font-size: 0.75rem; padding: 0.125rem 0.125rem 0.375rem; }
+  .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }
+  .dd-rank { color: #999; width: 1rem; }
   .dd-field { flex: 1; font-family: ui-monospace, monospace; }
   .dd-ic {
-    width: 20px; height: 18px; border: 1px solid #d4d4d4; background: #f6f6f6;
-    border-radius: 2px; cursor: pointer; font-size: 11px; line-height: 1; padding: 0; color: #444;
+    width: 1.25rem; height: 1.125rem; border: 1px solid #d4d4d4; background: #f6f6f6;
+    border-radius: 0.125rem; cursor: pointer; font-size: 0.6875rem; line-height: 1; padding: 0; color: #444;
   }
   .dd-ic:hover { background: #e8e8e8; }
   .dd-ic:disabled { opacity: 0.35; cursor: default; }
   .dd-x:hover { background: #fdecea; color: #b71c1c; }
-  .dd-add { display: block; font-size: 12px; margin-top: 6px; padding-top: 6px; border-top: 1px solid #eee; }
-  .dd-add select { margin-left: 6px; font-size: 12px; }
-  .dd-clear { margin-top: 6px; width: 100%; font-size: 11px; cursor: pointer; }
+  .dd-add { display: block; font-size: 0.75rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid #eee; }
+  .dd-add select { margin-left: 0.375rem; font-size: 0.75rem; }
+  .dd-clear { margin-top: 0.375rem; width: 100%; font-size: 0.6875rem; cursor: pointer; }
 
   /* ── Column resize handle ── */
-  .col-rownum { width: 42px; }
+  .col-rownum { width: 2.625rem; }
   /* .col-resize anchors off the base `th { position: sticky }` positioning context. */
   .col-resize {
     position: absolute;
     top: 0;
     right: 0;
-    width: 6px;
+    width: 0.375rem;
     height: 100%;
     cursor: col-resize;
     user-select: none;

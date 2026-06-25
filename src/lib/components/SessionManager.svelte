@@ -253,13 +253,13 @@
   }
 
   .panel {
-    width: 880px;
-    height: 560px;
-    max-width: calc(100vw - 24px);
-    max-height: calc(100vh - 24px);
+    width: 55rem;
+    height: 35rem;
+    max-width: calc(100vw - 1.5rem);
+    max-height: calc(100vh - 1.5rem);
     background: var(--bg);
     border: 1px solid #888;
-    border-radius: 6px;
+    border-radius: 0.375rem;
     box-shadow: 0 14px 48px rgba(0, 0, 0, 0.35);
     display: flex;
     flex-direction: column;
@@ -270,28 +270,28 @@
   .header {
     display: flex;
     align-items: center;
-    height: 34px;
+    height: 2.125rem;
     background: var(--panel);
     border-bottom: 1px solid var(--border);
-    padding: 0 12px;
+    padding: 0 0.75rem;
     flex: none;
   }
   .header-title {
     font-weight: 600;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--fg);
   }
   .close-btn {
     margin-left: auto;
-    width: 30px;
-    height: 24px;
+    width: 1.875rem;
+    height: 1.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
     background: none;
     border: none;
     cursor: pointer;
-    border-radius: 3px;
+    border-radius: 0.1875rem;
     color: #555;
     padding: 0;
   }
@@ -309,7 +309,7 @@
 
   /* ── Left column: session list ── */
   .left-col {
-    width: 330px;
+    width: 20.625rem;
     flex: none;
     border-right: 1px solid #d0d0d0;
     display: flex;
@@ -320,8 +320,8 @@
   /* ── Filter bar ── */
   .filter-bar {
     display: flex;
-    gap: 6px;
-    padding: 8px;
+    gap: 0.375rem;
+    padding: 0.5rem;
     align-items: center;
     flex: none;
   }
@@ -329,29 +329,29 @@
     flex: 1;
     display: flex;
     align-items: center;
-    height: 24px;
+    height: 1.5rem;
     border: 1px solid #c4c4c4;
-    border-radius: 2px;
-    padding: 0 6px;
+    border-radius: 0.125rem;
+    padding: 0 0.375rem;
     background: #fff;
-    gap: 4px;
+    gap: 0.25rem;
   }
   .filter-icon { flex: none; }
   .filter-input {
     flex: 1;
     border: none;
     outline: none;
-    font-size: 12px;
+    font-size: 0.75rem;
     background: transparent;
     color: var(--fg);
     min-width: 0;
   }
   .filter-input::placeholder { color: #aaa; }
   .filter-clear {
-    width: 24px;
-    height: 24px;
+    width: 1.5rem;
+    height: 1.5rem;
     border: 1px solid #c4c4c4;
-    border-radius: 2px;
+    border-radius: 0.125rem;
     background: #fff;
     color: #c0504d;
     cursor: pointer;
@@ -359,7 +359,7 @@
     align-items: center;
     justify-content: center;
     padding: 0;
-    font-size: 11px;
+    font-size: 0.6875rem;
     flex: none;
   }
   .filter-clear:hover { background: #fdeeee; }
@@ -367,13 +367,13 @@
   /* ── Session list rows ── */
   .list-header {
     display: flex;
-    padding: 0 8px 4px;
+    padding: 0 0.5rem 0.25rem;
     color: #777;
-    font-size: 11px;
+    font-size: 0.6875rem;
     flex: none;
   }
   .col-name { flex: 1; }
-  .col-last { width: 90px; }
+  .col-last { width: 5.625rem; }
 
   .session-list {
     flex: 1;
@@ -383,10 +383,10 @@
   .session-row {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 5px 8px;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.5rem;
     cursor: default;
-    font-size: 12px;
+    font-size: 0.75rem;
     border-bottom: 1px solid #f0f0f0;
   }
   .session-row:hover {
@@ -399,8 +399,8 @@
   }
   .session-icon { flex: none; }
   .session-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .session-last { width: 90px; color: #888; font-size: 11px; }
-  .session-empty { padding: 16px 8px; color: var(--muted); font-size: 12px; }
+  .session-last { width: 5.625rem; color: #888; font-size: 0.6875rem; }
+  .session-empty { padding: 1rem 0.5rem; color: var(--muted); font-size: 0.75rem; }
 
   /* ── Right column: connection form ── */
   .right-col {
@@ -409,31 +409,31 @@
     flex-direction: column;
     background: var(--bg);
     min-width: 0;
-    padding: 16px 18px;
+    padding: 1rem 1.125rem;
     overflow: auto;
   }
 
   /* ── Form grid & inputs ── */
   .form-grid {
     display: grid;
-    grid-template-columns: 140px 1fr;
-    gap: 10px 12px;
+    grid-template-columns: 8.75rem 1fr;
+    gap: 0.625rem 0.75rem;
     align-items: center;
-    max-width: 440px;
+    max-width: 27.5rem;
   }
 
   .form-label {
     color: #444;
-    font-size: 12px;
+    font-size: 0.75rem;
     text-align: right;
   }
 
   .form-input {
-    height: 24px;
+    height: 1.5rem;
     border: 1px solid #c4c4c4;
-    border-radius: 2px;
-    padding: 0 8px;
-    font-size: 12px;
+    border-radius: 0.125rem;
+    padding: 0 0.5rem;
+    font-size: 0.75rem;
     background: #fff;
     color: var(--fg);
     font-family: inherit;
@@ -443,50 +443,50 @@
   }
   .form-input:focus { border-color: #5aabff; }
   .form-input.mono { font-family: var(--mono); }
-  .form-input.short { width: 90px; }
+  .form-input.short { width: 5.625rem; }
   .form-input:disabled { background: #f5f5f5; color: #999; cursor: default; }
 
-  .form-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fg); }
-  .import-row { display: flex; gap: 6px; }
+  .form-check { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--fg); }
+  .import-row { display: flex; gap: 0.375rem; }
   .import-row .form-input { flex: 1; }
   .import-btn {
-    height: 24px; padding: 0 10px; border: 1px solid #b8b8b8; border-radius: 2px;
-    background: var(--panel); cursor: pointer; font-size: 12px; color: var(--fg); flex: none;
+    height: 1.5rem; padding: 0 0.625rem; border: 1px solid #b8b8b8; border-radius: 0.125rem;
+    background: var(--panel); cursor: pointer; font-size: 0.75rem; color: var(--fg); flex: none;
   }
   .import-btn:hover { background: #f3f3f3; }
 
   .form-error {
-    margin-top: 10px;
+    margin-top: 0.625rem;
     color: #b71c1c;
-    font-size: 12px;
+    font-size: 0.75rem;
   }
 
   /* ── Footer ── */
   .footer {
     display: flex;
     align-items: center;
-    height: 46px;
+    height: 2.875rem;
     flex: none;
     border-top: 1px solid #cfcfcf;
-    padding: 0 10px;
-    gap: 8px;
+    padding: 0 0.625rem;
+    gap: 0.5rem;
     background: var(--bg);
   }
-  .footer-left { display: flex; gap: 5px; align-items: center; }
-  .footer-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .footer-left { display: flex; gap: 0.3125rem; align-items: center; }
+  .footer-right { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
 
   /* ── Footer buttons ── */
   .foot-btn {
     display: flex;
     align-items: center;
-    gap: 4px;
-    height: 26px;
-    padding: 0 12px;
+    gap: 0.25rem;
+    height: 1.625rem;
+    padding: 0 0.75rem;
     background: var(--panel);
     border: 1px solid #b8b8b8;
-    border-radius: 3px;
+    border-radius: 0.1875rem;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: var(--fg);
     font-family: inherit;
   }
@@ -500,8 +500,8 @@
   .del-btn:hover:not(:disabled) { background: #fdeeee; }
 
   .open-btn {
-    height: 28px;
-    padding: 0 22px;
+    height: 1.75rem;
+    padding: 0 1.375rem;
     background: var(--accent);
     color: #fff;
     border-color: transparent;
@@ -510,6 +510,6 @@
   .open-btn:hover:not(:disabled) { background: #1a8a43; }
   .open-btn:disabled { background: #7cc9a3; cursor: default; opacity: 1; }
 
-  .cancel-btn { height: 28px; padding: 0 22px; }
+  .cancel-btn { height: 1.75rem; padding: 0 1.375rem; }
   .cancel-btn:hover { background: #eee; }
 </style>

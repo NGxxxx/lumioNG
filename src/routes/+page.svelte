@@ -172,8 +172,8 @@
     onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
     canEditDoc={dataViewActive && (activeDataView.handle?.canEdit ?? false)}
     oneditdocument={() => activeDataView.handle?.editSelected()}
-    canExport={dataViewActive && (activeDataView.handle?.canExport ?? false)}
-    onexport={() => activeDataView.handle?.exportCurrent()}
+    canExport={dataViewActive ? (activeDataView.handle?.canExport ?? false) : (activeQueryRun?.canExport ?? false)}
+    onexport={() => (dataViewActive ? activeDataView.handle?.exportCurrent() : activeQueryRun?.requestExport())}
   />
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
@@ -309,13 +309,13 @@
   .app { display: flex; flex-direction: column; height: 100vh; font-family: system-ui, sans-serif; }
   .body { display: flex; flex: 1; min-height: 0; background: var(--bg); }
   aside { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow: hidden; }
-  .vsplit { width: 5px; flex: none; cursor: col-resize; background: var(--bg); }
+  .vsplit { width: 0.3125rem; flex: none; cursor: col-resize; background: var(--bg); }
   .vsplit:hover { background: var(--hover); }
   section { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
   .panes { flex: 1; min-height: 0; position: relative; }
   .tabpane { height: 100%; }
   .tabpane[hidden] { display: none; }
-  .empty { padding: 24px; color: var(--muted); font-size: var(--fs); }
-  .hsplit { height: 5px; flex: none; cursor: row-resize; background: var(--bg); }
+  .empty { padding: 1.5rem; color: var(--muted); font-size: var(--fs); }
+  .hsplit { height: 0.3125rem; flex: none; cursor: row-resize; background: var(--bg); }
   .hsplit:hover { background: var(--hover); }
 </style>

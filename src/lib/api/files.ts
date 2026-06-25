@@ -20,3 +20,9 @@ export async function openDialog(filters: DialogFilter[]): Promise<string | null
 export async function writeTextFile(path: string, contents: string): Promise<void> {
   await invoke("write_text_file", { path, contents });
 }
+
+/** Opens a directory-picker dialog; returns the chosen folder path or null if cancelled. */
+export async function openDirDialog(): Promise<string | null> {
+  const result = await open({ multiple: false, directory: true });
+  return typeof result === "string" ? result : null;
+}

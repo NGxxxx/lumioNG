@@ -9,7 +9,7 @@
   --hover: #d9ebf9;
   --selected: #e3f2fd;
   --mono: Consolas, "SF Mono", "Liberation Mono", monospace;
-  --fs: 12px;
+  --fs: 0.75rem;
   /* tab + hàng */
   --tab-active-border: #2f7dd1;
   --tab-active-fg: #0a4d8c;

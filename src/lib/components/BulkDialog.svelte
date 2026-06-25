@@ -99,16 +99,16 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
-  .modal { background: #fff; width: 480px; max-width: 92vw; border-radius: 6px; overflow: hidden; }
-  header { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #eee; }
-  .body { padding: 14px; font-size: 13px; display: flex; flex-direction: column; gap: 10px; }
-  code { background: #f3f3f3; padding: 1px 4px; border-radius: 3px; font-family: ui-monospace, monospace; }
-  .warn { background: #fff4e5; border: 1px solid #ffb74d; padding: 8px; border-radius: 4px; }
-  .ulabel { display: flex; flex-direction: column; gap: 4px; }
-  textarea { font-family: ui-monospace, monospace; font-size: 12px; }
-  .counter { display: flex; align-items: center; gap: 8px; }
+  .modal { background: #fff; width: 30rem; max-width: 92vw; border-radius: 0.375rem; overflow: hidden; }
+  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid #eee; }
+  .body { padding: 0.875rem; font-size: 0.8125rem; display: flex; flex-direction: column; gap: 0.625rem; }
+  code { background: #f3f3f3; padding: 0.0625rem 0.25rem; border-radius: 0.1875rem; font-family: ui-monospace, monospace; }
+  .warn { background: #fff4e5; border: 1px solid #ffb74d; padding: 0.5rem; border-radius: 0.25rem; }
+  .ulabel { display: flex; flex-direction: column; gap: 0.25rem; }
+  textarea { font-family: ui-monospace, monospace; font-size: 0.75rem; }
+  .counter { display: flex; align-items: center; gap: 0.5rem; }
   .ok { color: #1b5e20; }
   .err { color: #b71c1c; }
-  footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #eee; }
+  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid #eee; }
   .danger { color: #b71c1c; }
 </style>

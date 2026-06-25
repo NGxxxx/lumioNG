@@ -186,36 +186,36 @@
   header {
     display: flex;
     align-items: center;
-    height: 34px;
+    height: 2.125rem;
     flex: none;
     background: #fff;
     border-bottom: 1px solid #dcdcdc;
-    padding: 0 12px;
-    gap: 7px;
+    padding: 0 0.75rem;
+    gap: 0.4375rem;
   }
   .header-icon { flex: none; }
-  .header-title { font-weight: 600; font-size: 13px; }
+  .header-title { font-weight: 600; font-size: 0.8125rem; }
 
   /* Sub-tabs */
   .subtabs {
     display: flex;
     align-items: center;
-    height: 28px;
+    height: 1.75rem;
     flex: none;
     background: #f6f6f6;
     border-bottom: 1px solid #e2e2e2;
-    padding: 0 10px;
-    gap: 2px;
+    padding: 0 0.625rem;
+    gap: 0.125rem;
   }
   .subtab {
-    padding: 3px 11px;
+    padding: 0.1875rem 0.6875rem;
     color: #666;
     cursor: pointer;
     background: transparent;
     border: none;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: 400;
-    border-radius: 3px 3px 0 0;
+    border-radius: 0.1875rem 0.1875rem 0 0;
     height: 100%;
     display: flex;
     align-items: center;
@@ -245,30 +245,30 @@
     overflow: auto;
     min-height: 0;
     font-family: Consolas, "Courier New", ui-monospace, monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.65;
   }
   .gutter {
-    width: 40px;
+    width: 2.5rem;
     flex: none;
     text-align: right;
     color: #bbb;
-    padding: 10px 8px 0 0;
+    padding: 0.625rem 0.5rem 0 0;
     user-select: none;
     border-right: 1px solid #eee;
     background: #faf9f3;
     white-space: pre;
     font-family: Consolas, "Courier New", ui-monospace, monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.65;
     overflow: hidden;
   }
   .json-textarea {
     flex: 1;
     border: none;
-    padding: 10px 14px;
+    padding: 0.625rem 0.875rem;
     font-family: Consolas, "Courier New", ui-monospace, monospace;
-    font-size: 13px;
+    font-size: 0.8125rem;
     line-height: 1.65;
     resize: none;
     outline: none;
@@ -284,8 +284,8 @@
   .error {
     background: #fdecea;
     color: #b71c1c;
-    padding: 6px 14px;
-    font-size: 12px;
+    padding: 0.375rem 0.875rem;
+    font-size: 0.75rem;
     flex: none;
   }
 
@@ -293,47 +293,47 @@
   footer {
     display: flex;
     align-items: center;
-    height: 46px;
+    height: 2.875rem;
     flex: none;
     border-top: 1px solid #cfcfcf;
-    padding: 0 12px;
-    gap: 8px;
+    padding: 0 0.75rem;
+    gap: 0.5rem;
     background: #fff;
   }
   .footer-status {
     color: #888;
-    font-size: 11px;
+    font-size: 0.6875rem;
   }
   .footer-actions {
     margin-left: auto;
     display: flex;
-    gap: 8px;
+    gap: 0.5rem;
   }
   .btn-save {
     display: flex;
     align-items: center;
-    height: 28px;
-    padding: 0 20px;
+    height: 1.75rem;
+    padding: 0 1.25rem;
     background: #1f9d4d;
     color: #fff;
     border: none;
-    border-radius: 3px;
+    border-radius: 0.1875rem;
     cursor: pointer;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .btn-save:hover:not(:disabled) { background: #1a8a43; }
   .btn-save:disabled { opacity: 0.6; cursor: default; }
   .btn-cancel {
     display: flex;
     align-items: center;
-    height: 28px;
-    padding: 0 20px;
+    height: 1.75rem;
+    padding: 0 1.25rem;
     background: #fff;
     border: 1px solid #b8b8b8;
-    border-radius: 3px;
+    border-radius: 0.1875rem;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
   .btn-cancel:hover:not(:disabled) { background: #eee; }
   .btn-cancel:disabled { opacity: 0.6; cursor: default; }

@@ -50,15 +50,15 @@
 
 <style>
   .titlebar {
-    display: flex; align-items: center; height: 32px; flex: none;
+    display: flex; align-items: center; height: 2rem; flex: none;
     background: var(--panel); border-bottom: 1px solid var(--border);
-    padding-left: 10px; user-select: none;
+    padding-left: 0.625rem; user-select: none;
   }
   .logo { flex: none; }
-  .crumb { margin-left: 8px; font-size: 12px; color: #333; }
+  .crumb { margin-left: 0.5rem; font-size: 0.75rem; color: #333; }
   .wbtns { margin-left: auto; display: flex; height: 100%; }
   .wbtn {
-    width: 46px; height: 100%; border: none; background: transparent;
+    width: 2.875rem; height: 100%; border: none; background: transparent;
     display: flex; align-items: center; justify-content: center; cursor: default; padding: 0;
   }
   .wbtn:hover { background: #e8e8e8; }

@@ -81,10 +81,10 @@
   .tabbar {
     display: flex;
     align-items: flex-end;
-    height: 28px;
+    height: 1.75rem;
     flex: none;
-    padding: 0 4px;
-    gap: 2px;
+    padding: 0 0.25rem;
+    gap: 0.125rem;
     border-bottom: 1px solid #c8c8c8;
     background: var(--bg);
     overflow-x: auto;
@@ -93,16 +93,16 @@
   .tab {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 13px;
-    font-size: 12px;
+    gap: 0.3125rem;
+    padding: 0.25rem 0.8125rem;
+    font-size: 0.75rem;
     border: 1px solid #c8c8c8;
     border-bottom: none;
-    border-radius: 4px 4px 0 0;
+    border-radius: 0.25rem 0.25rem 0 0;
     margin-bottom: -1px;
     cursor: default;
     white-space: nowrap;
-    max-width: 220px;
+    max-width: 13.75rem;
   }
 
   .tab.context {
@@ -136,7 +136,7 @@
   .divider {
     width: 1px;
     background: #c8c8c8;
-    margin: 4px 6px;
+    margin: 0.25rem 0.375rem;
     align-self: stretch;
   }
 
@@ -144,22 +144,22 @@
     border: none;
     background: none;
     padding: 0;
-    font-size: 12px;
+    font-size: 0.75rem;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 180px;
+    max-width: 11.25rem;
     color: inherit;
   }
 
   .x {
     border: none;
     background: none;
-    padding: 0 0 0 4px;
+    padding: 0 0 0 0.25rem;
     cursor: pointer;
     color: var(--muted);
-    font-size: 14px;
+    font-size: 0.875rem;
     line-height: 1;
   }
 
@@ -167,6 +167,6 @@
     color: var(--fg);
   }
 
-  .newq { align-self: flex-end; margin-bottom: -1px; padding: 4px 12px; font-weight: 600; color: #555; cursor: pointer; }
+  .newq { align-self: flex-end; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: #555; cursor: pointer; }
   .newq:hover { background: var(--panel); }
 </style>

@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { onMount, onDestroy } from "svelte";
+  import { registerContextMenu } from "./contextMenuController";
+
   export type MenuItem = { label: string; action: string; disabled?: boolean; children?: MenuItem[] };
 
   let { x, y, items, onselect, onclose }: {
@@ -7,6 +10,13 @@
   } = $props();
 
   let openIdx = $state<number | null>(null);
+
+  // Single-menu coordinator: mounting this menu closes any other open menu. This is
+  // propagation-independent, so it works even though openers stopPropagation() to dodge
+  // the self-close race — preventing a sidebar menu + data-table menu being open at once.
+  let unregister: (() => void) | null = null;
+  onMount(() => { unregister = registerContextMenu(onclose); });
+  onDestroy(() => unregister?.());
 
   function choose(it: MenuItem) {
     if (it.disabled || it.children) return;
@@ -42,12 +52,12 @@
 </div>
 
 <style>
-  .menu { position: fixed; z-index: 100; background: #fff; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); padding: 4px 0; min-width: 160px; }
-  .item { display: block; width: 100%; text-align: left; border: none; background: none; padding: 6px 14px; font-size: 13px; cursor: pointer; }
+  .menu { position: fixed; z-index: 100; background: #fff; border: 1px solid #ccc; border-radius: 0.25rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); padding: 0.25rem 0; min-width: 10rem; }
+  .item { display: block; width: 100%; text-align: left; border: none; background: none; padding: 0.375rem 0.875rem; font-size: 0.8125rem; cursor: pointer; }
   .item:hover:not(:disabled) { background: #f0f0f0; }
   .item:disabled { color: #bbb; cursor: default; }
   .sub { position: relative; }
   .item.parent { display: flex; justify-content: space-between; align-items: center; }
-  .caret { color: #999; margin-left: 12px; }
-  .submenu { position: absolute; left: 100%; top: -4px; }
+  .caret { color: #999; margin-left: 0.75rem; }
+  .submenu { position: absolute; left: 100%; top: -0.25rem; }
 </style>

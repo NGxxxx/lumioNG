@@ -1,6 +1,6 @@
 import * as m from "$lib/paraglide/messages";
-import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany, exportQuery, exportBson } from "../api/documents";
-import { saveDialog, writeTextFile } from "../api/files";
+import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany, exportQueryProgress } from "../api/documents";
+import type { ExportWizardInput } from "../domain/exportPlan";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";
@@ -26,7 +26,7 @@ import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd, exportBsonCmd } from "../domain/mongosh";
+import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd } from "../domain/mongosh";
 
 /**
  * State and actions for one collection view: data, paging, inline edit,
@@ -93,8 +93,6 @@ export function createCollectionView(db: string, coll: string) {
   let bulkError = $state<string | null>(null);
 
   // Export / import I/O
-  let ioBusy = $state(false);
-  let ioMessage = $state<string | null>(null);
   let ioError = $state<string | null>(null);
   let exportRequest = $state<{ kind: "filter" } | { kind: "selection"; count: number } | null>(null);
   let pendingExportFilter: string | null = "{}";
@@ -236,12 +234,13 @@ export function createCollectionView(db: string, coll: string) {
     const gen = generation;
     activity.begin(m.status_bar_loading());
     try {
-      const all = await exportQuery(
+      const all = await exportQueryProgress(
         db,
         coll,
         appliedFilter,
         buildSort(sortKeys),
         buildProjection(hidden),
+        () => {},
       );
       if (gen !== generation) return;
       commandLog.push(
@@ -491,11 +490,23 @@ export function createCollectionView(db: string, coll: string) {
         { label: "All matching filter to file…", action: "exportFilter" },
       ],
     });
+    items.push({
+      label: "Update",
+      action: "update",
+      children: [
+        { label: `Selected (${n})…`, action: "updateSelected" },
+        { label: "All matching filter…", action: "updateAll" },
+      ],
+    });
+    items.push({
+      label: "Delete",
+      action: "delete",
+      children: [
+        { label: `Selected (${n})`, action: "deleteSelected" },
+        { label: "All matching filter…", action: "deleteAll" },
+      ],
+    });
     items.push(
-      { label: `Update selected (${n})…`, action: "updateSelected" },
-      { label: `Delete selected (${n})`, action: "deleteSelected" },
-      { label: "Update all matching filter…", action: "updateAll" },
-      { label: "Delete all matching filter…", action: "deleteAll" },
       { label: "New document…", action: "newDoc" },
       { label: "Duplicate document…", action: "duplicate", disabled: n !== 1 },
     );
@@ -670,46 +681,30 @@ export function createCollectionView(db: string, coll: string) {
   }
 
   function requestExport(scope: "filter" | "selection") {
-    exportRequest = scope === "filter" ? { kind: "filter" } : { kind: "selection", count: effectiveSelectionCount() };
     if (scope === "selection") {
-      // capture ids now (menu closes on action)
       const sel = effectiveIds();
-      pendingExportFilter = "missing" in sel ? null : idInFilter(sel.ids);
+      if ("missing" in sel) { ioError = m.collection_view_selection_missing_id(); return; }
+      pendingExportFilter = idInFilter(sel.ids);
+      exportRequest = { kind: "selection", count: effectiveSelectionCount() };
     } else {
       pendingExportFilter = appliedFilter;
+      exportRequest = { kind: "filter" };
     }
   }
   function cancelExport() { exportRequest = null; pendingExportFilter = "{}"; }
 
-  async function runExport(format: "json" | "csv" | "bson") {
+  function exportInput(): ExportWizardInput | null {
     const req = exportRequest;
-    exportRequest = null;
-    if (!req) return;
-    if (pendingExportFilter === null) { ioError = m.collection_view_selection_missing_id(); return; }
+    if (!req || pendingExportFilter === null) return null; // defensive; requestExport guards the real case
+    const columns = columnFields.map((c) => ({ path: c.path, visible: !hidden.has(c.path) }));
     const filter = pendingExportFilter;
-    const useSort = req.kind === "filter" ? buildSort(sortKeys) : null;
-    const useProj = req.kind === "filter" ? buildProjection(hidden) : null;
-    const ext = format === "bson" ? "bson" : format;
-    const path = await saveDialog(`${coll}.${ext}`, [{ name: ext.toUpperCase(), extensions: [ext] }]);
-    if (path === null) return;
-    ioBusy = true; ioMessage = null; ioError = null;
-    try {
-      if (format === "bson") {
-        const n = await exportBson(db, coll, filter, useSort, useProj, path);
-        ioMessage = m.collection_view_exported({ n });
-        commandLog.push(exportBsonCmd(db, coll, path));
-      } else {
-        const data = await exportQuery(db, coll, filter, useSort, useProj);
-        const content = format === "json" ? toJsonArray(data) : toCsv(data);
-        await writeTextFile(path, content);
-        ioMessage = m.collection_view_exported({ n: data.length });
-        commandLog.push(findCmd({ coll, filter, sort: useSort, projection: useProj }));
-      }
-    } catch (e) {
-      ioError = errorMessage(e);
-    } finally {
-      ioBusy = false;
-    }
+    const sort = req.kind === "filter" ? buildSort(sortKeys) : null;
+    const summary = req.kind === "selection"
+      ? (req.count === 1
+          ? m.export_dialog_summary_selection_one({ count: req.count })
+          : m.export_dialog_summary_selection_many({ count: req.count }))
+      : m.export_dialog_summary_filter();
+    return { mode: "scopedCollection", db, coll, filter, sort, columns, summary };
   }
 
   async function copySelectedAs(format: "json" | "csv") {
@@ -902,13 +897,11 @@ export function createCollectionView(db: string, coll: string) {
     closeBulk,
     countBulk,
     runBulk,
-    get ioBusy() { return ioBusy; },
-    get ioMessage() { return ioMessage; },
     get ioError() { return ioError; },
     get exportRequest() { return exportRequest; },
     requestExport,
     cancelExport,
-    runExport,
+    exportInput,
     effectiveSelectionCount,
     copySelectedAs,
   };

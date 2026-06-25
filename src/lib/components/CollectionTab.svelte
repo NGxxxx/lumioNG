@@ -28,7 +28,7 @@
 <style>
   .colltab { display: flex; flex-direction: column; height: 100%; }
   .subtabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); }
-  .subtabs button { border: none; background: none; padding: 6px 12px; font-size: var(--fs); cursor: pointer; border-right: 1px solid var(--border); }
+  .subtabs button { border: none; background: none; padding: 0.375rem 0.75rem; font-size: var(--fs); cursor: pointer; border-right: 1px solid var(--border); }
   .subtabs button.active { background: var(--panel); font-weight: 600; }
   .subpane { flex: 1; min-height: 0; overflow: hidden; }
 </style>

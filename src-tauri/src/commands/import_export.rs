@@ -1,14 +1,35 @@
+use crate::bson_json::doc_to_canonical_string;
 use crate::error::AppError;
 use crate::json_bson::canonical_string_to_doc;
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::Document;
 use mongodb::error::ErrorKind;
-use tauri::State;
+use std::io::Write;
+use tauri::{ipc::Channel, State};
 
 use super::query::build_find_options;
 
 const MAX_IMPORT_ERRORS: usize = 5;
+const PROGRESS_BATCH: u64 = 1000;
+
+#[derive(serde::Serialize, Clone)]
+pub struct ExportProgress {
+    pub done: u64,
+    pub total: u64,
+}
+
+/// Write one element into a streaming JSON-array body: opening `[` + newline for the
+/// first element, `,` + newline before each subsequent one, then the document JSON.
+fn write_json_array_element<W: Write>(w: &mut W, doc_json: &str, first: bool) -> std::io::Result<()> {
+    w.write_all(if first { b"[\n" } else { b",\n" })?;
+    w.write_all(doc_json.as_bytes())
+}
+/// Close a streaming JSON-array body. `any` = at least one element was written
+/// (empty array is written as `[]`).
+fn finish_json_array<W: Write>(w: &mut W, any: bool) -> std::io::Result<()> {
+    w.write_all(if any { b"\n]" } else { b"[]" })
+}
 
 #[derive(serde::Serialize)]
 pub struct ImportResult {
@@ -131,20 +152,21 @@ pub async fn import_documents(
 
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-pub async fn export_bson(
+pub async fn export_json_progress(
     db: String,
     coll: String,
     filter: Option<String>,
     sort: Option<String>,
     projection: Option<String>,
     path: String,
+    on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
     let client = state.client().await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
+    let total = collection.count_documents(filter_doc.clone()).await?;
 
     let mut q = collection.find(filter_doc).sort(sort_doc);
     if let Some(p) = proj_doc {
@@ -156,15 +178,98 @@ pub async fn export_bson(
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
     }
-    let mut buf: Vec<u8> = Vec::new();
+    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
+    let mut w = std::io::BufWriter::new(file);
+    let mut count: u64 = 0;
+    while let Some(d) = cursor.try_next().await? {
+        let s = doc_to_canonical_string(&d)?;
+        write_json_array_element(&mut w, &s, count == 0).map_err(|e| AppError::Io(e.to_string()))?;
+        count += 1;
+        if count % PROGRESS_BATCH == 0 {
+            let _ = on_progress.send(ExportProgress { done: count, total });
+        }
+    }
+    finish_json_array(&mut w, count > 0).map_err(|e| AppError::Io(e.to_string()))?;
+    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+    let _ = on_progress.send(ExportProgress { done: count, total });
+    Ok(count)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn export_bson_progress(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    sort: Option<String>,
+    projection: Option<String>,
+    path: String,
+    on_progress: Channel<ExportProgress>,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let (filter_doc, sort_doc, proj_doc) =
+        build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
+    let total = collection.count_documents(filter_doc.clone()).await?;
+
+    let mut q = collection.find(filter_doc).sort(sort_doc);
+    if let Some(p) = proj_doc {
+        q = q.projection(p);
+    }
+    let mut cursor = q.await?;
+
+    let p = std::path::Path::new(&path);
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
+    let mut w = std::io::BufWriter::new(file);
     let mut count: u64 = 0;
     while let Some(d) = cursor.try_next().await? {
         let bytes = mongodb::bson::to_vec(&d).map_err(|e| AppError::Parse(e.to_string()))?;
-        buf.extend_from_slice(&bytes);
+        w.write_all(&bytes).map_err(|e| AppError::Io(e.to_string()))?;
         count += 1;
+        if count % PROGRESS_BATCH == 0 {
+            let _ = on_progress.send(ExportProgress { done: count, total });
+        }
     }
-    std::fs::write(p, &buf).map_err(|e| AppError::Io(e.to_string()))?;
+    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+    let _ = on_progress.send(ExportProgress { done: count, total });
     Ok(count)
+}
+
+#[tauri::command]
+pub async fn export_query_progress(
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    sort: Option<String>,
+    projection: Option<String>,
+    on_progress: Channel<ExportProgress>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let client = state.client().await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let (filter_doc, sort_doc, proj_doc) =
+        build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
+    let total = collection.count_documents(filter_doc.clone()).await?;
+
+    let mut q = collection.find(filter_doc).sort(sort_doc);
+    if let Some(p) = proj_doc {
+        q = q.projection(p);
+    }
+    let mut cursor = q.await?;
+
+    let mut docs = Vec::new();
+    while let Some(d) = cursor.try_next().await? {
+        docs.push(doc_to_canonical_string(&d)?);
+        if docs.len() as u64 % PROGRESS_BATCH == 0 {
+            let _ = on_progress.send(ExportProgress { done: docs.len() as u64, total });
+        }
+    }
+    let _ = on_progress.send(ExportProgress { done: docs.len() as u64, total });
+    Ok(docs)
 }
 
 #[tauri::command]
@@ -254,5 +359,24 @@ mod tests {
         assert_eq!(docs.len(), 2);
         assert_eq!(docs[0].get_i32("a").unwrap(), 1);
         assert_eq!(docs[1].get_i32("b").unwrap(), 2);
+    }
+
+    #[test]
+    fn json_array_framing_roundtrips() {
+        fn frame(docs: &[&str]) -> String {
+            let mut buf: Vec<u8> = Vec::new();
+            for (i, d) in docs.iter().enumerate() {
+                write_json_array_element(&mut buf, d, i == 0).unwrap();
+            }
+            finish_json_array(&mut buf, !docs.is_empty()).unwrap();
+            String::from_utf8(buf).unwrap()
+        }
+        assert_eq!(frame(&[]), "[]");
+        assert_eq!(frame(&["{\"a\":1}"]), "[\n{\"a\":1}\n]");
+        assert_eq!(frame(&["{\"a\":1}", "{\"b\":2}"]), "[\n{\"a\":1},\n{\"b\":2}\n]");
+        // shipped framing must be valid JSON
+        for case in [frame(&[]), frame(&["{\"a\":1}"]), frame(&["{\"a\":1}", "{\"b\":2}"])] {
+            serde_json::from_str::<serde_json::Value>(&case).unwrap();
+        }
     }
 }

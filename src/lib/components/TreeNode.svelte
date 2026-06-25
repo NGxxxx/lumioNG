@@ -209,17 +209,17 @@
 {/if}
 
 <style>
-  .tree { list-style: none; margin: 0; padding-left: 18px; border-left: 1px solid #eee; }
-  .tree li { margin: 1px 0; }
-  .node { display: flex; align-items: center; gap: 6px; padding: 1px 0; }
-  .label { font-family: ui-monospace, monospace; font-size: 13px; color: #333; }
-  .badge { background: #eef; color: #557; padding: 0 6px; border-radius: 3px; font-size: 11px; font-family: ui-monospace, monospace; }
-  .display { color: #555; font-family: ui-monospace, monospace; font-size: 13px; }
-  .leaf { font-family: ui-monospace, monospace; font-size: 13px; padding: 1px 4px; }
-  .x { border: none; background: none; color: #c00; cursor: pointer; font-size: 12px; }
-  .lock { font-size: 12px; }
-  .cellerror { color: #b71c1c; font-size: 11px; margin-left: 6px; }
-  .add { display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 18px; }
-  .add .name { font-size: 12px; padding: 1px 4px; }
-  .adderr { color: #b71c1c; font-size: 11px; }
+  .tree { list-style: none; margin: 0; padding-left: 1.125rem; border-left: 1px solid #eee; }
+  .tree li { margin: 0.0625rem 0; }
+  .node { display: flex; align-items: center; gap: 0.375rem; padding: 0.0625rem 0; }
+  .label { font-family: ui-monospace, monospace; font-size: 0.8125rem; color: #333; }
+  .badge { background: #eef; color: #557; padding: 0 0.375rem; border-radius: 0.1875rem; font-size: 0.6875rem; font-family: ui-monospace, monospace; }
+  .display { color: #555; font-family: ui-monospace, monospace; font-size: 0.8125rem; }
+  .leaf { font-family: ui-monospace, monospace; font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
+  .x { border: none; background: none; color: #c00; cursor: pointer; font-size: 0.75rem; }
+  .lock { font-size: 0.75rem; }
+  .cellerror { color: #b71c1c; font-size: 0.6875rem; margin-left: 0.375rem; }
+  .add { display: flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0 0.125rem 1.125rem; }
+  .add .name { font-size: 0.75rem; padding: 0.0625rem 0.25rem; }
+  .adderr { color: #b71c1c; font-size: 0.6875rem; }
 </style>

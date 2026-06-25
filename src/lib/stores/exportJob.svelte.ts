@@ -1,0 +1,124 @@
+import { exportJsonProgress, exportBsonProgress, exportQueryProgress } from "../api/documents";
+import { writeTextFile } from "../api/files";
+import { toCsv, toJsonArray } from "../domain/exporter";
+import { exportFileName, aggregateProgress } from "../domain/exportPlan";
+import { findCmd, exportBsonCmd } from "../domain/mongosh";
+import { commandLog } from "./commandLog.svelte";
+import { errorMessage } from "../api/errors";
+import type { Doc } from "../domain/doc";
+
+export type ExportFormat = "json" | "csv" | "bson";
+
+export type ExportSource =
+  | { kind: "query"; filter: string; sort: string | null; projection: string | null }
+  | { kind: "memory"; docs: Doc[] };
+
+export interface ExportTarget {
+  db: string;
+  coll: string;
+  source: ExportSource;
+}
+
+export type RowStatus = "pending" | "running" | "done" | "error";
+
+export interface ExportRow {
+  db: string;
+  coll: string;
+  status: RowStatus;
+  done: number;
+  total: number;
+  error: string | null;
+}
+
+export interface ExportJobConfig {
+  targets: ExportTarget[];
+  format: ExportFormat;
+  /** Picker mode: output folder, one file per target. */
+  dir?: string;
+  /** Scoped mode: single explicit output file. */
+  filePath?: string;
+}
+
+export function createExportJob(config: ExportJobConfig) {
+  let rows = $state.raw<ExportRow[]>(
+    config.targets.map((t) => ({ db: t.db, coll: t.coll, status: "pending", done: 0, total: 0, error: null })),
+  );
+  let running = $state(false);
+  let finished = $state(false);
+  let cancelled = false;
+
+  const overall = $derived(aggregateProgress(rows));
+  const succeeded = $derived(rows.filter((r) => r.status === "done").length);
+  const failed = $derived(rows.filter((r) => r.status === "error").length);
+
+  function pathFor(i: number): string {
+    if (config.filePath) return config.filePath;
+    const dir = (config.dir ?? "").replace(/[\\/]+$/, "");
+    return `${dir}/${exportFileName(rows[i].db, rows[i].coll, config.format)}`;
+  }
+
+  function update(i: number, patch: Partial<ExportRow>) {
+    rows[i] = { ...rows[i], ...patch };
+    rows = [...rows];
+  }
+
+  async function runOne(i: number) {
+    const t = config.targets[i];
+    const path = pathFor(i);
+    update(i, { status: "running" });
+    const onProg = (done: number, total: number) => update(i, { done, total });
+    try {
+      if (t.source.kind === "memory") {
+        const data = t.source.docs;
+        const content = config.format === "csv" ? toCsv(data) : toJsonArray(data);
+        await writeTextFile(path, content);
+        update(i, { status: "done", done: data.length, total: data.length });
+        commandLog.push(findCmd({ coll: t.coll, filter: "{}" }));
+        return;
+      }
+      const { filter, sort, projection } = t.source;
+      if (config.format === "bson") {
+        const n = await exportBsonProgress(t.db, t.coll, filter, sort, projection, path, onProg);
+        update(i, { status: "done", done: n, total: n });
+        commandLog.push(exportBsonCmd(t.db, t.coll, path));
+      } else if (config.format === "json") {
+        const n = await exportJsonProgress(t.db, t.coll, filter, sort, projection, path, onProg);
+        update(i, { status: "done", done: n, total: n });
+        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }));
+      } else {
+        const data = await exportQueryProgress(t.db, t.coll, filter, sort, projection, onProg);
+        await writeTextFile(path, toCsv(data));
+        update(i, { status: "done", done: data.length, total: data.length });
+        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }));
+      }
+    } catch (e) {
+      update(i, { status: "error", error: errorMessage(e) });
+    }
+  }
+
+  async function run() {
+    if (running || finished) return;
+    running = true;
+    for (let i = 0; i < config.targets.length; i++) {
+      if (cancelled) break;
+      await runOne(i);
+    }
+    running = false;
+    finished = true;
+  }
+
+  function cancel() {
+    cancelled = true;
+  }
+
+  return {
+    get rows() { return rows; },
+    get running() { return running; },
+    get done() { return finished; },
+    get overall() { return overall; },
+    get succeeded() { return succeeded; },
+    get failed() { return failed; },
+    run,
+    cancel,
+  };
+}

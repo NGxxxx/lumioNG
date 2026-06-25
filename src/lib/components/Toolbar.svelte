@@ -183,24 +183,24 @@
   .toolbar {
     display: flex;
     align-items: center;
-    height: 34px;
+    height: 2.125rem;
     background: var(--bg);
     border-bottom: 1px solid #d8d8d8;
     flex: none;
-    padding: 0 4px;
-    gap: 1px;
+    padding: 0 0.25rem;
+    gap: 0.0625rem;
     user-select: none;
   }
 
   .btn-icon {
     display: flex;
     align-items: center;
-    gap: 4px;
-    padding: 5px;
+    gap: 0.25rem;
+    padding: 0.3125rem;
     border: none;
     background: none;
     cursor: default;
-    border-radius: 3px;
+    border-radius: 0.1875rem;
     line-height: 1;
   }
 
@@ -215,9 +215,9 @@
 
   .sep {
     width: 1px;
-    height: 20px;
+    height: 1.25rem;
     background: #d0d0d0;
-    margin: 0 3px;
+    margin: 0 0.1875rem;
     flex: none;
   }
 

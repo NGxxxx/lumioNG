@@ -1,8 +1,10 @@
 <!-- src/lib/components/MenuBar.svelte -->
 <script lang="ts">
-  import { getLocale, setLocale, type Locale } from "$lib/paraglide/runtime";
+  import { type Locale } from "$lib/paraglide/runtime";
   import * as m from "$lib/paraglide/messages";
-  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import { appLocale } from "../stores/locale.svelte";
+  import { uiSize } from "../stores/uiSize.svelte";
+  import { UI_SIZES, type UiSizeKey } from "../domain/uiSize";
 
   let {
     connected,
@@ -15,10 +17,15 @@
   type Item = { label: string; run?: () => void; disabled?: boolean; checked?: boolean; children?: Item[] };
   let openMenu = $state<string | null>(null);
   let openSub = $state<string | null>(null);
-  // Locale awaiting a reload confirmation; null when no switch is pending.
-  let pendingLocale = $state<Locale | null>(null);
 
   const LOCALE_NAMES: Record<Locale, string> = { en: "English", vi: "Tiếng Việt" };
+
+  const UI_SIZE_LABELS: Record<UiSizeKey, () => string> = {
+    small: m.ui_size_small,
+    default: m.ui_size_default,
+    large: m.ui_size_large,
+    larger: m.ui_size_larger,
+  };
 
   const menus: { name: string; items: Item[]; disabled?: boolean }[] = $derived([
     {
@@ -36,9 +43,17 @@
         {
           label: m.menu_language(),
           children: [
-            { label: LOCALE_NAMES.en, checked: getLocale() === "en", run: () => requestLocale("en") },
-            { label: LOCALE_NAMES.vi, checked: getLocale() === "vi", run: () => requestLocale("vi") },
+            { label: LOCALE_NAMES.en, checked: appLocale.current === "en", run: () => appLocale.set("en") },
+            { label: LOCALE_NAMES.vi, checked: appLocale.current === "vi", run: () => appLocale.set("vi") },
           ],
+        },
+        {
+          label: m.menu_ui_size(),
+          children: UI_SIZES.map((s) => ({
+            label: UI_SIZE_LABELS[s.key](),
+            checked: uiSize.current === s.key,
+            run: () => uiSize.set(s.key),
+          })),
         },
       ],
     },
@@ -59,15 +74,6 @@
   function choose(it: Item) {
     closeAll();
     if (!it.disabled && it.run) it.run();
-  }
-  // Only prompt when actually switching; the confirm dialog warns about the reload.
-  function requestLocale(loc: Locale) {
-    if (getLocale() !== loc) pendingLocale = loc;
-  }
-  function confirmLocale() {
-    const loc = pendingLocale;
-    pendingLocale = null;
-    if (loc) setLocale(loc); // reloads the app to apply the new locale
   }
 </script>
 
@@ -134,24 +140,14 @@
   {/each}
 </div>
 
-{#if pendingLocale}
-  <ConfirmDialog
-    title={m.menu_language_switch_title()}
-    message={m.menu_language_switch_message({ language: LOCALE_NAMES[pendingLocale] })}
-    confirmLabel={m.menu_language_switch_confirm()}
-    onconfirm={confirmLocale}
-    oncancel={() => (pendingLocale = null)}
-  />
-{/if}
-
 <style>
   .menubar {
     display: flex;
     align-items: center;
-    height: 24px;
+    height: 1.5rem;
     background: var(--bg);
     border-bottom: 1px solid #e2e2e2;
-    padding: 0 4px;
+    padding: 0 0.25rem;
     user-select: none;
     box-sizing: border-box;
   }
@@ -159,10 +155,10 @@
   .top {
     border: none;
     background: none;
-    padding: 3px 9px;
-    font-size: 12px;
+    padding: 0.1875rem 0.5625rem;
+    font-size: 0.75rem;
     color: #222;
-    border-radius: 2px;
+    border-radius: 0.125rem;
     cursor: pointer;
     line-height: 1;
   }
@@ -175,7 +171,7 @@
     top: 100%;
     left: 0;
     z-index: 30;
-    min-width: 160px;
+    min-width: 10rem;
     background: var(--panel);
     border: 1px solid var(--border);
     box-shadow: 0 2px 6px rgba(0,0,0,.15);
@@ -186,16 +182,16 @@
     text-align: left;
     border: none;
     background: none;
-    padding: 5px 12px;
+    padding: 0.3125rem 0.75rem;
     cursor: pointer;
-    font-size: 12px;
+    font-size: 0.75rem;
     color: #222;
   }
   .item:hover:not(:disabled) { background: var(--menu-hover); }
   .item:disabled { color: #aaa; cursor: default; }
   /* Submenu parent row + right-anchored flyout */
   .parent { position: relative; }
-  .parent .item { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .arrow { color: #888; font-size: 10px; }
+  .parent .item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+  .arrow { color: #888; font-size: 0.625rem; }
   .submenu { top: 0; left: 100%; }
 </style>

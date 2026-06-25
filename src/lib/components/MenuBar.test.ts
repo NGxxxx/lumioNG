@@ -2,6 +2,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/svelte";
 import MenuBar from "./MenuBar.svelte";
+import { appLocale } from "../stores/locale.svelte";
+import { uiSize } from "../stores/uiSize.svelte";
 
 const base = { connected: true, onsession: vi.fn(), onrefresh: vi.fn(), onquit: vi.fn() };
 
@@ -42,13 +44,30 @@ describe("MenuBar", () => {
     expect(screen.getByRole("button", { name: /Tiếng Việt/ })).toBeInTheDocument();
   });
 
-  it("switching to another locale asks for confirmation before reloading", async () => {
+  it("switching locale applies immediately, with no reload prompt", async () => {
     render(MenuBar, { props: { ...base } });
     await fireEvent.click(screen.getByRole("button", { name: "View" }));
     await fireEvent.click(screen.getByRole("button", { name: "Language" }));
     await fireEvent.click(screen.getByRole("button", { name: "Tiếng Việt" }));
-    // A confirm dialog warns about the reload instead of switching abruptly.
-    expect(screen.getByText(/will reload to apply Tiếng Việt/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Reload now" })).toBeInTheDocument();
+    try {
+      expect(appLocale.current).toBe("vi"); // switched live
+      expect(screen.queryByRole("button", { name: "Reload now" })).toBeNull(); // no confirm/reload
+    } finally {
+      appLocale.set("en"); // restore the shared locale for any later tests
+    }
+  });
+
+  it("View → UI size submenu lists presets with the active one checked, and switches", async () => {
+    render(MenuBar, { props: { ...base } });
+    await fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await fireEvent.click(screen.getByRole("button", { name: "UI size" }));
+    const def = screen.getByRole("button", { name: /Default/ });
+    expect(def.textContent).toContain("✓"); // default active
+    await fireEvent.click(screen.getByRole("button", { name: /Large$/ }));
+    try {
+      expect(uiSize.current).toBe("large");
+    } finally {
+      uiSize.set("default"); // restore shared store for later tests
+    }
   });
 });

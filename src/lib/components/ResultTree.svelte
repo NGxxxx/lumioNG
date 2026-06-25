@@ -163,14 +163,14 @@
 {/if}
 
 <style>
-  .empty { padding: 16px; color: var(--muted); font-size: 12px; }
+  .empty { padding: 1rem; color: var(--muted); font-size: 0.75rem; }
   .tree-scroller {
     overflow: auto;
     height: 100%;
     position: relative;
     background: #fff;
     font-family: Consolas, "Courier New", monospace;
-    font-size: 12.5px;
+    font-size: 0.78125rem;
     line-height: 1.55;
   }
   /* Spacer that holds the full virtual height; rows are absolutely positioned within it. */
@@ -186,7 +186,7 @@
     height: 27px;
     overflow: hidden;
     border-bottom: 1px solid #f0f0f0;
-    padding: 2px 0;
+    padding: 0.125rem 0;
   }
   .tree-doc.open {
     height: auto;
@@ -195,30 +195,30 @@
   .tree-header {
     display: flex;
     align-items: center;
-    padding: 1px 10px;
+    padding: 0.0625rem 0.625rem;
     cursor: default;
     white-space: nowrap;
     overflow: hidden;
     user-select: none;
   }
   .tree-header:hover { background: #f5f9fd; }
-  .tree-caret { flex: none; margin-right: 6px; transition: transform 0.1s; }
-  .tree-n { color: #999; margin-right: 8px; }
+  .tree-caret { flex: none; margin-right: 0.375rem; transition: transform 0.1s; }
+  .tree-n { color: #999; margin-right: 0.5rem; }
   .tree-brace { color: #7b53b8; }
-  .tree-brace-close { margin-left: 5px; }
-  .tree-idkey { color: #9a2f8f; margin-left: 6px; }
+  .tree-brace-close { margin-left: 0.3125rem; }
+  .tree-idkey { color: #9a2f8f; margin-left: 0.375rem; }
   .tree-colon { color: #555; }
-  .tree-idval { color: #6b3fa0; margin-left: 5px; }
-  .tree-summary { color: #bbb; margin-left: 8px; }
-  .tree-body { padding: 1px 0 4px 0; }
+  .tree-idval { color: #6b3fa0; margin-left: 0.3125rem; }
+  .tree-summary { color: #bbb; margin-left: 0.5rem; }
+  .tree-body { padding: 0.0625rem 0 0.25rem 0; }
   .tree-line {
-    padding: 0 10px 0 26px;
+    padding: 0 0.625rem 0 1.625rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .tree-key { color: #9a2f8f; }
   .tree-colon { color: #555; }
-  .tree-val { margin-left: 5px; }
-  .tree-close { padding: 1px 10px 1px 22px; color: #7b53b8; }
+  .tree-val { margin-left: 0.3125rem; }
+  .tree-close { padding: 0.0625rem 0.625rem 0.0625rem 1.375rem; color: #7b53b8; }
 </style>

@@ -126,7 +126,7 @@
   .tree {
     overflow: auto;
     height: 100%;
-    font-size: 13px;
+    font-size: 0.8125rem;
     display: flex;
     flex-direction: column;
     background: var(--panel);
@@ -136,23 +136,23 @@
   .conn {
     display: flex;
     align-items: center;
-    height: 22px;
-    padding: 0 6px;
+    height: 1.375rem;
+    padding: 0 0.375rem;
     gap: 0;
     border-bottom: 1px solid var(--border);
     cursor: default;
     user-select: none;
   }
   .conn:hover { background: #f2f7fc; }
-  .icon-mongo { margin-right: 5px; flex: none; }
+  .icon-mongo { margin-right: 0.3125rem; flex: none; }
   .conn-label { font-weight: 600; color: #1a1a1a; flex: 1; }
   .status-dot {
-    width: 7px;
-    height: 7px;
+    width: 0.4375rem;
+    height: 0.4375rem;
     border-radius: 50%;
     background: var(--accent);
     display: inline-block;
-    margin-left: 6px;
+    margin-left: 0.375rem;
     flex: none;
   }
 
@@ -160,8 +160,8 @@
   .db {
     display: flex;
     align-items: center;
-    height: 22px;
-    padding: 0 6px 0 18px;
+    height: 1.375rem;
+    padding: 0 0.375rem 0 1.125rem;
     cursor: default;
     user-select: none;
     background: var(--panel);
@@ -172,23 +172,23 @@
     box-shadow: inset 2px 0 0 var(--accent);
     font-weight: 600;
   }
-  .caret { margin-right: 3px; flex: none; }
-  .icon-db { margin-right: 5px; flex: none; }
-  .db-name { color: #1a1a1a; flex: 1; font-size: 13px; }
-  .db-size { color: #999; font-size: 11px; margin-left: auto; flex: none; }
+  .caret { margin-right: 0.1875rem; flex: none; }
+  .icon-db { margin-right: 0.3125rem; flex: none; }
+  .db-name { color: #1a1a1a; flex: 1; font-size: 0.8125rem; }
+  .db-size { color: #999; font-size: 0.6875rem; margin-left: auto; flex: none; }
 
   /* ── Collection row ── */
   .coll {
     display: flex;
     align-items: center;
     width: 100%;
-    height: 22px;
-    padding: 0 6px 0 38px;
+    height: 1.375rem;
+    padding: 0 0.375rem 0 2.375rem;
     text-align: left;
     border: none;
     background: none;
     cursor: pointer;
-    font-size: 13px;
+    font-size: 0.8125rem;
     color: var(--fg);
     box-sizing: border-box;
   }
@@ -198,18 +198,18 @@
     box-shadow: inset 2px 0 0 var(--accent);
     font-weight: 600;
   }
-  .icon-coll { margin-right: 5px; flex: none; }
+  .icon-coll { margin-right: 0.3125rem; flex: none; }
   .coll-name { flex: 1; }
-  .coll-count { color: #999; font-size: 11px; flex: none; }
+  .coll-count { color: #999; font-size: 0.6875rem; flex: none; }
 
   /* ── Footer ── */
   .footer {
     margin-top: auto;
-    height: 22px;
+    height: 1.375rem;
     display: flex;
     align-items: center;
-    padding: 0 8px;
-    font-size: 11px;
+    padding: 0 0.5rem;
+    font-size: 0.6875rem;
     color: #777;
     border-top: 1px solid #e2e2e2;
     background: #f7f7f7;

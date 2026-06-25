@@ -7,11 +7,11 @@
   import NameDialog from "./NameDialog.svelte";
   import NewDatabaseDialog from "./NewDatabaseDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
-  import ExportDialog from "./ExportDialog.svelte";
-  import { saveDialog, openDialog, writeTextFile } from "../api/files";
-  import { exportQuery, exportBson, importDocuments, importBson } from "../api/documents";
-  import { toJsonArray, toCsv } from "../domain/exporter";
-  import { findCmd, importCmd, exportBsonCmd } from "../domain/mongosh";
+  import ExportWizard from "./ExportWizard.svelte";
+  import type { ExportWizardInput } from "../domain/exportPlan";
+  import { openDialog } from "../api/files";
+  import { importDocuments, importBson } from "../api/documents";
+  import { importCmd } from "../domain/mongosh";
   import { commandLog } from "../stores/commandLog.svelte";
   import { errorMessage } from "../api/errors";
   import * as m from "$lib/paraglide/messages";
@@ -42,10 +42,10 @@
     | { type: "rename"; db: string; coll: string }
     | { type: "dropColl"; db: string; coll: string }
     | { type: "dropDb"; db: string }
-    | { type: "truncate"; db: string; coll: string }
-    | { type: "export"; db: string; coll: string };
+    | { type: "truncate"; db: string; coll: string };
 
   let dialog = $state<Dialog | null>(null);
+  let exportWizard = $state<ExportWizardInput | null>(null);
   let io = $state<string | null>(null);
   let ioErr = $state<string | null>(null);
 
@@ -59,6 +59,7 @@
     { label: m.namespace_panel_menu_new_coll(), action: "newColl" },
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
     { label: m.menu_refresh(), action: "refresh" },
+    { label: m.export_wizard_menu_export_db(), action: "exportDb" },
     { label: m.namespace_panel_menu_drop_db(), action: "dropDb" },
   ]);
   const collItems = $derived([
@@ -84,35 +85,20 @@
       if (action === "newColl") dialog = { type: "newColl", db: target.db };
       else if (action === "copyName") navigator.clipboard.writeText(target.db);
       else if (action === "refresh") namespaceTree.refresh();
+      else if (action === "exportDb") {
+        const db = namespaceTree.databases.find((d) => d.name === target.db);
+        exportWizard = { mode: "pick", preChecked: (db?.collections ?? []).map((c) => ({ db: target.db, coll: c })) };
+      }
       else if (action === "dropDb") dialog = { type: "dropDb", db: target.db };
     } else {
       if (action === "newQuery") onnewquery?.({ db: target.db, coll: target.coll });
-      else if (action === "export") dialog = { type: "export", db: target.db, coll: target.coll };
+      else if (action === "export") exportWizard = { mode: "pick", preChecked: [{ db: target.db, coll: target.coll }] };
       else if (action === "import") runImport(target.db, target.coll);
       else if (action === "copyName") navigator.clipboard.writeText(`${target.db}.${target.coll}`);
       else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll };
       else if (action === "truncate") dialog = { type: "truncate", db: target.db, coll: target.coll };
       else if (action === "dropColl") dialog = { type: "dropColl", db: target.db, coll: target.coll };
     }
-  }
-
-  async function runExportCollection(db: string, coll: string, format: "json" | "csv" | "bson") {
-    const ext = format;
-    const path = await saveDialog(`${coll}.${ext}`, [{ name: ext.toUpperCase(), extensions: [ext] }]);
-    if (path === null) return;
-    io = null; ioErr = null;
-    try {
-      if (format === "bson") {
-        const n = await exportBson(db, coll, "{}", null, null, path);
-        io = m.namespace_panel_export_done({ count: n });
-        commandLog.push(exportBsonCmd(db, coll, path));
-      } else {
-        const data = await exportQuery(db, coll, "{}", null, null);
-        await writeTextFile(path, format === "json" ? toJsonArray(data) : toCsv(data));
-        io = m.namespace_panel_export_done({ count: data.length });
-        commandLog.push(findCmd({ coll, filter: "{}" }));
-      }
-    } catch (e) { ioErr = errorMessage(e); }
   }
 
   async function runImport(db: string, coll: string) {
@@ -222,11 +208,6 @@
     }}
     oncancel={() => (dialog = null)}
   />
-{:else if dialog?.type === "export"}
-  {@const d = dialog}
-  <ExportDialog scope={{ kind: "collection", coll: d.coll }}
-    onexport={async (fmt) => { dialog = null; await runExportCollection(d.db, d.coll, fmt); }}
-    oncancel={() => (dialog = null)} />
 {:else if dialog?.type === "truncate"}
   {@const d = dialog}
   <DropConfirmDialog title={m.namespace_panel_truncate_title()}
@@ -236,14 +217,18 @@
     oncancel={() => (dialog = null)} />
 {/if}
 
+{#if exportWizard}
+  <ExportWizard input={exportWizard} onclose={() => (exportWizard = null)} />
+{/if}
+
 {#if io}<div class="io-ok">{io}</div>{/if}
 {#if ioErr}<div class="error">{ioErr}</div>{/if}
 
 <style>
-  .error { background: #fdecea; color: #b71c1c; padding: 6px 10px; font-size: 12px; }
-  .io-ok { background: #e6f4ea; color: #1b5e20; padding: 6px 10px; font-size: 12px; }
-  .ns-search { display: flex; align-items: center; gap: 5px; height: 26px; padding: 0 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
-  .ns-search input { flex: 1; border: none; background: none; font-size: 12px; outline: none; }
-  .ns-clear { border: none; background: none; cursor: pointer; color: #999; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .io-ok { background: #e6f4ea; color: #1b5e20; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .ns-search { display: flex; align-items: center; gap: 0.3125rem; height: 1.625rem; padding: 0 0.5rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .ns-search input { flex: 1; border: none; background: none; font-size: 0.75rem; outline: none; }
+  .ns-clear { border: none; background: none; cursor: pointer; color: #999; font-size: 0.875rem; line-height: 1; padding: 0 0.125rem; }
   .ns-clear:hover { color: #444; }
 </style>

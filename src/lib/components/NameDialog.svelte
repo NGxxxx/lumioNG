@@ -61,11 +61,11 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
-  .modal { background: #fff; width: 420px; max-width: 90vw; border-radius: 6px; overflow: hidden; }
-  header { padding: 10px 14px; font-weight: 600; border-bottom: 1px solid #eee; }
-  .body { padding: 14px; font-size: 13px; }
+  .modal { background: #fff; width: 26.25rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; }
+  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid #eee; }
+  .body { padding: 0.875rem; font-size: 0.8125rem; }
   label { display: block; }
-  .body input { width: 100%; box-sizing: border-box; margin-top: 6px; padding: 5px 7px; }
-  .dlg-error { color: #b71c1c; margin-top: 8px; }
-  footer { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 14px; border-top: 1px solid #eee; }
+  .body input { width: 100%; box-sizing: border-box; margin-top: 0.375rem; padding: 0.3125rem 0.4375rem; }
+  .dlg-error { color: #b71c1c; margin-top: 0.5rem; }
+  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid #eee; }
 </style>
