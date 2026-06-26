@@ -36,6 +36,13 @@ export function createSessionManager() {
     return sessions.find((s) => s.id === sessionId)?.nav ?? null;
   }
 
+  /** Apply a partial update to a session, replacing it with a new object so Svelte's
+   *  deep-proxy reactivity fires. Mutating the raw makeSession() object in place updates
+   *  the target but not the per-property signal → spinner stays stuck on "connecting". */
+  function patchSession(id: string, patch: Partial<Session>) {
+    sessions = sessions.map((s) => (s.id === id ? { ...s, ...patch } : s));
+  }
+
   // --- session-scoped tab cleanup (driven by each session's namespaceTree DDL) ---
 
   function closeForCollection(sessionId: string, db: string, coll: string) {
@@ -101,16 +108,13 @@ export function createSessionManager() {
     try {
       await connect(id, p.uri);
       commandLog.push(connectCmd(maskUri(p.uri)), id);
-      s.status = "connected";
-      s.connectedAt = Date.now();
       s.nav.setConnected(true);
-      sessions = [...sessions];
+      patchSession(id, { status: "connected", connectedAt: Date.now() });
       await s.tree.refresh();
       s.host.load(); // fire-and-forget; feeds Host tab + status bar
       return true;
     } catch {
-      s.status = "error";
-      sessions = [...sessions];
+      patchSession(id, { status: "error" });
       return false;
     }
   }
@@ -118,19 +122,16 @@ export function createSessionManager() {
   async function reconnect(id: string) {
     const s = sessions.find((x) => x.id === id);
     if (!s) return;
-    s.status = "connecting"; sessions = [...sessions];
+    patchSession(id, { status: "connecting" });
     try {
       await connect(id, s.uri);
       commandLog.push(connectCmd(maskUri(s.uri)), id);
-      s.status = "connected";
-      s.connectedAt = Date.now();
       s.nav.setConnected(true);
-      sessions = [...sessions];
+      patchSession(id, { status: "connected", connectedAt: Date.now() });
       await s.tree.refresh();
       s.host.load(); // fire-and-forget; feeds Host tab + status bar
     } catch {
-      s.status = "error";
-      sessions = [...sessions];
+      patchSession(id, { status: "error" });
     }
   }
 

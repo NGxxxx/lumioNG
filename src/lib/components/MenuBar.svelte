@@ -146,7 +146,7 @@
     align-items: center;
     height: 1.5rem;
     background: var(--bg);
-    border-bottom: 1px solid #e2e2e2;
+    border-bottom: 1px solid var(--border);
     padding: 0 0.25rem;
     user-select: none;
     box-sizing: border-box;
@@ -157,7 +157,7 @@
     background: none;
     padding: 0.1875rem 0.5625rem;
     font-size: 0.75rem;
-    color: #222;
+    color: var(--fg);
     border-radius: 0.125rem;
     cursor: pointer;
     line-height: 1;
@@ -165,7 +165,7 @@
   .top:hover:not(.disabled):not(:disabled),
   .top.active:not(.disabled):not(:disabled) { background: var(--menu-hover); }
   .top.disabled,
-  .top:disabled { color: #aaa; cursor: default; }
+  .top:disabled { color: var(--gray-aa); cursor: default; }
   .dropdown {
     position: absolute;
     top: 100%;
@@ -185,13 +185,13 @@
     padding: 0.3125rem 0.75rem;
     cursor: pointer;
     font-size: 0.75rem;
-    color: #222;
+    color: var(--fg);
   }
   .item:hover:not(:disabled) { background: var(--menu-hover); }
-  .item:disabled { color: #aaa; cursor: default; }
+  .item:disabled { color: var(--gray-aa); cursor: default; }
   /* Submenu parent row + right-anchored flyout */
   .parent { position: relative; }
   .parent .item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
-  .arrow { color: #888; font-size: 0.625rem; }
+  .arrow { color: var(--muted); font-size: 0.625rem; }
   .submenu { top: 0; left: 100%; }
 </style>

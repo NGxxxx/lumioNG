@@ -46,6 +46,9 @@ export const truncateCollectionCmd = (coll: string) => `${c(coll)}.deleteMany({}
 export const renameCollectionCmd = (coll: string, to: string) =>
   `${c(coll)}.renameCollection("${to}")`;
 
+export const duplicateCollectionCmd = (source: string, target: string) =>
+  `${c(source)}.aggregate([{ "$out": "${target}" }])`;
+
 export const dropDatabaseCmd = () => "db.dropDatabase()";
 
 export function createIndexCmd(

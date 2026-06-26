@@ -65,13 +65,13 @@
 </div>
 
 <style>
-  .form { border: 1px solid #ddd; border-radius: 0.375rem; padding: 0.75rem; margin: 0.5rem; font-size: 0.8125rem; background: #fafafa; }
+  .form { border: 1px solid var(--border); border-radius: 0.375rem; padding: 0.75rem; margin: 0.5rem; font-size: 0.8125rem; background: var(--zebra); }
   .row { display: flex; gap: 0.375rem; margin-bottom: 0.375rem; }
   .row input { flex: 1; padding: 0.25rem 0.375rem; }
-  .rm { border: none; background: none; cursor: pointer; color: #b71c1c; font-size: 1rem; }
-  .addfield { border: 1px dashed #ccc; background: #fff; border-radius: 0.25rem; padding: 0.1875rem 0.5rem; cursor: pointer; font-size: 0.75rem; }
+  .rm { border: none; background: none; cursor: pointer; color: var(--error); font-size: 1rem; }
+  .addfield { border: 1px dashed var(--gray-c4); background: var(--panel); border-radius: 0.25rem; padding: 0.1875rem 0.5rem; cursor: pointer; font-size: 0.75rem; }
   .opt { display: block; margin-top: 0.5rem; }
   .opt input:not([type]) { width: 100%; box-sizing: border-box; margin-top: 0.25rem; padding: 0.25rem 0.375rem; }
-  .dlg-error { color: #b71c1c; margin-top: 0.5rem; }
+  .dlg-error { color: var(--error); margin-top: 0.5rem; }
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem; }
 </style>

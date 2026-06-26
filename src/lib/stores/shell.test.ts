@@ -1,27 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { createShell } from "./shell.svelte";
 
-function fakeTree(databases: any[]) {
-  return {
-    get databases() {
-      return databases;
-    },
-  };
-}
-
 describe("createShell", () => {
-  it("dbCount/collCount are derived from namespaceTree", () => {
-    const tree = fakeTree([
-      { name: "a", collections: ["x", "y"] },
-      { name: "b", collections: ["z"] },
-    ]);
-    const s = createShell(tree);
-    expect(s.dbCount).toBe(2);
-    expect(s.collCount).toBe(3);
-  });
-
   it("setConnection / toggleSession / toggleLog", () => {
-    const s = createShell(fakeTree([]));
+    const s = createShell();
     expect(s.connection).toBeNull();
     s.setConnection({ label: "Local", uri: "mongodb://x" });
     expect(s.connection).toEqual({ label: "Local", uri: "mongodb://x" });
@@ -34,14 +16,14 @@ describe("createShell", () => {
   });
 
   it("openSession sets sessionOpen true", () => {
-    const s = createShell(fakeTree([]));
+    const s = createShell();
     s.toggleSession(); // false (was true by default)
     s.openSession();
     expect(s.sessionOpen).toBe(true);
   });
 
   it("setSidebarWidth/setLogHeight clamp to bounds", () => {
-    const s = createShell(fakeTree([]));
+    const s = createShell();
     s.setSidebarWidth(10);
     expect(s.sidebarWidth).toBe(160);
     s.setSidebarWidth(9999);

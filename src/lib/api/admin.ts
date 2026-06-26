@@ -12,6 +12,10 @@ export async function renameCollection(sessionId: string, db: string, from: stri
   await invoke("rename_collection", { sessionId, db, from, to });
 }
 
+export async function duplicateCollection(sessionId: string, db: string, source: string, target: string): Promise<void> {
+  await invoke("duplicate_collection", { sessionId, db, source, target });
+}
+
 export async function dropDatabase(sessionId: string, db: string): Promise<void> {
   await invoke("drop_database", { sessionId, db });
 }

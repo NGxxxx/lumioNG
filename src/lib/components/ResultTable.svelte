@@ -345,6 +345,7 @@
   {#if v.filterError}<div class="error">{msgKey(v.filterError)}</div>{/if}
 
   {#if view === "grid"}
+  <div class="grid-region">
   <div class="scroller" role="grid" tabindex="0" aria-label={m.result_table_aria_grid()} onkeydown={onGridKey} bind:this={scrollerEl}>
     <table style="width:{gridTotalWidth}px">
       <colgroup>
@@ -427,11 +428,12 @@
         {/if}
       </tbody>
     </table>
-    {#if v.loading}
-      <div class="loading-overlay" role="status" aria-live="polite">
-        <span class="spinner"></span><span>{m.common_loading()}</span>
-      </div>
-    {/if}
+  </div>
+  {#if v.loading}
+    <div class="loading-overlay" role="status" aria-live="polite">
+      <span class="spinner"></span><span>{m.common_loading()}</span>
+    </div>
+  {/if}
   </div>
   {:else}
   <!-- Tree view (shared, virtualized component) -->
@@ -554,15 +556,19 @@
 <style>
   /* ── Layout ── */
   .result { display: flex; flex-direction: column; height: 100%; }
+  /* Positioning context for the loading overlay. It must sit OUTSIDE .scroller: an absolute
+     child of the scroll container anchors to the content top and scrolls out of view, so the
+     spinner would hide above the fold after scrolling down (e.g. on Show all). */
+  .grid-region { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .scroller { overflow: auto; flex: 1; position: relative; }
 
-  /* ── Loading overlay ── */
+  /* ── Loading overlay (covers the visible grid region, fixed regardless of scroll) ── */
   .loading-overlay {
     position: absolute; inset: 0; z-index: 5;
     display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-    background: rgba(255,255,255,.55); color: #555; font-size: 0.75rem;
+    background: rgba(255,255,255,.55); color: var(--gray-55); font-size: 0.75rem;
   }
-  .spinner { width: 0.875rem; height: 0.875rem; border: 2px solid #cfd8e3; border-top-color: #4c7; border-radius: 50%; animation: spin .7s linear infinite; }
+  .spinner { width: 0.875rem; height: 0.875rem; border: 2px solid var(--spinner-track); border-top-color: var(--progress); border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Table base ── */
@@ -571,7 +577,7 @@
   /* ── Header ── */
   th {
     background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom));
-    border: 1px solid #d0d0d0;
+    border: 1px solid var(--gray-cf);
     padding: 0.25rem 0.5625rem;
     font-weight: 600;
     position: sticky;
@@ -579,13 +585,13 @@
     z-index: 2;
     cursor: pointer;
     user-select: none;
-    color: #222;
+    color: var(--fg);
     text-align: left;
   }
   .th-rownum {
     width: 2.625rem;
     text-align: right;
-    color: #888;
+    color: var(--muted);
     font-weight: 500;
     position: sticky;
     left: 0;
@@ -604,8 +610,8 @@
   }
   .td-rownum {
     text-align: right;
-    color: #999;
-    background: #f6f6f6;
+    color: var(--gray-99);
+    background: var(--th-grad-top);
     position: sticky;
     left: 0;
     z-index: 1;
@@ -627,8 +633,8 @@
   }
   .data-cell .cell.string { font-family: system-ui, sans-serif; }
   .data-cell .cell.null { font-style: italic; }
-  .data-cell .cell.object { color: #8a6cb5; font-style: italic; font-size: 0.6875rem; }
-  .data-cell .cell.array { color: #a07b2f; font-style: italic; font-size: 0.6875rem; }
+  .data-cell .cell.object { color: var(--type-object); font-style: italic; font-size: 0.6875rem; }
+  .data-cell .cell.array { color: var(--type-array); font-style: italic; font-size: 0.6875rem; }
 
   /* ── Pill (status column) ── */
   .pill {
@@ -642,14 +648,14 @@
 
   /* ── Edit cell ── */
   .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.125rem 0.25rem; }
-  .cellerror { color: #b71c1c; font-size: 0.6875rem; margin-top: 0.125rem; }
+  .cellerror { color: var(--error); font-size: 0.6875rem; margin-top: 0.125rem; }
 
   /* ── Column header decorations ── */
   .colname { font-weight: 600; }
-  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: #555; background: #e8e8e8; border-radius: 0.1875rem; padding: 0 0.25rem; font-family: ui-monospace, monospace; }
-  .presence { margin-left: 0.25rem; font-size: 0.625rem; color: #999; }
-  .sortarrow { margin-left: 0.25rem; font-size: 0.625rem; color: #1565c0; }
-  .sortrank { margin-left: 0.125rem; font-size: 0.5625rem; color: #1565c0; vertical-align: super; }
+  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: var(--gray-55); background: var(--tab-inactive-bg); border-radius: 0.1875rem; padding: 0 0.25rem; font-family: ui-monospace, monospace; }
+  .presence { margin-left: 0.25rem; font-size: 0.625rem; color: var(--gray-99); }
+  .sortarrow { margin-left: 0.25rem; font-size: 0.625rem; color: var(--link); }
+  .sortrank { margin-left: 0.125rem; font-size: 0.5625rem; color: var(--link); vertical-align: super; }
 
   /* ── Filter bar ── */
   .filterbar {
@@ -658,16 +664,16 @@
     gap: 0.375rem;
     height: 1.875rem;
     flex: none;
-    background: #f7f9fb;
-    border-bottom: 1px solid #e2e2e2;
+    background: var(--zebra-alt);
+    border-bottom: 1px solid var(--border);
     padding: 0 0.625rem;
   }
-  .filter-label { color: #777; font-size: 0.75rem; }
+  .filter-label { color: var(--gray-77); font-size: 0.75rem; }
   .filter-input {
     flex: 1;
     height: 1.3125rem;
-    background: #fff;
-    border: 1px solid #c4c4c4;
+    background: var(--panel);
+    border: 1px solid var(--gray-c4);
     border-radius: 0.125rem;
     padding: 0 0.5rem;
     font-family: Consolas, monospace;
@@ -680,15 +686,15 @@
     gap: 0.3125rem;
     height: 1.375rem;
     padding: 0 0.75rem;
-    background: #1f9d4d;
-    color: #fff;
+    background: var(--run);
+    color: var(--panel);
     border: none;
     border-radius: 0.1875rem;
     cursor: pointer;
     font-weight: 600;
     font-size: 0.75rem;
   }
-  .btn-run:hover { background: #1a8a43; }
+  .btn-run:hover { background: var(--run-hover); }
 
   /* ── Grid / Tree toggle ── */
   .view-toggle { display: flex; align-items: center; gap: 0.0625rem; margin-left: 0.25rem; }
@@ -699,24 +705,24 @@
     height: 1.375rem;
     padding: 0 0.5rem;
     font-size: 0.75rem;
-    border: 1px solid #ccc;
-    background: #f0f0f0;
+    border: 1px solid var(--gray-c4);
+    background: var(--bg);
     cursor: pointer;
-    color: #444;
+    color: var(--gray-44);
     border-radius: 0.125rem;
   }
-  .toggle-btn:hover { background: #e4e4e4; }
+  .toggle-btn:hover { background: var(--cell-border); }
   .toggle-active {
-    background: #dcecfa;
-    box-shadow: inset 0 0 0 1px #b9d8f2;
+    background: var(--hover);
+    box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
     color: var(--tab-active-fg);
   }
 
   /* ── Error / status messages ── */
-  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; }
-  .io-ok { background: #e8f5e9; color: #1b5e20; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
+  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   /* Tree-view loading hint: overlay so it doesn't disturb the 100%-height virtual scroller. */
-  .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: #777; font-size: 0.75rem;
+  .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: var(--gray-77); font-size: 0.75rem;
     background: rgba(255, 255, 255, 0.75); border-radius: 0.1875rem; z-index: 5; }
 
   /* ── Column chooser ── */
@@ -727,13 +733,13 @@
     height: 1.375rem;
     padding: 0 0.625rem;
     font-size: 0.75rem;
-    border: 1px solid #ccc;
+    border: 1px solid var(--gray-c4);
     border-radius: 0.125rem;
-    background: #f0f0f0;
-    color: #444;
+    background: var(--bg);
+    color: var(--gray-44);
     cursor: pointer;
   }
-  .chooser-apply:hover { background: #e6e6e6; }
+  .chooser-apply:hover { background: var(--cell-border); }
 
   /* ── Pager ── */
   .pager {
@@ -743,25 +749,25 @@
     flex: none;
     height: 1.875rem;
     padding: 0 0.625rem;
-    border-top: 1px solid #e2e2e2;
-    background: #f7f9fb;
+    border-top: 1px solid var(--border);
+    background: var(--zebra-alt);
     font-size: 0.75rem;
   }
   .pg-btn {
     height: 1.375rem;
     padding: 0 0.5rem;
-    border: 1px solid #ccc;
-    background: #f0f0f0;
+    border: 1px solid var(--gray-c4);
+    background: var(--bg);
     border-radius: 0.125rem;
     cursor: pointer;
-    color: #444;
+    color: var(--gray-44);
   }
   .pg-btn:disabled { opacity: 0.45; cursor: default; }
-  .pg-info { display: flex; align-items: center; gap: 0.25rem; color: #555; }
+  .pg-info { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
   .pg-jump { width: 3.25rem; height: 1.25rem; text-align: center; }
-  .pg-total { margin-left: auto; color: #888; }
-  .pg-sep { color: #ccc; }
-  .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: #555; }
+  .pg-total { margin-left: auto; color: var(--muted); }
+  .pg-sep { color: var(--gray-c4); }
+  .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
   .pg-rows input { width: 3.5rem; height: 1.25rem; text-align: center; }
 
   /* ── Tree view ── (rendering lives in the shared, virtualized ResultTree.svelte) */
@@ -773,37 +779,37 @@
   .dropwrap:focus { outline: none; }
   .drop-btn {
     height: 1.375rem; padding: 0 0.5rem; font-size: 0.75rem;
-    border: 1px solid #ccc; background: #f0f0f0; color: #444;
+    border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44);
     border-radius: 0.125rem; cursor: pointer; white-space: nowrap;
   }
-  .drop-btn:hover { background: #e4e4e4; }
+  .drop-btn:hover { background: var(--cell-border); }
   .dropdown {
     position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 0.125rem;
-    background: #fff; border: 1px solid #ccc; padding: 0.375rem;
+    background: var(--panel); border: 1px solid var(--gray-c4); padding: 0.375rem;
     min-width: 11.25rem; max-height: 20rem; overflow: auto;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
-  .dd-allnone { display: flex; gap: 0.375rem; padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid #eee; }
+  .dd-allnone { display: flex; gap: 0.375rem; padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--bg); }
   .dd-allnone button { flex: 1; font-size: 0.6875rem; padding: 0.125rem 0; cursor: pointer; }
-  .locked { color: #aaa; font-size: 0.625rem; margin-left: 0.25rem; }
+  .locked { color: var(--gray-aa); font-size: 0.625rem; margin-left: 0.25rem; }
   /* Fields popover: pin Show/Hide-all + Apply, scroll only the field list. */
   .fields-dd { display: flex; flex-direction: column; overflow: hidden; }
   .fields-dd .dd-allnone { flex: none; }
   .fields-list { flex: 1; min-height: 0; overflow: auto; }
-  .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid #eee; }
+  .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
 
-  .dd-empty { color: #999; font-size: 0.75rem; padding: 0.125rem 0.125rem 0.375rem; }
+  .dd-empty { color: var(--gray-99); font-size: 0.75rem; padding: 0.125rem 0.125rem 0.375rem; }
   .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }
-  .dd-rank { color: #999; width: 1rem; }
+  .dd-rank { color: var(--gray-99); width: 1rem; }
   .dd-field { flex: 1; font-family: ui-monospace, monospace; }
   .dd-ic {
-    width: 1.25rem; height: 1.125rem; border: 1px solid #d4d4d4; background: #f6f6f6;
-    border-radius: 0.125rem; cursor: pointer; font-size: 0.6875rem; line-height: 1; padding: 0; color: #444;
+    width: 1.25rem; height: 1.125rem; border: 1px solid var(--gray-cf); background: var(--th-grad-top);
+    border-radius: 0.125rem; cursor: pointer; font-size: 0.6875rem; line-height: 1; padding: 0; color: var(--gray-44);
   }
-  .dd-ic:hover { background: #e8e8e8; }
+  .dd-ic:hover { background: var(--tab-inactive-bg); }
   .dd-ic:disabled { opacity: 0.35; cursor: default; }
-  .dd-x:hover { background: #fdecea; color: #b71c1c; }
-  .dd-add { display: block; font-size: 0.75rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid #eee; }
+  .dd-x:hover { background: var(--error-bg); color: var(--error); }
+  .dd-add { display: block; font-size: 0.75rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
   .dd-add select { margin-left: 0.375rem; font-size: 0.75rem; }
   .dd-clear { margin-top: 0.375rem; width: 100%; font-size: 0.6875rem; cursor: pointer; }
 

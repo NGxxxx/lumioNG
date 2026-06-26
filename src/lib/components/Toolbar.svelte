@@ -185,7 +185,7 @@
     align-items: center;
     height: 2.125rem;
     background: var(--bg);
-    border-bottom: 1px solid #d8d8d8;
+    border-bottom: 1px solid var(--border);
     flex: none;
     padding: 0 0.25rem;
     gap: 0.0625rem;
@@ -216,7 +216,7 @@
   .sep {
     width: 1px;
     height: 1.25rem;
-    background: #d0d0d0;
+    background: var(--gray-cf);
     margin: 0 0.1875rem;
     flex: none;
   }

@@ -89,9 +89,9 @@
   .scroller { overflow: auto; height: 100%; }
   .empty { padding: 1rem; color: var(--muted); font-size: 0.75rem; }
   table { border-collapse: collapse; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; }
-  th { background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom)); border: 1px solid #d0d0d0; padding: 0.25rem 0.5625rem; font-weight: 600; position: sticky; top: 0; z-index: 2; text-align: left; color: #222; }
+  th { background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom)); border: 1px solid var(--gray-cf); padding: 0.25rem 0.5625rem; font-weight: 600; position: sticky; top: 0; z-index: 2; text-align: left; color: var(--fg); }
   .colname { font-weight: 600; }
-  .rownum { width: 2.625rem; text-align: right; color: #999; font-size: 0.6875rem; padding: 0.1875rem 0.375rem; }
+  .rownum { width: 2.625rem; text-align: right; color: var(--gray-99); font-size: 0.6875rem; padding: 0.1875rem 0.375rem; }
   td { border: 1px solid var(--cell-border); padding: 0; height: 1.375rem; overflow: hidden; text-overflow: ellipsis; }
   td.data-cell :global(.cell) { padding: 0 0.5625rem; display: inline-block; height: 1.375rem; line-height: 1.375rem; }
   .col-resize { position: absolute; top: 0; right: 0; width: 0.375rem; height: 100%; cursor: col-resize; user-select: none; }

@@ -233,20 +233,20 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; z-index: 1000; }
-  .modal { background: #fff; width: 40rem; max-width: 94vw; border-radius: 0.375rem; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .modal { background: var(--panel); width: 40rem; max-width: 94vw; border-radius: 0.375rem; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
   .modal.running { width: 35rem; }
-  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid #eee; }
+  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
   .body { padding: 0.875rem; font-size: 0.8125rem; }
-  .summary { margin: 0 0 0.625rem; color: #444; }
+  .summary { margin: 0 0 0.625rem; color: var(--gray-44); }
 
   /* Two-column layout (HeidiSQL-style): left = what to export, right = options */
   .cols-2 { display: flex; gap: 0.75rem; align-items: stretch; }
-  .panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid #e2e2e2; border-radius: 0.25rem; overflow: hidden; }
-  .panel-bar { display: flex; align-items: center; gap: 0.625rem; padding: 0.3125rem 0.5rem; border-bottom: 1px solid #eee; background: #fafafa; }
-  .panel-title { font-size: 0.75rem; color: #777; }
-  .panel-bar .count { margin-left: auto; color: #777; font-size: 0.75rem; }
+  .panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 0.25rem; overflow: hidden; }
+  .panel-bar { display: flex; align-items: center; gap: 0.625rem; padding: 0.3125rem 0.5rem; border-bottom: 1px solid var(--bg); background: var(--zebra); }
+  .panel-title { font-size: 0.75rem; color: var(--gray-77); }
+  .panel-bar .count { margin-left: auto; color: var(--gray-77); font-size: 0.75rem; }
   .panel-bar .link:last-of-type { margin-left: 0; }
-  .link { border: none; background: none; color: #2563c9; cursor: pointer; padding: 0; font-size: 0.75rem; }
+  .link { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; font-size: 0.75rem; }
   .link:hover { text-decoration: underline; }
 
   /* Scrollable list — behaves like the namespace sidebar when long */
@@ -254,29 +254,29 @@
   .db, .coll { display: flex; align-items: center; gap: 0.375rem; padding: 0.1875rem 0.5rem; cursor: pointer; }
   .db { font-weight: 600; }
   .db-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .db-count { margin-left: auto; color: #999; font-weight: 400; font-size: 0.6875rem; }
+  .db-count { margin-left: auto; color: var(--gray-99); font-weight: 400; font-size: 0.6875rem; }
   .coll { padding-left: 1.625rem; font-weight: 400; }
   .coll span, .db-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .scroll label:hover { background: #f1f5fb; }
+  .scroll label:hover { background: var(--row-hover); }
 
   .options { flex: 0 0 12.25rem; display: flex; flex-direction: column; gap: 0.625rem; }
-  fieldset { border: 1px solid #e2e2e2; border-radius: 0.25rem; padding: 0.5rem 0.625rem; margin: 0; }
-  legend { font-size: 0.75rem; color: #777; padding: 0 0.25rem; }
+  fieldset { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.625rem; margin: 0; }
+  legend { font-size: 0.75rem; color: var(--gray-77); padding: 0 0.25rem; }
   .options label { display: block; padding: 0.125rem 0; }
-  .dir { margin: 0.375rem 0 0; color: #666; font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .dir { margin: 0.375rem 0 0; color: var(--th-fg); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid #eee; }
+  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
   .primary { font-weight: 600; }
 
   /* Running phase */
   .rows-scroll { max-height: 50vh; overflow: auto; }
   table.rows { width: 100%; border-collapse: collapse; }
-  table.rows th, table.rows td { text-align: left; padding: 0.1875rem 0.5rem 0.1875rem 0; border-bottom: 1px solid #eee; }
-  table.rows th { position: sticky; top: 0; background: #fff; }
-  td.done { color: #1b5e20; } td.error { color: #b71c1c; } td.running { color: #0b5; }
+  table.rows th, table.rows td { text-align: left; padding: 0.1875rem 0.5rem 0.1875rem 0; border-bottom: 1px solid var(--bg); }
+  table.rows th { position: sticky; top: 0; background: var(--panel); }
+  td.done { color: var(--ok-fg); } td.error { color: var(--error); } td.running { color: var(--ok-strong); }
   .overall { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.625rem; }
-  .bar { flex: 1; height: 0.5rem; background: #eee; border-radius: 0.25rem; overflow: hidden; }
-  .fill { height: 100%; background: #4c7; transition: width .2s; }
-  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; }
-  .io-ok { background: #e6f4ea; color: #1b5e20; padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; }
+  .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: 0.25rem; overflow: hidden; }
+  .fill { height: 100%; background: var(--progress); transition: width .2s; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; }
+  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; }
 </style>

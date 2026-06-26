@@ -209,17 +209,17 @@
 {/if}
 
 <style>
-  .tree { list-style: none; margin: 0; padding-left: 1.125rem; border-left: 1px solid #eee; }
+  .tree { list-style: none; margin: 0; padding-left: 1.125rem; border-left: 1px solid var(--bg); }
   .tree li { margin: 0.0625rem 0; }
   .node { display: flex; align-items: center; gap: 0.375rem; padding: 0.0625rem 0; }
-  .label { font-family: ui-monospace, monospace; font-size: 0.8125rem; color: #333; }
-  .badge { background: #eef; color: #557; padding: 0 0.375rem; border-radius: 0.1875rem; font-size: 0.6875rem; font-family: ui-monospace, monospace; }
-  .display { color: #555; font-family: ui-monospace, monospace; font-size: 0.8125rem; }
+  .label { font-family: ui-monospace, monospace; font-size: 0.8125rem; color: var(--gray-33); }
+  .badge { background: var(--blue-tint5); color: var(--slate); padding: 0 0.375rem; border-radius: 0.1875rem; font-size: 0.6875rem; font-family: ui-monospace, monospace; }
+  .display { color: var(--gray-55); font-family: ui-monospace, monospace; font-size: 0.8125rem; }
   .leaf { font-family: ui-monospace, monospace; font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
-  .x { border: none; background: none; color: #c00; cursor: pointer; font-size: 0.75rem; }
+  .x { border: none; background: none; color: var(--danger-strong); cursor: pointer; font-size: 0.75rem; }
   .lock { font-size: 0.75rem; }
-  .cellerror { color: #b71c1c; font-size: 0.6875rem; margin-left: 0.375rem; }
+  .cellerror { color: var(--error); font-size: 0.6875rem; margin-left: 0.375rem; }
   .add { display: flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0 0.125rem 1.125rem; }
   .add .name { font-size: 0.75rem; padding: 0.0625rem 0.25rem; }
-  .adderr { color: #b71c1c; font-size: 0.6875rem; }
+  .adderr { color: var(--error); font-size: 0.6875rem; }
 </style>

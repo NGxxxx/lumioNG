@@ -55,13 +55,13 @@
     padding-left: 0.625rem; user-select: none;
   }
   .logo { flex: none; }
-  .crumb { margin-left: 0.5rem; font-size: 0.75rem; color: #333; }
+  .crumb { margin-left: 0.5rem; font-size: 0.75rem; color: var(--gray-33); }
   .wbtns { margin-left: auto; display: flex; height: 100%; }
   .wbtn {
     width: 2.875rem; height: 100%; border: none; background: transparent;
     display: flex; align-items: center; justify-content: center; cursor: default; padding: 0;
   }
-  .wbtn:hover { background: #e8e8e8; }
-  .wbtn.close:hover { background: #e81123; }
-  .wbtn.close:hover :global(path) { stroke: #fff; }
+  .wbtn:hover { background: var(--tab-inactive-bg); }
+  .wbtn.close:hover { background: var(--danger); }
+  .wbtn.close:hover :global(path) { stroke: var(--panel); }
 </style>

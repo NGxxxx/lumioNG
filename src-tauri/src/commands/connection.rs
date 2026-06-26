@@ -2,9 +2,11 @@ use crate::error::AppError;
 use crate::registry::{self, ConnectionInput, SavedConnection};
 use crate::state::AppState;
 use mongodb::bson::doc;
+use mongodb::options::ClientOptions;
 use mongodb::Client;
 use serde::Serialize;
 use std::path::PathBuf;
+use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
 #[tauri::command]
@@ -13,9 +15,19 @@ pub async fn connect(
     uri: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = Client::with_uri_str(&uri)
+    // Parse the URI into options so we can override the driver defaults. The default
+    // server_selection_timeout is 30s, which turns any transient Atlas hiccup (failover,
+    // throttled shared tier, network blip) into a 30s freeze on every operation. Fail
+    // faster so the UI surfaces the error promptly; the user can retry. Set app_name so
+    // the connection is identifiable in Atlas metrics/profiler.
+    let mut opts = ClientOptions::parse(&uri)
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
+    opts.app_name.get_or_insert_with(|| "LumioNG".to_string());
+    opts.server_selection_timeout = Some(Duration::from_secs(10));
+    opts.connect_timeout.get_or_insert(Duration::from_secs(10));
+
+    let client = Client::with_options(opts).map_err(|e| AppError::Connection(e.to_string()))?;
 
     // Ping to confirm the connection is actually live (TLS/auth/SRV).
     client

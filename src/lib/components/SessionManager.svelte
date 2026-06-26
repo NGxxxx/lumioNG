@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { createConnectionRegistry } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -24,6 +25,8 @@
   let connecting = $state(false);
   // Connection error from focusOrOpen (distinct from r.error which is validation/CRUD errors)
   let connectError = $state<string | null>(null);
+  // Connection pending deletion (shows a confirm dialog before removing)
+  let confirmDelete = $state<SavedConnection | null>(null);
 
   const filteredList = $derived(
     filterText.trim()
@@ -230,7 +233,7 @@
         </button>
         <button
           class="foot-btn del-btn"
-          onclick={() => { if (selectedId !== null) { r.remove(selectedId); selectedId = null; r.clearForm(); } }}
+          onclick={() => { const c = r.list.find((x) => x.id === selectedId); if (c) confirmDelete = c; }}
           disabled={selectedId === null}
         >
           <span class="del-x">✕</span>{m.session_manager_btn_delete()}
@@ -249,6 +252,22 @@
     </div>
   </div>
 </div>
+
+{#if confirmDelete}
+  {@const c = confirmDelete}
+  <ConfirmDialog
+    title={m.session_manager_delete_title()}
+    message={m.session_manager_delete_message({ label: c.label })}
+    confirmLabel={m.session_manager_btn_delete()}
+    danger
+    onconfirm={() => {
+      r.remove(c.id);
+      if (selectedId === c.id) { selectedId = null; r.clearForm(); }
+      confirmDelete = null;
+    }}
+    oncancel={() => (confirmDelete = null)}
+  />
+{/if}
 
 <style>
   /* ── Overlay & panel ── */
@@ -274,7 +293,7 @@
     max-width: calc(100vw - 1.5rem);
     max-height: calc(100vh - 1.5rem);
     background: var(--bg);
-    border: 1px solid #888;
+    border: 1px solid var(--muted);
     border-radius: 0.375rem;
     box-shadow: 0 14px 48px rgba(0, 0, 0, 0.35);
     display: flex;
@@ -308,12 +327,12 @@
     border: none;
     cursor: pointer;
     border-radius: 0.1875rem;
-    color: #555;
+    color: var(--gray-55);
     padding: 0;
   }
   .close-btn:hover {
-    background: #e81123;
-    color: #fff;
+    background: var(--danger);
+    color: var(--panel);
   }
 
   /* ── Body ── */
@@ -327,7 +346,7 @@
   .left-col {
     width: 20.625rem;
     flex: none;
-    border-right: 1px solid #d0d0d0;
+    border-right: 1px solid var(--gray-cf);
     display: flex;
     flex-direction: column;
     background: var(--panel);
@@ -346,10 +365,10 @@
     display: flex;
     align-items: center;
     height: 1.5rem;
-    border: 1px solid #c4c4c4;
+    border: 1px solid var(--gray-c4);
     border-radius: 0.125rem;
     padding: 0 0.375rem;
-    background: #fff;
+    background: var(--panel);
     gap: 0.25rem;
   }
   .filter-icon { flex: none; }
@@ -362,14 +381,14 @@
     color: var(--fg);
     min-width: 0;
   }
-  .filter-input::placeholder { color: #aaa; }
+  .filter-input::placeholder { color: var(--gray-aa); }
   .filter-clear {
     width: 1.5rem;
     height: 1.5rem;
-    border: 1px solid #c4c4c4;
+    border: 1px solid var(--gray-c4);
     border-radius: 0.125rem;
-    background: #fff;
-    color: #c0504d;
+    background: var(--panel);
+    color: var(--danger-mute);
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -378,13 +397,13 @@
     font-size: 0.6875rem;
     flex: none;
   }
-  .filter-clear:hover { background: #fdeeee; }
+  .filter-clear:hover { background: var(--error-bg); }
 
   /* ── Session list rows ── */
   .list-header {
     display: flex;
     padding: 0 0.5rem 0.25rem;
-    color: #777;
+    color: var(--gray-77);
     font-size: 0.6875rem;
     flex: none;
   }
@@ -403,7 +422,7 @@
     padding: 0.3125rem 0.5rem;
     cursor: default;
     font-size: 0.75rem;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--bg);
   }
   .session-row:hover {
     background: var(--row-hover);
@@ -415,7 +434,7 @@
   }
   .session-icon { flex: none; }
   .session-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .session-last { width: 5.625rem; color: #888; font-size: 0.6875rem; }
+  .session-last { width: 5.625rem; color: var(--muted); font-size: 0.6875rem; }
   .session-empty { padding: 1rem 0.5rem; color: var(--muted); font-size: 0.75rem; }
 
   /* ── Right column: connection form ── */
@@ -439,41 +458,41 @@
   }
 
   .form-label {
-    color: #444;
+    color: var(--gray-44);
     font-size: 0.75rem;
     text-align: right;
   }
 
   .form-input {
     height: 1.5rem;
-    border: 1px solid #c4c4c4;
+    border: 1px solid var(--gray-c4);
     border-radius: 0.125rem;
     padding: 0 0.5rem;
     font-size: 0.75rem;
-    background: #fff;
+    background: var(--panel);
     color: var(--fg);
     font-family: inherit;
     outline: none;
     width: 100%;
     box-sizing: border-box;
   }
-  .form-input:focus { border-color: #5aabff; }
+  .form-input:focus { border-color: var(--focus-ring); }
   .form-input.mono { font-family: var(--mono); }
   .form-input.short { width: 5.625rem; }
-  .form-input:disabled { background: #f5f5f5; color: #999; cursor: default; }
+  .form-input:disabled { background: var(--zebra); color: var(--gray-99); cursor: default; }
 
   .form-check { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--fg); }
   .import-row { display: flex; gap: 0.375rem; }
   .import-row .form-input { flex: 1; }
   .import-btn {
-    height: 1.5rem; padding: 0 0.625rem; border: 1px solid #b8b8b8; border-radius: 0.125rem;
+    height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.125rem;
     background: var(--panel); cursor: pointer; font-size: 0.75rem; color: var(--fg); flex: none;
   }
-  .import-btn:hover { background: #f3f3f3; }
+  .import-btn:hover { background: var(--bg); }
 
   .form-error {
     margin-top: 0.625rem;
-    color: #b71c1c;
+    color: var(--error);
     font-size: 0.75rem;
   }
 
@@ -483,7 +502,7 @@
     align-items: center;
     height: 2.875rem;
     flex: none;
-    border-top: 1px solid #cfcfcf;
+    border-top: 1px solid var(--gray-cf);
     padding: 0 0.625rem;
     gap: 0.5rem;
     background: var(--bg);
@@ -499,33 +518,33 @@
     height: 1.625rem;
     padding: 0 0.75rem;
     background: var(--panel);
-    border: 1px solid #b8b8b8;
+    border: 1px solid var(--gray-b8);
     border-radius: 0.1875rem;
     cursor: pointer;
     font-size: 0.75rem;
     color: var(--fg);
     font-family: inherit;
   }
-  .foot-btn:hover:not(:disabled) { background: #f3f3f3; }
+  .foot-btn:hover:not(:disabled) { background: var(--bg); }
   .foot-btn:disabled { opacity: 0.5; cursor: default; }
 
   .new-btn .plus { color: var(--accent); font-weight: 700; }
-  .new-btn:hover:not(:disabled) { background: #f3f9ee; }
+  .new-btn:hover:not(:disabled) { background: var(--ok-bg-tint); }
 
-  .del-btn .del-x { color: #c0504d; }
-  .del-btn:hover:not(:disabled) { background: #fdeeee; }
+  .del-btn .del-x { color: var(--danger-mute); }
+  .del-btn:hover:not(:disabled) { background: var(--error-bg); }
 
   .open-btn {
     height: 1.75rem;
     padding: 0 1.375rem;
     background: var(--accent);
-    color: #fff;
+    color: var(--panel);
     border-color: transparent;
     font-weight: 600;
   }
-  .open-btn:hover:not(:disabled) { background: #1a8a43; }
-  .open-btn:disabled { background: #7cc9a3; cursor: default; opacity: 1; }
+  .open-btn:hover:not(:disabled) { background: var(--run-hover); }
+  .open-btn:disabled { background: var(--ok-mid); cursor: default; opacity: 1; }
 
   .cancel-btn { height: 1.75rem; padding: 0 1.375rem; }
-  .cancel-btn:hover { background: #eee; }
+  .cancel-btn:hover { background: var(--bg); }
 </style>

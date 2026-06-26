@@ -40,6 +40,44 @@
   --j-op: #1565c0;     /* $gte, $sum… */
   --j-id: #6b3fa0;     /* ObjectId value */
   --j-comment: #8a9a8a;
+  /* neutral grays: text + lines (lighter grays fold into --bg/--border/--cell-border/--zebra) */
+  --gray-33: #333333;
+  --gray-44: #444444;
+  --gray-55: #555555;
+  --gray-77: #777777;
+  --gray-99: #999999;
+  --gray-aa: #aaaaaa;
+  --gray-b8: #b8b8b8;
+  --gray-c4: #c4c4c4;
+  --gray-cf: #cfcfcf;
+  /* greens: run / success / progress */
+  --run: #1f9d4d;
+  --run-hover: #1a8a43;
+  --ok-fg: #1b5e20;
+  --ok-bg: #e6f4ea;
+  --ok-bg-tint: #f3f9ee;
+  --ok-strong: #00bb55;
+  --ok-mid: #7cc9a3;
+  --progress: #44cc77;
+  /* reds: danger */
+  --danger: #e81123;
+  --danger-strong: #cc0000;
+  --danger-mute: #c0504d;
+  /* blues: info / toggle / focus */
+  --toggle-on-ring: #b9d8f2;
+  --link-strong: #2563c9;
+  --focus-ring: #5aabff;
+  --slate: #555577;
+  --spinner-track: #cfd8e3;
+  --blue-tint5: #eeeeff;
+  /* type colors / cream / warn */
+  --cream: #fffef9;
+  --type-object: #8a6cb5;
+  --type-array: #a07b2f;
+  --warn: #ffb74d;
+  --warn-fg: #8a6300;
+  --warn-bg: #fff4e5;
+  --warn-bg2: #fff8e1;
 }
 
 html,

@@ -45,11 +45,11 @@
 <style>
   .host { height: 100%; box-sizing: border-box; overflow: auto; background: var(--panel); padding: 0.875rem 1.125rem; }
   .title { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.1875rem; }
-  .sub { color: #777; margin-bottom: 0.875rem; }
-  h4 { margin: 1rem 0 0.375rem; font-size: 0.75rem; color: #444; }
+  .sub { color: var(--gray-77); margin-bottom: 0.875rem; }
+  h4 { margin: 1rem 0 0.375rem; font-size: 0.75rem; color: var(--gray-44); }
   table { border-collapse: collapse; width: 35rem; font-size: 0.75rem; }
-  .k { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: #555; width: 15rem; }
-  .v { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: #1a1a1a; font-family: var(--mono); }
-  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; margin-bottom: 0.625rem; }
+  .k { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: var(--gray-55); width: 15rem; }
+  .v { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: var(--text-strong); font-family: var(--mono); }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; margin-bottom: 0.625rem; }
   .status { color: var(--muted); }
 </style>

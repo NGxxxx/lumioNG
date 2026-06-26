@@ -57,12 +57,12 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
-  .modal { background: #fff; width: 26.25rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; }
-  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid #eee; }
+  .modal { background: var(--panel); width: 26.25rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; }
+  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
   .body { padding: 0.875rem; font-size: 0.8125rem; }
-  .hint { color: #666; margin: 0 0 0.625rem; }
+  .hint { color: var(--th-fg); margin: 0 0 0.625rem; }
   label { display: block; margin-bottom: 0.625rem; }
   .body input { width: 100%; box-sizing: border-box; margin-top: 0.375rem; padding: 0.3125rem 0.4375rem; }
-  .dlg-error { color: #b71c1c; margin-top: 0.5rem; }
-  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid #eee; }
+  .dlg-error { color: var(--error); margin-top: 0.5rem; }
+  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
 </style>

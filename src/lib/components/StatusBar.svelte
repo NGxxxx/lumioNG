@@ -1,6 +1,6 @@
 <!-- src/lib/components/StatusBar.svelte -->
 <script lang="ts">
-  import { formatUptime, formatDuration } from "../domain/host";
+  import { formatUptime } from "../domain/host";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -32,15 +32,15 @@
   const label = $derived(selDb ?? connectionLabel ?? "—");
   const serverTime = $derived(serverTimeIso ? new Date(serverTimeIso).toLocaleTimeString() : "—");
 
-  // Tick a 1s clock while connected so the "connected for" duration stays live.
+  // "Connected for" duration at minute granularity — tick once a minute, not every second.
   let now = $state(Date.now());
   $effect(() => {
     if (!connected || connectedAt === null) return;
-    const id = setInterval(() => { now = Date.now(); }, 1000);
+    const id = setInterval(() => { now = Date.now(); }, 60_000);
     return () => clearInterval(id);
   });
   const connectedFor = $derived(
-    connected && connectedAt !== null ? formatDuration((now - connectedAt) / 1000) : "—",
+    connected && connectedAt !== null ? formatUptime((now - connectedAt) / 1000) : "—",
   );
 </script>
 
@@ -78,15 +78,15 @@
     height: 1.5rem;
     flex: none;
     background: var(--bg, #f0f0f0);
-    border-top: 1px solid #d8d8d8;
+    border-top: 1px solid var(--border);
     font-size: 0.6875rem;
-    color: #555;
+    color: var(--gray-55);
     user-select: none;
   }
 
   .seg {
     padding: 0 0.625rem;
-    border-right: 1px solid #dcdcdc;
+    border-right: 1px solid var(--border);
     height: 100%;
     display: flex;
     align-items: center;
@@ -96,7 +96,7 @@
   .idle {
     margin-left: auto;
     border-right: none;
-    color: #888;
+    color: var(--muted);
   }
 
   .idle.busy {
@@ -107,7 +107,7 @@
     width: 0.4375rem;
     height: 0.4375rem;
     border-radius: 50%;
-    background: #ccc;
+    background: var(--gray-c4);
     display: inline-block;
     flex: none;
   }

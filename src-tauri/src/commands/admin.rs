@@ -1,5 +1,6 @@
 use crate::error::AppError;
 use crate::state::AppState;
+use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Document};
 use tauri::State;
 
@@ -28,6 +29,27 @@ pub async fn drop_collection(
         .collection::<Document>(&coll)
         .drop()
         .await?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn duplicate_collection(
+    session_id: String,
+    db: String,
+    source: String,
+    target: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let client = state.client(&session_id).await?;
+    // Copy every document into the new collection via `$out` (same DB). Server runs the
+    // whole pipeline before returning an empty cursor; draining it surfaces any error.
+    // Note: `$out` copies documents only, not indexes.
+    let mut cursor = client
+        .database(&db)
+        .collection::<Document>(&source)
+        .aggregate(vec![doc! { "$out": &target }])
+        .await?;
+    while cursor.try_next().await?.is_some() {}
     Ok(())
 }
 

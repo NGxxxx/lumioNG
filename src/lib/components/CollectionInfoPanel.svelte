@@ -74,13 +74,13 @@
 
 <style>
   .infopanel { overflow: auto; height: 100%; padding: 0.75rem 1rem; font-size: 0.8125rem; }
-  h3 { margin: 1rem 0 0.375rem; font-size: 0.8125rem; color: #444; }
+  h3 { margin: 1rem 0 0.375rem; font-size: 0.8125rem; color: var(--gray-44); }
   h3:first-child { margin-top: 0; }
   table.kv { border-collapse: collapse; }
-  table.kv th { text-align: left; font-weight: 500; color: #666; padding: 0.1875rem 1rem 0.1875rem 0; vertical-align: top; }
+  table.kv th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.1875rem 1rem 0.1875rem 0; vertical-align: top; }
   table.kv td { padding: 0.1875rem 0; font-family: ui-monospace, monospace; }
-  pre { background: #f7f7f7; border: 1px solid #eee; border-radius: 0.25rem; padding: 0.625rem; overflow: auto; font-size: 0.75rem; }
-  .muted { color: #888; }
-  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; }
-  .status { padding: 0.5rem 0; color: #777; font-size: 0.75rem; }
+  pre { background: var(--zebra); border: 1px solid var(--bg); border-radius: 0.25rem; padding: 0.625rem; overflow: auto; font-size: 0.75rem; }
+  .muted { color: var(--muted); }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
+  .status { padding: 0.5rem 0; color: var(--gray-77); font-size: 0.75rem; }
 </style>

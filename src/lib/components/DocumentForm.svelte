@@ -180,7 +180,7 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: #f0f0f0;
+    background: var(--bg);
     font-family: inherit;
   }
 
@@ -190,8 +190,8 @@
     align-items: center;
     height: 2.125rem;
     flex: none;
-    background: #fff;
-    border-bottom: 1px solid #dcdcdc;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
     padding: 0 0.75rem;
     gap: 0.4375rem;
   }
@@ -204,14 +204,14 @@
     align-items: center;
     height: 1.75rem;
     flex: none;
-    background: #f6f6f6;
-    border-bottom: 1px solid #e2e2e2;
+    background: var(--th-grad-top);
+    border-bottom: 1px solid var(--border);
     padding: 0 0.625rem;
     gap: 0.125rem;
   }
   .subtab {
     padding: 0.1875rem 0.6875rem;
-    color: #666;
+    color: var(--th-fg);
     cursor: pointer;
     background: transparent;
     border: none;
@@ -223,12 +223,12 @@
     align-items: center;
   }
   .subtab-active {
-    background: #fff;
-    border: 1px solid #cfcfcf;
-    border-bottom: 1px solid #fff;
+    background: var(--panel);
+    border: 1px solid var(--gray-cf);
+    border-bottom: 1px solid var(--panel);
     margin-bottom: -1px;
     font-weight: 600;
-    color: #222;
+    color: var(--fg);
   }
 
   /* Editor body */
@@ -237,7 +237,7 @@
     min-height: 0;
     display: flex;
     overflow: hidden;
-    background: #fffef9;
+    background: var(--cream);
   }
 
   /* JSON area with gutter */
@@ -254,11 +254,11 @@
     width: 2.5rem;
     flex: none;
     text-align: right;
-    color: #bbb;
+    color: var(--gray-b8);
     padding: 0.625rem 0.5rem 0 0;
     user-select: none;
-    border-right: 1px solid #eee;
-    background: #faf9f3;
+    border-right: 1px solid var(--bg);
+    background: var(--cream);
     white-space: pre;
     font-family: Consolas, "Courier New", ui-monospace, monospace;
     font-size: 0.8125rem;
@@ -274,8 +274,8 @@
     line-height: 1.65;
     resize: none;
     outline: none;
-    background: #fffef9;
-    color: #222;
+    background: var(--cream);
+    color: var(--fg);
     white-space: pre;
     overflow-wrap: normal;
     overflow-x: auto;
@@ -284,8 +284,8 @@
 
   /* Error */
   .error {
-    background: #fdecea;
-    color: #b71c1c;
+    background: var(--error-bg);
+    color: var(--error);
     padding: 0.375rem 0.875rem;
     font-size: 0.75rem;
     flex: none;
@@ -297,13 +297,13 @@
     align-items: center;
     height: 2.875rem;
     flex: none;
-    border-top: 1px solid #cfcfcf;
+    border-top: 1px solid var(--gray-cf);
     padding: 0 0.75rem;
     gap: 0.5rem;
-    background: #fff;
+    background: var(--panel);
   }
   .footer-status {
-    color: #888;
+    color: var(--muted);
     font-size: 0.6875rem;
   }
   .footer-actions {
@@ -316,27 +316,27 @@
     align-items: center;
     height: 1.75rem;
     padding: 0 1.25rem;
-    background: #1f9d4d;
-    color: #fff;
+    background: var(--run);
+    color: var(--panel);
     border: none;
     border-radius: 0.1875rem;
     cursor: pointer;
     font-weight: 600;
     font-size: 0.8125rem;
   }
-  .btn-save:hover:not(:disabled) { background: #1a8a43; }
+  .btn-save:hover:not(:disabled) { background: var(--run-hover); }
   .btn-save:disabled { opacity: 0.6; cursor: default; }
   .btn-cancel {
     display: flex;
     align-items: center;
     height: 1.75rem;
     padding: 0 1.25rem;
-    background: #fff;
-    border: 1px solid #b8b8b8;
+    background: var(--panel);
+    border: 1px solid var(--gray-b8);
     border-radius: 0.1875rem;
     cursor: pointer;
     font-size: 0.8125rem;
   }
-  .btn-cancel:hover:not(:disabled) { background: #eee; }
+  .btn-cancel:hover:not(:disabled) { background: var(--bg); }
   .btn-cancel:disabled { opacity: 0.6; cursor: default; }
 </style>

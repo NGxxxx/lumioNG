@@ -143,9 +143,9 @@
     cursor: default;
     user-select: none;
   }
-  .conn:hover { background: #f2f7fc; }
+  .conn:hover { background: var(--row-hover); }
   .icon-mongo { margin-right: 0.3125rem; flex: none; }
-  .conn-label { font-weight: 600; color: #1a1a1a; flex: 1; }
+  .conn-label { font-weight: 600; color: var(--text-strong); flex: 1; }
   .status-dot {
     width: 0.4375rem;
     height: 0.4375rem;
@@ -166,16 +166,16 @@
     user-select: none;
     background: var(--panel);
   }
-  .db:hover { background: #f2f7fc; }
+  .db:hover { background: var(--row-hover); }
   .db[aria-selected="true"] {
-    background: #e6f1fb;
+    background: var(--selected);
     box-shadow: inset 2px 0 0 var(--accent);
     font-weight: 600;
   }
   .caret { margin-right: 0.1875rem; flex: none; }
   .icon-db { margin-right: 0.3125rem; flex: none; }
-  .db-name { color: #1a1a1a; flex: 1; font-size: 0.8125rem; }
-  .db-size { color: #999; font-size: 0.6875rem; margin-left: auto; flex: none; }
+  .db-name { color: var(--text-strong); flex: 1; font-size: 0.8125rem; }
+  .db-size { color: var(--gray-99); font-size: 0.6875rem; margin-left: auto; flex: none; }
 
   /* ── Collection row ── */
   .coll {
@@ -192,15 +192,15 @@
     color: var(--fg);
     box-sizing: border-box;
   }
-  .coll:hover { background: #f2f7fc; }
+  .coll:hover { background: var(--row-hover); }
   .coll.active {
-    background: #e6f1fb;
+    background: var(--selected);
     box-shadow: inset 2px 0 0 var(--accent);
     font-weight: 600;
   }
   .icon-coll { margin-right: 0.3125rem; flex: none; }
   .coll-name { flex: 1; }
-  .coll-count { color: #999; font-size: 0.6875rem; flex: none; }
+  .coll-count { color: var(--gray-99); font-size: 0.6875rem; flex: none; }
 
   /* ── Footer ── */
   .footer {
@@ -210,9 +210,9 @@
     align-items: center;
     padding: 0 0.5rem;
     font-size: 0.6875rem;
-    color: #777;
-    border-top: 1px solid #e2e2e2;
-    background: #f7f7f7;
+    color: var(--gray-77);
+    border-top: 1px solid var(--border);
+    background: var(--zebra);
     flex: none;
   }
 </style>

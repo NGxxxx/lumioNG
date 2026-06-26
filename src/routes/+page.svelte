@@ -209,32 +209,34 @@
         onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
       />
       <div class="panes">
-        {#if navContextTabs.includes("host")}
-          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "host")}>
+        <!-- Mount only the active context pane (lazy), not all four hidden: eager mounting fired
+             every pane's queries at once on each collection switch, wedging the connection. -->
+        {#if active?.zone === "context" && active.kind === "host"}
+          <div class="tabpane">
             <HostTab connection={shell.connection} />
           </div>
         {/if}
-        {#if sel && navContextTabs.includes("database")}
+        {#if active?.zone === "context" && active.kind === "database" && sel}
           {@const db = sel.db}
-          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "database")}>
+          <div class="tabpane">
             {#key db}
               <DatabaseCollectionsPanel {db} onopen={(c) => nav?.selectCollection(db, c)} />
             {/key}
           </div>
         {/if}
-        {#if sel?.coll && navContextTabs.includes("collection")}
+        {#if active?.zone === "context" && active.kind === "collection" && sel?.coll}
           {@const db = sel.db}
           {@const coll = sel.coll}
-          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "collection")}>
+          <div class="tabpane">
             {#key `${db}/${coll}#${nav?.collectionVersion(db, coll) ?? 0}`}
               <CollectionTab {db} {coll} />
             {/key}
           </div>
         {/if}
-        {#if sel?.coll && navContextTabs.includes("data")}
+        {#if active?.zone === "context" && active.kind === "data" && sel?.coll}
           {@const db = sel.db}
           {@const coll = sel.coll}
-          <div class="tabpane" hidden={!(active?.zone === "context" && active.kind === "data")}>
+          <div class="tabpane">
             {#key `${db}/${coll}#${nav?.collectionVersion(db, coll) ?? 0}`}
               <ResultTable {db} {coll} onopendocument={(doc, mode) => openDocument(db, coll, doc, mode)} />
             {/key}
@@ -282,8 +284,8 @@
   <StatusBar
     connected={shell.connection !== null}
     connectionLabel={shell.connection?.label ?? null}
-    dbCount={shell.dbCount}
-    collCount={shell.collCount}
+    dbCount={tree?.databases.length ?? 0}
+    collCount={tree?.databases.reduce((n, d) => n + d.collections.length, 0) ?? 0}
     selDb={sel?.db ?? null}
     selColl={sel?.coll ?? null}
     version={host?.info?.version ?? null}

@@ -34,20 +34,20 @@
     gap: 0.5rem;
     padding: 0 0.5rem;
     background: var(--bg);
-    border-bottom: 1px solid #e0e0e0;
+    border-bottom: 1px solid var(--border);
     font-size: 0.6875rem;
-    color: #666;
+    color: var(--th-fg);
   }
-  .title { font-weight: 600; color: #444; }
-  .dot { color: #aaa; }
-  .subtitle { color: #666; }
+  .title { font-weight: 600; color: var(--gray-44); }
+  .dot { color: var(--gray-aa); }
+  .subtitle { color: var(--th-fg); }
   .actions { margin-left: auto; display: flex; }
   .actions button {
     border: none;
     background: none;
     cursor: pointer;
     font-size: 0.6875rem;
-    color: #888;
+    color: var(--muted);
     padding: 0.125rem 0.375rem;
   }
   .actions button:hover { color: var(--fg); }

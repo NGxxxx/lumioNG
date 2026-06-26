@@ -6,7 +6,11 @@
   import * as m from "$lib/paraglide/messages";
 
   let { db, onopen }: { db: string; onopen: (coll: string) => void } = $props();
-  const v = untrack(() => createDatabaseCollections(sessionManager.active?.id ?? "", db));
+  // Pass the ACTIVE session's tree: the default `namespaceTree` singleton stays empty in
+  // multi-session mode (each session owns its tree), so without this the collection list is blank.
+  const v = untrack(() =>
+    createDatabaseCollections(sessionManager.active?.id ?? "", db, sessionManager.active?.tree),
+  );
   onMount(() => v.init());
 
   const cols: { key: SortCol; label: () => string }[] = [

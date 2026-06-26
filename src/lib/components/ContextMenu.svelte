@@ -52,12 +52,12 @@
 </div>
 
 <style>
-  .menu { position: fixed; z-index: 100; background: #fff; border: 1px solid #ccc; border-radius: 0.25rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); padding: 0.25rem 0; min-width: 10rem; }
+  .menu { position: fixed; z-index: 100; background: var(--panel); border: 1px solid var(--gray-c4); border-radius: 0.25rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); padding: 0.25rem 0; min-width: 10rem; }
   .item { display: block; width: 100%; text-align: left; border: none; background: none; padding: 0.375rem 0.875rem; font-size: 0.8125rem; cursor: pointer; }
-  .item:hover:not(:disabled) { background: #f0f0f0; }
-  .item:disabled { color: #bbb; cursor: default; }
+  .item:hover:not(:disabled) { background: var(--bg); }
+  .item:disabled { color: var(--gray-b8); cursor: default; }
   .sub { position: relative; }
   .item.parent { display: flex; justify-content: space-between; align-items: center; }
-  .caret { color: #999; margin-left: 0.75rem; }
+  .caret { color: var(--gray-99); margin-left: 0.75rem; }
   .submenu { position: absolute; left: 100%; top: -0.25rem; }
 </style>

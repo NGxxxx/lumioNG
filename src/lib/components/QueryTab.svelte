@@ -137,26 +137,26 @@
 
 <style>
   .query { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; }
-  .bar { display: flex; align-items: center; gap: 0.625rem; height: 1.875rem; flex: none; background: var(--panel); border-bottom: 1px solid #e2e2e2; padding: 0 0.625rem; }
-  .db { color: #777; font-size: 0.75rem; }
-  .editor { height: 34%; flex: none; resize: none; border: none; border-bottom: 1px solid #d0d0d0; background: #fffef9; font-family: var(--mono); font-size: 0.8125rem; line-height: 1.6; padding: 0.5rem 0.75rem; box-sizing: border-box; }
-  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-  .cap { background: #fff8e1; color: #8a6300; padding: 0.375rem 0.625rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.625rem; }
+  .bar { display: flex; align-items: center; gap: 0.625rem; height: 1.875rem; flex: none; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 0.625rem; }
+  .db { color: var(--gray-77); font-size: 0.75rem; }
+  .editor { height: 34%; flex: none; resize: none; border: none; border-bottom: 1px solid var(--gray-cf); background: var(--cream); font-family: var(--mono); font-size: 0.8125rem; line-height: 1.6; padding: 0.5rem 0.75rem; box-sizing: border-box; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .cap { background: var(--warn-bg2); color: var(--warn-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.625rem; }
   .cap button { font-size: 0.75rem; cursor: pointer; }
   .bottom { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .bottom-tabs { display: flex; align-items: center; gap: 0.125rem; height: 1.625rem; flex: none; background: var(--bg); border-bottom: 1px solid #e0e0e0; padding: 0 0.375rem; }
-  .bottom-tabs > button { height: 1.25rem; padding: 0 0.625rem; font-size: 0.75rem; border: 1px solid transparent; background: none; cursor: pointer; color: #666; border-radius: 0.1875rem 0.1875rem 0 0; }
+  .bottom-tabs { display: flex; align-items: center; gap: 0.125rem; height: 1.625rem; flex: none; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 0.375rem; }
+  .bottom-tabs > button { height: 1.25rem; padding: 0 0.625rem; font-size: 0.75rem; border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
   .bottom-tabs > button.active { background: var(--panel); color: var(--tab-active-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--tab-active-border); }
   .view-toggle { margin-left: auto; display: flex; gap: 0.0625rem; }
-  .view-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid #ccc; background: #f0f0f0; color: #444; border-radius: 0.125rem; cursor: pointer; }
-  .view-toggle button.active { background: #dcecfa; box-shadow: inset 0 0 0 1px #b9d8f2; color: var(--tab-active-fg); }
+  .view-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
+  .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
   .result-pane { flex: 1; min-height: 0; overflow: hidden; background: var(--panel); }
   .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; }
-  .pager { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.75rem; padding: 0 0.625rem; border-top: 1px solid #e2e2e2; background: #f7f9fb; font-size: 0.75rem; }
-  .pager button { height: 1.25rem; padding: 0 0.5rem; border: 1px solid #ccc; background: #f0f0f0; border-radius: 0.125rem; cursor: pointer; color: #444; }
+  .pager { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.75rem; padding: 0 0.625rem; border-top: 1px solid var(--border); background: var(--zebra-alt); font-size: 0.75rem; }
+  .pager button { height: 1.25rem; padding: 0 0.5rem; border: 1px solid var(--gray-c4); background: var(--bg); border-radius: 0.125rem; cursor: pointer; color: var(--gray-44); }
   .pager button:disabled { opacity: 0.45; cursor: default; }
-  .pg-info { color: #555; }
-  .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: #555; }
+  .pg-info { color: var(--gray-55); }
+  .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
   .pg-rows input { width: 3.5rem; height: 1.25rem; text-align: center; }
-  .pg-total { margin-left: auto; color: #888; }
+  .pg-total { margin-left: auto; color: var(--muted); }
 </style>

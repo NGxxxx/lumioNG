@@ -50,9 +50,9 @@
     const info = describeValue(v);
     const kind = toValueKind(info.type);
     if (kind) return `color:${jsonValueColor(kind)}`;
-    if (info.type === "object") return "color:#7b53b8";
-    if (info.type === "array") return "color:#a07b2f";
-    return "color:#444";
+    if (info.type === "object") return "color:var(--j-brace)";
+    if (info.type === "array") return "color:var(--type-array)";
+    return "color:var(--gray-44)";
   }
 
   /** _id display. Collapsed → truncated preview; expanded → full value (shown right after `{`). */
@@ -168,7 +168,7 @@
     overflow: auto;
     height: 100%;
     position: relative;
-    background: #fff;
+    background: var(--panel);
     font-family: Consolas, "Courier New", monospace;
     font-size: 0.78125rem;
     line-height: 1.55;
@@ -185,7 +185,7 @@
        Open rows grow to fit their fields. Keep this height in sync with ROW_EST in the script. */
     height: 27px;
     overflow: hidden;
-    border-bottom: 1px solid #f0f0f0;
+    border-bottom: 1px solid var(--bg);
     padding: 0.125rem 0;
   }
   .tree-doc.open {
@@ -201,15 +201,15 @@
     overflow: hidden;
     user-select: none;
   }
-  .tree-header:hover { background: #f5f9fd; }
+  .tree-header:hover { background: var(--zebra-alt); }
   .tree-caret { flex: none; margin-right: 0.375rem; transition: transform 0.1s; }
-  .tree-n { color: #999; margin-right: 0.5rem; }
-  .tree-brace { color: #7b53b8; }
+  .tree-n { color: var(--gray-99); margin-right: 0.5rem; }
+  .tree-brace { color: var(--j-brace); }
   .tree-brace-close { margin-left: 0.3125rem; }
-  .tree-idkey { color: #9a2f8f; margin-left: 0.375rem; }
-  .tree-colon { color: #555; }
-  .tree-idval { color: #6b3fa0; margin-left: 0.3125rem; }
-  .tree-summary { color: #bbb; margin-left: 0.5rem; }
+  .tree-idkey { color: var(--j-key); margin-left: 0.375rem; }
+  .tree-colon { color: var(--gray-55); }
+  .tree-idval { color: var(--j-id); margin-left: 0.3125rem; }
+  .tree-summary { color: var(--gray-b8); margin-left: 0.5rem; }
   .tree-body { padding: 0.0625rem 0 0.25rem 0; }
   .tree-line {
     padding: 0 0.625rem 0 1.625rem;
@@ -217,8 +217,8 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
-  .tree-key { color: #9a2f8f; }
-  .tree-colon { color: #555; }
+  .tree-key { color: var(--j-key); }
+  .tree-colon { color: var(--gray-55); }
   .tree-val { margin-left: 0.3125rem; }
-  .tree-close { padding: 0.0625rem 0.625rem 0.0625rem 1.375rem; color: #7b53b8; }
+  .tree-close { padding: 0.0625rem 0.625rem 0.0625rem 1.375rem; color: var(--j-brace); }
 </style>

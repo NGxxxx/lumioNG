@@ -1,18 +1,13 @@
-import { namespaceTree as defaultTree } from "./namespaceTree.svelte";
-
-type TreeLike = { readonly databases: { name: string; collections: string[] }[] };
-
-/** App chrome state: active connection, sidebar/log dimensions, and db/collection counts. */
-export function createShell(tree: TreeLike = defaultTree) {
+/** App chrome state: active connection and sidebar/log dimensions. (db/collection counts are
+ *  derived per-session in the page from the active session's tree — not here, to avoid binding
+ *  to the empty `namespaceTree` singleton that multi-session never populates.) */
+export function createShell() {
   let connection = $state<{ label: string; uri: string } | null>(null);
   let connectedAt = $state<number | null>(null); // epoch ms of the active connection (status-bar clock)
   let sessionOpen = $state(true);
   let sidebarWidth = $state(240);
   let logOpen = $state(true);
   let logHeight = $state(140);
-
-  const dbCount = $derived(tree.databases.length);
-  const collCount = $derived(tree.databases.reduce((n, d) => n + d.collections.length, 0));
 
   function setConnection(c: { label: string; uri: string } | null) {
     connection = c;
@@ -52,12 +47,6 @@ export function createShell(tree: TreeLike = defaultTree) {
     },
     get logHeight() {
       return logHeight;
-    },
-    get dbCount() {
-      return dbCount;
-    },
-    get collCount() {
-      return collCount;
     },
     setConnection,
     toggleSession,

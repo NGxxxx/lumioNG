@@ -37,6 +37,7 @@ pub fn run() {
             commands::admin::create_collection,
             commands::admin::drop_collection,
             commands::admin::rename_collection,
+            commands::admin::duplicate_collection,
             commands::admin::drop_database,
             commands::admin::truncate_collection,
             commands::index::list_indexes,

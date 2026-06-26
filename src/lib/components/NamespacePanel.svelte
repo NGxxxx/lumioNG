@@ -65,6 +65,7 @@
     { label: m.namespace_panel_menu_import(), action: "import" },
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
     { label: m.namespace_panel_menu_rename(), action: "rename" },
+    { label: m.namespace_panel_menu_duplicate(), action: "duplicate" },
     { label: m.namespace_panel_menu_truncate(), action: "truncate" },
     { label: m.namespace_panel_menu_drop_coll(), action: "dropColl" },
   ]);
@@ -73,6 +74,7 @@
     | { type: "newDb"; sessionId: string }
     | { type: "newColl"; db: string; sessionId: string }
     | { type: "rename"; db: string; coll: string; sessionId: string }
+    | { type: "duplicate"; db: string; coll: string; sessionId: string }
     | { type: "dropColl"; db: string; coll: string; sessionId: string }
     | { type: "dropDb"; db: string; sessionId: string }
     | { type: "truncate"; db: string; coll: string; sessionId: string };
@@ -120,6 +122,7 @@
       else if (action === "import") runImport(target.sessionId, target.db, target.coll);
       else if (action === "copyName") navigator.clipboard.writeText(`${target.db}.${target.coll}`);
       else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll, sessionId: target.sessionId };
+      else if (action === "duplicate") dialog = { type: "duplicate", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "truncate") dialog = { type: "truncate", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "dropColl") dialog = { type: "dropColl", db: target.db, coll: target.coll, sessionId: target.sessionId };
     }
@@ -281,6 +284,18 @@
     }}
     oncancel={() => (dialog = null)}
   />
+{:else if dialog?.type === "duplicate"}
+  {@const d = dialog}
+  <NameDialog
+    title={m.namespace_panel_duplicate_title()}
+    label={m.namespace_panel_duplicate_label()}
+    initial={`${d.coll}_copy`}
+    onsubmit={async (name) => {
+      await sessionById(d.sessionId)?.tree?.duplicateCollection(d.db, d.coll, name);
+      dialog = null;
+    }}
+    oncancel={() => (dialog = null)}
+  />
 {:else if dialog?.type === "dropColl"}
   {@const d = dialog}
   <DropConfirmDialog
@@ -322,16 +337,16 @@
 {#if ioErr}<div class="error">{ioErr}</div>{/if}
 
 <style>
-  .error { background: #fdecea; color: #b71c1c; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-  .io-ok { background: #e6f4ea; color: #1b5e20; padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   .ns-search { display: flex; align-items: center; gap: 0.3125rem; height: 1.625rem; padding: 0 0.5rem; border-bottom: 1px solid var(--border); background: var(--panel); }
   .ns-search input { flex: 1; border: none; background: none; font-size: 0.75rem; outline: none; }
-  .ns-clear { border: none; background: none; cursor: pointer; color: #999; font-size: 0.875rem; line-height: 1; padding: 0 0.125rem; }
-  .ns-clear:hover { color: #444; }
+  .ns-clear { border: none; background: none; cursor: pointer; color: var(--gray-99); font-size: 0.875rem; line-height: 1; padding: 0 0.125rem; }
+  .ns-clear:hover { color: var(--gray-44); }
 
   /* ── Per-session root block ── */
   .session-root { display: flex; flex-direction: column; }
-  .session-root.active > .session-header { background: #f0f4fb; }
+  .session-root.active > .session-header { background: var(--row-hover); }
 
   .session-header {
     display: flex;
@@ -346,7 +361,7 @@
     font-size: 0.75rem;
     font-weight: 600;
   }
-  .session-header:hover { background: #eaf1fb; }
+  .session-header:hover { background: var(--row-hover); }
 
   .session-caret-btn {
     flex: none;
@@ -372,7 +387,7 @@
     display: inline-block;
   }
 
-  .session-label { flex: 1; color: #1a1a1a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-label { flex: 1; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .status-spinner,
   .status-error,
@@ -400,7 +415,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    color: #999;
+    color: var(--gray-99);
     font-size: 0.625rem;
     line-height: 1;
     border-radius: 0.125rem;
@@ -409,5 +424,5 @@
     transition: opacity 0.1s;
   }
   .session-header:hover .session-close { opacity: 1; }
-  .session-close:hover { background: #fdecea; color: #b71c1c; opacity: 1; }
+  .session-close:hover { background: var(--error-bg); color: var(--error); opacity: 1; }
 </style>

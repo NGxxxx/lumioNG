@@ -4,6 +4,7 @@ vi.mock("../api/admin", () => ({
   createCollection: vi.fn(),
   dropCollection: vi.fn(),
   renameCollection: vi.fn(),
+  duplicateCollection: vi.fn(),
   dropDatabase: vi.fn(),
   truncateCollection: vi.fn(),
 }));
@@ -19,6 +20,7 @@ import {
   createCollectionCmd,
   dropCollectionCmd,
   renameCollectionCmd,
+  duplicateCollectionCmd,
   dropDatabaseCmd,
   truncateCollectionCmd,
 } from "../domain/mongosh";
@@ -26,6 +28,7 @@ import {
 const createColl = admin.createCollection as ReturnType<typeof vi.fn>;
 const dropColl = admin.dropCollection as ReturnType<typeof vi.fn>;
 const renameColl = admin.renameCollection as ReturnType<typeof vi.fn>;
+const duplicateColl = admin.duplicateCollection as ReturnType<typeof vi.fn>;
 const dropDb = admin.dropDatabase as ReturnType<typeof vi.fn>;
 const truncateMock = admin.truncateCollection as ReturnType<typeof vi.fn>;
 const listNs = connection.listNamespaces as ReturnType<typeof vi.fn>;
@@ -103,6 +106,19 @@ describe("createNamespaceTree", () => {
     expect(calls.renameCollectionTabs).toEqual([["d", "old", "new"]]);
   });
 
+  it("duplicateCollection with valid name calls api and refreshes", async () => {
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
+    await nt.duplicateCollection("d", "orders", "orders_copy");
+    expect(duplicateColl).toHaveBeenCalledWith("conn:1", "d", "orders", "orders_copy");
+    expect(listNs).toHaveBeenCalledWith("conn:1");
+  });
+
+  it("duplicateCollection with invalid target name throws and does not call api", async () => {
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
+    await expect(nt.duplicateCollection("d", "orders", "a$b")).rejects.toBeTruthy();
+    expect(duplicateColl).not.toHaveBeenCalled();
+  });
+
   it("dropDatabase calls api, forwards tab cleanup, and refreshes", async () => {
     const { nav, calls } = mockNav();
     const nt = createNamespaceTree("conn:1", nav);
@@ -160,6 +176,12 @@ describe("namespaceTree command log", () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.renameCollection("shop", "old", "new");
     expect(commandLog.entries.at(-1)!.text).toBe(renameCollectionCmd("old", "new"));
+  });
+
+  it("duplicateCollection pushes duplicateCollectionCmd(source, target) to the command log", async () => {
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
+    await nt.duplicateCollection("shop", "orders", "orders_copy");
+    expect(commandLog.entries.at(-1)!.text).toBe(duplicateCollectionCmd("orders", "orders_copy"));
   });
 
   it("dropDatabase pushes dropDatabaseCmd to the command log", async () => {

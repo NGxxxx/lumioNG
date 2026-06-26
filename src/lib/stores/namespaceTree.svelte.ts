@@ -8,6 +8,7 @@ import {
   createCollectionCmd,
   dropCollectionCmd,
   renameCollectionCmd,
+  duplicateCollectionCmd,
   dropDatabaseCmd,
   truncateCollectionCmd,
 } from "../domain/mongosh";
@@ -72,6 +73,14 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
     await refresh();
   }
 
+  async function duplicateCollection(db: string, source: string, target: string) {
+    const msg = validateCollectionName(target);
+    if (msg) throw msg;
+    await admin.duplicateCollection(sessionId, db, source, target);
+    commandLog.push(duplicateCollectionCmd(source, target), sessionId);
+    await refresh();
+  }
+
   async function dropDatabase(db: string) {
     await admin.dropDatabase(sessionId, db);
     commandLog.push(dropDatabaseCmd(), sessionId);
@@ -103,6 +112,7 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
     createCollection,
     dropCollection,
     renameCollection,
+    duplicateCollection,
     dropDatabase,
     truncate,
     clear,

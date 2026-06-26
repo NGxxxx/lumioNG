@@ -104,7 +104,7 @@
     flex: none;
     padding: 0 0.25rem;
     gap: 0.125rem;
-    border-bottom: 1px solid #c8c8c8;
+    border-bottom: 1px solid var(--gray-c4);
     background: var(--bg);
     overflow-x: auto;
   }
@@ -115,7 +115,7 @@
     gap: 0.3125rem;
     padding: 0.25rem 0.8125rem;
     font-size: 0.75rem;
-    border: 1px solid #c8c8c8;
+    border: 1px solid var(--gray-c4);
     border-bottom: none;
     border-radius: 0.25rem 0.25rem 0 0;
     margin-bottom: -1px;
@@ -126,7 +126,7 @@
 
   .tab.context {
     background: var(--tab-inactive-bg);
-    color: #555;
+    color: var(--gray-55);
   }
 
   .tab.context.active {
@@ -140,7 +140,7 @@
 
   .tab.work {
     background: var(--tab-inactive-bg);
-    color: #555;
+    color: var(--gray-55);
   }
 
   .tab.work.active {
@@ -154,7 +154,7 @@
 
   .divider {
     width: 1px;
-    background: #c8c8c8;
+    background: var(--gray-c4);
     margin: 0.25rem 0.375rem;
     align-self: stretch;
   }
@@ -186,7 +186,7 @@
     color: var(--fg);
   }
 
-  .newq { align-self: flex-end; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: #555; cursor: pointer; }
+  .newq { align-self: flex-end; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; }
   .newq:hover { background: var(--panel); }
 
   .session-dot {
