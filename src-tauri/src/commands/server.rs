@@ -14,7 +14,7 @@ pub async fn server_status(
         .database("admin")
         .run_command(doc! { "serverStatus": 1 })
         .await?;
-    doc_to_canonical_string(&resp)
+    doc_to_canonical_string(resp)
 }
 
 #[tauri::command]
@@ -27,7 +27,7 @@ pub async fn build_info(
         .database("admin")
         .run_command(doc! { "buildInfo": 1 })
         .await?;
-    doc_to_canonical_string(&resp)
+    doc_to_canonical_string(resp)
 }
 
 #[tauri::command]
@@ -40,5 +40,5 @@ pub async fn host_info(
         .database("admin")
         .run_command(doc! { "hostInfo": 1 })
         .await?;
-    doc_to_canonical_string(&resp)
+    doc_to_canonical_string(resp)
 }

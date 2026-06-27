@@ -27,7 +27,7 @@ pub async fn list_indexes(
     let mut out = Vec::new();
     for b in batch {
         if let Some(d) = b.as_document() {
-            out.push(doc_to_canonical_string(d)?);
+            out.push(doc_to_canonical_string(d.clone())?);
         }
     }
     Ok(out)

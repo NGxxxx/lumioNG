@@ -79,7 +79,7 @@ pub async fn aggregate(
     let mut cursor = collection.aggregate(stages).await?;
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(&d)?);
+        docs.push(doc_to_canonical_string(d)?);
     }
     Ok(docs)
 }
@@ -115,7 +115,7 @@ pub async fn query_page(
 
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(&d)?);
+        docs.push(doc_to_canonical_string(d)?);
     }
     Ok(docs)
 }
@@ -139,7 +139,7 @@ pub async fn sample_documents(
     let mut cursor = collection.aggregate(pipeline).await?;
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(&d)?);
+        docs.push(doc_to_canonical_string(d)?);
     }
     Ok(docs)
 }

@@ -35,7 +35,7 @@ pub async fn coll_stats(
     if let Some(ns) = first.get("ns") {
         out.insert("ns", ns.clone());
     }
-    doc_to_canonical_string(&out)
+    doc_to_canonical_string(out)
 }
 
 #[tauri::command]
@@ -49,7 +49,7 @@ pub async fn db_stats(
         .database(&db)
         .run_command(doc! { "dbStats": 1 })
         .await?;
-    doc_to_canonical_string(&resp)
+    doc_to_canonical_string(resp)
 }
 
 #[tauri::command]
@@ -72,7 +72,7 @@ pub async fn coll_options(
         .first()
         .and_then(|b| b.as_document());
     match first {
-        Some(d) => doc_to_canonical_string(d),
+        Some(d) => doc_to_canonical_string(d.clone()),
         None => Ok("{}".to_string()), // collection does not exist → empty options
     }
 }

@@ -2,8 +2,10 @@ use crate::error::AppError;
 use mongodb::bson::{Bson, Document};
 
 /// Serialize a Document to a Canonical Extended JSON string (lossless).
-pub fn doc_to_canonical_string(doc: &Document) -> Result<String, AppError> {
-    let value = Bson::Document(doc.clone()).into_canonical_extjson();
+/// Takes the Document by value: `into_canonical_extjson` consumes it, so passing
+/// ownership lets cursor-loop callers move each doc in instead of deep-cloning it.
+pub fn doc_to_canonical_string(doc: Document) -> Result<String, AppError> {
+    let value = Bson::Document(doc).into_canonical_extjson();
     serde_json::to_string(&value).map_err(|e| AppError::Serialize(e.to_string()))
 }
 
@@ -21,7 +23,7 @@ mod tests {
     use std::str::FromStr;
 
     fn roundtrip(doc: mongodb::bson::Document) {
-        let s = doc_to_canonical_string(&doc).expect("serialize ok");
+        let s = doc_to_canonical_string(doc.clone()).expect("serialize ok");
         let value: serde_json::Value = serde_json::from_str(&s).expect("valid json");
         let parsed = Bson::try_from(value).expect("parse extjson");
         assert_eq!(parsed, Bson::Document(doc));
@@ -95,7 +97,7 @@ mod tests {
     #[test]
     fn numbers_keep_type_in_canonical() {
         let doc = doc! { "i32": 42i32, "i64": 42i64, "f": 42f64 };
-        let s = doc_to_canonical_string(&doc).unwrap();
+        let s = doc_to_canonical_string(doc).unwrap();
         assert!(s.contains("$numberInt"), "i32 must serialize as $numberInt: {s}");
         assert!(s.contains("$numberLong"), "i64 must serialize as $numberLong: {s}");
         assert!(s.contains("$numberDouble"), "f64 must serialize as $numberDouble: {s}");

@@ -25,7 +25,7 @@ mod tests {
     use std::str::FromStr;
 
     fn roundtrip(d: Document) {
-        let s = doc_to_canonical_string(&d).expect("serialize ok");
+        let s = doc_to_canonical_string(d.clone()).expect("serialize ok");
         let back = canonical_string_to_doc(&s).expect("parse ok");
         assert_eq!(back, d);
     }

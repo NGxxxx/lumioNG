@@ -184,7 +184,7 @@ pub async fn export_json_progress(
     let mut w = std::io::BufWriter::new(file);
     let mut count: u64 = 0;
     while let Some(d) = cursor.try_next().await? {
-        let s = doc_to_canonical_string(&d)?;
+        let s = doc_to_canonical_string(d)?;
         write_json_array_element(&mut w, &s, count == 0).map_err(|e| AppError::Io(e.to_string()))?;
         count += 1;
         if count % PROGRESS_BATCH == 0 {
@@ -267,7 +267,7 @@ pub async fn export_query_progress(
 
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(&d)?);
+        docs.push(doc_to_canonical_string(d)?);
         if docs.len() as u64 % PROGRESS_BATCH == 0 {
             let _ = on_progress.send(ExportProgress { done: docs.len() as u64, total });
         }
