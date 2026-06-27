@@ -116,11 +116,9 @@
   "namespace_panel_menu_duplicate": "Nhân bản collection…",
   "namespace_panel_menu_truncate": "Dọn sạch…",
   "namespace_panel_menu_drop_coll": "Xóa collection…",
-
   "collection_tab_info": "Thông tin",
   "collection_tab_schema": "Schema",
   "collection_tab_indexes": "Index",
-
   "query_tab_title": "Truy vấn #{seq}",
   "query_tab_db_label": "db: {db}",
   "query_tab_capped_notice": "Hiển thị 200 kết quả đầu.",
@@ -140,9 +138,16 @@
   "query_tab_menu_run_selection": "Chạy vùng chọn",
   "query_tab_confirm_delete_title": "Xóa document đã chọn?",
   "query_tab_confirm_delete_message": "Bạn sắp xóa {count} document. Không thể hoàn tác.",
-
+  "query_tab_ack_inserted_id": "Đã chèn _id",
+  "query_tab_ack_inserted_count": "Đã chèn",
+  "query_tab_ack_matched": "Khớp",
+  "query_tab_ack_modified": "Đã sửa",
+  "query_tab_ack_deleted": "Đã xóa",
+  "query_tab_write_confirm_title": "Chạy {op}?",
+  "query_tab_write_confirm_message": "Áp dụng {op} lên collection “{coll}”?",
+  "query_tab_write_empty_filter_warning": "{op} dùng filter rỗng — sẽ tác động đến MỌI document trong \"{coll}\". Không thể hoàn tác.",
+  "query_tab_write_run": "Chạy lệnh ghi",
   "host_tab_opcounters": "opcounters",
-
   "document_form_title_insert": "Document mới",
   "document_form_title_edit": "Sửa document",
   "document_form_tab_json": "JSON",
@@ -155,17 +160,13 @@
   "document_form_saving": "Đang lưu…",
   "document_form_invalid_fields_error": "Một số trường không hợp lệ — hãy sửa trước khi lưu.",
   "document_form_no_id_error": "Document không có _id để cập nhật.",
-
   "query_result_grid_empty": "Không có kết quả",
-
   "result_tree_empty": "Không có kết quả",
-
   "tree_node_field_name_placeholder": "tên trường…",
   "tree_node_add_field": "+ Thêm trường",
   "tree_node_add_item": "+ Thêm phần tử",
   "tree_node_remove_label": "Xóa",
   "tree_node_locked_title": "Không thể sửa",
-
   "result_table_run": "Chạy",
   "result_table_sort_title": "Sắp xếp",
   "result_table_fields_title": "Trường",
@@ -204,7 +205,6 @@
   "result_table_bulk_delete_title": "Xóa toàn bộ collection?",
   "result_table_bulk_update_title": "Cập nhật toàn bộ collection?",
   "result_table_bulk_confirm_message": "Bộ lọc rỗng — thao tác này áp dụng cho TOÀN BỘ collection \"{coll}\". Không thể hoàn tác.",
-
   "session_manager_title": "Quản lý phiên",
   "session_manager_close": "Đóng",
   "session_manager_filter_placeholder": "Lọc",
@@ -241,7 +241,6 @@
   "session_manager_btn_connecting": "Đang kết nối…",
   "session_manager_btn_open": "Mở",
   "session_manager_btn_cancel": "Hủy",
-
   "toolbar_session_manager": "Quản lý phiên",
   "toolbar_save": "Lưu",
   "toolbar_new_document": "Document mới",
@@ -257,7 +256,6 @@
   "toolbar_edit_document": "Sửa document",
   "toolbar_export": "Xuất",
   "toolbar_command_log": "Nhật ký lệnh",
-
   "status_bar_disconnected": "Chưa kết nối",
   "status_bar_collections": "{label} · {count} collection",
   "status_bar_connected_time": "Đã kết nối: {time}",
@@ -267,29 +265,23 @@
   "status_bar_idle": "Sẵn sàng.",
   "status_bar_loading": "Đang tải…",
   "status_bar_running_query": "Đang chạy truy vấn…",
-
   "tab_bar_close": "Đóng tab",
   "tab_bar_new_query": "Truy vấn aggregate mới",
   "tab_bar_query_title": "Truy vấn #{seq}",
   "tab_bar_doc_new": "{coll} / mới",
-
   "title_bar_minimize": "Thu nhỏ",
   "title_bar_maximize": "Phóng to",
   "title_bar_close": "Đóng",
-
   "command_log_title": "Nhật ký lệnh",
   "command_log_subtitle": "mongosh",
   "command_log_clear": "Xóa",
   "command_log_toggle": "Bật/tắt nhật ký lệnh",
-
   "namespace_tree_footer": "{dbs} database · {colls} collection",
-
   "page_empty_state": "Chọn một database hoặc collection để bắt đầu",
   "page_quit_title": "Thoát LumioNG?",
   "page_quit_message": "Bạn có chắc muốn thoát? Các thay đổi chưa lưu sẽ bị mất.",
   "page_quit_confirm": "Thoát",
   "page_quit_cancel": "Hủy",
-
   "err_bool_invalid": "Giá trị bool phải là \"true\" hoặc \"false\".",
   "err_date_invalid": "Ngày/giờ không hợp lệ (cần định dạng ISO-8601).",
   "err_objectid_invalid": "ObjectId phải gồm 24 ký tự hex.",
@@ -309,7 +301,6 @@
   "err_doc_not_object": "Document phải là một object JSON.",
   "err_filter_invalid_json": "Bộ lọc không phải JSON hợp lệ.",
   "err_filter_not_object": "Bộ lọc phải là một object JSON.",
-
   "err_coll_name_empty": "Tên collection không được để trống.",
   "err_coll_name_dollar": "Tên collection không được chứa ký tự '$'.",
   "err_coll_name_system": "Tên collection không được bắt đầu bằng 'system.'.",
@@ -320,7 +311,6 @@
   "err_db_name_too_long": "Tên database quá dài (tối đa 63 byte).",
   "err_index_no_field": "Cần ít nhất một trường.",
   "err_index_field_duplicate": "Trường bị trùng.",
-
   "common_clipboard_failed": "Không sao chép được vào clipboard.",
   "collection_view_no_id_update": "Document không có _id để cập nhật.",
   "collection_view_selection_missing_id": "Một số dòng đã chọn thiếu _id.",
@@ -330,7 +320,6 @@
   "collection_view_selection_missing_id_delete": "Một số dòng đã chọn thiếu _id để xóa.",
   "collection_view_no_id_delete": "Document không có _id để xóa.",
   "query_run_selection_missing_id": "Một số dòng thiếu _id.",
-
   "export_wizard_title": "Xuất dữ liệu",
   "export_wizard_format": "Định dạng",
   "export_wizard_columns": "Cột",

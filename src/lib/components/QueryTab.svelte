@@ -13,7 +13,7 @@
   import * as m from "$lib/paraglide/messages";
   import CodeEditor from "./CodeEditor.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
-  import { collectionOf } from "../domain/queryStatement";
+  import { collectionOf, writeFilterIsEmpty, isDestructiveKind, writeTargetSummary } from "../domain/queryStatement";
   import type { CompletionSource } from "@codemirror/autocomplete";
 
   let { id, seq, initialStatement, currentDb, onopendocument }:
@@ -121,6 +121,15 @@
               {/each}
             </div>
           </div>
+        {:else if v.ran && v.resultKind === "ack"}
+          <div class="ack">
+            <div class="ack-op">{v.ackResult?.op}</div>
+            <dl class="ack-fields">
+              {#each v.ackResult?.fields ?? [] as f (f.label)}
+                <div class="ack-row"><dt>{f.label}</dt><dd>{f.value}</dd></div>
+              {/each}
+            </dl>
+          </div>
         {:else if v.ran}
           {#if v.view === "grid"}
             <QueryResultGrid columns={v.columns} docs={v.pageDocs} colWidths={v.colWidths}
@@ -173,6 +182,22 @@
   />
 {/if}
 
+{#if v.pendingWrite}
+  {@const pw = v.pendingWrite}
+  {@const empty = writeFilterIsEmpty(pw.parsed)}
+  <ConfirmDialog
+    title={m.query_tab_write_confirm_title({ op: pw.parsed.kind })}
+    message={empty
+      ? m.query_tab_write_empty_filter_warning({ op: pw.parsed.kind, coll: pw.parsed.coll })
+      : m.query_tab_write_confirm_message({ op: pw.parsed.kind, coll: pw.parsed.coll })}
+    detail={writeTargetSummary(pw.parsed)}
+    confirmLabel={m.query_tab_write_run()}
+    danger={isDestructiveKind(pw.parsed.kind)}
+    onconfirm={v.confirmWrite}
+    oncancel={v.cancelWrite}
+  />
+{/if}
+
 {#if v.exportRequest}
   {@const input = v.exportInput()}
   {#if input}<ExportWizard {input} onclose={v.cancelExport} />{/if}
@@ -204,6 +229,12 @@
   .values-list { flex: 1; min-height: 0; overflow: auto; }
   .values-row { height: 1.375rem; line-height: 1.375rem; border-bottom: 1px solid var(--cell-border); font-size: 0.75rem; }
   .values-row :global(.cell) { padding: 0 0.5625rem; display: inline-block; height: 1.375rem; line-height: 1.375rem; }
+  .ack { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.625rem; }
+  .ack-op { font-size: 0.8125rem; font-weight: 600; color: var(--fg); font-family: ui-monospace, monospace; }
+  .ack-fields { display: flex; gap: 1.5rem; margin: 0; }
+  .ack-row { display: flex; flex-direction: column; align-items: center; gap: 0.125rem; }
+  .ack-row dt { font-size: 0.6875rem; color: var(--muted); }
+  .ack-row dd { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
   .pager { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.75rem; padding: 0 0.625rem; border-top: 1px solid var(--border); background: var(--zebra-alt); font-size: 0.75rem; }
   .pager button { height: 1.25rem; padding: 0 0.5rem; border: 1px solid var(--gray-c4); background: var(--bg); border-radius: 0.125rem; cursor: pointer; color: var(--gray-44); }
   .pager button:disabled { opacity: 0.45; cursor: default; }

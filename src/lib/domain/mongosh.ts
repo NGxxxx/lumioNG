@@ -34,6 +34,17 @@ export const updateManyCmd = (coll: string, filterJson: string, updateJson: stri
 export const deleteManyCmd = (coll: string, filterJson: string) =>
   `${c(coll)}.deleteMany(${filterJson})`;
 
+export const insertManyCmd = (coll: string, docsJson: string) => `${c(coll)}.insertMany(${docsJson})`;
+
+export const updateOneCmd = (coll: string, filterJson: string, updateJson: string) =>
+  `${c(coll)}.updateOne(${filterJson}, ${updateJson})`;
+
+export const replaceOneFilterCmd = (coll: string, filterJson: string, replJson: string) =>
+  `${c(coll)}.replaceOne(${filterJson}, ${replJson})`;
+
+export const deleteOneFilterCmd = (coll: string, filterJson: string) =>
+  `${c(coll)}.deleteOne(${filterJson})`;
+
 export const countCmd = (coll: string, filterJson: string) =>
   `${c(coll)}.countDocuments(${filterJson})`;
 

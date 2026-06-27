@@ -11,6 +11,12 @@ vi.mock("../api/documents", () => ({
   queryPage: vi.fn(async () => [{ _id: { $oid: "1" }, name: "A" }]),
   countDocuments: vi.fn(async () => 0),
   distinct: vi.fn(async () => []),
+  insertDocument: vi.fn(async () => '{ "$oid": "x" }'),
+  insertMany: vi.fn(async () => ({ insertedCount: 0, insertedIds: [] })),
+  updateOne: vi.fn(async () => ({ matched: 0, modified: 0 })),
+  updateMany: vi.fn(async () => ({ matched: 0, modified: 0 })),
+  replaceOne: vi.fn(async () => ({ matched: 0, modified: 0 })),
+  deleteOne: vi.fn(async () => 0),
 }));
 // Note: api/files is no longer imported by queryRun.svelte.ts (export now opens the wizard in-memory).
 
@@ -22,6 +28,13 @@ const sampleDocuments = api.sampleDocuments as ReturnType<typeof vi.fn>;
 const queryPage = api.queryPage as ReturnType<typeof vi.fn>;
 const countDocuments = api.countDocuments as ReturnType<typeof vi.fn>;
 const distinctFn = api.distinct as ReturnType<typeof vi.fn>;
+const updateOneFn = api.updateOne as ReturnType<typeof vi.fn>;
+const updateManyFn = api.updateMany as ReturnType<typeof vi.fn>;
+const replaceOneFn = api.replaceOne as ReturnType<typeof vi.fn>;
+const deleteOneFn = api.deleteOne as ReturnType<typeof vi.fn>;
+const deleteManyFn = api.deleteMany as ReturnType<typeof vi.fn>;
+const insertDocumentFn = api.insertDocument as ReturnType<typeof vi.fn>;
+const insertManyFn = api.insertMany as ReturnType<typeof vi.fn>;
 const STMT = 'db.getCollection("orders").aggregate([{ "$match": {} }])';
 
 describe("createQueryRun", () => {
@@ -326,5 +339,123 @@ describe("fieldsFor", () => {
     sampleDocuments.mockRejectedValueOnce(new Error("boom"));
     const v = createQueryRun("conn:1", STMT);
     expect(await v.fieldsFor("shop", "orders")).toEqual([]);
+  });
+});
+
+describe("write routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    updateOneFn.mockResolvedValue({ matched: 0, modified: 0 });
+    updateManyFn.mockResolvedValue({ matched: 0, modified: 0 });
+    replaceOneFn.mockResolvedValue({ matched: 0, modified: 0 });
+    deleteOneFn.mockResolvedValue(0);
+    deleteManyFn.mockResolvedValue(0);
+    insertDocumentFn.mockResolvedValue('{ "$oid": "x" }');
+    insertManyFn.mockResolvedValue({ insertedCount: 0, insertedIds: [] });
+  });
+
+  it("defers a write to pendingWrite without calling the api", async () => {
+    const v = createQueryRun("conn:1", 'db.orders.updateOne({ "a": 1 }, { "$set": { "b": 2 } })');
+    await v.run("shop");
+    expect(updateOneFn).not.toHaveBeenCalled();
+    expect(v.pendingWrite).not.toBeNull();
+    expect(v.pendingWrite!.parsed.kind).toBe("updateOne");
+    expect(v.resultKind).toBe("docs"); // unchanged until confirmed
+  });
+
+  it("confirmWrite runs updateOne with allowAll=true and builds an ack", async () => {
+    updateOneFn.mockResolvedValueOnce({ matched: 3, modified: 2 });
+    const v = createQueryRun("conn:1", 'db.orders.updateOne({ "a": 1 }, { "$set": { "b": 2 } })');
+    await v.run("shop");
+    await v.confirmWrite();
+    expect(updateOneFn).toHaveBeenCalledWith("conn:1", "shop", "orders", '{ "a": 1 }', '{ "$set": { "b": 2 } }', true);
+    expect(v.resultKind).toBe("ack");
+    expect(v.ackResult!.op).toBe("updateOne");
+    expect(v.ackResult!.fields.map((f) => f.value)).toEqual(["3", "2"]);
+    expect(v.pendingWrite).toBeNull();
+    expect(v.srcColl).toBe("orders");
+  });
+
+  it("confirmWrite runs deleteMany with an empty filter (allowAll=true)", async () => {
+    deleteManyFn.mockResolvedValueOnce(7);
+    const v = createQueryRun("conn:1", "db.orders.deleteMany({})");
+    await v.run("shop");
+    await v.confirmWrite();
+    expect(deleteManyFn).toHaveBeenCalledWith("conn:1", "shop", "orders", "{}", true);
+    expect(v.resultKind).toBe("ack");
+    expect(v.ackResult!.fields[0].value).toBe("7");
+  });
+
+  it("confirmWrite runs insertOne and builds an ack with the inserted id", async () => {
+    insertDocumentFn.mockResolvedValueOnce('{ "$oid": "abc123" }');
+    const v = createQueryRun("conn:1", 'db.orders.insertOne({ "a": 1 })');
+    await v.run("shop");
+    await v.confirmWrite();
+    expect(insertDocumentFn).toHaveBeenCalledWith("conn:1", "shop", "orders", '{ "a": 1 }');
+    expect(v.resultKind).toBe("ack");
+    expect(v.ackResult!.op).toBe("insertOne");
+    expect(v.ackResult!.fields[0].value).toBe('{ "$oid": "abc123" }');
+    expect(v.pendingWrite).toBeNull();
+    expect(v.srcColl).toBe("orders");
+  });
+
+  it("confirmWrite runs insertMany and builds an ack with the inserted count", async () => {
+    insertManyFn.mockResolvedValueOnce({ insertedCount: 2, insertedIds: ["id1", "id2"] });
+    const v = createQueryRun("conn:1", 'db.orders.insertMany([{ "a": 1 }, { "b": 2 }])');
+    await v.run("shop");
+    await v.confirmWrite();
+    expect(insertManyFn).toHaveBeenCalledWith("conn:1", "shop", "orders", '[{ "a": 1 }, { "b": 2 }]');
+    expect(v.resultKind).toBe("ack");
+    expect(v.ackResult!.op).toBe("insertMany");
+    expect(v.ackResult!.fields[0].value).toBe("2");
+    expect(v.pendingWrite).toBeNull();
+    expect(v.srcColl).toBe("orders");
+  });
+
+  it("confirmWrite runs updateMany with allowAll=true and builds an ack with matched/modified", async () => {
+    updateManyFn.mockResolvedValueOnce({ matched: 5, modified: 4 });
+    const v = createQueryRun("conn:1", 'db.orders.updateMany({ "a": 1 }, { "$set": { "b": 2 } })');
+    await v.run("shop");
+    await v.confirmWrite();
+    expect(updateManyFn).toHaveBeenCalledWith("conn:1", "shop", "orders", '{ "a": 1 }', '{ "$set": { "b": 2 } }', true);
+    expect(v.resultKind).toBe("ack");
+    expect(v.ackResult!.op).toBe("updateMany");
+    expect(v.ackResult!.fields.map((f) => f.value)).toEqual(["5", "4"]);
+    expect(v.pendingWrite).toBeNull();
+    expect(v.srcColl).toBe("orders");
+  });
+
+  it("confirmWrite runs replaceOne with allowAll=true and builds an ack with matched/modified", async () => {
+    replaceOneFn.mockResolvedValueOnce({ matched: 1, modified: 1 });
+    const v = createQueryRun("conn:1", 'db.orders.replaceOne({ "a": 1 }, { "a": 2 })');
+    await v.run("shop");
+    await v.confirmWrite();
+    expect(replaceOneFn).toHaveBeenCalledWith("conn:1", "shop", "orders", '{ "a": 1 }', '{ "a": 2 }', true);
+    expect(v.resultKind).toBe("ack");
+    expect(v.ackResult!.op).toBe("replaceOne");
+    expect(v.ackResult!.fields.map((f) => f.value)).toEqual(["1", "1"]);
+    expect(v.pendingWrite).toBeNull();
+    expect(v.srcColl).toBe("orders");
+  });
+
+  it("confirmWrite runs deleteOne with allowAll=true and builds an ack with deleted count", async () => {
+    deleteOneFn.mockResolvedValueOnce(1);
+    const v = createQueryRun("conn:1", 'db.orders.deleteOne({ "a": 1 })');
+    await v.run("shop");
+    await v.confirmWrite();
+    expect(deleteOneFn).toHaveBeenCalledWith("conn:1", "shop", "orders", '{ "a": 1 }', true);
+    expect(v.resultKind).toBe("ack");
+    expect(v.ackResult!.op).toBe("deleteOne");
+    expect(v.ackResult!.fields[0].value).toBe("1");
+    expect(v.pendingWrite).toBeNull();
+    expect(v.srcColl).toBe("orders");
+  });
+
+  it("cancelWrite clears pendingWrite without running anything", async () => {
+    const v = createQueryRun("conn:1", "db.orders.deleteMany({})");
+    await v.run("shop");
+    v.cancelWrite();
+    expect(v.pendingWrite).toBeNull();
+    expect(deleteManyFn).not.toHaveBeenCalled();
   });
 });

@@ -1,14 +1,15 @@
 import * as m from "$lib/paraglide/messages";
-import { aggregate, deleteMany, sampleDocuments, queryPage, countDocuments, distinct } from "../api/documents";
+import { aggregate, deleteMany, sampleDocuments, queryPage, countDocuments, distinct, insertDocument, insertMany, updateOne, updateMany, replaceOne, deleteOne } from "../api/documents";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import type { Doc } from "../domain/doc";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { aggregateCmd, deleteManyCmd, findCmd, countCmd, distinctCmd } from "../domain/mongosh";
+import { aggregateCmd, deleteManyCmd, findCmd, countCmd, distinctCmd, insertCmd, insertManyCmd, updateOneCmd, updateManyCmd, replaceOneFilterCmd, deleteOneFilterCmd } from "../domain/mongosh";
 import {
   parseQueryStatement,
   pipelineHasTrailingLimit,
+  isWriteKind,
   type ParsedQuery,
 } from "../domain/queryStatement";
 import { mergeColumns, getByPath, inferSchema, type ColumnField } from "../domain/schema";
@@ -31,10 +32,12 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
   let error = $state<string | null>(null);
   let loading = $state(false);
   let capped = $state(false);
-  let resultKind = $state<"docs" | "scalar" | "values">("docs");
+  let resultKind = $state<"docs" | "scalar" | "values" | "ack">("docs");
   let countResult = $state<number | null>(null);
   // $state.raw: distinct values are replaced wholesale, never mutated (consistent with docs).
   let distinctValues = $state.raw<unknown[]>([]);
+  let ackResult = $state<{ op: string; fields: { label: string; value: string }[] } | null>(null);
+  let pendingWrite = $state<{ parsed: ParsedQuery; db: string } | null>(null);
   let ran = $state(false);
   let view = $state<"grid" | "tree">("grid");
   let pageSize = $state(50);
@@ -99,9 +102,15 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
       error = e instanceof Error ? e.message : String(e);
       return;
     }
+    if (isWriteKind(parsed.kind)) {
+      pendingWrite = { parsed, db };
+      error = null;
+      return;
+    }
     loading = true;
     activity.begin(m.status_bar_running_query());
     try {
+      ackResult = null;
       if (parsed.kind === "distinct") {
         const vals = await distinct(sessionId, db, parsed.coll, parsed.field, parsed.filter);
         distinctValues = vals;
@@ -144,7 +153,7 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
           }),
           sessionId,
         );
-      } else {
+      } else if (parsed.kind === "aggregate") {
         const limit = forceNoLimit || pipelineHasTrailingLimit(parsed.pipeline) ? null : SAFETY_CAP;
         const res = await aggregate(sessionId, db, parsed.coll, parsed.pipeline, limit);
         docs = res;
@@ -169,6 +178,83 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
       loading = false;
       activity.end();
     }
+  }
+
+  /** Execute the write the user confirmed in the dialog. The dialog is the gate → allow_all=true. */
+  async function confirmWrite() {
+    const pw = pendingWrite;
+    pendingWrite = null;
+    if (!pw) return;
+    const { parsed, db } = pw;
+    loading = true;
+    activity.begin(m.status_bar_running_query());
+    try {
+      let fields: { label: string; value: string }[];
+      let logCmd: string;
+      if (parsed.kind === "insertOne") {
+        const id = await insertDocument(sessionId, db, parsed.coll, parsed.doc);
+        fields = [{ label: m.query_tab_ack_inserted_id(), value: id }];
+        logCmd = insertCmd(parsed.coll, parsed.doc);
+      } else if (parsed.kind === "insertMany") {
+        const res = await insertMany(sessionId, db, parsed.coll, parsed.docs);
+        fields = [{ label: m.query_tab_ack_inserted_count(), value: String(res.insertedCount) }];
+        logCmd = insertManyCmd(parsed.coll, parsed.docs);
+      } else if (parsed.kind === "updateOne") {
+        const r = await updateOne(sessionId, db, parsed.coll, parsed.filter, parsed.update, true);
+        fields = [
+          { label: m.query_tab_ack_matched(), value: String(r.matched) },
+          { label: m.query_tab_ack_modified(), value: String(r.modified) },
+        ];
+        logCmd = updateOneCmd(parsed.coll, parsed.filter, parsed.update);
+      } else if (parsed.kind === "updateMany") {
+        const r = await updateMany(sessionId, db, parsed.coll, parsed.filter, parsed.update, true);
+        fields = [
+          { label: m.query_tab_ack_matched(), value: String(r.matched) },
+          { label: m.query_tab_ack_modified(), value: String(r.modified) },
+        ];
+        logCmd = updateManyCmd(parsed.coll, parsed.filter, parsed.update);
+      } else if (parsed.kind === "replaceOne") {
+        const r = await replaceOne(sessionId, db, parsed.coll, parsed.filter, parsed.replacement, true);
+        fields = [
+          { label: m.query_tab_ack_matched(), value: String(r.matched) },
+          { label: m.query_tab_ack_modified(), value: String(r.modified) },
+        ];
+        logCmd = replaceOneFilterCmd(parsed.coll, parsed.filter, parsed.replacement);
+      } else if (parsed.kind === "deleteOne") {
+        const n = await deleteOne(sessionId, db, parsed.coll, parsed.filter, true);
+        fields = [{ label: m.query_tab_ack_deleted(), value: String(n) }];
+        logCmd = deleteOneFilterCmd(parsed.coll, parsed.filter);
+      } else if (parsed.kind === "deleteMany") {
+        const n = await deleteMany(sessionId, db, parsed.coll, parsed.filter, true);
+        fields = [{ label: m.query_tab_ack_deleted(), value: String(n) }];
+        logCmd = deleteManyCmd(parsed.coll, parsed.filter);
+      } else {
+        return; // unreachable: pendingWrite only holds write kinds
+      }
+      ackResult = { op: parsed.kind, fields };
+      resultKind = "ack";
+      docs = [];
+      columns = [];
+      capped = false;
+      countResult = null;
+      distinctValues = [];
+      commandLog.push(logCmd, sessionId);
+      pageReq = 1;
+      error = null;
+      ran = true;
+      srcDb = db;
+      srcColl = parsed.coll;
+      selected = new Set();
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      loading = false;
+      activity.end();
+    }
+  }
+
+  function cancelWrite() {
+    pendingWrite = null;
   }
 
   /** Run only the highlighted text (falls back to the whole statement if nothing is selected). */
@@ -319,6 +405,10 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     get countResult() { return countResult; },
     get distinctValues() { return distinctValues; },
     copyValues: () => copy(JSON.stringify(distinctValues, null, 2)),
+    get ackResult() { return ackResult; },
+    get pendingWrite() { return pendingWrite; },
+    confirmWrite,
+    cancelWrite,
     get ran() { return ran; },
     get view() { return view; },
     set view(v: "grid" | "tree") { view = v; },

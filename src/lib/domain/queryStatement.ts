@@ -13,7 +13,12 @@ export type ParsedQuery =
       limit: number | null;
     }
   | { kind: "count"; coll: string; filter: string }
-  | { kind: "distinct"; coll: string; field: string; filter: string };
+  | { kind: "distinct"; coll: string; field: string; filter: string }
+  | { kind: "insertOne"; coll: string; doc: string }
+  | { kind: "insertMany"; coll: string; docs: string }
+  | { kind: "updateOne" | "updateMany"; coll: string; filter: string; update: string }
+  | { kind: "replaceOne"; coll: string; filter: string; replacement: string }
+  | { kind: "deleteOne" | "deleteMany"; coll: string; filter: string };
 
 /** Full mongosh-style statement seeded into a new Query editor. */
 export function aggregateTemplate(coll: string): string {
@@ -34,7 +39,7 @@ export function pipelineHasTrailingLimit(pipelineText: string): boolean {
 
 // db.getCollection("X").<m>(   OR   db.X.<m>(   — countDocuments before count so the longer wins.
 const HEAD =
-  /(?:getCollection\(\s*["']([^"']*)["']\s*\)|\bdb\s*\.\s*([A-Za-z0-9_$.]+))\s*\.\s*(aggregate|find|countDocuments|count|distinct)\s*\(/;
+  /(?:getCollection\(\s*["']([^"']*)["']\s*\)|\bdb\s*\.\s*([A-Za-z0-9_$.]+))\s*\.\s*(aggregate|find|countDocuments|count|distinct|insertOne|insertMany|updateOne|updateMany|replaceOne|deleteOne|deleteMany)\s*\(/;
 
 /** Index of the bracket matching the opener at `open` (respects nesting + string literals).
  *  Returns -1 if unbalanced. Supports {} [] (). */
@@ -187,6 +192,50 @@ export function parseQueryStatement(text: string): ParsedQuery {
     return { kind: "distinct", coll, field, filter };
   }
 
+  if (method === "insertOne" || method === "insertMany") {
+    if (rest.replace(/[\s;]/g, "") !== "") throw new Error(`Unsupported trailing call after ${method}(…)`);
+    const args = inner === "" ? [] : splitArgs(inner);
+    if (args.length !== 1 || args[0].trim() === "") {
+      throw new Error(
+        method === "insertOne" ? "insertOne(doc) requires a document"
+                               : "insertMany([…]) requires an array of documents",
+      );
+    }
+    const body = args[0].trim();
+    return method === "insertOne"
+      ? { kind: "insertOne", coll, doc: body }
+      : { kind: "insertMany", coll, docs: body };
+  }
+
+  if (method === "updateOne" || method === "updateMany") {
+    if (rest.replace(/[\s;]/g, "") !== "") throw new Error(`Unsupported trailing call after ${method}(…)`);
+    const args = inner === "" ? [] : splitArgs(inner);
+    if (args.length > 2) throw new Error(`${method} takes only a filter and an update (options are not supported yet)`);
+    const filter = args.length >= 1 ? args[0].trim() : "";
+    const update = args.length >= 2 ? args[1].trim() : "";
+    if (filter === "" || update === "") throw new Error(`${method}(filter, update) requires a filter and an update`);
+    return { kind: method, coll, filter, update };
+  }
+
+  if (method === "replaceOne") {
+    if (rest.replace(/[\s;]/g, "") !== "") throw new Error("Unsupported trailing call after replaceOne(…)");
+    const args = inner === "" ? [] : splitArgs(inner);
+    if (args.length > 2) throw new Error("replaceOne takes only a filter and a replacement (options are not supported yet)");
+    const filter = args.length >= 1 ? args[0].trim() : "";
+    const replacement = args.length >= 2 ? args[1].trim() : "";
+    if (filter === "" || replacement === "") throw new Error("replaceOne(filter, replacement) requires a filter and a replacement");
+    return { kind: "replaceOne", coll, filter, replacement };
+  }
+
+  if (method === "deleteOne" || method === "deleteMany") {
+    if (rest.replace(/[\s;]/g, "") !== "") throw new Error(`Unsupported trailing call after ${method}(…)`);
+    const args = inner === "" ? [] : splitArgs(inner);
+    if (args.length > 1) throw new Error(`${method} takes only a filter (options are not supported yet)`);
+    const filter = args.length >= 1 ? args[0].trim() : "";
+    if (filter === "") throw new Error(`${method}(filter) requires a filter — pass {} to target all documents`);
+    return { kind: method, coll, filter };
+  }
+
   // find(filter?, projection?)
   const args = inner === "" ? [] : splitArgs(inner);
   if (args.length > 2) throw new Error("find takes at most a filter and a projection");
@@ -194,4 +243,50 @@ export function parseQueryStatement(text: string): ParsedQuery {
   const projection = args.length >= 2 ? args[1].trim() || null : null;
   const chain = parseChain(rest);
   return { kind: "find", coll, filter, projection, ...chain };
+}
+
+const WRITE_KINDS: ReadonlySet<string> = new Set([
+  "insertOne", "insertMany", "updateOne", "updateMany", "replaceOne", "deleteOne", "deleteMany",
+]);
+const DESTRUCTIVE_KINDS: ReadonlySet<string> = new Set([
+  "updateOne", "updateMany", "replaceOne", "deleteOne", "deleteMany",
+]);
+
+/** True for any of the seven write kinds. */
+export function isWriteKind(kind: ParsedQuery["kind"]): boolean {
+  return WRITE_KINDS.has(kind);
+}
+
+/** True for update/replace/delete (writes that change or remove existing data). */
+export function isDestructiveKind(kind: ParsedQuery["kind"]): boolean {
+  return DESTRUCTIVE_KINDS.has(kind);
+}
+
+/** True when a destructive write's filter is the empty document {} (whole-collection scope). */
+export function writeFilterIsEmpty(parsed: ParsedQuery): boolean {
+  switch (parsed.kind) {
+    case "updateOne":
+    case "updateMany":
+    case "replaceOne":
+    case "deleteOne":
+    case "deleteMany":
+      return parsed.filter.replace(/\s/g, "") === "{}";
+    default:
+      return false;
+  }
+}
+
+/** The argument most worth echoing in a confirm dialog: the doc(s) for inserts, the filter otherwise. */
+export function writeTargetSummary(parsed: ParsedQuery): string {
+  switch (parsed.kind) {
+    case "insertOne": return parsed.doc;
+    case "insertMany": return parsed.docs;
+    case "updateOne":
+    case "updateMany":
+    case "replaceOne":
+    case "deleteOne":
+    case "deleteMany":
+      return parsed.filter;
+    default: return "";
+  }
 }

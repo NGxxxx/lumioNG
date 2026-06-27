@@ -116,11 +116,9 @@
   "namespace_panel_menu_duplicate": "Duplicate collection…",
   "namespace_panel_menu_truncate": "Truncate…",
   "namespace_panel_menu_drop_coll": "Drop collection…",
-
   "collection_tab_info": "Info",
   "collection_tab_schema": "Schema",
   "collection_tab_indexes": "Indexes",
-
   "query_tab_title": "Query #{seq}",
   "query_tab_db_label": "db: {db}",
   "query_tab_capped_notice": "Showing first 200 results.",
@@ -140,9 +138,16 @@
   "query_tab_menu_run_selection": "Run selection",
   "query_tab_confirm_delete_title": "Delete selected document?",
   "query_tab_confirm_delete_message": "You are about to delete {count} document. This action cannot be undone.",
-
+  "query_tab_ack_inserted_id": "Inserted _id",
+  "query_tab_ack_inserted_count": "Inserted",
+  "query_tab_ack_matched": "Matched",
+  "query_tab_ack_modified": "Modified",
+  "query_tab_ack_deleted": "Deleted",
+  "query_tab_write_confirm_title": "Run {op}?",
+  "query_tab_write_confirm_message": "Apply {op} to collection “{coll}”?",
+  "query_tab_write_empty_filter_warning": "{op} uses an empty filter — it will affect EVERY document in \"{coll}\". This cannot be undone.",
+  "query_tab_write_run": "Run write",
   "host_tab_opcounters": "opcounters",
-
   "document_form_title_insert": "New document",
   "document_form_title_edit": "Edit document",
   "document_form_tab_json": "JSON",
@@ -155,17 +160,13 @@
   "document_form_saving": "Saving…",
   "document_form_invalid_fields_error": "Some fields are invalid — fix them before saving.",
   "document_form_no_id_error": "Document has no _id to update.",
-
   "query_result_grid_empty": "No results",
-
   "result_tree_empty": "No results",
-
   "tree_node_field_name_placeholder": "field name…",
   "tree_node_add_field": "+ Add field",
   "tree_node_add_item": "+ Add item",
   "tree_node_remove_label": "Remove",
   "tree_node_locked_title": "Immutable",
-
   "result_table_run": "Run",
   "result_table_sort_title": "Sort",
   "result_table_fields_title": "Fields",
@@ -204,7 +205,6 @@
   "result_table_bulk_delete_title": "Delete entire collection?",
   "result_table_bulk_update_title": "Update entire collection?",
   "result_table_bulk_confirm_message": "Empty filter — this operation applies to the ENTIRE collection \"{coll}\". This cannot be undone.",
-
   "session_manager_title": "Session manager",
   "session_manager_close": "Close",
   "session_manager_filter_placeholder": "Filter",
@@ -241,7 +241,6 @@
   "session_manager_btn_connecting": "Connecting…",
   "session_manager_btn_open": "Open",
   "session_manager_btn_cancel": "Cancel",
-
   "toolbar_session_manager": "Session manager",
   "toolbar_save": "Save",
   "toolbar_new_document": "New document",
@@ -257,7 +256,6 @@
   "toolbar_edit_document": "Edit document",
   "toolbar_export": "Export",
   "toolbar_command_log": "Command log",
-
   "status_bar_disconnected": "Disconnected",
   "status_bar_collections": "{label} · {count} collections",
   "status_bar_connected_time": "Connected: {time}",
@@ -267,29 +265,23 @@
   "status_bar_idle": "Idle.",
   "status_bar_loading": "Loading…",
   "status_bar_running_query": "Running query…",
-
   "tab_bar_close": "Close tab",
   "tab_bar_new_query": "New aggregate query",
   "tab_bar_query_title": "Query #{seq}",
   "tab_bar_doc_new": "{coll} / new",
-
   "title_bar_minimize": "Minimize",
   "title_bar_maximize": "Maximize",
   "title_bar_close": "Close",
-
   "command_log_title": "Command log",
   "command_log_subtitle": "mongosh",
   "command_log_clear": "Clear",
   "command_log_toggle": "Toggle command log",
-
   "namespace_tree_footer": "{dbs} databases · {colls} collections",
-
   "page_empty_state": "Select a database or collection to get started",
   "page_quit_title": "Quit LumioNG?",
   "page_quit_message": "Are you sure you want to quit? Unsaved work will be lost.",
   "page_quit_confirm": "Quit",
   "page_quit_cancel": "Cancel",
-
   "err_bool_invalid": "Bool value must be \"true\" or \"false\".",
   "err_date_invalid": "Invalid date/time (ISO-8601 required).",
   "err_objectid_invalid": "ObjectId must be 24 hex characters.",
@@ -309,7 +301,6 @@
   "err_doc_not_object": "Document must be a JSON object.",
   "err_filter_invalid_json": "Filter is not valid JSON.",
   "err_filter_not_object": "Filter must be a JSON object.",
-
   "err_coll_name_empty": "Collection name cannot be empty.",
   "err_coll_name_dollar": "Collection name cannot contain the '$' character.",
   "err_coll_name_system": "Collection name cannot start with 'system.'.",
@@ -320,7 +311,6 @@
   "err_db_name_too_long": "Database name is too long (max 63 bytes).",
   "err_index_no_field": "At least one field is required.",
   "err_index_field_duplicate": "Duplicate field.",
-
   "common_clipboard_failed": "Failed to copy to clipboard.",
   "collection_view_no_id_update": "Document has no _id to update.",
   "collection_view_selection_missing_id": "Some selected rows are missing an _id.",
@@ -330,7 +320,6 @@
   "collection_view_selection_missing_id_delete": "Some selected rows are missing an _id to delete.",
   "collection_view_no_id_delete": "Document has no _id to delete.",
   "query_run_selection_missing_id": "Some rows are missing an _id.",
-
   "export_wizard_title": "Export",
   "export_wizard_format": "Format",
   "export_wizard_columns": "Columns",

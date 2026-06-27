@@ -120,6 +120,71 @@ export async function deleteMany(
   return await invoke<number>("delete_many", { sessionId, db, coll, filter, allowAll });
 }
 
+/** Insert multiple documents (ExtJSON array string). Returns count + parsed inserted ids. */
+export async function insertMany(
+  sessionId: string,
+  db: string,
+  coll: string,
+  docsJson: string,
+): Promise<{ insertedCount: number; insertedIds: unknown[] }> {
+  const res = await invoke<{ insertedCount: number; insertedIds: string[] }>("insert_many", {
+    sessionId,
+    db,
+    coll,
+    docsJson,
+  });
+  return { insertedCount: res.insertedCount, insertedIds: res.insertedIds.map((s) => JSON.parse(s) as unknown) };
+}
+
+/** Updates a single document by filter; `allowAll=true` required for an empty filter. Returns matched/modified. */
+export async function updateOne(
+  sessionId: string,
+  db: string,
+  coll: string,
+  filter: string,
+  update: string,
+  allowAll: boolean,
+): Promise<{ matched: number; modified: number }> {
+  return await invoke<{ matched: number; modified: number }>("update_one", {
+    sessionId,
+    db,
+    coll,
+    filter,
+    update,
+    allowAll,
+  });
+}
+
+/** Replaces a single document by filter; `allowAll=true` required for an empty filter. Returns matched/modified. */
+export async function replaceOne(
+  sessionId: string,
+  db: string,
+  coll: string,
+  filter: string,
+  replacement: string,
+  allowAll: boolean,
+): Promise<{ matched: number; modified: number }> {
+  return await invoke<{ matched: number; modified: number }>("replace_one", {
+    sessionId,
+    db,
+    coll,
+    filter,
+    replacement,
+    allowAll,
+  });
+}
+
+/** Deletes a single document by filter; `allowAll=true` required for an empty filter. Returns deleted count. */
+export async function deleteOne(
+  sessionId: string,
+  db: string,
+  coll: string,
+  filter: string,
+  allowAll: boolean,
+): Promise<number> {
+  return await invoke<number>("delete_one", { sessionId, db, coll, filter, allowAll });
+}
+
 type ProgressCb = (done: number, total: number) => void;
 
 function progressChannel(onProgress: ProgressCb): Channel<{ done: number; total: number }> {

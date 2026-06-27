@@ -4,6 +4,10 @@ import {
   collectionOf,
   aggregateTemplate,
   pipelineHasTrailingLimit,
+  isWriteKind,
+  isDestructiveKind,
+  writeFilterIsEmpty,
+  writeTargetSummary,
   type ParsedQuery,
 } from "./queryStatement";
 
@@ -170,5 +174,91 @@ describe("parseQueryStatement — distinct", () => {
   });
   it("throws on more than two args", () => {
     expect(() => parseQueryStatement('db.c.distinct("a", {}, {})')).toThrow(/field and an optional filter/);
+  });
+});
+
+describe("parseQueryStatement — writes", () => {
+  it("parses insertOne(doc)", () => {
+    expect(parseQueryStatement('db.c.insertOne({ "a": 1 })')).toEqual({
+      kind: "insertOne", coll: "c", doc: '{ "a": 1 }',
+    });
+  });
+  it("parses insertMany([...])", () => {
+    expect(parseQueryStatement('db.c.insertMany([{ "a": 1 }, { "b": 2 }])')).toEqual({
+      kind: "insertMany", coll: "c", docs: '[{ "a": 1 }, { "b": 2 }]',
+    });
+  });
+  it("parses updateOne(filter, update)", () => {
+    expect(parseQueryStatement('db.c.updateOne({ "a": 1 }, { "$set": { "b": 2 } })')).toEqual({
+      kind: "updateOne", coll: "c", filter: '{ "a": 1 }', update: '{ "$set": { "b": 2 } }',
+    });
+  });
+  it("parses updateMany(filter, update)", () => {
+    const r = parseQueryStatement('db.c.updateMany({}, { "$set": { "x": 1 } })');
+    expect(r.kind).toBe("updateMany");
+    if (r.kind === "updateMany") { expect(r.filter).toBe("{}"); expect(r.update).toBe('{ "$set": { "x": 1 } }'); }
+  });
+  it("parses replaceOne(filter, replacement)", () => {
+    expect(parseQueryStatement('db.c.replaceOne({ "a": 1 }, { "a": 2 })')).toEqual({
+      kind: "replaceOne", coll: "c", filter: '{ "a": 1 }', replacement: '{ "a": 2 }',
+    });
+  });
+  it("parses deleteOne(filter) and deleteMany(filter)", () => {
+    expect(parseQueryStatement('db.c.deleteOne({ "a": 1 })')).toEqual({ kind: "deleteOne", coll: "c", filter: '{ "a": 1 }' });
+    expect(parseQueryStatement("db.c.deleteMany({})")).toEqual({ kind: "deleteMany", coll: "c", filter: "{}" });
+  });
+  it("parses the getCollection() form for writes", () => {
+    const r = parseQueryStatement('db.getCollection("orders").deleteMany({ "s": "x" })');
+    expect(r.kind).toBe("deleteMany");
+    if (r.kind === "deleteMany") expect(r.coll).toBe("orders");
+  });
+  it("tolerates a trailing semicolon", () => {
+    expect(parseQueryStatement('db.c.insertOne({ "a": 1 });').kind).toBe("insertOne");
+  });
+  it("throws when insertOne has no document", () => {
+    expect(() => parseQueryStatement("db.c.insertOne()")).toThrow(/requires a document/);
+  });
+  it("throws when insertMany has no array", () => {
+    expect(() => parseQueryStatement("db.c.insertMany()")).toThrow(/array of documents/);
+  });
+  it("throws when updateOne is missing the update", () => {
+    expect(() => parseQueryStatement('db.c.updateOne({ "a": 1 })')).toThrow(/filter and an update/);
+  });
+  it("throws when deleteOne has no filter", () => {
+    expect(() => parseQueryStatement("db.c.deleteOne()")).toThrow(/requires a filter/);
+  });
+  it("rejects a surplus options arg on updateOne", () => {
+    expect(() => parseQueryStatement("db.c.updateOne({}, {}, { upsert: true })")).toThrow(/options are not supported/);
+  });
+  it("rejects a trailing call after a write", () => {
+    expect(() => parseQueryStatement('db.c.deleteMany({}).toArray()')).toThrow(/trailing/);
+  });
+});
+
+describe("write classifiers", () => {
+  it("isWriteKind is true for writes, false for reads", () => {
+    expect(isWriteKind("insertOne")).toBe(true);
+    expect(isWriteKind("deleteMany")).toBe(true);
+    expect(isWriteKind("find")).toBe(false);
+    expect(isWriteKind("distinct")).toBe(false);
+  });
+  it("isDestructiveKind is true for update/replace/delete only", () => {
+    expect(isDestructiveKind("deleteOne")).toBe(true);
+    expect(isDestructiveKind("updateMany")).toBe(true);
+    expect(isDestructiveKind("replaceOne")).toBe(true);
+    expect(isDestructiveKind("insertOne")).toBe(false);
+    expect(isDestructiveKind("find")).toBe(false);
+  });
+  it("writeFilterIsEmpty true only for an empty-filter destructive op", () => {
+    expect(writeFilterIsEmpty({ kind: "deleteMany", coll: "c", filter: "{}" })).toBe(true);
+    expect(writeFilterIsEmpty({ kind: "deleteMany", coll: "c", filter: "{ }" })).toBe(true);
+    expect(writeFilterIsEmpty({ kind: "updateOne", coll: "c", filter: "{}", update: "{}" })).toBe(true);
+    expect(writeFilterIsEmpty({ kind: "deleteOne", coll: "c", filter: '{ "a": 1 }' })).toBe(false);
+    expect(writeFilterIsEmpty({ kind: "insertOne", coll: "c", doc: "{}" })).toBe(false);
+  });
+  it("writeTargetSummary returns the relevant argument", () => {
+    expect(writeTargetSummary({ kind: "insertOne", coll: "c", doc: '{ "a": 1 }' })).toBe('{ "a": 1 }');
+    expect(writeTargetSummary({ kind: "deleteMany", coll: "c", filter: '{ "a": 1 }' })).toBe('{ "a": 1 }');
+    expect(writeTargetSummary({ kind: "updateOne", coll: "c", filter: '{ "a": 1 }', update: "{}" })).toBe('{ "a": 1 }');
   });
 });

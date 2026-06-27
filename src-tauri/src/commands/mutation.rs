@@ -13,6 +13,28 @@ pub struct BulkResult {
     pub modified: u64,
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InsertManyResult {
+    pub inserted_count: u64,
+    pub inserted_ids: Vec<String>,
+}
+
+/// Parse a Canonical Extended JSON **array** of documents into Vec<Document>.
+fn parse_doc_array(json: &str) -> Result<Vec<Document>, AppError> {
+    match canonical_string_to_bson(json)? {
+        mongodb::bson::Bson::Array(arr) => arr
+            .into_iter()
+            .map(|b| {
+                b.as_document()
+                    .cloned()
+                    .ok_or_else(|| AppError::Query("each element must be a document".into()))
+            })
+            .collect(),
+        _ => Err(AppError::Query("insertMany expects an array of documents".into())),
+    }
+}
+
 /// Reject a replacement whose embedded _id differs from the original (immutable _id).
 fn ensure_id_unchanged(
     new_doc: &mongodb::bson::Document,
@@ -137,6 +159,96 @@ pub async fn delete_many(
     Ok(res.deleted_count)
 }
 
+#[tauri::command]
+pub async fn insert_many(
+    session_id: String,
+    db: String,
+    coll: String,
+    docs_json: String,
+    state: State<'_, AppState>,
+) -> Result<InsertManyResult, AppError> {
+    let client = state.client(&session_id).await?;
+    let docs = parse_doc_array(&docs_json)?;
+    if docs.is_empty() {
+        return Err(AppError::Query("insertMany requires at least one document".into()));
+    }
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let res = collection.insert_many(docs).await?;
+    // inserted_ids is a HashMap<usize, Bson>; restore insertion order by index.
+    let mut entries: Vec<(usize, &mongodb::bson::Bson)> =
+        res.inserted_ids.iter().map(|(k, v)| (*k, v)).collect();
+    entries.sort_by_key(|(k, _)| *k);
+    let inserted_ids = entries
+        .into_iter()
+        .map(|(_, b)| bson_to_canonical_string(b))
+        .collect::<Result<Vec<String>, AppError>>()?;
+    Ok(InsertManyResult {
+        inserted_count: inserted_ids.len() as u64,
+        inserted_ids,
+    })
+}
+
+#[tauri::command]
+pub async fn update_one(
+    session_id: String,
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    update: String,
+    allow_all: bool,
+    state: State<'_, AppState>,
+) -> Result<BulkResult, AppError> {
+    let client = state.client(&session_id).await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let f = parse_user_filter(filter.as_deref())?;
+    ensure_filter_allowed(&f, allow_all)?;
+    let update_doc = canonical_string_to_doc(&update)?;
+    let res = collection.update_one(f, update_doc).await?;
+    Ok(BulkResult {
+        matched: res.matched_count,
+        modified: res.modified_count,
+    })
+}
+
+#[tauri::command]
+pub async fn replace_one(
+    session_id: String,
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    replacement: String,
+    allow_all: bool,
+    state: State<'_, AppState>,
+) -> Result<BulkResult, AppError> {
+    let client = state.client(&session_id).await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let f = parse_user_filter(filter.as_deref())?;
+    ensure_filter_allowed(&f, allow_all)?;
+    let repl = canonical_string_to_doc(&replacement)?;
+    let res = collection.replace_one(f, repl).await?;
+    Ok(BulkResult {
+        matched: res.matched_count,
+        modified: res.modified_count,
+    })
+}
+
+#[tauri::command]
+pub async fn delete_one(
+    session_id: String,
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    allow_all: bool,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let client = state.client(&session_id).await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let f = parse_user_filter(filter.as_deref())?;
+    ensure_filter_allowed(&f, allow_all)?;
+    let res = collection.delete_one(f).await?;
+    Ok(res.deleted_count)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,5 +293,22 @@ mod tests {
     fn non_empty_filter_is_ok_without_allow() {
         let f = doc! { "status": "active" };
         assert!(ensure_filter_allowed(&f, false).is_ok());
+    }
+
+    #[test]
+    fn parse_doc_array_reads_documents() {
+        let out = parse_doc_array(r#"[{"a":1},{"b":2}]"#).unwrap();
+        assert_eq!(out.len(), 2);
+        assert!(out[0].contains_key("a"));
+    }
+
+    #[test]
+    fn parse_doc_array_rejects_non_array() {
+        assert!(matches!(parse_doc_array(r#"{"a":1}"#), Err(AppError::Query(_))));
+    }
+
+    #[test]
+    fn parse_doc_array_rejects_non_document_element() {
+        assert!(matches!(parse_doc_array(r#"[1,2]"#), Err(AppError::Query(_))));
     }
 }
