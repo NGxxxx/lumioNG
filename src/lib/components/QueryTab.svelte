@@ -7,9 +7,14 @@
   import CommandLogView from "./CommandLogView.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import BsonCell from "./BsonCell.svelte";
   import ExportWizard from "./ExportWizard.svelte";
   import type { Doc } from "../domain/doc";
   import * as m from "$lib/paraglide/messages";
+  import CodeEditor from "./CodeEditor.svelte";
+  import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
+  import { collectionOf } from "../domain/queryStatement";
+  import type { CompletionSource } from "@codemirror/autocomplete";
 
   let { id, seq, initialStatement, currentDb, onopendocument }:
     { id: number; seq: number; initialStatement: string; currentDb: string | null;
@@ -31,11 +36,26 @@
     menu = null;
   }
 
-  /** Keep the store's selection range in sync with the editor (for Run selection). */
-  function syncSelection(e: Event) {
-    const t = e.currentTarget as HTMLTextAreaElement;
-    v.setSelection(t.selectionStart, t.selectionEnd);
+  /** Map the pure result into CodeMirror's completion shape (or null). */
+  function toCM(r: { from: number; options: { label: string; detail?: string }[] } | null) {
+    return r ? { from: r.from, options: r.options, validFor: /^[\w$.]*$/ } : null;
   }
+
+  const completionSource: CompletionSource = (ctx) => {
+    const text = ctx.state.doc.toString();
+    const c = contextAt(text, ctx.pos);
+    if (c.kind === "none") return null;
+    if (!ctx.explicit && c.prefix.length === 0) return null; // cheap exit on plain typing
+    const collections =
+      sessionManager.active?.tree.databases.find((d) => d.name === currentDb)?.collections ?? [];
+    if (needsFields(c.kind) && currentDb) {
+      const coll = collectionOf(text);
+      if (coll) {
+        return v.fieldsFor(currentDb, coll).then((fields) => toCM(completeAt(text, ctx.pos, { collections, fields })));
+      }
+    }
+    return toCM(completeAt(text, ctx.pos, { collections, fields: [] }));
+  };
 
   function onResultMenu(action: string) {
     const r = v.onMenuSelect(action);
@@ -49,8 +69,14 @@
     {#if currentDb}<span class="db">{m.query_tab_db_label({ db: currentDb })}</span>{/if}
   </div>
 
-  <textarea class="editor" bind:value={v.statementText} spellcheck="false" oncontextmenu={openMenu}
-    onselect={syncSelection} onkeyup={syncSelection} onmouseup={syncSelection}></textarea>
+  <div class="editor" role="none" oncontextmenu={openMenu}>
+    <CodeEditor
+      value={v.statementText}
+      onChange={(t) => (v.statementText = t)}
+      onSelectionChange={v.setSelection}
+      onRun={() => v.run(currentDb)}
+      complete={completionSource} />
+  </div>
 
   {#if v.error}<div class="error">{v.error}</div>{/if}
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
@@ -64,7 +90,7 @@
     <div class="bottom-tabs">
       <button class:active={bottomTab === "result"} onclick={() => (bottomTab = "result")}>{m.query_tab_result()}</button>
       <button class:active={bottomTab === "log"} onclick={() => (bottomTab = "log")}>{m.query_tab_command_log()}</button>
-      {#if bottomTab === "result" && v.ran}
+      {#if bottomTab === "result" && v.ran && v.resultKind === "docs"}
         <div class="view-toggle">
           <button class:active={v.view === "grid"} onclick={() => (v.view = "grid")}>{m.query_tab_view_grid()}</button>
           <button class:active={v.view === "tree"} onclick={() => (v.view = "tree")}>{m.query_tab_view_tree()}</button>
@@ -78,6 +104,23 @@
       <div class="result-pane">
         {#if v.loading}
           <div class="status">{m.query_tab_status_running()}</div>
+        {:else if v.ran && v.resultKind === "scalar"}
+          <div class="scalar">
+            <div class="scalar-num">{v.countResult}</div>
+            <div class="scalar-label">{m.query_tab_count_result({ count: v.countResult ?? 0 })}</div>
+          </div>
+        {:else if v.ran && v.resultKind === "values"}
+          <div class="values">
+            <div class="values-head">
+              <span>{m.query_tab_distinct_count({ count: v.distinctValues.length })}</span>
+              <button onclick={v.copyValues}>{m.query_tab_copy_all()}</button>
+            </div>
+            <div class="values-list">
+              {#each v.distinctValues as val, i (i)}
+                <div class="values-row"><BsonCell value={val} /></div>
+              {/each}
+            </div>
+          </div>
         {:else if v.ran}
           {#if v.view === "grid"}
             <QueryResultGrid columns={v.columns} docs={v.pageDocs} colWidths={v.colWidths}
@@ -95,7 +138,7 @@
           <div class="status">{m.query_tab_status_idle()}</div>
         {/if}
       </div>
-      {#if v.ran}
+      {#if v.ran && v.resultKind === "docs"}
         <div class="pager">
           <button onclick={() => v.goToPage(1)} disabled={v.currentPage <= 1}>«</button>
           <button onclick={() => v.goToPage(v.currentPage - 1)} disabled={v.currentPage <= 1}>‹</button>
@@ -139,7 +182,7 @@
   .query { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; }
   .bar { display: flex; align-items: center; gap: 0.625rem; height: 1.875rem; flex: none; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 0.625rem; }
   .db { color: var(--gray-77); font-size: 0.75rem; }
-  .editor { height: 34%; flex: none; resize: none; border: none; border-bottom: 1px solid var(--gray-cf); background: var(--cream); font-family: var(--mono); font-size: 0.8125rem; line-height: 1.6; padding: 0.5rem 0.75rem; box-sizing: border-box; }
+  .editor { height: 34%; flex: none; border-bottom: 1px solid var(--gray-cf); box-sizing: border-box; overflow: hidden; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   .cap { background: var(--warn-bg2); color: var(--warn-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.625rem; }
   .cap button { font-size: 0.75rem; cursor: pointer; }
@@ -152,6 +195,15 @@
   .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
   .result-pane { flex: 1; min-height: 0; overflow: hidden; background: var(--panel); }
   .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; }
+  .scalar { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; }
+  .scalar-num { font-size: 2.5rem; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
+  .scalar-label { font-size: 0.8125rem; color: var(--muted); }
+  .values { height: 100%; display: flex; flex-direction: column; min-height: 0; }
+  .values-head { display: flex; align-items: center; justify-content: space-between; flex: none; height: 1.625rem; padding: 0 0.625rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
+  .values-head button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
+  .values-list { flex: 1; min-height: 0; overflow: auto; }
+  .values-row { height: 1.375rem; line-height: 1.375rem; border-bottom: 1px solid var(--cell-border); font-size: 0.75rem; }
+  .values-row :global(.cell) { padding: 0 0.5625rem; display: inline-block; height: 1.375rem; line-height: 1.375rem; }
   .pager { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.75rem; padding: 0 0.625rem; border-top: 1px solid var(--border); background: var(--zebra-alt); font-size: 0.75rem; }
   .pager button { height: 1.25rem; padding: 0 0.5rem; border: 1px solid var(--gray-c4); background: var(--bg); border-radius: 0.125rem; cursor: pointer; color: var(--gray-44); }
   .pager button:disabled { opacity: 0.45; cursor: default; }

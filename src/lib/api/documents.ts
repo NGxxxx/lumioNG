@@ -78,6 +78,18 @@ export async function countDocuments(sessionId: string, db: string, coll: string
   return await invoke<number>("count_documents", { sessionId, db, coll, filter });
 }
 
+/** Distinct values for a field (Canonical ExtJSON parsed). filter defaults to {}. */
+export async function distinct(
+  sessionId: string,
+  db: string,
+  coll: string,
+  field: string,
+  filter = "{}",
+): Promise<unknown[]> {
+  const rows = await invoke<string[]>("distinct", { sessionId, db, coll, field, filter });
+  return rows.map((s) => JSON.parse(s) as unknown);
+}
+
 /** Updates many documents by filter; `allowAll=true` required to allow an empty filter. Returns matched/modified counts. */
 export async function updateMany(
   sessionId: string,

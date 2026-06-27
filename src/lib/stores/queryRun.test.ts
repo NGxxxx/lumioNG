@@ -7,6 +7,10 @@ vi.mock("../api/documents", () => ({
   exportQuery: vi.fn(async () => []),
   exportBson: vi.fn(async () => 0),
   deleteMany: vi.fn(async () => 0),
+  sampleDocuments: vi.fn(async () => [{ _id: { $oid: "1" }, name: "A", age: 30 }]),
+  queryPage: vi.fn(async () => [{ _id: { $oid: "1" }, name: "A" }]),
+  countDocuments: vi.fn(async () => 0),
+  distinct: vi.fn(async () => []),
 }));
 // Note: api/files is no longer imported by queryRun.svelte.ts (export now opens the wizard in-memory).
 
@@ -14,6 +18,10 @@ import * as api from "../api/documents";
 import { createQueryRun } from "./queryRun.svelte";
 
 const aggregate = api.aggregate as ReturnType<typeof vi.fn>;
+const sampleDocuments = api.sampleDocuments as ReturnType<typeof vi.fn>;
+const queryPage = api.queryPage as ReturnType<typeof vi.fn>;
+const countDocuments = api.countDocuments as ReturnType<typeof vi.fn>;
+const distinctFn = api.distinct as ReturnType<typeof vi.fn>;
 const STMT = 'db.getCollection("orders").aggregate([{ "$match": {} }])';
 
 describe("createQueryRun", () => {
@@ -54,7 +62,7 @@ describe("createQueryRun", () => {
   });
 
   it("surfaces a parse error", async () => {
-    const v = createQueryRun("conn:1", 'db.getCollection("x").find({})');
+    const v = createQueryRun("conn:1", "select * from orders");
     await v.run("shop");
     expect(aggregate).not.toHaveBeenCalled();
     expect(v.error).toBeTruthy();
@@ -210,5 +218,113 @@ describe("queryRun source + menu", () => {
     const deleteItem = r.menuItems().find((m) => m.action === "deleteSelected");
     expect(deleteItem).toBeDefined();
     expect(deleteItem!.disabled).toBe(true);
+  });
+});
+
+describe("find + count routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    queryPage.mockResolvedValue([]);
+    countDocuments.mockResolvedValue(0);
+  });
+
+  it("routes find to queryPage with skip/limit/sort/projection and caps at 200", async () => {
+    queryPage.mockResolvedValueOnce([{ _id: 1 }, { _id: 2 }]);
+    const v = createQueryRun("conn:1", 'db.getCollection("orders").find({ "a": 1 }, { "a": 1 }).sort({ "a": -1 }).skip(5)');
+    await v.run("shop");
+    expect(queryPage).toHaveBeenCalledWith("conn:1", "shop", "orders", 5, 200, '{ "a": 1 }', '{ "a": -1 }', '{ "a": 1 }');
+    expect(v.resultKind).toBe("docs");
+    expect(v.docs.length).toBe(2);
+    expect(v.capped).toBe(false);
+  });
+
+  it("flags capped when find hits the injected 200 cap (no explicit limit)", async () => {
+    queryPage.mockResolvedValueOnce(Array.from({ length: 200 }, (_, i) => ({ _id: i })));
+    const v = createQueryRun("conn:1", "db.orders.find({})");
+    await v.run("shop");
+    expect(v.capped).toBe(true);
+  });
+
+  it("respects an explicit .limit and does not flag capped", async () => {
+    queryPage.mockResolvedValueOnce(Array.from({ length: 10 }, (_, i) => ({ _id: i })));
+    const v = createQueryRun("conn:1", "db.orders.find({}).limit(10)");
+    await v.run("shop");
+    expect(queryPage).toHaveBeenCalledWith("conn:1", "shop", "orders", 0, 10, "{}", null, null);
+    expect(v.capped).toBe(false);
+  });
+
+  it("runNoLimit passes limit 0 for find", async () => {
+    const v = createQueryRun("conn:1", "db.orders.find({})");
+    await v.runNoLimit("shop");
+    expect(queryPage).toHaveBeenCalledWith("conn:1", "shop", "orders", 0, 0, "{}", null, null);
+  });
+
+  it("routes count to countDocuments and renders a scalar", async () => {
+    countDocuments.mockResolvedValueOnce(42);
+    const v = createQueryRun("conn:1", 'db.orders.countDocuments({ "a": 1 })');
+    await v.run("shop");
+    expect(countDocuments).toHaveBeenCalledWith("conn:1", "shop", "orders", '{ "a": 1 }');
+    expect(v.resultKind).toBe("scalar");
+    expect(v.countResult).toBe(42);
+    expect(v.docs.length).toBe(0);
+    expect(v.srcColl).toBe("orders");
+  });
+});
+
+describe("distinct routing", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    distinctFn.mockResolvedValue([]);
+  });
+
+  it("routes distinct to api.distinct and renders values", async () => {
+    distinctFn.mockResolvedValueOnce(["active", "pending", "archived"]);
+    const v = createQueryRun("conn:1", 'db.orders.distinct("status", { "a": 1 })');
+    await v.run("shop");
+    expect(distinctFn).toHaveBeenCalledWith("conn:1", "shop", "orders", "status", '{ "a": 1 }');
+    expect(v.resultKind).toBe("values");
+    expect(v.distinctValues).toEqual(["active", "pending", "archived"]);
+    expect(v.docs.length).toBe(0);
+    expect(v.srcColl).toBe("orders");
+  });
+});
+
+describe("fieldsFor", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sampleDocuments.mockResolvedValue([{ _id: { $oid: "1" }, name: "A", age: 30 }]);
+  });
+
+  it("samples once and infers field paths", async () => {
+    const v = createQueryRun("conn:1", STMT);
+    const fields = await v.fieldsFor("shop", "orders");
+    expect(sampleDocuments).toHaveBeenCalledWith("conn:1", "shop", "orders", "{}", 50);
+    expect(fields).toEqual(expect.arrayContaining(["name", "age"]));
+  });
+
+  it("caches per (db, coll): repeated calls do not re-sample", async () => {
+    const v = createQueryRun("conn:1", STMT);
+    await v.fieldsFor("shop", "orders");
+    await v.fieldsFor("shop", "orders");
+    expect(sampleDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it("samples separately for a different collection", async () => {
+    const v = createQueryRun("conn:1", STMT);
+    await v.fieldsFor("shop", "orders");
+    await v.fieldsFor("shop", "users");
+    expect(sampleDocuments).toHaveBeenCalledTimes(2);
+  });
+
+  it("de-dupes concurrent calls for the same key", async () => {
+    const v = createQueryRun("conn:1", STMT);
+    await Promise.all([v.fieldsFor("shop", "orders"), v.fieldsFor("shop", "orders")]);
+    expect(sampleDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns [] when sampling fails", async () => {
+    sampleDocuments.mockRejectedValueOnce(new Error("boom"));
+    const v = createQueryRun("conn:1", STMT);
+    expect(await v.fieldsFor("shop", "orders")).toEqual([]);
   });
 });

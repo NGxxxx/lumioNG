@@ -1,6 +1,6 @@
 <script lang="ts">
   import { idJson } from "$lib/domain/docid";
-  import { aggregateTemplate } from "$lib/domain/aggregate";
+  import { aggregateTemplate } from "$lib/domain/queryStatement";
   import { inferSchema } from "$lib/domain/schema";
   import { buildSkeleton } from "$lib/domain/skeleton";
   import { sampleDocuments } from "$lib/api/documents";

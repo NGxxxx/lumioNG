@@ -37,6 +37,11 @@ export const deleteManyCmd = (coll: string, filterJson: string) =>
 export const countCmd = (coll: string, filterJson: string) =>
   `${c(coll)}.countDocuments(${filterJson})`;
 
+export const distinctCmd = (coll: string, field: string, filterJson: string) =>
+  filterJson && filterJson.trim() !== "{}"
+    ? `${c(coll)}.distinct(${JSON.stringify(field)}, ${filterJson})`
+    : `${c(coll)}.distinct(${JSON.stringify(field)})`;
+
 export const createCollectionCmd = (coll: string) => `db.createCollection("${coll}")`;
 
 export const dropCollectionCmd = (coll: string) => `${c(coll)}.drop()`;

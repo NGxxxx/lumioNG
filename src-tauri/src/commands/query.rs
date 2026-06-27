@@ -1,4 +1,4 @@
-use crate::bson_json::doc_to_canonical_string;
+use crate::bson_json::{bson_to_canonical_string, doc_to_canonical_string};
 use crate::error::AppError;
 use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc};
 use crate::state::AppState;
@@ -158,6 +158,21 @@ pub async fn count_documents(
     Ok(collection.count_documents(f).await?)
 }
 
+#[tauri::command]
+pub async fn distinct(
+    session_id: String,
+    db: String,
+    coll: String,
+    field: String,
+    filter: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let client = state.client(&session_id).await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+    let f = parse_user_filter(filter.as_deref())?;
+    let values = collection.distinct(&field, f).await?;
+    values.iter().map(bson_to_canonical_string).collect()
+}
 
 #[cfg(test)]
 mod tests {

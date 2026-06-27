@@ -23,6 +23,7 @@ pub fn run() {
             commands::query::aggregate,
             commands::query::sample_documents,
             commands::query::count_documents,
+            commands::query::distinct,
             commands::mutation::insert_document,
             commands::mutation::replace_document,
             commands::mutation::delete_document,

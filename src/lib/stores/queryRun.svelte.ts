@@ -1,13 +1,17 @@
 import * as m from "$lib/paraglide/messages";
-import { aggregate, deleteMany } from "../api/documents";
+import { aggregate, deleteMany, sampleDocuments, queryPage, countDocuments, distinct } from "../api/documents";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import type { Doc } from "../domain/doc";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { aggregateCmd, deleteManyCmd } from "../domain/mongosh";
-import { parseAggregateStatement, pipelineHasTrailingLimit } from "../domain/aggregate";
-import { mergeColumns, getByPath, type ColumnField } from "../domain/schema";
+import { aggregateCmd, deleteManyCmd, findCmd, countCmd, distinctCmd } from "../domain/mongosh";
+import {
+  parseQueryStatement,
+  pipelineHasTrailingLimit,
+  type ParsedQuery,
+} from "../domain/queryStatement";
+import { mergeColumns, getByPath, inferSchema, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import { toJsonArray, toCsv } from "../domain/exporter";
@@ -27,6 +31,10 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
   let error = $state<string | null>(null);
   let loading = $state(false);
   let capped = $state(false);
+  let resultKind = $state<"docs" | "scalar" | "values">("docs");
+  let countResult = $state<number | null>(null);
+  // $state.raw: distinct values are replaced wholesale, never mutated (consistent with docs).
+  let distinctValues = $state.raw<unknown[]>([]);
   let ran = $state(false);
   let view = $state<"grid" | "tree">("grid");
   let pageSize = $state(50);
@@ -41,6 +49,32 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
   let ioError = $state<string | null>(null);
   let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
   let exportRequest = $state<{ rows: Doc[] } | null>(null);
+
+  // Autocomplete field cache: one sample() per (db, coll) for this tab's lifetime.
+  const fieldCache = new Map<string, string[]>();
+  const fieldInflight = new Map<string, Promise<string[]>>();
+
+  async function fieldsFor(db: string, coll: string): Promise<string[]> {
+    const key = `${db} ${coll}`;
+    const cached = fieldCache.get(key);
+    if (cached) return cached;
+    const pending = fieldInflight.get(key);
+    if (pending) return pending;
+    const p = (async () => {
+      try {
+        const docs = await sampleDocuments(sessionId, db, coll, "{}", 50);
+        const paths = inferSchema(docs).fields.map((f) => f.path);
+        fieldCache.set(key, paths);
+        return paths;
+      } catch {
+        return []; // autocomplete degrades silently; never throw into the editor
+      } finally {
+        fieldInflight.delete(key);
+      }
+    })();
+    fieldInflight.set(key, p);
+    return p;
+  }
 
   // Editor selection range (chars into statementText), kept in sync by the textarea.
   // Enables "Run selection": run only the highlighted statement instead of the whole editor.
@@ -58,25 +92,72 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
       error = "Select a database first.";
       return;
     }
-    let parsed: { coll: string; pipelineText: string };
+    let parsed: ParsedQuery;
     try {
-      parsed = parseAggregateStatement(stmt);
+      parsed = parseQueryStatement(stmt);
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       return;
     }
-    const limit = forceNoLimit || pipelineHasTrailingLimit(parsed.pipelineText) ? null : SAFETY_CAP;
     loading = true;
     activity.begin(m.status_bar_running_query());
     try {
-      const res = await aggregate(sessionId, db, parsed.coll, parsed.pipelineText, limit);
-      docs = res;
-      columns = mergeColumns(null, res);
-      defaultColWidths = computeColumnWidths(columns, res);
-      colWidths = { ...defaultColWidths };
-      capped = limit !== null && res.length === limit;
+      if (parsed.kind === "distinct") {
+        const vals = await distinct(sessionId, db, parsed.coll, parsed.field, parsed.filter);
+        distinctValues = vals;
+        resultKind = "values";
+        docs = [];
+        columns = [];
+        capped = false;
+        countResult = null;
+        commandLog.push(distinctCmd(parsed.coll, parsed.field, parsed.filter), sessionId);
+      } else if (parsed.kind === "count") {
+        const n = await countDocuments(sessionId, db, parsed.coll, parsed.filter);
+        countResult = n;
+        resultKind = "scalar";
+        docs = [];
+        columns = [];
+        capped = false;
+        distinctValues = [];
+        commandLog.push(countCmd(parsed.coll, parsed.filter), sessionId);
+      } else if (parsed.kind === "find") {
+        const limit = parsed.limit ?? (forceNoLimit ? 0 : SAFETY_CAP);
+        const res = await queryPage(
+          sessionId, db, parsed.coll, parsed.skip ?? 0, limit, parsed.filter, parsed.sort, parsed.projection,
+        );
+        docs = res;
+        columns = mergeColumns(null, res);
+        defaultColWidths = computeColumnWidths(columns, res);
+        colWidths = { ...defaultColWidths };
+        capped = parsed.limit == null && !forceNoLimit && res.length === SAFETY_CAP;
+        resultKind = "docs";
+        countResult = null;
+        distinctValues = [];
+        commandLog.push(
+          findCmd({
+            coll: parsed.coll,
+            filter: parsed.filter,
+            projection: parsed.projection,
+            sort: parsed.sort,
+            skip: parsed.skip ?? undefined,
+            limit: parsed.limit ?? undefined,
+          }),
+          sessionId,
+        );
+      } else {
+        const limit = forceNoLimit || pipelineHasTrailingLimit(parsed.pipeline) ? null : SAFETY_CAP;
+        const res = await aggregate(sessionId, db, parsed.coll, parsed.pipeline, limit);
+        docs = res;
+        columns = mergeColumns(null, res);
+        defaultColWidths = computeColumnWidths(columns, res);
+        colWidths = { ...defaultColWidths };
+        capped = limit !== null && res.length === limit;
+        resultKind = "docs";
+        countResult = null;
+        distinctValues = [];
+        commandLog.push(aggregateCmd(parsed.coll, parsed.pipeline), sessionId);
+      }
       pageReq = 1;
-      commandLog.push(aggregateCmd(parsed.coll, parsed.pipelineText), sessionId);
       error = null;
       ran = true;
       srcDb = db;
@@ -234,6 +315,10 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     get error() { return error; },
     get loading() { return loading; },
     get capped() { return capped; },
+    get resultKind() { return resultKind; },
+    get countResult() { return countResult; },
+    get distinctValues() { return distinctValues; },
+    copyValues: () => copy(JSON.stringify(distinctValues, null, 2)),
     get ran() { return ran; },
     get view() { return view; },
     set view(v: "grid" | "tree") { view = v; },
@@ -249,6 +334,7 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     runNoLimit: (db: string | null) => exec(db, true),
     runSelection,
     setSelection,
+    fieldsFor,
     get hasSelection() { return hasSelection; },
     get srcDb() { return srcDb; },
     get srcColl() { return srcColl; },
