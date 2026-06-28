@@ -1,8 +1,9 @@
 /** Pure completion brain for the Query editor: detect cursor context + build options.
  *  No CodeMirror, no Svelte. */
-import { PIPELINE_STAGES, QUERY_OPERATORS, EXPR_OPERATORS, type OpEntry } from "./mongoOps";
+import { PIPELINE_STAGES, QUERY_OPERATORS, EXPR_OPERATORS, COLLECTION_METHODS, type OpEntry } from "./mongoOps";
+import { methodHeadAt } from "./queryStatement";
 
-export type CompletionKind = "collection" | "stage" | "field" | "exprOp" | "none";
+export type CompletionKind = "collection" | "method" | "stage" | "field" | "exprOp" | "fieldRef" | "none";
 export interface CtxResult {
   kind: CompletionKind;
   from: number;
@@ -10,6 +11,7 @@ export interface CtxResult {
 }
 export interface CompleteResult {
   from: number;
+  kind: CompletionKind;
   options: OpEntry[];
 }
 
@@ -22,10 +24,13 @@ function tokenBefore(text: string, pos: number): { from: number; prefix: string 
   return { from: i, prefix: text.slice(i, pos) };
 }
 
-/** Walk `[from,to)` tracking string state + a bracket stack; report context at `to`.
- *  Frame for "{" carries expectKey (true right after "{" or ","; false after ":"). */
-type Frame = { type: "obj"; expectKey: boolean } | { type: "arr" };
-function scanContext(text: string, from: number, to: number): "stage" | "field" | "exprOp" | "none" {
+type Frame = { type: "obj"; expectKey: boolean } | { type: "arr" } | { type: "paren" };
+interface ScanResult { pos: "stage" | "field" | "value" | "none"; inString: boolean }
+
+/** Walk `[from,to)` tracking string state + a bracket stack (obj/arr/paren); classify the position
+ *  at `to`. `obj` frames carry expectKey (true right after "{" or ","; false after ":"). A top-level
+ *  aggregate pipeline object key ([arr, obj]) is a stage; every other obj key is a field. */
+function scanContext(text: string, from: number, to: number, isAggregate: boolean): ScanResult {
   const stack: Frame[] = [];
   let inStr = false;
   let quote = "";
@@ -41,26 +46,25 @@ function scanContext(text: string, from: number, to: number): "stage" | "field" 
     if (ch === '"' || ch === "'") { inStr = true; quote = ch; continue; }
     if (ch === "{") { stack.push({ type: "obj", expectKey: true }); continue; }
     if (ch === "[") { stack.push({ type: "arr" }); continue; }
-    if (ch === "}" || ch === "]") { stack.pop(); continue; }
+    if (ch === "(") { stack.push({ type: "paren" }); continue; }
+    if (ch === "}" || ch === "]" || ch === ")") { stack.pop(); continue; }
     const top = stack[stack.length - 1];
-    if (!top) continue;
-    if (top.type === "obj") {
-      if (ch === ":") top.expectKey = false;
-      else if (ch === ",") top.expectKey = true;
-    }
+    if (!top || top.type !== "obj") continue;
+    if (ch === ":") top.expectKey = false;
+    else if (ch === ",") top.expectKey = true;
   }
   const top = stack[stack.length - 1];
-  if (!top || top.type === "arr") return "none";
-  const objDepth = stack.filter((f) => f.type === "obj").length;
-  if (top.expectKey) return objDepth <= 1 ? "stage" : "field";
-  return "exprOp"; // value position
-}
-
-/** Locate the pipeline argument: substring right after the first "aggregate(". */
-function pipelineStart(text: string): number {
-  const m = text.match(/aggregate\s*\(/);
-  if (!m || m.index === undefined) return -1;
-  return m.index + m[0].length;
+  let pos: ScanResult["pos"];
+  if (!top || top.type === "arr" || top.type === "paren") {
+    pos = "none";
+  } else if (top.expectKey) {
+    const below = stack[stack.length - 2];
+    const isStage = isAggregate && stack.length === 2 && below?.type === "arr";
+    pos = isStage ? "stage" : "field";
+  } else {
+    pos = "value";
+  }
+  return { pos, inString: inStr };
 }
 
 export function contextAt(text: string, pos: number): CtxResult {
@@ -71,23 +75,40 @@ export function contextAt(text: string, pos: number): CtxResult {
   if (/\bdb\.\s*$/.test(before)) return { kind: "collection", from, prefix };
   if (/getCollection\(\s*["'][^"']*$/.test(before)) return { kind: "collection", from, prefix };
 
-  const ps = pipelineStart(text);
-  if (ps === -1 || pos < ps) return { kind: "none", from, prefix };
+  // Method: right after `db.<coll>.` or `getCollection("x").`
+  if (/(?:\bdb\.\s*[A-Za-z0-9_$.]+|getCollection\(\s*["'][^"']*["']\s*\))\s*\.\s*$/.test(before)) {
+    return { kind: "method", from, prefix };
+  }
 
-  const scanned = scanContext(text, ps, from); // scan up to token start, not into the token
-  let kind: CompletionKind = scanned;
-  if (scanned === "exprOp" && !prefix.startsWith("$")) kind = "none";
-  return { kind, from, prefix };
+  const head = methodHeadAt(text, pos);
+  if (!head) return { kind: "none", from, prefix };
+
+  const isAggregate = head.method === "aggregate";
+  const scanned = scanContext(text, head.argOpen + 1, from, isAggregate);
+
+  if (scanned.pos === "stage") return { kind: "stage", from, prefix };
+  if (scanned.pos === "field") return { kind: "field", from, prefix };
+  if (scanned.pos === "value" && prefix.startsWith("$")) {
+    // a $-prefixed token inside an open string is a field reference (e.g. "$amount");
+    // a bare $-prefixed token is an expression operator (e.g. $sum).
+    return { kind: scanned.inString ? "fieldRef" : "exprOp", from, prefix };
+  }
+  return { kind: "none", from, prefix };
 }
 
 export function needsFields(kind: CompletionKind): boolean {
-  return kind === "field";
+  return kind === "field" || kind === "fieldRef";
 }
 
 /** Case-insensitive prefix filter, preserving catalog/source order. */
 function byPrefix(items: OpEntry[], prefix: string): OpEntry[] {
   const p = prefix.toLowerCase();
   return items.filter((it) => it.label.toLowerCase().startsWith(p));
+}
+
+/** `getCollection` is offered only right after `db.`, not inside getCollection("…. */
+function collectionExtras(before: string): OpEntry[] {
+  return /\bdb\.\s*$/.test(before) ? [{ label: "getCollection" }] : [];
 }
 
 export function completeAt(
@@ -99,11 +120,14 @@ export function completeAt(
   if (kind === "none") return null;
 
   let pool: OpEntry[];
-  if (kind === "collection") pool = sources.collections.map((label) => ({ label }));
+  if (kind === "collection") {
+    pool = [...sources.collections.map((label) => ({ label })), ...collectionExtras(text.slice(0, from))];
+  } else if (kind === "method") pool = [...COLLECTION_METHODS];
   else if (kind === "stage") pool = [...PIPELINE_STAGES];
   else if (kind === "exprOp") pool = [...EXPR_OPERATORS];
+  else if (kind === "fieldRef") pool = sources.fields.map((f) => ({ label: "$" + f }));
   else pool = [...sources.fields.map((label) => ({ label })), ...QUERY_OPERATORS]; // field
 
   const options = byPrefix(pool, prefix);
-  return options.length ? { from, options } : null; // null when nothing matches (vs an empty popup)
+  return options.length ? { from, kind, options } : null; // null when nothing matches
 }

@@ -39,14 +39,14 @@ describe("contextAt", () => {
     expect(contextAt(text, pos).kind).toBe("field"); // key position of nested object → field
   });
 
-  it("detects an expression operator in a value position", () => {
-    const { text, pos } = at('db.c.aggregate([{ "$group": { "_id": "$su|" } }])');
-    expect(contextAt(text, pos).kind).toBe("exprOp"); // after ':' → value position, $-prefixed
+  it("detects an expression operator in a bare value position", () => {
+    const { text, pos } = at('db.c.aggregate([{ "$group": { "_id": $su| } }])');
+    expect(contextAt(text, pos).kind).toBe("exprOp"); // after ':' → value position, $-prefixed, bare
   });
 
-  it("returns none before the pipeline", () => {
+  it("offers method completion when the cursor is inside the method name", () => {
     const { text, pos } = at("db.c.aggreg|ate([])");
-    expect(contextAt(text, pos).kind).toBe("none");
+    expect(contextAt(text, pos).kind).toBe("method");
   });
 
   it("ignores braces inside strings", () => {
@@ -56,10 +56,12 @@ describe("contextAt", () => {
 });
 
 describe("needsFields", () => {
-  it("is true only for the field kind", () => {
+  it("is true for field and fieldRef", () => {
     expect(needsFields("field")).toBe(true);
+    expect(needsFields("fieldRef")).toBe(true);
     expect(needsFields("stage")).toBe(false);
     expect(needsFields("collection")).toBe(false);
+    expect(needsFields("method")).toBe(false);
     expect(needsFields("none")).toBe(false);
     expect(needsFields("exprOp")).toBe(false);
   });
@@ -93,9 +95,10 @@ describe("completeAt", () => {
     expect(rd!.options.every((o) => o.label.startsWith("$o"))).toBe(true);
   });
 
-  it("suggests expression operators in a value position", () => {
-    const { text, pos } = at('db.c.aggregate([{ "$group": { "_id": "$su|" } }])');
+  it("suggests expression operators in a bare value position", () => {
+    const { text, pos } = at('db.c.aggregate([{ "$group": { "_id": $su| } }])');
     const r = completeAt(text, pos, { collections: [], fields: ["name"] });
+    expect(r!.kind).toBe("exprOp");
     expect(r!.options.map((o) => o.label)).toContain("$sum"); // EXPR_OPERATORS, not fields
     expect(r!.options.every((o) => o.label.startsWith("$"))).toBe(true);
   });
@@ -105,13 +108,99 @@ describe("completeAt", () => {
     expect(completeAt(text, pos, { collections: [], fields: [] })).toBeNull();
   });
 
-  it("returns null in a none context", () => {
+  it("suggests methods when completing inside a method name", () => {
     const { text, pos } = at("db.c.aggreg|ate([])");
-    expect(completeAt(text, pos, { collections: [], fields: [] })).toBeNull();
+    const r = completeAt(text, pos, { collections: [], fields: [] });
+    expect(r!.kind).toBe("method");
+    expect(r!.options.map((o) => o.label)).toContain("aggregate");
   });
 
   it("tolerates an unparseable statement without throwing", () => {
     const { text, pos } = at("not a statement |");
     expect(() => completeAt(text, pos, { collections: [], fields: [] })).not.toThrow();
+  });
+});
+
+describe("method + generalized contexts", () => {
+  it("detects method context after db.<coll>.", () => {
+    const { text, pos } = at("db.users.fi|");
+    const c = contextAt(text, pos);
+    expect(c.kind).toBe("method");
+    expect(c.prefix).toBe("fi");
+  });
+  it("detects method context after getCollection(\"x\").", () => {
+    const { text, pos } = at('db.getCollection("users").up|');
+    expect(contextAt(text, pos).kind).toBe("method");
+  });
+  it("offers getCollection alongside collections after db.", () => {
+    const { text, pos } = at("db.|");
+    const r = completeAt(text, pos, { collections: ["users", "orders"], fields: [] });
+    expect(r!.kind).toBe("collection");
+    expect(r!.options.map((o) => o.label)).toEqual(expect.arrayContaining(["users", "orders", "getCollection"]));
+  });
+  it("does NOT offer getCollection inside getCollection(\"…", () => {
+    const { text, pos } = at('db.getCollection("us|")');
+    const r = completeAt(text, pos, { collections: ["users"], fields: [] });
+    expect(r!.options.map((o) => o.label)).not.toContain("getCollection");
+  });
+  it("suggests methods after db.<coll>.", () => {
+    const { text, pos } = at("db.c.de|");
+    const r = completeAt(text, pos, { collections: [], fields: [] });
+    expect(r!.kind).toBe("method");
+    expect(r!.options.map((o) => o.label)).toEqual(expect.arrayContaining(["deleteOne", "deleteMany"]));
+  });
+  it("treats a find filter key as a field, not a stage", () => {
+    const { text, pos } = at('db.c.find({ "ye|" })');
+    expect(contextAt(text, pos).kind).toBe("field");
+  });
+  it("treats a countDocuments filter key as a field", () => {
+    const { text, pos } = at('db.c.countDocuments({ "ye|" })');
+    expect(contextAt(text, pos).kind).toBe("field");
+  });
+  it("treats a projection key as a field", () => {
+    const { text, pos } = at('db.c.find({}, { "ye|" })');
+    expect(contextAt(text, pos).kind).toBe("field");
+  });
+  it("treats a .sort key as a field (chained call)", () => {
+    const { text, pos } = at('db.c.find({}).sort({ "ye|" })');
+    expect(contextAt(text, pos).kind).toBe("field");
+  });
+  it("treats an update $set key as a field", () => {
+    const { text, pos } = at('db.c.updateOne({}, { "$set": { "ye|" } })');
+    expect(contextAt(text, pos).kind).toBe("field");
+  });
+  it("still detects a stage only inside the aggregate pipeline array", () => {
+    const { text, pos } = at('db.c.aggregate([{ "$ma|" }])');
+    expect(contextAt(text, pos).kind).toBe("stage");
+  });
+});
+
+describe("multi-statement documents", () => {
+  it("classifies the statement the cursor is in, not the first one", () => {
+    const { text, pos } = at('db.a.find({})\ndb.b.aggregate([{ "$ma|" }])');
+    expect(contextAt(text, pos).kind).toBe("stage");
+  });
+  it("a find filter in the second statement is a field, not a stage", () => {
+    const { text, pos } = at('db.a.aggregate([{}])\ndb.b.find({ "ye|" })');
+    expect(contextAt(text, pos).kind).toBe("field");
+  });
+});
+
+describe("field references inside value strings", () => {
+  it("classifies a $-string in a value position as fieldRef", () => {
+    const { text, pos } = at('db.c.aggregate([{ "$group": { "_id": "$st|" } }])');
+    const c = contextAt(text, pos);
+    expect(c.kind).toBe("fieldRef");
+    expect(c.prefix).toBe("$st");
+  });
+  it("suggests field names prefixed with $ for a fieldRef", () => {
+    const { text, pos } = at('db.c.aggregate([{ "$group": { "n": { "$sum": "$am|" } } }])');
+    const r = completeAt(text, pos, { collections: [], fields: ["amount", "amends", "name"] });
+    expect(r!.kind).toBe("fieldRef");
+    expect(r!.options.map((o) => o.label)).toEqual(["$amount", "$amends"]);
+  });
+  it("a non-$ string value is not completable (none)", () => {
+    const { text, pos } = at('db.c.find({ "status": "ac|" })');
+    expect(contextAt(text, pos).kind).toBe("none");
   });
 });

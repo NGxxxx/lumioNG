@@ -67,3 +67,19 @@ export const EXPR_OPERATORS: readonly OpEntry[] = Object.freeze([
   { label: "$map", detail: "map over an array" },
   { label: "$filter", detail: "filter an array" },
 ]);
+
+/** Collection methods the Query editor's Run can execute (offered after `db.<coll>.`).
+ *  Deliberately omits the deprecated `count` alias even though Run still accepts it. */
+export const COLLECTION_METHODS: readonly OpEntry[] = Object.freeze([
+  { label: "find", detail: "query documents" },
+  { label: "aggregate", detail: "run a pipeline" },
+  { label: "countDocuments", detail: "count matching documents" },
+  { label: "distinct", detail: "distinct values of a field" },
+  { label: "insertOne", detail: "insert one document" },
+  { label: "insertMany", detail: "insert many documents" },
+  { label: "updateOne", detail: "update one document" },
+  { label: "updateMany", detail: "update many documents" },
+  { label: "replaceOne", detail: "replace one document" },
+  { label: "deleteOne", detail: "delete one document" },
+  { label: "deleteMany", detail: "delete many documents" },
+]);

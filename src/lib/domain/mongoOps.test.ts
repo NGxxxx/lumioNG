@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PIPELINE_STAGES, QUERY_OPERATORS, EXPR_OPERATORS, type OpEntry } from "./mongoOps";
+import { PIPELINE_STAGES, QUERY_OPERATORS, EXPR_OPERATORS, COLLECTION_METHODS, type OpEntry } from "./mongoOps";
 
 const allDollar = (xs: readonly OpEntry[]) => xs.every((x) => x.label.startsWith("$"));
 const unique = (xs: readonly OpEntry[]) => new Set(xs.map((x) => x.label)).size === xs.length;
@@ -24,5 +24,22 @@ describe("mongoOps catalogs", () => {
     expect(PIPELINE_STAGES.map((s) => s.label)).toEqual(expect.arrayContaining(["$match", "$group", "$lookup"]));
     expect(QUERY_OPERATORS.map((s) => s.label)).toEqual(expect.arrayContaining(["$gte", "$in", "$or"]));
     expect(EXPR_OPERATORS.map((s) => s.label)).toEqual(expect.arrayContaining(["$sum", "$cond"]));
+  });
+});
+
+describe("COLLECTION_METHODS catalog", () => {
+  it("is non-empty and labels are unique", () => {
+    expect(COLLECTION_METHODS.length).toBeGreaterThan(0);
+    expect(unique(COLLECTION_METHODS)).toBe(true);
+  });
+  it("has no $-prefixed labels (these are method names, not operators)", () => {
+    expect(COLLECTION_METHODS.every((m) => !m.label.startsWith("$"))).toBe(true);
+  });
+  it("includes the executable methods and omits the deprecated count alias", () => {
+    const labels = COLLECTION_METHODS.map((m) => m.label);
+    expect(labels).toEqual(
+      expect.arrayContaining(["find", "aggregate", "countDocuments", "distinct", "insertOne", "deleteMany"]),
+    );
+    expect(labels).not.toContain("count");
   });
 });

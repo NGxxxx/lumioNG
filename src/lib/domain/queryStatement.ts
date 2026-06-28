@@ -127,11 +127,23 @@ function parseChain(rest: string): Chain {
   return { sort, skip, limit };
 }
 
-/** Tolerant: just the collection name (no argument balancing), for autocomplete on partial text. */
-export function collectionOf(text: string): string | null {
-  const m = text.match(HEAD);
-  if (!m) return null;
-  return (m[1] ?? m[2]) || null;
+/** Locate the supported method call governing the cursor: the last `db.<coll>.<method>(` whose `(`
+ *  is at or before `pos`. Cursor-aware so multi-statement editors classify the statement the cursor
+ *  is in (not just the first). Returns the method name, the collection, and the index of the `(`.
+ *  Null when no method call starts at/before `pos`. */
+export function methodHeadAt(
+  text: string,
+  pos: number,
+): { method: string; coll: string; argOpen: number } | null {
+  const re = new RegExp(HEAD.source, "g");
+  let best: { method: string; coll: string; argOpen: number } | null = null;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const argOpen = m.index + m[0].length - 1;
+    if (argOpen > pos) break; // matches run left-to-right; the rest open after the cursor
+    best = { method: m[3], coll: m[1] ?? m[2], argOpen };
+  }
+  return best;
 }
 
 /** If `raw` (trimmed) is exactly one "…" or '…' string literal, return its unescaped content;

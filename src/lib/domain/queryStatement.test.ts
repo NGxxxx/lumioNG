@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseQueryStatement,
-  collectionOf,
+  methodHeadAt,
   aggregateTemplate,
   pipelineHasTrailingLimit,
   isWriteKind,
@@ -123,15 +123,31 @@ describe("parseQueryStatement — count", () => {
   });
 });
 
-describe("collectionOf", () => {
-  it("extracts from db.coll.find(", () => {
-    expect(collectionOf('db.orders.find({ "a": ')).toBe("orders");
+describe("methodHeadAt", () => {
+  it("returns method, coll, and the index of its opening paren", () => {
+    const text = 'db.c.find({ "a": 1 })';
+    const h = methodHeadAt(text, text.length);
+    expect(h).not.toBeNull();
+    expect(h!.method).toBe("find");
+    expect(h!.coll).toBe("c");
+    expect(text[h!.argOpen]).toBe("(");
   });
-  it("extracts from getCollection().aggregate(", () => {
-    expect(collectionOf('db.getCollection("movies").aggregate([{ "$ma')).toBe("movies");
+  it("resolves the collection through getCollection(\"…\")", () => {
+    const t = 'db.getCollection("movies").aggregate([{ "$ma';
+    const h = methodHeadAt(t, t.length);
+    expect(h!.method).toBe("aggregate");
+    expect(h!.coll).toBe("movies");
   });
-  it("returns null when there is no head", () => {
-    expect(collectionOf("not a statement")).toBeNull();
+  it("selects the statement governing the cursor in a multi-statement document", () => {
+    const text = 'db.a.find({})\ndb.b.aggregate([{ "$ma" }])';
+    const pos = text.indexOf("$ma");
+    const h = methodHeadAt(text, pos);
+    expect(h!.method).toBe("aggregate");
+    expect(h!.coll).toBe("b");
+  });
+  it("returns null before any method call and for non-statements", () => {
+    expect(methodHeadAt("db.c.", 5)).toBeNull();
+    expect(methodHeadAt("not a statement", 5)).toBeNull();
   });
 });
 

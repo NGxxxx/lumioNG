@@ -13,8 +13,8 @@
   import * as m from "$lib/paraglide/messages";
   import CodeEditor from "./CodeEditor.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
-  import { collectionOf, writeFilterIsEmpty, isDestructiveKind, writeTargetSummary } from "../domain/queryStatement";
-  import type { CompletionSource } from "@codemirror/autocomplete";
+  import { methodHeadAt, writeFilterIsEmpty, isDestructiveKind, writeTargetSummary } from "../domain/queryStatement";
+  import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
 
   let { id, seq, initialStatement, currentDb, onopendocument }:
     { id: number; seq: number; initialStatement: string; currentDb: string | null;
@@ -36,9 +36,15 @@
     menu = null;
   }
 
-  /** Map the pure result into CodeMirror's completion shape (or null). */
-  function toCM(r: { from: number; options: { label: string; detail?: string }[] } | null) {
-    return r ? { from: r.from, options: r.options, validFor: /^[\w$.]*$/ } : null;
+  /** Map the pure result into CodeMirror's completion shape (or null). Method completions become
+   *  snippets that insert `name()` with the cursor between the parentheses. */
+  function toCM(r: { from: number; kind: string; options: { label: string; detail?: string }[] } | null) {
+    if (!r) return null;
+    const options =
+      r.kind === "method"
+        ? r.options.map((o) => snippetCompletion(o.label + "(${})", { label: o.label, detail: o.detail }))
+        : r.options;
+    return { from: r.from, options, validFor: /^[\w$.]*$/ };
   }
 
   const completionSource: CompletionSource = (ctx) => {
@@ -49,7 +55,7 @@
     const collections =
       sessionManager.active?.tree.databases.find((d) => d.name === currentDb)?.collections ?? [];
     if (needsFields(c.kind) && currentDb) {
-      const coll = collectionOf(text);
+      const coll = methodHeadAt(text, ctx.pos)?.coll ?? null;
       if (coll) {
         return v.fieldsFor(currentDb, coll).then((fields) => toCM(completeAt(text, ctx.pos, { collections, fields })));
       }
