@@ -1,27 +1,13 @@
 <script lang="ts">
   import { describeValue } from "../domain/extjson";
-  import { jsonValueColor } from "../domain/theme";
-  import type { ValueKind } from "../domain/theme";
+  import { jsonValueColor, bsonValueKind } from "../domain/theme";
 
   let { value }: { value: unknown } = $props();
 
   const info = $derived(describeValue(value));
 
-  /** Map BsonType → ValueKind for color lookup */
-  function toValueKind(type: string): ValueKind | null {
-    switch (type) {
-      case "string": return "string";
-      case "int": case "long": case "double": case "decimal": return "number";
-      case "bool": return "bool";
-      case "objectId": return "objectid";
-      case "date": return "date";
-      case "null": return "null";
-      default: return null;
-    }
-  }
-
   const color = $derived.by(() => {
-    const kind = toValueKind(info.type);
+    const kind = bsonValueKind(info.type);
     return kind ? jsonValueColor(kind) : null;
   });
 </script>

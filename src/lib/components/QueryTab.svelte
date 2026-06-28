@@ -142,7 +142,9 @@
               onResize={v.setColWidth} onReset={v.resetColWidth}
               selected={v.selected} menu={v.menu} menuItems={v.menuItems}
               onRowClick={v.clickRow} onOpenMenu={v.openMenu}
-              onMenuSelect={onResultMenu} onCloseMenu={v.closeMenu} />
+              onMenuSelect={onResultMenu} onCloseMenu={v.closeMenu}
+              editing={v.editing} bind:editText={v.editText} editError={v.editError}
+              onStartEdit={v.startEdit} onCommitEdit={v.commitEdit} onCancelEdit={v.cancelEdit} />
           {:else}
             <ResultTree docs={v.pageDocs} onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
             {#if v.menu}

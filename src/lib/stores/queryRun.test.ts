@@ -459,3 +459,91 @@ describe("write routing", () => {
     expect(deleteManyFn).not.toHaveBeenCalled();
   });
 });
+
+describe("inline edit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    aggregate.mockResolvedValue([]);
+    updateOneFn.mockResolvedValue({ matched: 1, modified: 1 });
+  });
+
+  it("commitEdit writes $set by _id and updates the doc", async () => {
+    aggregate.mockResolvedValueOnce([{ _id: { $oid: "1" }, name: "A" }]);
+    const v = createQueryRun("conn:1", STMT);
+    await v.run("shop");
+    v.startEdit(0, "name");
+    expect(v.editing).toEqual({ row: 0, key: "name" });
+    v.editText = "Z";
+    await v.commitEdit();
+    expect(updateOneFn).toHaveBeenCalledWith(
+      "conn:1", "shop", "orders", '{"_id": {"$oid":"1"}}', '{"$set":{"name":"Z"}}', false,
+    );
+    expect(v.editing).toBe(null);
+    expect(v.docs[0].name).toBe("Z");
+  });
+
+  it("commitEdit on page 2 updates the correct backing doc", async () => {
+    aggregate.mockResolvedValueOnce([
+      { _id: { $oid: "1" }, name: "A" },
+      { _id: { $oid: "2" }, name: "B" },
+    ]);
+    const v = createQueryRun("conn:1", STMT);
+    await v.run("shop");
+    v.setPageSize(1);
+    v.goToPage(2);
+    v.startEdit(0, "name");
+    v.editText = "B2";
+    await v.commitEdit();
+    expect(updateOneFn).toHaveBeenCalledWith(
+      "conn:1", "shop", "orders", '{"_id": {"$oid":"2"}}', '{"$set":{"name":"B2"}}', false,
+    );
+    expect(v.docs[1].name).toBe("B2");
+    expect(v.docs[0].name).toBe("A");
+  });
+
+  it("startEdit is a no-op without an _id", async () => {
+    aggregate.mockResolvedValueOnce([{ name: "A" }]);
+    const v = createQueryRun("conn:1", STMT);
+    await v.run("shop");
+    v.startEdit(0, "name");
+    expect(v.editing).toBe(null);
+  });
+
+  it("startEdit rejects nested keys and non-scalar values", async () => {
+    aggregate.mockResolvedValueOnce([{ _id: { $oid: "1" }, name: "A", obj: { x: 1 } }]);
+    const v = createQueryRun("conn:1", STMT);
+    await v.run("shop");
+    v.startEdit(0, "obj.x");
+    expect(v.editing).toBe(null);
+    v.startEdit(0, "obj");
+    expect(v.editing).toBe(null);
+    v.startEdit(0, "name");
+    expect(v.editing).toEqual({ row: 0, key: "name" });
+  });
+
+  it("commitEdit with invalid text shows editError and does not call updateOne", async () => {
+    aggregate.mockResolvedValueOnce([{ _id: { $oid: "1" }, n: { $numberInt: "5" } }]);
+    const v = createQueryRun("conn:1", STMT);
+    await v.run("shop");
+    v.startEdit(0, "n");
+    v.editText = "notanumber";
+    await v.commitEdit();
+    expect(updateOneFn).not.toHaveBeenCalled();
+    expect(v.editError).toBeTruthy();
+    expect(v.editing).not.toBe(null);
+  });
+
+  it("goToPage cancels an active edit", async () => {
+    aggregate.mockResolvedValueOnce([
+      { _id: { $oid: "1" }, name: "A" },
+      { _id: { $oid: "2" }, name: "B" },
+    ]);
+    const v = createQueryRun("conn:1", STMT);
+    await v.run("shop");
+    v.setPageSize(1);
+    v.startEdit(0, "name");
+    expect(v.editing).not.toBe(null);
+    v.goToPage(2);
+    expect(v.editing).toBe(null);
+  });
+});

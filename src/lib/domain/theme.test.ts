@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { bsonTypeBadge, statusPill, jsonValueColor } from "./theme";
+import { bsonTypeBadge, statusPill, jsonValueColor, bsonValueKind } from "./theme";
 import type { BsonType } from "./extjson";
 
 describe("bsonTypeBadge", () => {
@@ -34,5 +34,25 @@ describe("jsonValueColor", () => {
     expect(jsonValueColor("number")).toBe("#1c00cf");
     expect(jsonValueColor("objectid")).toBe("#6b3fa0");
     expect(jsonValueColor("null")).toBe("#777");
+  });
+});
+
+describe("bsonValueKind", () => {
+  it("maps scalar BSON types to their color kind", () => {
+    expect(bsonValueKind("string")).toBe("string");
+    expect(bsonValueKind("int")).toBe("number");
+    expect(bsonValueKind("long")).toBe("number");
+    expect(bsonValueKind("double")).toBe("number");
+    expect(bsonValueKind("decimal")).toBe("number");
+    expect(bsonValueKind("bool")).toBe("bool");
+    expect(bsonValueKind("objectId")).toBe("objectid");
+    expect(bsonValueKind("date")).toBe("date");
+    expect(bsonValueKind("null")).toBe("null");
+  });
+  it("returns null for types without a dedicated value color", () => {
+    expect(bsonValueKind("object")).toBeNull();
+    expect(bsonValueKind("array")).toBeNull();
+    expect(bsonValueKind("binary")).toBeNull();
+    expect(bsonValueKind("unknown")).toBeNull();
   });
 });

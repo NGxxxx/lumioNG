@@ -1,3 +1,4 @@
+import { untrack } from "svelte";
 import { UI_SIZES, uiSizePx, type UiSizeKey } from "../domain/uiSize";
 
 const STORAGE_KEY = "ui-size";
@@ -21,7 +22,7 @@ function applyRootFontSize(key: UiSizeKey) {
 /** Reactive root font-size: changing it rescales every rem-based dimension live. */
 export function createUiSize() {
   let current = $state<UiSizeKey>(typeof document !== "undefined" ? readSaved() : DEFAULT);
-  applyRootFontSize(current);
+  untrack(() => applyRootFontSize(current));
 
   return {
     get current(): UiSizeKey {

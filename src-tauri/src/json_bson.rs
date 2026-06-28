@@ -16,6 +16,26 @@ pub fn canonical_string_to_doc(s: &str) -> Result<Document, AppError> {
     }
 }
 
+/// Parse a Canonical Extended JSON **array** whose every element must be a document.
+/// `array_err` reports a non-array top level; `element_err` reports a non-document element.
+pub fn canonical_string_to_doc_array(
+    s: &str,
+    array_err: &str,
+    element_err: &str,
+) -> Result<Vec<Document>, AppError> {
+    match canonical_string_to_bson(s)? {
+        Bson::Array(arr) => arr
+            .into_iter()
+            .map(|b| {
+                b.as_document()
+                    .cloned()
+                    .ok_or_else(|| AppError::Query(element_err.into()))
+            })
+            .collect(),
+        _ => Err(AppError::Query(array_err.into())),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

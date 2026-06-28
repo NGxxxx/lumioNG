@@ -1,6 +1,6 @@
 use crate::bson_json::{bson_to_canonical_string, doc_to_canonical_string};
 use crate::error::AppError;
-use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc};
+use crate::json_bson::{canonical_string_to_doc, canonical_string_to_doc_array};
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Document};
@@ -8,17 +8,11 @@ use tauri::State;
 
 /// Parse a Canonical Extended JSON **array** of aggregation stages into Documents.
 fn parse_pipeline(pipeline: &str) -> Result<Vec<Document>, AppError> {
-    match canonical_string_to_bson(pipeline)? {
-        mongodb::bson::Bson::Array(arr) => arr
-            .into_iter()
-            .map(|b| {
-                b.as_document()
-                    .cloned()
-                    .ok_or_else(|| AppError::Query("each pipeline stage must be an object".into()))
-            })
-            .collect(),
-        _ => Err(AppError::Query("pipeline must be an array of stages".into())),
-    }
+    canonical_string_to_doc_array(
+        pipeline,
+        "pipeline must be an array of stages",
+        "each pipeline stage must be an object",
+    )
 }
 
 /// Parse an optional user-supplied ExtJSON filter (empty / None → empty Document).

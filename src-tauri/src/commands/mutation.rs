@@ -1,6 +1,6 @@
 use crate::bson_json::bson_to_canonical_string;
 use crate::error::AppError;
-use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc};
+use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc, canonical_string_to_doc_array};
 use crate::state::AppState;
 use mongodb::bson::{doc, Document};
 use tauri::State;
@@ -22,17 +22,11 @@ pub struct InsertManyResult {
 
 /// Parse a Canonical Extended JSON **array** of documents into Vec<Document>.
 fn parse_doc_array(json: &str) -> Result<Vec<Document>, AppError> {
-    match canonical_string_to_bson(json)? {
-        mongodb::bson::Bson::Array(arr) => arr
-            .into_iter()
-            .map(|b| {
-                b.as_document()
-                    .cloned()
-                    .ok_or_else(|| AppError::Query("each element must be a document".into()))
-            })
-            .collect(),
-        _ => Err(AppError::Query("insertMany expects an array of documents".into())),
-    }
+    canonical_string_to_doc_array(
+        json,
+        "insertMany expects an array of documents",
+        "each element must be a document",
+    )
 }
 
 /// Reject a replacement whose embedded _id differs from the original (immutable _id).

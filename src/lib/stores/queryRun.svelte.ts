@@ -17,7 +17,8 @@ import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { idJson } from "../domain/docid";
-import { idInFilter } from "../domain/selection";
+import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate } from "../domain/celledit";
+import { idInFilter, rangeBetween, effectiveRows as effectiveRowsOf } from "../domain/selection";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 
 const SAFETY_CAP = 200;
@@ -52,6 +53,12 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
   let ioError = $state<string | null>(null);
   let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
   let exportRequest = $state<{ rows: Doc[] } | null>(null);
+
+  // Inline cell edit (row index is into pageDocs; mapped to backing docs on commit)
+  let editing = $state<{ row: number; key: string } | null>(null);
+  let editText = $state("");
+  let editError = $state<string | null>(null);
+  let saving = $state(false);
 
   // Autocomplete field cache: one sample() per (db, coll) for this tab's lifetime.
   const fieldCache = new Map<string, string[]>();
@@ -107,6 +114,7 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
       error = null;
       return;
     }
+    editing = null;
     loading = true;
     activity.begin(m.status_bar_running_query());
     try {
@@ -186,6 +194,7 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     pendingWrite = null;
     if (!pw) return;
     const { parsed, db } = pw;
+    editing = null;
     loading = true;
     activity.begin(m.status_bar_running_query());
     try {
@@ -268,12 +277,55 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     selEnd = end;
   }
 
+  function startEdit(row: number, key: string) {
+    if (resultKind !== "docs") return;
+    if (key.includes(".")) return; // nested fields not supported inline
+    const doc = pageDocs[row];
+    if (!doc) return;
+    if (idJson(doc) === null) return; // no _id → not editable
+    const value = getByPath(doc, key);
+    if (!isInlineEditable(key, value)) return;
+    editing = { row, key };
+    editText = editTextOf(value);
+    editError = null;
+  }
+
+  function cancelEdit() {
+    if (saving) return;
+    editing = null;
+    editError = null;
+  }
+
+  async function commitEdit() {
+    if (!editing || saving) return;
+    const { row, key } = editing;
+    const doc = pageDocs[row];
+    if (!doc) { editing = null; return; }
+    const r = rebuildValue(getByPath(doc, key), editText);
+    if (!r.ok) { editError = r.error; return; }
+    const id = idJson(doc);
+    if (id === null) { editError = m.query_run_selection_missing_id(); return; }
+    if (!srcDb || !srcColl) return;
+    const filter = `{"_id": ${id}}`;
+    const update = buildSetUpdate(key, r.value);
+    saving = true;
+    try {
+      await updateOne(sessionId, srcDb, srcColl, filter, update, false);
+      commandLog.push(updateOneCmd(srcColl, filter, update), sessionId);
+      const gi = (page - 1) * pageSize + row;
+      docs = docs.map((d, i) => (i === gi ? { ...d, [key]: r.value } : d));
+      editing = null;
+      editError = null;
+    } catch (e) {
+      editError = errorMessage(e);
+    } finally {
+      saving = false;
+    }
+  }
+
   function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
     if (mods.shift && anchor !== null) {
-      const [a, b] = anchor < row ? [anchor, row] : [row, anchor];
-      const next = new Set<number>();
-      for (let i = a; i <= b; i++) next.add(i);
-      selected = next;
+      selected = new Set(rangeBetween(anchor, row));
       return;
     }
     if (mods.ctrl) {
@@ -293,8 +345,7 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
   function closeMenu() { menu = null; }
 
   function effectiveRows(): number[] {
-    if (!menu) return [...selected];
-    return selected.has(menu.row) ? [...selected] : [menu.row];
+    return effectiveRowsOf(menu ? menu.row : null, selected);
   }
 
   function menuItems(): MenuItem[] {
@@ -305,6 +356,9 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     const allHaveId = effectiveRows().every((r) => { const d = pageDocs[r]; return d ? idJson(d) !== null : false; });
     return [
       { label: "Open document", action: "open", disabled: !hasId || n !== 1 },
+      { label: "Edit cell", action: "editCell",
+        disabled: !doc || menu.key.includes(".") || idJson(doc) === null
+          || !isInlineEditable(menu.key, getByPath(doc, menu.key)) },
       { label: "Copy", action: "copy", children: [
         { label: "Value", action: "copyValue" },
         { label: "_id", action: "copyId", disabled: !hasId },
@@ -331,6 +385,7 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     const picked = rows.map((r) => pageDocs[r]).filter(Boolean);
     switch (action) {
       case "open": menu = null; return doc ? { open: doc } : null;
+      case "editCell": { const r = menu.row; const k = menu.key; menu = null; startEdit(r, k); return null; }
       case "copyValue": copy(JSON.stringify(getByPath(doc, key))); break;
       case "copyId": copy(idJson(doc) ?? ""); break;
       case "copyJson": copy(toJsonArray(picked)); break;
@@ -388,6 +443,7 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
       docs = docs.filter((d) => { const id = idJson(d); return id === null || !ids.includes(id); });
       selected = new Set();
       anchor = null;
+      editing = null;
     } catch (e) { ioError = e instanceof Error ? e.message : String(e); }
   }
 
@@ -418,8 +474,8 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     get totalCount() { return totalCount; },
     setColWidth: (path: string, px: number) => { colWidths = { ...colWidths, [path]: clampWidth(px) }; },
     resetColWidth: (path: string) => { colWidths = { ...colWidths, [path]: defaultColWidths[path] ?? 160 }; },
-    goToPage: (p: number) => { pageReq = clampPage(p, pgCount); },
-    setPageSize: (n: number) => { pageSize = Math.max(1, Math.floor(n) || 50); pageReq = 1; },
+    goToPage: (p: number) => { editing = null; pageReq = clampPage(p, pgCount); },
+    setPageSize: (n: number) => { editing = null; pageSize = Math.max(1, Math.floor(n) || 50); pageReq = 1; },
     run: (db: string | null) => exec(db, false),
     runNoLimit: (db: string | null) => exec(db, true),
     runSelection,
@@ -432,6 +488,14 @@ export function createQueryRun(sessionId: string, initialStatement: string) {
     clickRow,
     get menu() { return menu; },
     openMenu, closeMenu, menuItems, onMenuSelect,
+    get editing() { return editing; },
+    get editText() { return editText; },
+    set editText(v: string) { editText = v; },
+    get editError() { return editError; },
+    get saving() { return saving; },
+    startEdit,
+    commitEdit,
+    cancelEdit,
     get ioError() { return ioError; },
     get confirmDelete() { return confirmDelete; },
     cancelDelete,

@@ -5,6 +5,7 @@ use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::Document;
 use mongodb::error::ErrorKind;
+use mongodb::Cursor;
 use std::io::Write;
 use tauri::{ipc::Channel, State};
 
@@ -17,6 +18,28 @@ const PROGRESS_BATCH: u64 = 1000;
 pub struct ExportProgress {
     pub done: u64,
     pub total: u64,
+}
+
+/// Shared setup for the `export_*` commands: open the sorted (optionally projected)
+/// cursor over the matching documents and return it with the total match count.
+async fn open_export_cursor(
+    state: State<'_, AppState>,
+    session_id: &str,
+    db: &str,
+    coll: &str,
+    filter: Option<&str>,
+    sort: Option<&str>,
+    projection: Option<&str>,
+) -> Result<(Cursor<Document>, u64), AppError> {
+    let client = state.client(session_id).await?;
+    let collection = client.database(db).collection::<Document>(coll);
+    let (filter_doc, sort_doc, proj_doc) = build_find_options(filter, sort, projection)?;
+    let total = collection.count_documents(filter_doc.clone()).await?;
+    let mut q = collection.find(filter_doc).sort(sort_doc);
+    if let Some(p) = proj_doc {
+        q = q.projection(p);
+    }
+    Ok((q.await?, total))
 }
 
 /// Write one element into a streaming JSON-array body: opening `[` + newline for the
@@ -164,17 +187,11 @@ pub async fn export_json_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let (filter_doc, sort_doc, proj_doc) =
-        build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
-    let total = collection.count_documents(filter_doc.clone()).await?;
-
-    let mut q = collection.find(filter_doc).sort(sort_doc);
-    if let Some(p) = proj_doc {
-        q = q.projection(p);
-    }
-    let mut cursor = q.await?;
+    let (mut cursor, total) = open_export_cursor(
+        state, &session_id, &db, &coll,
+        filter.as_deref(), sort.as_deref(), projection.as_deref(),
+    )
+    .await?;
 
     let p = std::path::Path::new(&path);
     if let Some(dir) = p.parent() {
@@ -210,17 +227,11 @@ pub async fn export_bson_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let (filter_doc, sort_doc, proj_doc) =
-        build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
-    let total = collection.count_documents(filter_doc.clone()).await?;
-
-    let mut q = collection.find(filter_doc).sort(sort_doc);
-    if let Some(p) = proj_doc {
-        q = q.projection(p);
-    }
-    let mut cursor = q.await?;
+    let (mut cursor, total) = open_export_cursor(
+        state, &session_id, &db, &coll,
+        filter.as_deref(), sort.as_deref(), projection.as_deref(),
+    )
+    .await?;
 
     let p = std::path::Path::new(&path);
     if let Some(dir) = p.parent() {
@@ -253,17 +264,11 @@ pub async fn export_query_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let (filter_doc, sort_doc, proj_doc) =
-        build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
-    let total = collection.count_documents(filter_doc.clone()).await?;
-
-    let mut q = collection.find(filter_doc).sort(sort_doc);
-    if let Some(p) = proj_doc {
-        q = q.projection(p);
-    }
-    let mut cursor = q.await?;
+    let (mut cursor, total) = open_export_cursor(
+        state, &session_id, &db, &coll,
+        filter.as_deref(), sort.as_deref(), projection.as_deref(),
+    )
+    .await?;
 
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {

@@ -4,9 +4,12 @@
   import BsonCell from "./BsonCell.svelte";
   import ContextMenu, { type MenuItem } from "./ContextMenu.svelte";
   import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
 
   let { columns, docs, colWidths, onResize, onReset,
-        selected, menu, menuItems, onRowClick, onOpenMenu, onMenuSelect, onCloseMenu }: {
+        selected, menu, menuItems, onRowClick, onOpenMenu, onMenuSelect, onCloseMenu,
+        editing = null, editText = $bindable(""), editError = null,
+        onStartEdit = () => {}, onCommitEdit = () => {}, onCancelEdit = () => {} }: {
     columns: ColumnField[];
     docs: Doc[];
     colWidths: Record<string, number>;
@@ -19,6 +22,12 @@
     onOpenMenu: (e: MouseEvent, row: number, key: string) => void;
     onMenuSelect: (action: string) => void;
     onCloseMenu: () => void;
+    editing?: { row: number; key: string } | null;
+    editText?: string;
+    editError?: string | null;
+    onStartEdit?: (row: number, key: string) => void;
+    onCommitEdit?: () => void;
+    onCancelEdit?: () => void;
   } = $props();
 
   const FALLBACK_W = 160;
@@ -26,6 +35,15 @@
   const totalWidth = $derived(
     ROWNUM_W + columns.reduce((s, c) => s + (colWidths[c.path] ?? FALLBACK_W), 0),
   );
+
+  function focusSelect(node: HTMLInputElement) {
+    node.focus();
+    node.select();
+  }
+  function onEditKey(e: KeyboardEvent) {
+    if (e.key === "Enter") { e.preventDefault(); onCommitEdit(); }
+    else if (e.key === "Escape") { e.preventDefault(); onCancelEdit(); }
+  }
 
   let resizing = false;
   function startResize(e: MouseEvent, path: string) {
@@ -72,7 +90,13 @@
             <td class="rownum">{i + 1}</td>
             {#each columns as c (c.path)}
               {@const val = getByPath(d, c.path)}
-              <td class="data-cell" oncontextmenu={(e) => onOpenMenu(e, i, c.path)}>{#if val !== undefined}<BsonCell value={val} />{/if}</td>
+              <td class="data-cell" oncontextmenu={(e) => onOpenMenu(e, i, c.path)} ondblclick={() => onStartEdit(i, c.path)}>{#if editing && editing.row === i && editing.key === c.path}<input
+                    class="celledit"
+                    bind:value={editText}
+                    onkeydown={onEditKey}
+                    onblur={onCancelEdit}
+                    use:focusSelect
+                  />{#if editError}<div class="cellerror">{msgKey(editError)}</div>{/if}{:else if val !== undefined}<BsonCell value={val} />{/if}</td>
             {/each}
           </tr>
         {/each}
@@ -96,4 +120,6 @@
   td.data-cell :global(.cell) { padding: 0 0.5625rem; display: inline-block; height: 1.375rem; line-height: 1.375rem; }
   .col-resize { position: absolute; top: 0; right: 0; width: 0.375rem; height: 100%; cursor: col-resize; user-select: none; }
   .col-resize:hover { background: var(--tab-active-border); opacity: 0.5; }
+  .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.125rem 0.25rem; }
+  .cellerror { color: var(--error); font-size: 0.6875rem; margin-top: 0.125rem; }
 </style>

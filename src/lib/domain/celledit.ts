@@ -53,3 +53,8 @@ export function rebuildValue(original: unknown, text: string): RebuildResult {
 
   return { ok: false, error: "err_inline_unsupported" };
 }
+
+/** ExtJSON update doc that $sets a single top-level field to `value`. */
+export function buildSetUpdate(key: string, value: unknown): string {
+  return JSON.stringify({ $set: { [key]: value } });
+}

@@ -57,3 +57,16 @@ const VALUE_COLOR: Record<ValueKind, string> = {
 export function jsonValueColor(kind: ValueKind): string {
   return VALUE_COLOR[kind];
 }
+
+/** Map a BSON type to its color `ValueKind`, or null when it has no dedicated color. */
+export function bsonValueKind(type: BsonType): ValueKind | null {
+  switch (type) {
+    case "string": return "string";
+    case "int": case "long": case "double": case "decimal": return "number";
+    case "bool": return "bool";
+    case "objectId": return "objectid";
+    case "date": return "date";
+    case "null": return "null";
+    default: return null;
+  }
+}

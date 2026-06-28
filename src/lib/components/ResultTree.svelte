@@ -4,7 +4,7 @@
   import { createVirtualizer } from "@tanstack/svelte-virtual";
   import type { Doc } from "../domain/doc";
   import { describeValue } from "../domain/extjson";
-  import { jsonValueColor, type ValueKind } from "../domain/theme";
+  import { jsonValueColor, bsonValueKind } from "../domain/theme";
   import * as m from "$lib/paraglide/messages";
 
   /**
@@ -35,20 +35,9 @@
     }
   });
 
-  function toValueKind(type: string): ValueKind | null {
-    switch (type) {
-      case "string": return "string";
-      case "int": case "long": case "double": case "decimal": return "number";
-      case "bool": return "bool";
-      case "objectId": return "objectid";
-      case "date": return "date";
-      case "null": return "null";
-      default: return null;
-    }
-  }
   function valColor(v: unknown): string {
     const info = describeValue(v);
-    const kind = toValueKind(info.type);
+    const kind = bsonValueKind(info.type);
     if (kind) return `color:${jsonValueColor(kind)}`;
     if (info.type === "object") return "color:var(--j-brace)";
     if (info.type === "array") return "color:var(--type-array)";

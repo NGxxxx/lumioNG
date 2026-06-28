@@ -14,8 +14,7 @@
   import BulkDialog from "./BulkDialog.svelte";
   import { isEmptyFilter } from "../domain/bulk";
   import ExportWizard from "./ExportWizard.svelte";
-  import { statusPill, jsonValueColor } from "../domain/theme";
-  import type { ValueKind } from "../domain/theme";
+  import { statusPill, jsonValueColor, bsonValueKind } from "../domain/theme";
   import { describeValue } from "../domain/extjson";
   import ResultTree from "./ResultTree.svelte";
   import * as m from "$lib/paraglide/messages";
@@ -79,19 +78,6 @@
   }
 
   let view = $state<"grid" | "tree">("grid");
-
-  /** Map BsonType → ValueKind for color lookup (same logic as BsonCell). */
-  function toValueKind(type: string): ValueKind | null {
-    switch (type) {
-      case "string": return "string";
-      case "int": case "long": case "double": case "decimal": return "number";
-      case "bool": return "bool";
-      case "objectId": return "objectid";
-      case "date": return "date";
-      case "null": return "null";
-      default: return null;
-    }
-  }
 
   const visibleColumns = $derived(v.columnFields.filter((c) => !v.hidden.has(c.path)));
 
@@ -413,7 +399,7 @@
                       <span class="pill" style="color:{pill.color}; background:{pill.bg};">{val}</span>
                     {:else}
                       {@const info = describeValue(val)}
-                      {@const kind = toValueKind(info.type)}
+                      {@const kind = bsonValueKind(info.type)}
                       <span class="cell {info.type}" title={info.display}
                         style={kind ? `color:${jsonValueColor(kind)}` : undefined}>{info.display}</span>
                     {/if}

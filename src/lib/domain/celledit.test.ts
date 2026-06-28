@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isInlineEditable, editTextOf, rebuildValue } from "./celledit";
+import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate } from "./celledit";
 
 describe("isInlineEditable", () => {
   it("false for _id column even when value is a string", () => {
@@ -83,5 +83,18 @@ describe("rebuildValue type errors", () => {
   it("$numberLong out of 64-bit range → ok:false", () => {
     const r = rebuildValue({ $numberLong: "1" }, "99999999999999999999999");
     expect(r.ok).toBe(false);
+  });
+});
+
+describe("buildSetUpdate", () => {
+  it("wraps a scalar field in $set", () => {
+    expect(buildSetUpdate("name", "Z")).toBe('{"$set":{"name":"Z"}}');
+    expect(buildSetUpdate("ok", true)).toBe('{"$set":{"ok":true}}');
+    expect(buildSetUpdate("n", 3.14)).toBe('{"$set":{"n":3.14}}');
+  });
+  it("serializes an ExtJSON numeric wrapper", () => {
+    expect(buildSetUpdate("n", { $numberLong: "9000000000" })).toBe(
+      '{"$set":{"n":{"$numberLong":"9000000000"}}}',
+    );
   });
 });
