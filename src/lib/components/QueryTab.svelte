@@ -7,14 +7,18 @@
   import CommandLogView from "./CommandLogView.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import DestructiveConfirm from "./DestructiveConfirm.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import ExportWizard from "./ExportWizard.svelte";
   import * as m from "$lib/paraglide/messages";
   import CodeEditor from "./CodeEditor.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
+  import type { Doc } from "../domain/doc";
 
-  let { id, seq, initialStatement, currentDb }:
-    { id: number; seq: number; initialStatement: string; currentDb: string | null } = $props();
+  let { id, seq, initialStatement, currentDb, onopendocument }:
+    { id: number; seq: number; initialStatement: string; currentDb: string | null;
+      onopendocument?: (doc: Doc, db: string, coll: string, mode: "edit") => void } = $props();
 
   const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
   let bottomTab = $state<"result" | "log">("result");
@@ -63,7 +67,15 @@
   const showDocs = $derived(
     v.displayMode === "grid-editable" || v.displayMode === "grid-readonly"
   );
+  const editable = $derived(v.displayMode === "grid-editable");
   const totalCount = $derived(v.docs.length);
+
+  async function onGridMenuSelect(action: string) {
+    const r = v.onMenuSelect(action);
+    if (r && "open" in r && v.provenance && onopendocument) {
+      onopendocument(r.open, v.provenance.db, v.provenance.coll, "edit");
+    }
+  }
 </script>
 
 <div class="query">
@@ -122,7 +134,20 @@
             docs={v.pageDocs}
             colWidths={v.colWidths}
             onResize={v.setColWidth}
-            onReset={v.resetColWidth} />
+            onReset={v.resetColWidth}
+            selected={v.selected}
+            menu={v.menu}
+            menuItems={v.menuItems}
+            onRowClick={v.clickRow}
+            onOpenMenu={v.openMenu}
+            onMenuSelect={onGridMenuSelect}
+            onCloseMenu={v.closeMenu}
+            editing={editable ? v.editing : null}
+            bind:editText={v.editText}
+            editError={v.editError}
+            onStartEdit={editable ? v.startEdit : () => {}}
+            onCommitEdit={v.commitEdit}
+            onCancelEdit={v.cancelEdit} />
         {:else if v.displayMode === "ack" && v.ackJson !== null}
           <div class="value-display"><pre>{v.ackJson}</pre></div>
         {:else if v.displayMode === "value" && v.valueJson !== null}
@@ -162,6 +187,23 @@
     oncancel={() => v.cancelConfirm()}
     ondontask={() => v.dontAskAgain()} />
 {/if}
+
+{#if v.confirmDelete !== null}
+  <ConfirmDialog
+    title={m.result_table_delete_selection_title()}
+    message={m.result_table_delete_selection_message({ count: v.confirmDelete.count })}
+    confirmLabel={m.common_delete()}
+    danger
+    onconfirm={() => v.confirmDeleteRun()}
+    oncancel={() => v.cancelDelete()} />
+{/if}
+
+{#if v.exportRequest}
+  {@const input = v.exportInput()}
+  {#if input}<ExportWizard {input} onclose={() => v.cancelExport()} />{/if}
+{/if}
+
+{#if v.ioError}<div class="error">{v.ioError}</div>{/if}
 
 <style>
   .query { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; }

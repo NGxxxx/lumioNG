@@ -2,12 +2,21 @@ import { untrack } from "svelte";
 import { runScript, cancelScript, type ConsoleEntry, type Provenance } from "../api/script";
 import { sampleDocuments } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
-import { mergeColumns, inferSchema, type ColumnField } from "../domain/schema";
+import { mergeColumns, inferSchema, getByPath, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { scanDestructive } from "../domain/scriptScan";
 import { settings } from "./settings.svelte";
+import { updateOne, deleteMany } from "../api/documents";
+import { idJson } from "../domain/docid";
+import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate } from "../domain/celledit";
+import { errorMessage } from "../api/errors";
+import * as m from "$lib/paraglide/messages";
+import { idInFilter, rangeBetween, effectiveRows as effectiveRowsOf } from "../domain/selection";
+import { toJsonArray, toCsv } from "../domain/exporter";
+import type { ExportWizardInput } from "../domain/exportPlan";
+import type { MenuItem } from "../components/ContextMenu.svelte";
 
 /** Per-tab state for one QuickJS Query tab: run script + client-side paging + column widths. */
 export function createQueryScript(sessionId: string, initialStatement: string) {
@@ -38,6 +47,30 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   let destructiveConfirm = $state<{ ops: string[] } | null>(null);
   let pending: { db: string; script: string } | null = null;
+
+  // Inline cell edit (row index is page-relative; mapped to backing docs on commit).
+  let editing = $state<{ row: number; key: string } | null>(null);
+  let editText = $state("");
+  let editError = $state<string | null>(null);
+  let saving = $state(false);
+
+  // Row selection (page-relative indices into pageDocs).
+  let selected = $state<Set<number>>(new Set());
+  let anchor: number | null = null;
+  let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
+  let ioError = $state<string | null>(null);
+  let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
+  let exportRequest = $state<{ rows: Doc[] } | null>(null);
+
+  /** Map a page-relative row index to the absolute index in `docs`. */
+  function absIndex(row: number): number {
+    return (page - 1) * pageSize + row;
+  }
+
+  /** True when edit/delete actions are permitted (pure single-collection cursor result). */
+  function isEditable(): boolean {
+    return displayModeVal === "grid-editable" && provenance !== null;
+  }
 
   // Autocomplete field cache: one sample() per (db, coll) for this tab's lifetime.
   const fieldCache = new Map<string, string[]>();
@@ -84,6 +117,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   async function execute(db: string, script: string) {
     running = true;
     error = null;
+    selected = new Set();
+    anchor = null;
+    menu = null;
+    editing = null;
     try {
       const outcome = await runScript(sessionId, db, script);
 
@@ -178,6 +215,189 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     return run(db, stmt);
   }
 
+  function startEdit(row: number, key: string) {
+    if (!isEditable()) return;
+    if (key.includes(".")) return; // nested fields not supported inline
+    const doc = pageDocs[row];
+    if (!doc || idJson(doc) === null) return;
+    const value = getByPath(doc, key);
+    if (!isInlineEditable(key, value)) return;
+    editing = { row, key };
+    editText = editTextOf(value);
+    editError = null;
+  }
+
+  function cancelEdit() {
+    if (saving) return;
+    editing = null;
+    editError = null;
+  }
+
+  async function commitEdit() {
+    if (!editing || saving || !provenance) return;
+    const { row, key } = editing;
+    const doc = pageDocs[row];
+    if (!doc) { editing = null; return; }
+    const r = rebuildValue(getByPath(doc, key), editText);
+    if (!r.ok) { editError = r.error; return; }
+    const id = idJson(doc);
+    if (id === null) { editError = m.query_run_selection_missing_id(); return; }
+    const filter = `{"_id": ${id}}`;
+    const update = buildSetUpdate(key, r.value);
+    saving = true;
+    try {
+      await updateOne(sessionId, provenance.db, provenance.coll, filter, update, false);
+      const gi = absIndex(row);
+      docs = docs.map((d, i) => (i === gi ? { ...d, [key]: r.value } : d));
+      editing = null;
+      editError = null;
+    } catch (e) {
+      editError = errorMessage(e);
+    } finally {
+      saving = false;
+    }
+  }
+
+  function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
+    if (mods.shift && anchor !== null) {
+      selected = new Set(rangeBetween(anchor, row));
+      return;
+    }
+    if (mods.ctrl) {
+      const next = new Set(selected);
+      if (next.has(row)) next.delete(row); else next.add(row);
+      selected = next; anchor = row; return;
+    }
+    selected = new Set([row]); anchor = row;
+  }
+
+  function openMenu(e: MouseEvent, row: number, key: string) {
+    e.preventDefault(); e.stopPropagation();
+    if (!selected.has(row)) { selected = new Set([row]); anchor = row; }
+    menu = { x: e.clientX, y: e.clientY, row, key };
+  }
+
+  function closeMenu() { menu = null; }
+
+  function effectiveRows(): number[] {
+    return effectiveRowsOf(menu ? menu.row : null, selected);
+  }
+
+  function menuItems(): MenuItem[] {
+    if (!menu) return [];
+    const doc = pageDocs[menu.row];
+    const n = effectiveRows().length;
+    const hasId = doc ? idJson(doc) !== null : false;
+    const editable = isEditable();
+    const allHaveId = effectiveRows().every((r) => { const d = pageDocs[r]; return d ? idJson(d) !== null : false; });
+    const items: MenuItem[] = [];
+    if (editable) {
+      items.push({ label: "Open document", action: "open", disabled: !hasId || n !== 1 });
+      items.push({
+        label: "Edit cell", action: "editCell",
+        disabled: !doc || menu.key.includes(".") || idJson(doc) === null
+          || !isInlineEditable(menu.key, getByPath(doc, menu.key)),
+      });
+    }
+    const copyChildren: MenuItem[] = [
+      { label: "Value", action: "copyValue" },
+      { label: "_id", action: "copyId", disabled: !hasId },
+      { label: `Selected (${n}) as JSON`, action: "copyJson" },
+      { label: `Selected (${n}) as CSV`, action: "copyCsv" },
+    ];
+    if (editable) {
+      items.push({ label: "Copy", action: "copy", children: copyChildren });
+    } else {
+      items.push(...copyChildren);
+    }
+    items.push({ label: "Export", action: "export", children: [
+      { label: `Selected (${n}) to file…`, action: "exportSelected" },
+      { label: "All results to file…", action: "exportAll" },
+    ]});
+    if (editable) {
+      items.push({ label: `Delete selected (${n})`, action: "deleteSelected", disabled: !allHaveId });
+    }
+    return items;
+  }
+
+  async function copy(text: string) {
+    try { await navigator.clipboard.writeText(text); } catch { ioError = m.common_clipboard_failed(); }
+  }
+
+  function onMenuSelect(action: string): { open: Doc } | null {
+    if (!menu) return null;
+    const doc = pageDocs[menu.row];
+    const key = menu.key;
+    const rows = effectiveRows();
+    const picked = rows.map((r) => pageDocs[r]).filter(Boolean) as Doc[];
+    switch (action) {
+      case "open": menu = null; return doc ? { open: doc } : null;
+      case "editCell": { const r = menu.row; const k = menu.key; menu = null; startEdit(r, k); return null; }
+      case "copyValue": copy(JSON.stringify(getByPath(doc, key))); break;
+      case "copyId": copy(idJson(doc) ?? ""); break;
+      case "copyJson": copy(toJsonArray(picked)); break;
+      case "copyCsv": copy(toCsv(picked)); break;
+      case "exportSelected": exportRequest = { rows: picked }; break;
+      case "exportAll": exportRequest = { rows: docs }; break;
+      case "deleteSelected": requestDelete(picked); break;
+    }
+    menu = null;
+    return null;
+  }
+
+  function requestDelete(picked: Doc[]) {
+    if (picked.length === 0) return;
+    confirmDelete = { count: picked.length, picked };
+  }
+  function cancelDelete() { confirmDelete = null; }
+  async function confirmDeleteRun() {
+    const c = confirmDelete;
+    confirmDelete = null;
+    if (c) await deleteSelected(c.picked);
+  }
+
+  async function deleteSelected(picked: Doc[]) {
+    if (!provenance) return;
+    const ids: string[] = [];
+    for (const d of picked) {
+      const id = idJson(d);
+      if (id === null) { ioError = m.query_run_selection_missing_id(); return; }
+      ids.push(id);
+    }
+    const filter = idInFilter(ids);
+    try {
+      await deleteMany(sessionId, provenance.db, provenance.coll, filter, false);
+      docs = docs.filter((d) => { const id = idJson(d); return id === null || !ids.includes(id); });
+      selected = new Set();
+      anchor = null;
+      editing = null;
+    } catch (e) {
+      ioError = errorMessage(e);
+    }
+  }
+
+  function requestExport() {
+    if (docs.length === 0) return;
+    const rows = selected.size > 0 ? [...selected].map((i) => pageDocs[i]).filter(Boolean) as Doc[] : docs;
+    exportRequest = { rows };
+  }
+  function cancelExport() { exportRequest = null; }
+
+  function exportInput(): ExportWizardInput | null {
+    if (!exportRequest) return null;
+    const colPaths = columns.map((c) => ({ path: c.path, visible: true }));
+    const n = exportRequest.rows.length;
+    return {
+      mode: "scopedMemory",
+      coll: provenance?.coll ?? "results",
+      docs: exportRequest.rows,
+      columns: colPaths,
+      summary: n === 1
+        ? m.export_dialog_summary_selection_one({ count: n })
+        : m.export_dialog_summary_selection_many({ count: n }),
+    };
+  }
+
   return {
     get statementText() { return statementText; },
     set statementText(v: string) { statementText = v; },
@@ -208,9 +428,34 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     setSelection,
     fieldsFor,
     get hasSelection() { return hasSelection; },
-    goToPage: (p: number) => { pageReq = clampPage(p, pgCount); },
-    setPageSize: (n: number) => { pageSize = Math.max(1, Math.floor(n) || 50); pageReq = 1; },
+    goToPage: (p: number) => { editing = null; pageReq = clampPage(p, pgCount); },
+    setPageSize: (n: number) => { editing = null; pageSize = Math.max(1, Math.floor(n) || 50); pageReq = 1; },
     setColWidth: (path: string, px: number) => { colWidths = { ...colWidths, [path]: clampWidth(px) }; },
     resetColWidth: (path: string) => { colWidths = { ...colWidths, [path]: defaultColWidths[path] ?? 160 }; },
+    get editing() { return editing; },
+    get editText() { return editText; },
+    set editText(v: string) { editText = v; },
+    get editError() { return editError; },
+    get saving() { return saving; },
+    startEdit,
+    commitEdit,
+    cancelEdit,
+    get isEditable() { return isEditable(); },
+    get selected() { return selected; },
+    get menu() { return menu; },
+    clickRow,
+    openMenu,
+    closeMenu,
+    menuItems,
+    onMenuSelect,
+    get ioError() { return ioError; },
+    get confirmDelete() { return confirmDelete; },
+    cancelDelete,
+    confirmDeleteRun,
+    get exportRequest() { return exportRequest; },
+    get canExport() { return docs.length > 0; },
+    requestExport,
+    cancelExport,
+    exportInput,
   };
 }

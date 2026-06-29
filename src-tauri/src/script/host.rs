@@ -79,7 +79,7 @@ const WRITE_COMMANDS: &[&str] = &[
     "createrole", "droprole", "dropallrolesfromdatabase", "updaterole",
     "grantprivilegestorole", "revokeprivilegesfromrole",
     "grantrolestorole", "revokerolesfromrole",
-    "createcollection", "createview", "createindex",
+    "createcollection", "createview", "createindex", "reindex",
 ];
 
 /// True if the command document's first key is a known write/DDL command (case-insensitive).
@@ -852,6 +852,55 @@ globalThis.__cursorClose = function(){};
         assert!(cmd.contains(r#""findAndModify""#) || cmd.contains(r#""findandmodify""#));
         assert!(cmd.contains(r#""remove":true"#));
     }
+
+    #[test]
+    fn create_index_builds_create_indexes_command() {
+        let cmd = eval_capture_run_command(r#"db.c.createIndex({a:1},{name:"a_1",unique:true})"#);
+        assert!(cmd.contains(r#""createIndexes":"c""#));
+        assert!(cmd.contains(r#""key":{"a":1}"#) || cmd.contains(r#""key":{"a":{"$numberInt":"1"}}"#));
+        assert!(cmd.contains(r#""name":"a_1""#));
+        assert!(cmd.contains(r#""unique":true"#));
+    }
+
+    #[test]
+    fn drop_index_builds_drop_indexes_command() {
+        let cmd = eval_capture_run_command(r#"db.c.dropIndex("a_1")"#);
+        assert!(cmd.contains(r#""dropIndexes":"c""#));
+        assert!(cmd.contains(r#""index":"a_1""#));
+    }
+
+    #[test]
+    fn get_indexes_builds_list_indexes_command() {
+        let cmd = eval_capture_run_command(r#"db.c.getIndexes()"#);
+        assert!(cmd.contains(r#""listIndexes":"c""#));
+    }
+
+    #[test]
+    fn hide_index_builds_collmod_command() {
+        let cmd = eval_capture_run_command(r#"db.c.hideIndex("a_1")"#);
+        assert!(cmd.contains(r#""collMod":"c""#));
+        assert!(cmd.contains(r#""hidden":true"#));
+    }
+
+    #[test]
+    fn reindex_builds_reindex_command() {
+        let cmd = eval_capture_run_command(r#"db.c.reIndex()"#);
+        assert!(cmd.contains(r#""reIndex":"c""#));
+    }
+
+    #[test]
+    fn drop_collection_builds_drop_command() {
+        let cmd = eval_capture_run_command(r#"db.c.drop()"#);
+        assert!(cmd.contains(r#""drop":"c""#));
+    }
+
+    #[test]
+    fn rename_collection_builds_rename_command() {
+        let cmd = eval_capture_run_command(r#"db.c.renameCollection("c2", true)"#);
+        assert!(cmd.contains(r#""renameCollection":"testdb.c""#));
+        assert!(cmd.contains(r#""to":"testdb.c2""#));
+        assert!(cmd.contains(r#""dropTarget":true"#));
+    }
 }
 
 #[cfg(test)]
@@ -983,6 +1032,11 @@ mod write_guard_tests {
                   "collStats", "listCollections", "ping", "buildInfo", "serverStatus"] {
             assert!(!is_write_command(&doc! { k: 1 }), "{k} should be allowed");
         }
+    }
+
+    #[test]
+    fn reindex_is_a_write_command() {
+        assert!(is_write_command(&doc! { "reIndex": "c" }));
     }
 
     #[test]

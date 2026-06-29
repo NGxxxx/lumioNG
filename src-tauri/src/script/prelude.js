@@ -458,6 +458,61 @@ function makeColl(dbn, c) {
       var r = JSON.parse(__runCommand(dbn, JSON.stringify(cmd)));
       return r.value != null ? r.value : null;
     },
+
+    // ── Indexes / DDL (route through runCommand; read-only enforced in Rust) ──
+    createIndex(keys, opts) {
+      var spec = Object.assign({ key: keys }, opts || {});
+      if (!spec.name) {
+        spec.name = Object.keys(keys).map(function (k) { return k + "_" + keys[k]; }).join("_");
+      }
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ createIndexes: c, indexes: [spec] })));
+    },
+    createIndexes(keysArray, opts) {
+      var indexes = (keysArray || []).map(function (keys) {
+        var spec = Object.assign({ key: keys }, opts || {});
+        if (!spec.name) {
+          spec.name = Object.keys(keys).map(function (k) { return k + "_" + keys[k]; }).join("_");
+        }
+        return spec;
+      });
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ createIndexes: c, indexes: indexes })));
+    },
+    dropIndex(index) {
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ dropIndexes: c, index: index })));
+    },
+    dropIndexes(index) {
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ dropIndexes: c, index: index || "*" })));
+    },
+    getIndexes() {
+      var r = JSON.parse(__runCommand(dbn, JSON.stringify({ listIndexes: c })));
+      return (r.cursor && r.cursor.firstBatch) || [];
+    },
+    hideIndex(index) {
+      var key = typeof index === "string" ? "name" : "keyPattern";
+      var mod = { index: {} };
+      mod.index[key] = index;
+      mod.index.hidden = true;
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ collMod: c, index: mod.index })));
+    },
+    unhideIndex(index) {
+      var key = typeof index === "string" ? "name" : "keyPattern";
+      var idx = {};
+      idx[key] = index;
+      idx.hidden = false;
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ collMod: c, index: idx })));
+    },
+    reIndex() {
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ reIndex: c })));
+    },
+    drop() {
+      return JSON.parse(__runCommand(dbn, JSON.stringify({ drop: c })));
+    },
+    renameCollection(target, dropTarget) {
+      // renameCollection is an admin command: full namespaces, run against admin db.
+      var cmd = { renameCollection: dbn + "." + c, to: dbn + "." + target };
+      if (dropTarget) cmd.dropTarget = true;
+      return JSON.parse(__runCommand("admin", JSON.stringify(cmd)));
+    },
   };
 }
 
