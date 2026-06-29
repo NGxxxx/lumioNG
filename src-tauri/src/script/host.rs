@@ -435,16 +435,25 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         }
                     }
 
-                    let cursor = collection
+                    let mut cursor = collection
                         .find(filter)
                         .with_options(find_opts)
                         .await
                         .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
                     let batch_size = h.cap.min(101);
-                    let mut store = h.cursors.borrow_mut();
-                    let handle_id = store.insert(cursor);
-                    let (rows, exhausted) = store.fetch(handle_id, batch_size).await?;
+                    // Drain the first batch on the owned cursor, then store only if more remains —
+                    // never holds the cursors RefCell borrow across `.await`.
+                    let (rows, exhausted) =
+                        crate::script::cursors::CursorStore::drain(&mut cursor, batch_size).await?;
+                    let handle_id = {
+                        let mut store = h.cursors.borrow_mut();
+                        let id = store.next_handle();
+                        if !exhausted {
+                            store.put(id, cursor);
+                        }
+                        id
+                    };
 
                     let rows_json = rows
                         .iter()
@@ -516,16 +525,24 @@ fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         }
                     }
 
-                    let cursor = collection
+                    let mut cursor = collection
                         .aggregate(pipeline)
                         .with_options(agg_opts)
                         .await
                         .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
                     let batch_size = h.cap.min(101);
-                    let mut store = h.cursors.borrow_mut();
-                    let handle_id = store.insert(cursor);
-                    let (rows, exhausted) = store.fetch(handle_id, batch_size).await?;
+                    // Drain on the owned cursor first; store only if more remains (no RefCell across await).
+                    let (rows, exhausted) =
+                        crate::script::cursors::CursorStore::drain(&mut cursor, batch_size).await?;
+                    let handle_id = {
+                        let mut store = h.cursors.borrow_mut();
+                        let id = store.next_handle();
+                        if !exhausted {
+                            store.put(id, cursor);
+                        }
+                        id
+                    };
 
                     let rows_json = rows
                         .iter()
@@ -728,10 +745,9 @@ fn bind_list_collections(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         .await
                         .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
-                    // Return as JSON array of quoted strings.
-                    let quoted: Vec<String> =
-                        names.iter().map(|n| format!(r#""{}""#, n.replace('"', r#"\""#))).collect();
-                    Ok::<String, crate::error::AppError>(format!("[{}]", quoted.join(",")))
+                    // Serialize as a JSON array; serde handles quotes, backslashes, control chars.
+                    serde_json::to_string(&names)
+                        .map_err(|e| crate::error::AppError::Query(e.to_string()))
                 },
             ));
 
@@ -756,8 +772,17 @@ fn bind_cursor_fetch(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
             let result = h.handle.block_on(crate::script::host::with_interrupt(
                 cancel, deadline,
                 async move {
-                    let mut store = h.cursors.borrow_mut();
-                    let (rows, exhausted) = store.fetch(handle, n).await?;
+                    // Take the cursor out so the RefCell isn't borrowed across `.await`.
+                    let taken = h.cursors.borrow_mut().take(handle);
+                    let mut cursor = match taken {
+                        Some(c) => c,
+                        None => return Err(crate::error::AppError::Query("unknown cursor".into())),
+                    };
+                    let (rows, exhausted) =
+                        crate::script::cursors::CursorStore::drain(&mut cursor, n).await?;
+                    if !exhausted {
+                        h.cursors.borrow_mut().put(handle, cursor);
+                    }
                     let rows_json = rows.join(",");
                     Ok::<String, crate::error::AppError>(format!(
                         r#"{{"rows":[{rows_json}],"exhausted":{exhausted}}}"#
@@ -851,95 +876,133 @@ globalThis.__cursorClose = function(){};
     }
 
     #[test]
-    fn insert_one_builds_single_op_payload() {
-        let payload = eval_capture_write(r#"db.c.insertOne({a:1})"#);
-        assert!(payload.contains(r#""op":"insertOne""#));
-        assert!(payload.contains(r#""ordered":true"#) || !payload.contains("ordered"));
-        assert!(payload.contains(r#""a":1"#));
+    fn write_op_payloads_carry_op_kind_and_flags() {
+        // insertOne: single op, default-ordered, payload preserves the document.
+        let ins = eval_capture_write(r#"db.c.insertOne({a:1})"#);
+        assert!(ins.contains(r#""op":"insertOne""#));
+        assert!(ins.contains(r#""ordered":true"#) || !ins.contains("ordered"));
+        assert!(ins.contains(r#""a":1"#));
+        // updateOne threads the upsert flag through.
+        let upd = eval_capture_write(r#"db.c.updateOne({a:1},{$set:{b:2}},{upsert:true})"#);
+        assert!(upd.contains(r#""op":"updateOne""#));
+        assert!(upd.contains(r#""upsert":true"#));
     }
 
     #[test]
-    fn update_one_passes_upsert_flag() {
-        let payload = eval_capture_write(r#"db.c.updateOne({a:1},{$set:{b:2}},{upsert:true})"#);
-        assert!(payload.contains(r#""op":"updateOne""#));
-        assert!(payload.contains(r#""upsert":true"#));
-    }
-
-    #[test]
-    fn bulk_builder_collects_ops_in_order() {
-        let payload = eval_capture_write(
+    fn bulk_builder_preserves_order_and_ordered_flag() {
+        // ordered bulk: ops appear in insertion order, ordered:true.
+        let ordered = eval_capture_write(
             r#"var b=db.c.initializeOrderedBulkOp();b.insert({a:1});b.find({a:1}).updateOne({$set:{a:2}});b.find({a:2}).remove();b.execute()"#,
         );
-        assert!(payload.contains(r#""ordered":true"#));
-        // three ops, in order
-        let i_ins = payload.find("insertOne").unwrap();
-        let i_upd = payload.find("updateOne").unwrap();
-        let i_del = payload.find("deleteMany").unwrap();
+        assert!(ordered.contains(r#""ordered":true"#));
+        let i_ins = ordered.find("insertOne").unwrap();
+        let i_upd = ordered.find("updateOne").unwrap();
+        let i_del = ordered.find("deleteMany").unwrap();
         assert!(i_ins < i_upd && i_upd < i_del);
-    }
-
-    #[test]
-    fn unordered_bulk_sets_ordered_false() {
-        let payload = eval_capture_write(
+        // unordered bulk flips the flag.
+        let unordered = eval_capture_write(
             r#"var b=db.c.initializeUnorderedBulkOp();b.insert({a:1});b.execute()"#,
         );
-        assert!(payload.contains(r#""ordered":false"#));
+        assert!(unordered.contains(r#""ordered":false"#));
+    }
+
+    /// DDL / index / findAndModify prelude helpers each build the documented command document.
+    /// Table-driven: one row per helper, asserting the substrings that must appear in the command.
+    #[test]
+    fn prelude_helpers_build_expected_command_shapes() {
+        let cases: &[(&str, &[&str])] = &[
+            (
+                r#"db.c.createIndex({a:1},{name:"a_1",unique:true})"#,
+                &[r#""createIndexes":"c""#, r#""name":"a_1""#, r#""unique":true"#],
+            ),
+            (r#"db.c.dropIndex("a_1")"#, &[r#""dropIndexes":"c""#, r#""index":"a_1""#]),
+            (r#"db.c.getIndexes()"#, &[r#""listIndexes":"c""#]),
+            (r#"db.c.hideIndex("a_1")"#, &[r#""collMod":"c""#, r#""hidden":true"#]),
+            (r#"db.c.reIndex()"#, &[r#""reIndex":"c""#]),
+            (r#"db.c.drop()"#, &[r#""drop":"c""#]),
+            (
+                r#"db.c.renameCollection("c2", true)"#,
+                &[r#""renameCollection":"testdb.c""#, r#""to":"testdb.c2""#, r#""dropTarget":true"#],
+            ),
+        ];
+        for (script, expected) in cases {
+            let cmd = eval_capture_run_command(script);
+            for needle in *expected {
+                assert!(cmd.contains(needle), "`{script}` command missing `{needle}`, got: {cmd}");
+            }
+        }
+        // findOneAndDelete uses the find-and-modify command (casing tolerant) with remove:true.
+        let fam = eval_capture_run_command(r#"db.c.findOneAndDelete({a:1})"#);
+        assert!(fam.contains(r#""findAndModify""#) || fam.contains(r#""findandmodify""#));
+        assert!(fam.contains(r#""remove":true"#));
+        // createIndex key may serialize as either plain or ExtJSON int.
+        let ci = eval_capture_run_command(r#"db.c.createIndex({a:1})"#);
+        assert!(ci.contains(r#""key":{"a":1}"#) || ci.contains(r#""key":{"a":{"$numberInt":"1"}}"#));
+    }
+}
+
+#[cfg(test)]
+mod prelude_read_tests {
+    use rquickjs::{Context, Runtime};
+
+    const PRELUDE: &str = include_str!("prelude.js");
+
+    // Read-focused stubs: count host-query opens + closes so we can prove a Cursor opens the
+    // server-side query at most once even when hasNext()/next() ran before materialization.
+    const STUBS: &str = r#"
+globalThis.__openCount = 0;
+globalThis.__closeCount = 0;
+globalThis.__find = function(db, coll, q, o){
+  var h = __openCount;            // unique handle per open
+  __openCount += 1;
+  return JSON.stringify({ handle: h, rows: [{ _id: { "$numberInt": "1" } }], exhausted: false });
+};
+globalThis.__aggregate = globalThis.__find;
+globalThis.__cursorFetch = function(handle, n){ return JSON.stringify({ rows: [], exhausted: true }); };
+globalThis.__cursorClose = function(handle){ __closeCount += 1; };
+globalThis.__count = function(){ throw new Error("no count in read test"); };
+globalThis.__distinct = function(){ throw new Error("no distinct in read test"); };
+globalThis.__runCommand = function(){ return JSON.stringify({ ok: 1 }); };
+globalThis.__listCollections = function(){ return "[]"; };
+globalThis.__write = function(){ throw new Error("no write in read test"); };
+globalThis.__print = function(){};
+globalThis.__DBNAME = "testdb";
+"#;
+
+    fn eval_int(user_js: &str, expr: &str) -> i32 {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(user_js).unwrap();
+            ctx.eval::<i32, _>(expr).unwrap()
+        })
     }
 
     #[test]
-    fn find_one_and_delete_builds_find_and_modify_command() {
-        let cmd = eval_capture_run_command(r#"db.c.findOneAndDelete({a:1})"#);
-        assert!(cmd.contains(r#""findAndModify""#) || cmd.contains(r#""findandmodify""#));
-        assert!(cmd.contains(r#""remove":true"#));
+    fn hasnext_then_finalize_opens_the_query_once() {
+        // `c.hasNext()` opens a buffered handle; finalizing the same cursor must reuse it,
+        // not re-run __find (which would leak the first handle until close_all).
+        let opens = eval_int(r#"var c = db.c.find(); c.hasNext(); var r = __finalize(c);"#, "__openCount");
+        assert_eq!(opens, 1, "cursor should open the host query exactly once");
     }
 
     #[test]
-    fn create_index_builds_create_indexes_command() {
-        let cmd = eval_capture_run_command(r#"db.c.createIndex({a:1},{name:"a_1",unique:true})"#);
-        assert!(cmd.contains(r#""createIndexes":"c""#));
-        assert!(cmd.contains(r#""key":{"a":1}"#) || cmd.contains(r#""key":{"a":{"$numberInt":"1"}}"#));
-        assert!(cmd.contains(r#""name":"a_1""#));
-        assert!(cmd.contains(r#""unique":true"#));
+    fn hasnext_then_finalize_still_returns_the_buffered_row() {
+        // Reusing the open handle must not drop the row already buffered by hasNext().
+        let rows = eval_int(
+            r#"var c = db.c.find(); c.hasNext(); globalThis.__r = __finalize(c);"#,
+            "__r.rows.length",
+        );
+        assert_eq!(rows, 1, "the row buffered by hasNext() must survive finalization");
     }
 
     #[test]
-    fn drop_index_builds_drop_indexes_command() {
-        let cmd = eval_capture_run_command(r#"db.c.dropIndex("a_1")"#);
-        assert!(cmd.contains(r#""dropIndexes":"c""#));
-        assert!(cmd.contains(r#""index":"a_1""#));
-    }
-
-    #[test]
-    fn get_indexes_builds_list_indexes_command() {
-        let cmd = eval_capture_run_command(r#"db.c.getIndexes()"#);
-        assert!(cmd.contains(r#""listIndexes":"c""#));
-    }
-
-    #[test]
-    fn hide_index_builds_collmod_command() {
-        let cmd = eval_capture_run_command(r#"db.c.hideIndex("a_1")"#);
-        assert!(cmd.contains(r#""collMod":"c""#));
-        assert!(cmd.contains(r#""hidden":true"#));
-    }
-
-    #[test]
-    fn reindex_builds_reindex_command() {
-        let cmd = eval_capture_run_command(r#"db.c.reIndex()"#);
-        assert!(cmd.contains(r#""reIndex":"c""#));
-    }
-
-    #[test]
-    fn drop_collection_builds_drop_command() {
-        let cmd = eval_capture_run_command(r#"db.c.drop()"#);
-        assert!(cmd.contains(r#""drop":"c""#));
-    }
-
-    #[test]
-    fn rename_collection_builds_rename_command() {
-        let cmd = eval_capture_run_command(r#"db.c.renameCollection("c2", true)"#);
-        assert!(cmd.contains(r#""renameCollection":"testdb.c""#));
-        assert!(cmd.contains(r#""to":"testdb.c2""#));
-        assert!(cmd.contains(r#""dropTarget":true"#));
+    fn plain_finalize_without_hasnext_opens_once() {
+        // The common path (no hasNext) is unchanged: exactly one open.
+        let opens = eval_int(r#"var c = db.c.find(); var r = __finalize(c);"#, "__openCount");
+        assert_eq!(opens, 1);
     }
 }
 
@@ -988,16 +1051,14 @@ mod write_ops_tests {
     }
 
     #[test]
-    fn parse_ordered_default_true() {
+    fn parse_ordered_flag_and_op_kind() {
+        // Default ordered:true, op materialized to the right WriteOp variant.
         let (ordered, ops) =
             parse_write_ops(r#"{"ops":[{"op":"deleteOne","filter":{"a":1}}]}"#).unwrap();
         assert!(ordered);
         assert_eq!(ops.len(), 1);
         assert!(matches!(ops[0], WriteOp::DeleteOne(_)));
-    }
-
-    #[test]
-    fn parse_unordered_flag() {
+        // Explicit ordered:false honored.
         let (ordered, _) =
             parse_write_ops(r#"{"ordered":false,"ops":[{"op":"insertOne","document":{}}]}"#)
                 .unwrap();
@@ -1005,45 +1066,30 @@ mod write_ops_tests {
     }
 
     #[test]
-    fn parse_rejects_unknown_op() {
-        assert!(parse_write_ops(r#"{"ops":[{"op":"frobnicate"}]}"#).is_err());
+    fn parse_rejects_malformed_payloads() {
+        assert!(parse_write_ops(r#"{"ops":[{"op":"frobnicate"}]}"#).is_err()); // unknown op
+        assert!(parse_write_ops(r#"{"ops":{}}"#).is_err()); // ops not an array
+        // insertMany element that is not a document
+        assert!(parse_write_ops(r#"{"ops":[{"op":"insertMany","documents":[{"a":1},2]}]}"#).is_err());
     }
 
     #[test]
-    fn parse_rejects_non_array_ops() {
-        assert!(parse_write_ops(r#"{"ops":{}}"#).is_err());
-    }
-
-    #[test]
-    fn build_ack_serializes_counts_and_ids() {
+    fn build_ack_serializes_counts_and_both_id_arrays() {
         let mut a = WriteAccum::default();
         a.inserted_count = 2;
         a.matched_count = 1;
         a.modified_count = 1;
         a.deleted_count = 3;
+        a.upserted_count = 1;
         a.inserted_ids.push(r#"{"$oid":"507f1f77bcf86cd799439011"}"#.into());
+        a.upserted_ids.push(r#"{"$oid":"aabbccddeeff001122334455"}"#.into());
         let json = a.build_ack();
         assert!(json.contains(r#""insertedCount":{"$numberLong":"2"}"#));
         assert!(json.contains(r#""deletedCount":{"$numberLong":"3"}"#));
-        assert!(json.contains(r#""$oid":"507f1f77bcf86cd799439011""#));
-    }
-
-    #[test]
-    fn build_ack_serializes_upsert_path() {
-        let mut a = WriteAccum::default();
-        a.matched_count = 0;
-        a.modified_count = 0;
-        a.upserted_count = 1;
-        a.upserted_ids.push(r#"{"$oid":"aabbccddeeff001122334455"}"#.into());
-        let json = a.build_ack();
         assert!(json.contains(r#""upsertedCount":{"$numberLong":"1"}"#));
+        assert!(json.contains(r#""$oid":"507f1f77bcf86cd799439011""#));
         assert!(json.contains(r#""$oid":"aabbccddeeff001122334455""#));
         assert!(json.contains(r#""upsertedIds""#));
-    }
-
-    #[test]
-    fn insert_many_rejects_non_document_element() {
-        assert!(parse_write_ops(r#"{"ops":[{"op":"insertMany","documents":[{"a":1},2]}]}"#).is_err());
     }
 }
 
@@ -1056,13 +1102,10 @@ mod write_guard_tests {
     fn write_commands_are_detected() {
         for k in ["insert", "update", "delete", "findAndModify", "drop",
                   "dropDatabase", "create", "renameCollection", "createIndexes",
-                  "dropIndexes", "createUser", "dropUser"] {
+                  "dropIndexes", "createUser", "dropUser", "reIndex"] {
             assert!(is_write_command(&doc! { k: 1 }), "{k} should be a write");
         }
-    }
-
-    #[test]
-    fn case_insensitive_first_key() {
+        // Match is case-insensitive on the first key.
         assert!(is_write_command(&doc! { "DropDatabase": 1 }));
     }
 
@@ -1072,15 +1115,7 @@ mod write_guard_tests {
                   "collStats", "listCollections", "ping", "buildInfo", "serverStatus"] {
             assert!(!is_write_command(&doc! { k: 1 }), "{k} should be allowed");
         }
-    }
-
-    #[test]
-    fn reindex_is_a_write_command() {
-        assert!(is_write_command(&doc! { "reIndex": "c" }));
-    }
-
-    #[test]
-    fn empty_command_is_not_a_write() {
+        // An empty command document has no first key → not a write.
         assert!(!is_write_command(&Document::new()));
     }
 

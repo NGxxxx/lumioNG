@@ -231,18 +231,30 @@ class Cursor {
     return JSON.parse(fn(this._db, this._coll, qJson, oJson));
   }
 
-  // Materialize all rows into an array.
+  // Materialize all rows into an array. Reuses a handle already opened by hasNext()/next()
+  // (look-ahead buffer) instead of re-running the query, which would leak the first handle.
   toArray() {
-    const r0 = this._open();
-    const handle = r0.handle;
-    const out = r0.rows.slice();
-    let exhausted = r0.exhausted;
+    let handle, out, exhausted;
+    if (this._buf !== null) {
+      // Opened lazily by hasNext()/next(): drain the existing handle, don't re-open.
+      out = this._buf.slice();
+      handle = this._handle;
+      exhausted = this._exhausted;
+      this._buf = [];
+    } else {
+      const r0 = this._open();
+      handle = r0.handle;
+      out = r0.rows.slice();
+      exhausted = r0.exhausted;
+    }
     while (!exhausted) {
       const b = JSON.parse(__cursorFetch(handle, 1000));
       out.push.apply(out, b.rows);
       exhausted = b.exhausted;
     }
     if (handle != null) { try { __cursorClose(handle); } catch (_) {} }
+    this._handle = null;
+    this._exhausted = true;
     return out;
   }
 

@@ -83,3 +83,39 @@ export const COLLECTION_METHODS: readonly OpEntry[] = Object.freeze([
   { label: "deleteOne", detail: "delete one document" },
   { label: "deleteMany", detail: "delete many documents" },
 ]);
+
+/** Cursor methods offered after a cursor-returning call (find(…)./aggregate(…). and chains). */
+export const CURSOR_METHODS: readonly OpEntry[] = Object.freeze([
+  { label: "sort", detail: "order documents" },
+  { label: "limit", detail: "cap result count" },
+  { label: "skip", detail: "skip N documents" },
+  { label: "projection", detail: "select fields" },
+  { label: "hint", detail: "force an index" },
+  { label: "maxTimeMS", detail: "time limit (ms)" },
+  { label: "count", detail: "count matching documents" },
+  { label: "size", detail: "count after skip/limit" },
+  { label: "toArray", detail: "materialize to an array" },
+  { label: "forEach", detail: "iterate documents" },
+  { label: "map", detail: "transform each document" },
+  { label: "hasNext", detail: "are more documents available?" },
+  { label: "next", detail: "advance to the next document" },
+  { label: "explain", detail: "show the query plan" },
+]);
+
+/** Database-level methods offered after `db.` (alongside collection names). */
+export const DB_METHODS: readonly OpEntry[] = Object.freeze([
+  { label: "getCollection", detail: "collection by name" },
+  { label: "getCollectionNames", detail: "list collection names" },
+  { label: "getCollectionInfos", detail: "collection metadata" },
+  { label: "runCommand", detail: "run a raw command" },
+  { label: "adminCommand", detail: "run an admin command" },
+  { label: "aggregate", detail: "database-level pipeline" },
+  { label: "stats", detail: "database statistics" },
+  { label: "createCollection", detail: "create a collection" },
+  { label: "createView", detail: "create a view" },
+  { label: "dropDatabase", detail: "drop the database" },
+  { label: "version", detail: "server version" },
+  { label: "hello", detail: "server hello" },
+  { label: "serverStatus", detail: "server status" },
+  { label: "currentOp", detail: "in-progress operations" },
+]);

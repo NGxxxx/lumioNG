@@ -40,8 +40,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let error = $state<string | null>(null);
   let running = $state(false);
   let provenance = $state<Provenance | null>(null);
+  let lastElapsedMs = $state<number | null>(null);
 
-  let view = $state<"grid" | "tree">("grid");
   let pageSize = $state(50);
   let pageReq = $state(1);
 
@@ -121,8 +121,12 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     anchor = null;
     menu = null;
     editing = null;
+    const startedAt = Date.now();
     try {
-      const outcome = await runScript(sessionId, db, script);
+      const outcome = await runScript(sessionId, db, script, {
+        timeoutMs: settings.queryTimeoutMs,
+        cap: settings.queryResultCap,
+      });
 
       // Console entries (always present)
       consoleEntries = outcome.console;
@@ -170,8 +174,13 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
+      lastElapsedMs = Date.now() - startedAt;
       running = false;
     }
+  }
+
+  function clearConsole() {
+    consoleEntries = [];
   }
 
   async function run(db: string | null, script: string = statementText) {
@@ -376,11 +385,6 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     }
   }
 
-  function requestExport() {
-    if (docs.length === 0) return;
-    const rows = selected.size > 0 ? [...selected].map((i) => pageDocs[i]).filter(Boolean) as Doc[] : docs;
-    exportRequest = { rows };
-  }
   function cancelExport() { exportRequest = null; }
 
   function exportInput(): ExportWizardInput | null {
@@ -405,6 +409,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get columns() { return columns; },
     get pageDocs() { return pageDocs; },
     get consoleEntries() { return consoleEntries; },
+    get lastElapsedMs() { return lastElapsedMs; },
+    clearConsole,
     get displayMode() { return displayModeVal; },
     get valueJson() { return valueJson; },
     get ackJson() { return ackJson; },
@@ -416,8 +422,6 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get pageCount() { return pgCount; },
     get pageSize() { return pageSize; },
     get colWidths() { return colWidths; },
-    get view() { return view; },
-    set view(v: "grid" | "tree") { view = v; },
     get destructiveConfirm() { return destructiveConfirm; },
     run: (db: string | null) => run(db),
     confirmRun,
@@ -436,11 +440,9 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get editText() { return editText; },
     set editText(v: string) { editText = v; },
     get editError() { return editError; },
-    get saving() { return saving; },
     startEdit,
     commitEdit,
     cancelEdit,
-    get isEditable() { return isEditable(); },
     get selected() { return selected; },
     get menu() { return menu; },
     clickRow,
@@ -453,8 +455,6 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     cancelDelete,
     confirmDeleteRun,
     get exportRequest() { return exportRequest; },
-    get canExport() { return docs.length > 0; },
-    requestExport,
     cancelExport,
     exportInput,
   };

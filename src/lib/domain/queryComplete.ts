@@ -1,9 +1,9 @@
 /** Pure completion brain for the Query editor: detect cursor context + build options.
  *  No CodeMirror, no Svelte. */
-import { PIPELINE_STAGES, QUERY_OPERATORS, EXPR_OPERATORS, COLLECTION_METHODS, type OpEntry } from "./mongoOps";
+import { PIPELINE_STAGES, QUERY_OPERATORS, EXPR_OPERATORS, COLLECTION_METHODS, CURSOR_METHODS, DB_METHODS, type OpEntry } from "./mongoOps";
 import { methodHeadAt } from "./queryStatement";
 
-export type CompletionKind = "collection" | "method" | "stage" | "field" | "exprOp" | "fieldRef" | "none";
+export type CompletionKind = "collection" | "method" | "cursor" | "stage" | "field" | "exprOp" | "fieldRef" | "none";
 export interface CtxResult {
   kind: CompletionKind;
   from: number;
@@ -80,6 +80,15 @@ export function contextAt(text: string, pos: number): CtxResult {
     return { kind: "method", from, prefix };
   }
 
+  // Cursor method: right after a cursor-returning call's close paren — `find(…).` / `aggregate(…).`
+  // or a chained cursor method `…sort({}).`. Restricted to find/aggregate so writes don't qualify.
+  if (/\)\s*\.\s*$/.test(before)) {
+    const cursorHead = methodHeadAt(text, pos);
+    if (cursorHead && (cursorHead.method === "find" || cursorHead.method === "aggregate")) {
+      return { kind: "cursor", from, prefix };
+    }
+  }
+
   const head = methodHeadAt(text, pos);
   if (!head) return { kind: "none", from, prefix };
 
@@ -106,9 +115,10 @@ function byPrefix(items: OpEntry[], prefix: string): OpEntry[] {
   return items.filter((it) => it.label.toLowerCase().startsWith(p));
 }
 
-/** `getCollection` is offered only right after `db.`, not inside getCollection("…. */
-function collectionExtras(before: string): OpEntry[] {
-  return /\bdb\.\s*$/.test(before) ? [{ label: "getCollection" }] : [];
+/** db-level methods (incl. getCollection) are offered only right after `db.`, not inside
+ *  getCollection("…. */
+function dbMethodExtras(before: string): OpEntry[] {
+  return /\bdb\.\s*$/.test(before) ? [...DB_METHODS] : [];
 }
 
 export function completeAt(
@@ -121,8 +131,9 @@ export function completeAt(
 
   let pool: OpEntry[];
   if (kind === "collection") {
-    pool = [...sources.collections.map((label) => ({ label })), ...collectionExtras(text.slice(0, from))];
+    pool = [...sources.collections.map((label) => ({ label })), ...dbMethodExtras(text.slice(0, from))];
   } else if (kind === "method") pool = [...COLLECTION_METHODS];
+  else if (kind === "cursor") pool = [...CURSOR_METHODS];
   else if (kind === "stage") pool = [...PIPELINE_STAGES];
   else if (kind === "exprOp") pool = [...EXPR_OPERATORS];
   else if (kind === "fieldRef") pool = sources.fields.map((f) => ({ label: "$" + f }));

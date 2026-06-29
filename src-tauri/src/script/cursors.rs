@@ -13,19 +13,30 @@ pub struct CursorStore {
 }
 
 impl CursorStore {
-    pub fn insert(&mut self, cursor: Cursor<Document>) -> u32 {
+    /// Reserve the next handle id without storing a cursor.
+    pub fn next_handle(&mut self) -> u32 {
         let id = self.next;
         self.next += 1;
-        self.open.insert(id, cursor);
         id
     }
 
-    /// Pull up to `n` docs as ExtJSON; returns (rows, exhausted). Closes the cursor when drained.
-    pub async fn fetch(&mut self, handle: u32, n: usize) -> Result<(Vec<String>, bool), AppError> {
-        let cursor = self
-            .open
-            .get_mut(&handle)
-            .ok_or_else(|| AppError::Query("unknown cursor".into()))?;
+    /// Store a cursor under a specific (already-reserved) handle id.
+    pub fn put(&mut self, handle: u32, cursor: Cursor<Document>) {
+        self.open.insert(handle, cursor);
+    }
+
+    /// Remove and return a cursor so it can be drained without holding the store's RefCell
+    /// borrow across `.await` (clippy `await_holding_refcell_ref`).
+    pub fn take(&mut self, handle: u32) -> Option<Cursor<Document>> {
+        self.open.remove(&handle)
+    }
+
+    /// Pull up to `n` docs as ExtJSON from an owned cursor; returns (rows, exhausted).
+    /// Free of `&mut self`, so callers borrow the store only to take/put, never across `.await`.
+    pub async fn drain(
+        cursor: &mut Cursor<Document>,
+        n: usize,
+    ) -> Result<(Vec<String>, bool), AppError> {
         let mut rows = Vec::new();
         let mut exhausted = false;
         for _ in 0..n {
@@ -37,9 +48,6 @@ impl CursorStore {
                 }
             }
         }
-        if exhausted {
-            self.open.remove(&handle);
-        }
         Ok((rows, exhausted))
     }
 
@@ -49,20 +57,17 @@ impl CursorStore {
     pub fn close_all(&mut self) {
         self.open.clear();
     }
-    pub fn open_count(&self) -> usize {
-        self.open.len()
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn close_all_empties_the_store() {
+    fn close_and_close_all_leave_an_empty_store() {
         let mut s = CursorStore::default();
-        assert_eq!(s.open_count(), 0);
+        assert!(s.open.is_empty());
         s.close(123); // no-op on unknown handle
         s.close_all();
-        assert_eq!(s.open_count(), 0);
+        assert!(s.open.is_empty());
     }
 }

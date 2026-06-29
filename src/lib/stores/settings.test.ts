@@ -13,4 +13,29 @@ describe("settings", () => {
     a.setSuppressDestructiveWarning(true);
     expect(createSettings().suppressDestructiveWarning).toBe(true);
   });
+
+  it("defaults query timeout to 30000ms and cap to 1000", () => {
+    const s = createSettings();
+    expect(s.queryTimeoutMs).toBe(30000);
+    expect(s.queryResultCap).toBe(1000);
+  });
+
+  it("persists query timeout and cap across instances", () => {
+    const a = createSettings();
+    a.setQueryTimeoutMs(5000);
+    a.setQueryResultCap(250);
+    const b = createSettings();
+    expect(b.queryTimeoutMs).toBe(5000);
+    expect(b.queryResultCap).toBe(250);
+  });
+
+  it("ignores non-positive or non-finite values, keeping the previous setting", () => {
+    const a = createSettings();
+    a.setQueryTimeoutMs(0);
+    a.setQueryResultCap(-5);
+    expect(a.queryTimeoutMs).toBe(30000);
+    expect(a.queryResultCap).toBe(1000);
+    a.setQueryTimeoutMs(NaN);
+    expect(a.queryTimeoutMs).toBe(30000);
+  });
 });

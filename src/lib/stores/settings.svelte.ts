@@ -1,6 +1,12 @@
 import { untrack } from "svelte";
 
 const SUPPRESS_KEY = "suppress-destructive-warning";
+const TIMEOUT_KEY = "query-timeout-ms";
+const CAP_KEY = "query-result-cap";
+
+// Defaults mirror the Rust script engine fallbacks (commands/script.rs).
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_CAP = 1000;
 
 function readBool(key: string): boolean {
   try {
@@ -10,11 +16,32 @@ function readBool(key: string): boolean {
   }
 }
 
+/** Read a positive-integer setting; fall back to `fallback` for missing/invalid values. */
+function readPosInt(key: string, fallback: number): number {
+  try {
+    const n = Number(localStorage.getItem(key));
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeKey(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable — keep the in-memory value */
+  }
+}
+
 /** App-wide UI preferences persisted in localStorage. */
 export function createSettings() {
-  let suppress = $state<boolean>(
-    typeof localStorage !== "undefined" ? untrack(() => readBool(SUPPRESS_KEY)) : false,
+  const hasStorage = typeof localStorage !== "undefined";
+  let suppress = $state<boolean>(hasStorage ? untrack(() => readBool(SUPPRESS_KEY)) : false);
+  let timeoutMs = $state<number>(
+    hasStorage ? untrack(() => readPosInt(TIMEOUT_KEY, DEFAULT_TIMEOUT_MS)) : DEFAULT_TIMEOUT_MS,
   );
+  let cap = $state<number>(hasStorage ? untrack(() => readPosInt(CAP_KEY, DEFAULT_CAP)) : DEFAULT_CAP);
 
   return {
     get suppressDestructiveWarning(): boolean {
@@ -22,11 +49,23 @@ export function createSettings() {
     },
     setSuppressDestructiveWarning(v: boolean) {
       suppress = v;
-      try {
-        localStorage.setItem(SUPPRESS_KEY, v ? "true" : "false");
-      } catch {
-        /* storage unavailable — keep the in-memory value */
-      }
+      writeKey(SUPPRESS_KEY, v ? "true" : "false");
+    },
+    get queryTimeoutMs(): number {
+      return timeoutMs;
+    },
+    setQueryTimeoutMs(v: number) {
+      if (!Number.isFinite(v) || v <= 0) return; // ignore invalid input, keep the current value
+      timeoutMs = Math.floor(v);
+      writeKey(TIMEOUT_KEY, String(timeoutMs));
+    },
+    get queryResultCap(): number {
+      return cap;
+    },
+    setQueryResultCap(v: number) {
+      if (!Number.isFinite(v) || v <= 0) return;
+      cap = Math.floor(v);
+      writeKey(CAP_KEY, String(cap));
     },
   };
 }

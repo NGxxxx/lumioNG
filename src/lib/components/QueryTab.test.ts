@@ -13,7 +13,6 @@ const stub = {
   get colWidths() { return {}; }, get error() { return null; }, get running() { return false; },
   get capped() { return false; }, get displayMode() { return "none" as const; },
   get consoleEntries() { return []; }, get ackJson() { return null; }, get valueJson() { return null; },
-  get view() { return "grid"; }, set view(_v: string) {},
   get pageSize() { return 50; }, get currentPage() { return 1; },
   get pageCount() { return 1; },
   setColWidth: vi.fn(), resetColWidth: vi.fn(), goToPage: vi.fn(), setPageSize: vi.fn(),
@@ -29,7 +28,6 @@ const stub = {
   get editText() { return ""; }, set editText(_v: string) {},
   get editError() { return null; },
   startEdit: vi.fn(), commitEdit: vi.fn(), cancelEdit: vi.fn(),
-  get isEditable() { return false; },
   get provenance() { return null; },
   get destructiveConfirm() { return null; },
   get confirmDelete() { return null; },
@@ -44,10 +42,16 @@ const stub = {
 const editableStub = {
   ...stub,
   get displayMode() { return "grid-editable" as const; },
-  get isEditable() { return true; },
   get provenance() { return { db: "shop", coll: "items" }; },
   get pageDocs() { return [{ _id: "1", name: "test" }]; },
   get columns() { return [{ path: "name", label: "name" }]; },
+};
+
+const cancelSpy = vi.fn();
+const runningStub = {
+  ...stub,
+  get running() { return true; },
+  cancel: cancelSpy,
 };
 
 let activeStub: typeof stub = stub;
@@ -80,6 +84,40 @@ describe("QueryTab", () => {
     const { getByText } = render(QueryTab, { props });
     expect(getByText("Grid")).toBeTruthy();
     expect(getByText("Console")).toBeTruthy();
+  });
+
+  it("shows the running status and a cancel button while a query runs", () => {
+    activeStub = runningStub as unknown as typeof stub;
+    try {
+      const { getByText } = render(QueryTab, { props });
+      expect(getByText("Running…")).toBeTruthy();
+      expect(getByText("Cancel")).toBeTruthy();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("invokes cancel() when the cancel button is clicked", async () => {
+    activeStub = runningStub as unknown as typeof stub;
+    cancelSpy.mockClear();
+    try {
+      const { getByText } = render(QueryTab, { props });
+      await fireEvent.click(getByText("Cancel"));
+      expect(cancelSpy).toHaveBeenCalledOnce();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("does not render results while running", () => {
+    activeStub = runningStub as unknown as typeof stub;
+    try {
+      const { queryByText } = render(QueryTab, { props });
+      // The idle hint belongs to the not-running result pane; it must be hidden while running.
+      expect(queryByText(/Edit the statement/)).toBeNull();
+    } finally {
+      activeStub = stub;
+    }
   });
 
   it("passes edit handlers to the grid only when editable", () => {

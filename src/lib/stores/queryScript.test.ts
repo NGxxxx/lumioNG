@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 vi.mock("../api/script", () => ({
   runScript: vi.fn(async () => ({
@@ -152,26 +152,18 @@ describe("fieldsFor", () => {
 describe("setSelection + hasSelection", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("hasSelection is false initially", () => {
+  it("hasSelection is true only for a non-empty, non-whitespace range", () => {
     const s = createQueryScript("sess", "db.c.find()");
-    expect(s.hasSelection).toBe(false);
-  });
-
-  it("hasSelection is true after setSelection covers non-whitespace text", () => {
-    const s = createQueryScript("sess", "db.c.find()");
+    expect(s.hasSelection).toBe(false); // initial (no selection)
     s.setSelection(0, 5); // "db.c." — non-whitespace
     expect(s.hasSelection).toBe(true);
+    s.setSelection(3, 3); // empty range
+    expect(s.hasSelection).toBe(false);
   });
 
   it("hasSelection is false when selected range is only whitespace", () => {
     const s = createQueryScript("sess", "   db.c.find()");
     s.setSelection(0, 3); // "   " — pure whitespace
-    expect(s.hasSelection).toBe(false);
-  });
-
-  it("hasSelection is false when start equals end", () => {
-    const s = createQueryScript("sess", "db.c.find()");
-    s.setSelection(3, 3);
     expect(s.hasSelection).toBe(false);
   });
 });
@@ -190,7 +182,7 @@ describe("runSelection", () => {
     const s = createQueryScript("sess", "db.c.find() db.c.count()");
     s.setSelection(0, 11); // "db.c.find()"
     await s.runSelection("mydb");
-    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()");
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", expect.anything());
   });
 
   it("calls runScript with full statementText when no selection", async () => {
@@ -204,7 +196,53 @@ describe("runSelection", () => {
     const s = createQueryScript("sess", "db.c.find()");
     // no setSelection → hasSelection is false
     await s.runSelection("mydb");
-    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()");
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", expect.anything());
+  });
+});
+
+describe("execute forwards engine settings", () => {
+  beforeEach(() => vi.clearAllMocks());
+  afterEach(() => {
+    settings.setQueryTimeoutMs(30000);
+    settings.setQueryResultCap(1000);
+  });
+
+  it("passes the configured timeout and cap to runScript", async () => {
+    (runScript as any).mockResolvedValue({
+      console: [], result: { kind: "none" }, provenance: null, capped: false, error: null,
+    });
+    settings.setQueryTimeoutMs(7000);
+    settings.setQueryResultCap(42);
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("mydb");
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", { timeoutMs: 7000, cap: 42 });
+  });
+});
+
+describe("console ergonomics", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("clearConsole empties the console entries", async () => {
+    (runScript as any).mockResolvedValue({
+      console: [{ level: "log", text: "hi" }], result: { kind: "none" },
+      provenance: null, capped: false, error: null,
+    });
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    expect(s.consoleEntries.length).toBe(1);
+    s.clearConsole();
+    expect(s.consoleEntries.length).toBe(0);
+  });
+
+  it("records elapsed time for the last run", async () => {
+    (runScript as any).mockResolvedValue({
+      console: [], result: { kind: "none" }, provenance: null, capped: false, error: null,
+    });
+    const s = createQueryScript("sess", "db.c.find()");
+    expect(s.lastElapsedMs).toBeNull();
+    await s.run("d");
+    expect(typeof s.lastElapsedMs).toBe("number");
+    expect(s.lastElapsedMs as number).toBeGreaterThanOrEqual(0);
   });
 });
 

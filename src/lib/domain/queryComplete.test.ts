@@ -175,6 +175,53 @@ describe("method + generalized contexts", () => {
   });
 });
 
+describe("cursor methods", () => {
+  it("detects cursor context right after find()", () => {
+    const { text, pos } = at("db.c.find().|");
+    const c = contextAt(text, pos);
+    expect(c.kind).toBe("cursor");
+  });
+  it("detects cursor context after a non-empty find(filter)", () => {
+    const { text, pos } = at('db.c.find({ "a": 1 }).so|');
+    const c = contextAt(text, pos);
+    expect(c.kind).toBe("cursor");
+    expect(c.prefix).toBe("so");
+  });
+  it("detects cursor context after aggregate([])", () => {
+    const { text, pos } = at("db.c.aggregate([]).|");
+    expect(contextAt(text, pos).kind).toBe("cursor");
+  });
+  it("detects cursor context after a chained cursor method", () => {
+    const { text, pos } = at("db.c.find().sort({}).|");
+    expect(contextAt(text, pos).kind).toBe("cursor");
+  });
+  it("does NOT offer cursor methods after a write call", () => {
+    const { text, pos } = at("db.c.insertOne({}).|");
+    expect(contextAt(text, pos).kind).not.toBe("cursor");
+  });
+  it("suggests cursor methods filtered by prefix", () => {
+    const { text, pos } = at("db.c.find().s|");
+    const r = completeAt(text, pos, { collections: [], fields: [] });
+    expect(r!.kind).toBe("cursor");
+    expect(r!.options.map((o) => o.label)).toEqual(expect.arrayContaining(["sort", "skip"]));
+    expect(r!.options.every((o) => o.label.startsWith("s"))).toBe(true);
+  });
+});
+
+describe("db-level methods", () => {
+  it("offers db methods alongside collections after db.", () => {
+    const { text, pos } = at("db.run|");
+    const r = completeAt(text, pos, { collections: ["runners"], fields: [] });
+    expect(r!.kind).toBe("collection");
+    expect(r!.options.map((o) => o.label)).toEqual(expect.arrayContaining(["runCommand", "runners"]));
+  });
+  it("does NOT offer db methods inside getCollection(\"…", () => {
+    const { text, pos } = at('db.getCollection("ru|")');
+    const r = completeAt(text, pos, { collections: ["runners"], fields: [] });
+    expect(r!.options.map((o) => o.label)).not.toContain("runCommand");
+  });
+});
+
 describe("multi-statement documents", () => {
   it("classifies the statement the cursor is in, not the first one", () => {
     const { text, pos } = at('db.a.find({})\ndb.b.aggregate([{ "$ma|" }])');

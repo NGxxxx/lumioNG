@@ -11,6 +11,7 @@
   import ExportWizard from "./ExportWizard.svelte";
   import * as m from "$lib/paraglide/messages";
   import CodeEditor from "./CodeEditor.svelte";
+  import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
@@ -42,7 +43,7 @@
   function toCM(r: { from: number; kind: string; options: { label: string; detail?: string }[] } | null) {
     if (!r) return null;
     const options =
-      r.kind === "method"
+      r.kind === "method" || r.kind === "cursor"
         ? r.options.map((o) => snippetCompletion(o.label + "(${})", { label: o.label, detail: o.detail }))
         : r.options;
     return { from: r.from, options, validFor: /^[\w$.]*$/ };
@@ -85,6 +86,8 @@
     {#if sessionManager.active?.readOnly}
       <span class="readonly-badge" title={m.session_manager_readonly_enable()}>{m.query_tab_readonly()}</span>
     {/if}
+    <div class="bar-spacer"></div>
+    <QuerySettingsPopover />
   </div>
 
   <div class="editor" role="none" oncontextmenu={openMenu}>
@@ -124,7 +127,7 @@
       </div>
     {:else if resultView === "console"}
       <div class="result-pane">
-        <ConsolePane entries={v.consoleEntries} />
+        <ConsolePane entries={v.consoleEntries} elapsedMs={v.lastElapsedMs} onClear={v.clearConsole} />
       </div>
     {:else}
       <div class="result-pane">
@@ -210,6 +213,7 @@
   .bar { display: flex; align-items: center; gap: 0.625rem; height: 1.875rem; flex: none; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 0.625rem; }
   .readonly-badge { font-size: 0.6875rem; color: var(--warn-fg); background: var(--warn-bg2); border: 1px solid var(--warn-fg); border-radius: 0.1875rem; padding: 0 0.375rem; line-height: 1.4; }
   .db { color: var(--gray-77); font-size: 0.75rem; }
+  .bar-spacer { flex: 1; }
   .editor { height: 34%; flex: none; border-bottom: 1px solid var(--gray-cf); box-sizing: border-box; overflow: hidden; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   .cap { background: var(--warn-bg2); color: var(--warn-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.625rem; }

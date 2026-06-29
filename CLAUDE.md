@@ -1,101 +1,106 @@
-# monglumio — Hướng dẫn cấu trúc & quy ước
+# monglumio — Structure & Conventions
 
 MongoDB GUI: **Tauri + Rust** (backend) · **SvelteKit + Svelte 5 runes** (frontend) ·
-**TanStack Table/Virtual** (data grid). Định vị: nhẹ, nhanh, table-first.
+**TanStack Table/Virtual** (data grid). Positioning: lightweight, fast, table-first.
 
-**Nguyên tắc xuyên suốt:** Rust mỏng nhất có thể (connect + query + serialize → trả string);
-mọi logic hiển thị đẩy lên Svelte. **Hợp đồng giữa hai tầng = chuỗi Canonical Extended JSON.**
+**Core principle:** keep Rust as thin as possible (connect + query + serialize → return string);
+all display logic lives in Svelte. **The contract between the two layers is a Canonical Extended
+JSON string.**
 
 ---
 
-## Cấu trúc frontend — phân tầng, phụ thuộc một chiều
+## Frontend structure — layered, one-way dependency
 
 ```
 src/lib/
-  api/          # CHỈ nơi gọi Rust qua invoke. Mỗi file = một nhóm command.
-  domain/       # Logic THUẦN (không Tauri, không Svelte). Test được độc lập.
-  stores/       # State + hành động (Svelte 5 runes, factory). File .svelte.ts
-  components/   # CHỈ render + bind store/api. Không chứa business logic.
+  api/          # ONLY place that calls Rust via invoke. One file per command group.
+  domain/       # PURE logic (no Tauri, no Svelte). Independently testable.
+  stores/       # State + actions (Svelte 5 runes, factory). .svelte.ts files
+  components/   # ONLY rendering + binding to store/api. No business logic.
 ```
 
-**Chiều phụ thuộc (không được vi phạm):** `components → stores → api`, và mọi tầng dùng `domain`.
-`domain` **không** import ngược lên `api`/`stores`/`components`.
+**Dependency direction (must not be violated):** `components → stores → api`, and every layer may
+use `domain`. `domain` must **never** import upward into `api`/`stores`/`components`.
 
-### Đặt code mới ở đâu
-- **Thêm command Rust mới** → wrapper `invoke` vào `api/<nhóm>.ts` (vd `connection.ts`,
-  `documents.ts`). Không gọi `invoke` ở bất kỳ đâu ngoài `api/`.
-- **Logic thuần** (parse, biến đổi, suy luận kiểu, dựng cột…) → `domain/`. Phải có `.test.ts`.
-- **State + thao tác của một màn hình/khối** → store factory trong `stores/` (xem mẫu dưới).
-- **UI** → `components/`. Component lấy dữ liệu/hành động từ store hoặc props, tự nó không
-  giữ business logic; chỉ giữ DOM glue (focus, scroll, phím tắt).
+### Where to put new code
+- **New Rust command** → add an `invoke` wrapper in `api/<group>.ts` (e.g. `connection.ts`,
+  `documents.ts`). Never call `invoke` anywhere outside `api/`.
+- **Pure logic** (parsing, transforms, type inference, building columns…) → `domain/`. Must have a
+  `.test.ts`.
+- **State + actions for a screen/block** → a store factory in `stores/` (see pattern below).
+- **UI** → `components/`. Components pull data/actions from a store or props and hold no business
+  logic themselves; only DOM glue (focus, scroll, keyboard shortcuts).
 
-### Mẫu store factory (chuẩn của dự án)
-State + actions gói trong `createX(...)`, trả về **getter** cho state và hàm cho actions
-(xem `stores/workspace.svelte.ts`, `stores/collectionView.svelte.ts`):
+### Store factory pattern (project standard)
+State + actions are wrapped in `createX(...)`, returning **getters** for state and functions for
+actions (see `stores/workspace.svelte.ts`, `stores/collectionView.svelte.ts`):
 
 ```ts
 export function createX(args) {
   let items = $state<T[]>([]);
-  function doThing() { /* gọi api/*, dùng domain/* */ }
+  function doThing() { /* calls api/*, uses domain/* */ }
   return {
     get items() { return items; },
     doThing,
   };
 }
 ```
-- Cần binding hai chiều (vd `bind:value`) → expose cặp `get`/`set` cho field đó.
-- Test store bằng cách `vi.mock("../api/...")` — không cần DOM (xem `collectionView.test.ts`).
+- Need two-way binding (e.g. `bind:value`) → expose a `get`/`set` pair for that field.
+- Test stores via `vi.mock("../api/...")` — no DOM needed (see `collectionView.test.ts`).
 
-### Quy ước Svelte 5
-- Props là **bất biến trong vòng đời** khi component được mount lại theo key (vd tab theo `id`).
-  Khi khởi tạo `$state`/tạo store từ props, bọc `untrack(() => …)` để tránh cảnh báo
-  `state_referenced_locally`; giá trị chỉ-đọc dẫn xuất từ props dùng `$derived` (xem `DocumentForm.svelte`).
-- **Mảng document lớn dùng `$state.raw`, KHÔNG dùng `$state`** (xem `docs`/`pageDocs` trong
-  `collectionView.svelte.ts`, `queryRun.svelte.ts`). `$state` deep-proxy mọi field lồng nhau →
-  25k document khiến RAM phình >1GB (mỗi field thành một signal/proxy). `$state.raw` giữ doc là
-  object thuần; vẫn reactive khi **gán lại nguyên mảng**.
-  ⚠️ Đánh đổi: với raw, **mutate tại chỗ không re-render**. Mọi cập nhật phải theo kiểu immutable —
-  dựng doc/mảng mới rồi gán lại:
-  - ✅ `docs[row] = { ...docs[row], [key]: v }; docs = [...docs];` (inline edit hiện tại)
+### Svelte 5 conventions
+- Props are **immutable for the component's lifetime** when it's remounted by key (e.g. tabs keyed
+  by `id`). When initializing `$state`/creating a store from props, wrap it in `untrack(() => …)`
+  to avoid the `state_referenced_locally` warning; read-only values derived from props use
+  `$derived` (see `DocumentForm.svelte`).
+- **Large document arrays use `$state.raw`, NEVER `$state`** (see `docs`/`pageDocs` in
+  `collectionView.svelte.ts`, `queryRun.svelte.ts`). `$state` deep-proxies every nested field →
+  25k documents blows RAM past 1GB (each field becomes a signal/proxy). `$state.raw` keeps the doc
+  as a plain object; still reactive when **the whole array is reassigned**.
+  ⚠️ Trade-off: with raw, **in-place mutation does not re-render**. Every update must be immutable —
+  build a new doc/array and reassign:
+  - ✅ `docs[row] = { ...docs[row], [key]: v }; docs = [...docs];` (current inline edit)
   - ✅ `docs = docs.filter(...)` / `docs = batch`
-  - ❌ `docs[row].field = v` hay `docs[row].a.b = v` **mà không** gán lại `docs` → đổi data nhưng UI
-    đứng im (lỗi âm thầm). Nếu sau này hỗ trợ sửa field lồng nhau, vẫn phải dựng doc mới + reassign.
-- Test đặt **cạnh** file nguồn (`foo.ts` + `foo.test.ts`).
+  - ❌ `docs[row].field = v` or `docs[row].a.b = v` **without** reassigning `docs` → data changes but
+    the UI stays frozen (silent bug). If nested-field editing is added later, still build a new doc
+    and reassign.
+- Tests live **next to** the source file (`foo.ts` + `foo.test.ts`).
 
 ---
 
-## Cấu trúc backend — command theo domain
+## Backend structure — commands organized by domain
 
 ```
 src-tauri/src/
-  state.rs        # AppState + helper. Lấy client: `let client = state.client().await?;`
-  error.rs        # AppError (serialize { kind, message } ra frontend). Cấm unwrap ở tầng command.
-  bson_json.rs    # BSON  → Canonical ExtJSON (ra frontend)
-  json_bson.rs    # Canonical ExtJSON → BSON (vào từ frontend)
+  state.rs        # AppState + helpers. Get the client via: `let client = state.client().await?;`
+  error.rs        # AppError (serializes { kind, message } to the frontend). No unwrap in command layer.
+  bson_json.rs    # BSON → Canonical ExtJSON (to frontend)
+  json_bson.rs    # Canonical ExtJSON → BSON (from frontend)
   commands/
-    mod.rs        # `pub mod <nhóm>;` (KHÔNG re-export hàm — xem lưu ý macro bên dưới)
+    mod.rs        # `pub mod <group>;` (do NOT re-export functions — see macro note below)
     connection.rs # connect, list_namespaces, DbInfo…
     documents.rs  # query_page, insert/replace/delete…
 ```
 
-### Quy ước backend
-- **Lấy client** luôn qua `state.client().await?` (không lặp lại đoạn lock/as_ref/clone).
-- **Thêm command mới** → đặt vào `commands/<nhóm>.rs` đúng domain (tạo nhóm mới nếu cần),
-  rồi đăng ký bằng **đường dẫn đầy đủ** trong `generate_handler!` ở `lib.rs`:
-  `commands::<nhóm>::<lệnh>`.
-  ⚠️ `#[tauri::command]` sinh macro bạn `__cmd__<lệnh>` cùng module; `pub use` re-export hàm
-  **không** mang theo macro này → phải dùng đường dẫn đầy đủ, đừng re-export rồi gọi `commands::<lệnh>`.
-- Rust **không** biết "cột" hay "hiển thị". Mỗi document serialize thành **Canonical Extended JSON**
-  string; frontend tự parse + render.
-- `bson_json`/`json_bson` là chỗ "gai" → test round-trip dày cho mọi kiểu BSON.
+### Backend conventions
+- **Always get the client** via `state.client().await?` (don't repeat lock/as_ref/clone boilerplate).
+- **New command** → place it in `commands/<group>.rs` matching its domain (create a new group if
+  needed), then register it with its **full path** in `generate_handler!` in `lib.rs`:
+  `commands::<group>::<command>`.
+  ⚠️ `#[tauri::command]` generates a `__cmd__<command>` macro in the same module; `pub use`
+  re-exporting the function does **not** carry that macro along — always use the full path, don't
+  re-export and call `commands::<command>`.
+- Rust knows nothing about "columns" or "display". Every document is serialized to a **Canonical
+  Extended JSON** string; the frontend parses and renders it.
+- `bson_json`/`json_bson` are the sharp edges — keep thorough round-trip tests for every BSON type.
 
 ---
 
-## Quy trình & kiểm thử
-- Trước khi báo "xong": chạy và xác minh **xanh** (không phỏng đoán):
-  - Frontend: `npm test` và `npm run check` (mục tiêu **0 errors, 0 warnings**).
+## Workflow & testing
+- Before reporting "done": run and verify **green** (never assume):
+  - Frontend: `npm test` and `npm run check` (target **0 errors, 0 warnings**).
   - Backend: `cargo test --manifest-path src-tauri/Cargo.toml`.
-- Tài liệu thiết kế ở `docs/superpowers/specs/`, kế hoạch ở `docs/superpowers/plans/`
-  (theo lát cắt — slice).
-- Git: nhánh `<type>/<kebab>` từ `master`; commit một dòng `<type>: <mô tả>`, không co-author
-  (xem quy ước cá nhân ở `~/.claude/CLAUDE.md`).
+- Design docs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/` (organized by
+  slice).
+- Git: branch `<type>/<kebab>` off `master`; single-line commit `<type>: <description>`, no
+  co-author (see personal conventions in `~/.claude/CLAUDE.md`).
