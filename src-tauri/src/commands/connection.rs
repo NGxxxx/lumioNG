@@ -13,6 +13,7 @@ use tauri::{AppHandle, Manager, State};
 pub async fn connect(
     session_id: String,
     uri: String,
+    read_only: bool,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     // Parse the URI into options so we can override the driver defaults. The default
@@ -36,7 +37,7 @@ pub async fn connect(
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
 
-    state.insert_session(session_id, client, false).await; // read_only wired in Slice 2
+    state.insert_session(session_id, client, read_only).await;
     Ok(())
 }
 

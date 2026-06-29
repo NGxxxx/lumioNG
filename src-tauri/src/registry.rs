@@ -18,6 +18,7 @@ pub struct ConnectionInput {
     pub replica_set: String,
     pub tls: bool,
     pub extra_options: String,
+    pub read_only: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -45,6 +46,8 @@ pub struct SavedConnection {
     pub tls: bool,
     #[serde(default)]
     pub extra_options: String,
+    #[serde(default)]
+    pub read_only: bool,
     /// Legacy pre-Phase-E field; present only in un-migrated files. Cleared on next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
@@ -65,6 +68,7 @@ impl SavedConnection {
             replica_set: input.replica_set,
             tls: input.tls,
             extra_options: input.extra_options,
+            read_only: input.read_only,
             uri: None,
         }
     }
@@ -130,6 +134,7 @@ mod tests {
             replica_set: String::new(),
             tls: false,
             extra_options: String::new(),
+            read_only: false,
         }
     }
 
@@ -207,6 +212,26 @@ mod tests {
         assert_eq!(list.len(), 1);
         assert_eq!(list[0].uri.as_deref(), Some("mongodb://localhost:27017"));
         assert_eq!(list[0].host, "");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn from_input_carries_read_only() {
+        let mut i = input("RO", "localhost");
+        i.read_only = true;
+        let out = upsert(vec![], None, i);
+        assert!(out[0].read_only);
+    }
+
+    #[test]
+    fn legacy_file_defaults_read_only_false() {
+        let dir = std::env::temp_dir().join("monglumio_test_registry_ro_default");
+        let path = dir.join("connections.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
+        let list = load(&path).unwrap();
+        assert!(!list[0].read_only);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

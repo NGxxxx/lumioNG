@@ -16,12 +16,13 @@ pub async fn run_script(
     let client = state.client(&session_id).await?;
     let cancel = state.cancel_flag(&session_id).await;
     state.clear_cancel(&session_id).await;
+    let read_only = state.read_only(&session_id).await?;
     let handle = tokio::runtime::Handle::current();
     let timeout = timeout_ms.unwrap_or(30_000);
     let cap = cap.unwrap_or(1000) as usize;
     // engine::run spawns its own std::thread and joins; await it off the async runtime.
     let outcome = tokio::task::spawn_blocking(move || {
-        engine::run(client, handle, db, script, timeout, cap, cancel)
+        engine::run(client, handle, db, script, timeout, cap, read_only, cancel)
     })
     .await
     .map_err(|e| AppError::Query(e.to_string()))?;

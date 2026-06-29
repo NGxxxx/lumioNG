@@ -128,6 +128,31 @@ function MaxKey() {
   };
 }
 
+// ── Write helpers ─────────────────────────────────────────────────────────────
+
+// Wrap a __write ack (ExtJSON string) into a mongosh-style result object.
+function WriteResult(ackJson) {
+  var a = JSON.parse(ackJson);
+  return {
+    acknowledged: true,
+    insertedId: (a.insertedIds && a.insertedIds[0]) || null,
+    insertedCount: Number((a.insertedCount && a.insertedCount.$numberLong) || 0),
+    matchedCount: Number((a.matchedCount && a.matchedCount.$numberLong) || 0),
+    modifiedCount: Number((a.modifiedCount && a.modifiedCount.$numberLong) || 0),
+    upsertedCount: Number((a.upsertedCount && a.upsertedCount.$numberLong) || 0),
+    upsertedId: (a.upsertedIds && a.upsertedIds[0]) || null,
+    deletedCount: Number((a.deletedCount && a.deletedCount.$numberLong) || 0),
+    toJSON() { return a; },
+  };
+}
+function BulkWriteResult(ackJson) { return WriteResult(ackJson); }
+
+// Send one op array to the host and wrap the ack.
+function _runWrite(dbn, c, ordered, ops) {
+  var ack = __write(dbn, c, JSON.stringify({ ordered: ordered, ops: ops }));
+  return WriteResult(ack);
+}
+
 // ── Console / print ───────────────────────────────────────────────────────────
 
 function print() {
@@ -263,6 +288,39 @@ class Cursor {
   size() { return this.count(); }
 }
 
+// ── Bulk builder ──────────────────────────────────────────────────────────────
+
+function makeBulk(dbn, c, ordered) {
+  var ops = [];
+  var pendingFilter = null;
+  var api = {
+    insert(doc) { ops.push({ op: "insertOne", document: doc }); return api; },
+    find(filter) {
+      pendingFilter = filter || {};
+      return {
+        update(u)      { ops.push({ op: "updateMany", filter: pendingFilter, update: u, upsert: false }); return api; },
+        updateOne(u)   { ops.push({ op: "updateOne", filter: pendingFilter, update: u, upsert: false }); return api; },
+        replaceOne(r)  { ops.push({ op: "replaceOne", filter: pendingFilter, replacement: r, upsert: false }); return api; },
+        upsert() {
+          return {
+            update(u)     { ops.push({ op: "updateMany", filter: pendingFilter, update: u, upsert: true }); return api; },
+            updateOne(u)  { ops.push({ op: "updateOne", filter: pendingFilter, update: u, upsert: true }); return api; },
+            replaceOne(r) { ops.push({ op: "replaceOne", filter: pendingFilter, replacement: r, upsert: true }); return api; },
+          };
+        },
+        delete()    { ops.push({ op: "deleteMany", filter: pendingFilter }); return api; },
+        remove()    { ops.push({ op: "deleteMany", filter: pendingFilter }); return api; },
+        deleteOne() { ops.push({ op: "deleteOne", filter: pendingFilter }); return api; },
+        removeOne() { ops.push({ op: "deleteOne", filter: pendingFilter }); return api; },
+      };
+    },
+    getOperations() { return ops.slice(); },
+    toJSON() { return { ordered: ordered, ops: ops }; },
+    execute() { return _runWrite(dbn, c, ordered, ops); },
+  };
+  return api;
+}
+
 // ── Collection ────────────────────────────────────────────────────────────────
 
 function makeColl(dbn, c) {
@@ -307,6 +365,99 @@ function makeColl(dbn, c) {
 
     getName() { return c; },
     getFullName() { return dbn + "." + c; },
+
+    // ── Write methods ──────────────────────────────────────────────────────
+    insertOne(doc)   { return _runWrite(dbn, c, true, [{ op: "insertOne", document: doc }]); },
+    insertMany(docs, opts) {
+      var ordered = !(opts && opts.ordered === false);
+      return _runWrite(dbn, c, ordered, [{ op: "insertMany", documents: docs }]);
+    },
+    insert(docOrDocs) {
+      return Array.isArray(docOrDocs)
+        ? this.insertMany(docOrDocs)
+        : this.insertOne(docOrDocs);
+    },
+    updateOne(filter, update, opts) {
+      opts = opts || {};
+      return _runWrite(dbn, c, true, [{
+        op: "updateOne", filter: filter || {}, update: update,
+        upsert: !!opts.upsert, arrayFilters: opts.arrayFilters,
+      }]);
+    },
+    updateMany(filter, update, opts) {
+      opts = opts || {};
+      return _runWrite(dbn, c, true, [{
+        op: "updateMany", filter: filter || {}, update: update,
+        upsert: !!opts.upsert, arrayFilters: opts.arrayFilters,
+      }]);
+    },
+    update(filter, update, opts) {
+      opts = opts || {};
+      return opts.multi ? this.updateMany(filter, update, opts) : this.updateOne(filter, update, opts);
+    },
+    replaceOne(filter, replacement, opts) {
+      opts = opts || {};
+      return _runWrite(dbn, c, true, [{
+        op: "replaceOne", filter: filter || {}, replacement: replacement, upsert: !!opts.upsert,
+      }]);
+    },
+    deleteOne(filter) { return _runWrite(dbn, c, true, [{ op: "deleteOne", filter: filter || {} }]); },
+    deleteMany(filter) { return _runWrite(dbn, c, true, [{ op: "deleteMany", filter: filter || {} }]); },
+    remove(filter, justOne) {
+      return justOne ? this.deleteOne(filter) : this.deleteMany(filter);
+    },
+
+    bulkWrite(ops, opts) {
+      var ordered = !(opts && opts.ordered === false);
+      var mapped = ops.map(function (o) {
+        if (o.insertOne)  return { op: "insertOne", document: o.insertOne.document };
+        if (o.updateOne)  return { op: "updateOne", filter: o.updateOne.filter, update: o.updateOne.update, upsert: !!o.updateOne.upsert, arrayFilters: o.updateOne.arrayFilters };
+        if (o.updateMany) return { op: "updateMany", filter: o.updateMany.filter, update: o.updateMany.update, upsert: !!o.updateMany.upsert, arrayFilters: o.updateMany.arrayFilters };
+        if (o.replaceOne) return { op: "replaceOne", filter: o.replaceOne.filter, replacement: o.replaceOne.replacement, upsert: !!o.replaceOne.upsert };
+        if (o.deleteOne)  return { op: "deleteOne", filter: o.deleteOne.filter };
+        if (o.deleteMany) return { op: "deleteMany", filter: o.deleteMany.filter };
+        throw new Error("Unknown bulkWrite operation");
+      });
+      return _runWrite(dbn, c, ordered, mapped);
+    },
+
+    initializeOrderedBulkOp()   { return makeBulk(dbn, c, true); },
+    initializeUnorderedBulkOp() { return makeBulk(dbn, c, false); },
+
+    // findAndModify family → findAndModify command (gated by read-only on the command channel)
+    findOneAndUpdate(filter, update, opts) {
+      opts = opts || {};
+      var cmd = { findAndModify: c, query: filter || {}, update: update };
+      if (opts.upsert) cmd.upsert = true;
+      if (opts.returnNewDocument || opts.returnDocument === "after") cmd.new = true;
+      if (opts.sort) cmd.sort = opts.sort;
+      if (opts.projection) cmd.fields = opts.projection;
+      var r = JSON.parse(__runCommand(dbn, JSON.stringify(cmd)));
+      return r.value != null ? r.value : null;
+    },
+    findOneAndReplace(filter, replacement, opts) {
+      return this.findOneAndUpdate(filter, replacement, opts);
+    },
+    findOneAndDelete(filter, opts) {
+      opts = opts || {};
+      var cmd = { findAndModify: c, query: filter || {}, remove: true };
+      if (opts.sort) cmd.sort = opts.sort;
+      if (opts.projection) cmd.fields = opts.projection;
+      var r = JSON.parse(__runCommand(dbn, JSON.stringify(cmd)));
+      return r.value != null ? r.value : null;
+    },
+    findAndModify(spec) {
+      spec = spec || {};
+      var cmd = { findAndModify: c, query: spec.query || {} };
+      if (spec.update) cmd.update = spec.update;
+      if (spec.remove) cmd.remove = true;
+      if (spec.upsert) cmd.upsert = true;
+      if (spec.new) cmd.new = true;
+      if (spec.sort) cmd.sort = spec.sort;
+      if (spec.fields) cmd.fields = spec.fields;
+      var r = JSON.parse(__runCommand(dbn, JSON.stringify(cmd)));
+      return r.value != null ? r.value : null;
+    },
   };
 }
 

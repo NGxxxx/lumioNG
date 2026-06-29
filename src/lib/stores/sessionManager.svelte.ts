@@ -16,6 +16,7 @@ export type Session = {
   status: SessionStatus;
   connId: number | null;
   uri: string;
+  readOnly: boolean;
   connectedAt: number | null;
   nav: SessionNav;
   tree: ReturnType<typeof createNamespaceTree>;
@@ -86,7 +87,7 @@ export function createSessionManager() {
     if (affected) nav?.bumpCollection(db, newColl);
   }
 
-  function makeSession(id: string, label: string, connId: number | null, uri: string): Session {
+  function makeSession(id: string, label: string, connId: number | null, uri: string, readOnly: boolean): Session {
     const color = allocColor(sessions.map((s) => s.color));
     const nav = createSessionNav();
     const tree = createNamespaceTree(id, {
@@ -94,19 +95,19 @@ export function createSessionManager() {
       closeForDatabase: (db) => closeForDatabase(id, db),
       renameCollectionTabs: (db, oldColl, newColl) => renameCollectionTabs(id, db, oldColl, newColl),
     });
-    return { id, label, color, status: "connecting", connId, uri, connectedAt: null, nav, tree, host: createHostStatus(id) };
+    return { id, label, color, status: "connecting", connId, uri, readOnly, connectedAt: null, nav, tree, host: createHostStatus(id) };
   }
 
-  async function focusOrOpen(p: { connId: number | null; uri: string; label: string }): Promise<boolean> {
+  async function focusOrOpen(p: { connId: number | null; uri: string; label: string; readOnly?: boolean }): Promise<boolean> {
     const id = p.connId != null ? savedSessionId(p.connId) : adhocSessionId(++adhocSeq);
     const existing = sessions.find((s) => s.id === id);
     if (existing) { activeId = id; return true; }
     const label = p.connId != null ? p.label : adhocLabel(adhocSeq);
-    const s = makeSession(id, label, p.connId, p.uri);
+    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false);
     sessions = [...sessions, s];
     activeId = id;
     try {
-      await connect(id, p.uri);
+      await connect(id, p.uri, p.readOnly ?? false);
       commandLog.push(connectCmd(maskUri(p.uri)), id);
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });
@@ -124,7 +125,7 @@ export function createSessionManager() {
     if (!s) return;
     patchSession(id, { status: "connecting" });
     try {
-      await connect(id, s.uri);
+      await connect(id, s.uri, s.readOnly);
       commandLog.push(connectCmd(maskUri(s.uri)), id);
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });

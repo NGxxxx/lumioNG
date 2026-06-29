@@ -120,6 +120,7 @@
   "collection_tab_schema": "Schema",
   "collection_tab_indexes": "Index",
   "query_tab_title": "Truy vấn #{seq}",
+  "query_tab_readonly": "🔒 Chỉ đọc",
   "query_tab_db_label": "db: {db}",
   "query_tab_capped_notice": "Hiển thị 200 kết quả đầu.",
   "query_tab_run_no_limit": "Chạy không giới hạn",
@@ -230,6 +231,8 @@
   "session_manager_label_replica_set": "Replica set:",
   "session_manager_label_tls": "TLS / SSL:",
   "session_manager_tls_enable": "Bật TLS",
+  "session_manager_label_readonly": "Chỉ đọc:",
+  "session_manager_readonly_enable": "Từ chối mọi thao tác ghi trên kết nối này",
   "session_manager_label_extra": "Tùy chọn thêm:",
   "session_manager_label_import_uri": "Nhập từ URI:",
   "session_manager_import_btn": "Nhập",
@@ -344,5 +347,9 @@
   "export_wizard_status_error": "Lỗi",
   "export_wizard_overall": "Tổng",
   "export_wizard_summary_done": "Hoàn tất: {ok} thành công, {fail} lỗi.",
-  "export_wizard_menu_export_db": "Xuất database…"
+  "export_wizard_menu_export_db": "Xuất database…",
+  "destructive_confirm_title": "Chạy các thao tác phá hủy?",
+  "destructive_confirm_body": "Script này có thể sửa hoặc xóa dữ liệu bằng: {ops}",
+  "destructive_confirm_run": "Vẫn chạy",
+  "destructive_confirm_dont_ask": "Không hỏi lại"
 }

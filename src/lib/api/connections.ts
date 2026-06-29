@@ -12,6 +12,7 @@ export interface ConnectionInput {
   replicaSet: string;
   tls: boolean;
   extraOptions: string;
+  readOnly: boolean;
 }
 
 export interface SavedConnection extends ConnectionInput {

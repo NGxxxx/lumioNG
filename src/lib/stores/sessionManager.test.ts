@@ -72,7 +72,7 @@ describe("sessionManager", () => {
     (connect as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     await sm.reconnect("conn:1");
     expect(sm.active?.status).toBe("connected");
-    expect(connect).toHaveBeenLastCalledWith("conn:1", "u");
+    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false);
     expect(sm.sessions.length).toBe(1);
     expect(sm.active?.connectedAt).toBeTruthy();
   });

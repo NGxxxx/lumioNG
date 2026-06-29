@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 vi.mock("../api/script", () => ({
-  runScript: vi.fn(),
+  runScript: vi.fn(async () => ({
+    console: [], result: { kind: "ack", json: "{}" },
+    provenance: null, capped: false, error: null,
+  })),
   cancelScript: vi.fn(),
 }));
 
@@ -12,6 +15,7 @@ vi.mock("../api/documents", () => ({
 import { runScript, cancelScript } from "../api/script";
 import * as docsApi from "../api/documents";
 import { createQueryScript } from "./queryScript.svelte";
+import { settings } from "./settings.svelte";
 
 const sampleDocuments = docsApi.sampleDocuments as ReturnType<typeof vi.fn>;
 
@@ -21,6 +25,50 @@ const ok = (rows: string[], prov: { db: string; coll: string } | null) => ({
   provenance: prov,
   capped: false,
   error: null,
+});
+
+describe("destructive confirm", () => {
+  beforeEach(() => {
+    (runScript as any).mockClear();
+    settings.setSuppressDestructiveWarning(false);
+  });
+
+  it("destructive script defers run and opens the confirm", async () => {
+    const s = createQueryScript("sess", "db.c.deleteMany({})");
+    await s.run("mydb");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.destructiveConfirm?.ops).toContain("deleteMany");
+  });
+
+  it("confirmRun executes the deferred run", async () => {
+    const s = createQueryScript("sess", "db.c.deleteMany({})");
+    await s.run("mydb");
+    await s.confirmRun();
+    expect(runScript).toHaveBeenCalledTimes(1);
+    expect(s.destructiveConfirm).toBeNull();
+  });
+
+  it("cancelConfirm clears without running", async () => {
+    const s = createQueryScript("sess", "db.c.drop()");
+    await s.run("mydb");
+    s.cancelConfirm();
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.destructiveConfirm).toBeNull();
+  });
+
+  it("suppress flag bypasses the confirm", async () => {
+    settings.setSuppressDestructiveWarning(true);
+    const s = createQueryScript("sess", "db.c.deleteMany({})");
+    await s.run("mydb");
+    expect(runScript).toHaveBeenCalledTimes(1);
+    expect(s.destructiveConfirm).toBeNull();
+  });
+
+  it("non-destructive script runs immediately", async () => {
+    const s = createQueryScript("sess", "db.c.find({})");
+    await s.run("mydb");
+    expect(runScript).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("createQueryScript", () => {

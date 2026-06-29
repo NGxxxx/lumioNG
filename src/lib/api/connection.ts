@@ -5,8 +5,8 @@ export interface DbInfo {
   collections: string[];
 }
 
-export async function connect(sessionId: string, uri: string): Promise<void> {
-  await invoke("connect", { sessionId, uri });
+export async function connect(sessionId: string, uri: string, readOnly = false): Promise<void> {
+  await invoke("connect", { sessionId, uri, readOnly });
 }
 
 export async function disconnect(sessionId: string): Promise<void> {

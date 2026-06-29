@@ -70,10 +70,10 @@
   // Toolbar Edit/Export act on the collection data view, and only when it's the active context.
   const dataViewActive = $derived(active?.zone === "context" && active.kind === "data");
 
-  async function onConnected(conn: { connId: number | null; label: string; uri: string }): Promise<boolean> {
+  async function onConnected(conn: { connId: number | null; label: string; uri: string; readOnly: boolean }): Promise<boolean> {
     // focusOrOpen is the sole owner of the backend connect call; it returns true on success.
     // Passing the real connId allows focusOrOpen to dedup saved connections (focus existing session).
-    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label });
+    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly });
     if (ok) shell.setConnection(conn);
     return ok;
   }

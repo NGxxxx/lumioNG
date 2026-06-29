@@ -9,7 +9,7 @@
     onconnected,
     onclose,
   }: {
-    onconnected: (c: { connId: number | null; label: string; uri: string }) => Promise<boolean>;
+    onconnected: (c: { connId: number | null; label: string; uri: string; readOnly: boolean }) => Promise<boolean>;
     onclose: () => void;
   } = $props();
 
@@ -63,7 +63,7 @@
       const connLabel = r.label.trim() || result.uri;
       // Pass the saved connection's numeric id (null for ad-hoc connections with no saved record).
       const connId = selectedId !== null ? selectedId : (r.editingId ?? null);
-      const ok = await onconnected({ connId, label: connLabel, uri: result.uri });
+      const ok = await onconnected({ connId, label: connLabel, uri: result.uri, readOnly: r.readOnly });
       if (ok) onclose();
       else connectError = "Connection failed. Check your connection settings and try again.";
     } finally {
@@ -198,6 +198,12 @@
           <label class="form-check">
             <input type="checkbox" bind:checked={r.tls} aria-label={m.session_manager_label_tls()} />
             <span>{m.session_manager_tls_enable()}</span>
+          </label>
+
+          <span class="form-label">{m.session_manager_label_readonly()}</span>
+          <label class="form-check">
+            <input type="checkbox" bind:checked={r.readOnly} aria-label={m.session_manager_label_readonly()} />
+            <span>{m.session_manager_readonly_enable()}</span>
           </label>
 
           <span class="form-label">{m.session_manager_label_extra()}</span>

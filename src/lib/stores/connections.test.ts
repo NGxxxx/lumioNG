@@ -20,7 +20,7 @@ function saved(over: Partial<SavedConnection> = {}): SavedConnection {
   return {
     id: 1, label: "Local", scheme: "mongodb", host: "localhost", port: 27017,
     authMethod: "none", user: "", passwordEnc: "", authSource: "", replicaSet: "",
-    tls: false, extraOptions: "", ...over,
+    tls: false, extraOptions: "", readOnly: false, ...over,
   };
 }
 
@@ -110,5 +110,28 @@ describe("createConnectionRegistry", () => {
     const r = createConnectionRegistry();
     await r.remove(3);
     expect(del).toHaveBeenCalledWith(3);
+  });
+});
+
+describe("connection registry read-only", () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it("toInput carries readOnly through save", async () => {
+    save.mockResolvedValueOnce([saved()]);
+    const r = createConnectionRegistry();
+    r.label = "L"; r.host = "localhost";
+    r.readOnly = true;
+    await r.save();
+    const input = (save as any).mock.calls[0][1];
+    expect(input.readOnly).toBe(true);
+  });
+
+  it("defaults readOnly false after clearForm", async () => {
+    save.mockResolvedValueOnce([saved()]);
+    const r = createConnectionRegistry();
+    r.label = "L"; r.host = "localhost";
+    r.readOnly = true;
+    await r.save(); // clearForm runs on success
+    expect(r.readOnly).toBe(false);
   });
 });

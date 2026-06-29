@@ -6,6 +6,8 @@ import { mergeColumns, inferSchema, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
+import { scanDestructive } from "../domain/scriptScan";
+import { settings } from "./settings.svelte";
 
 /** Per-tab state for one QuickJS Query tab: run script + client-side paging + column widths. */
 export function createQueryScript(sessionId: string, initialStatement: string) {
@@ -33,6 +35,9 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let view = $state<"grid" | "tree">("grid");
   let pageSize = $state(50);
   let pageReq = $state(1);
+
+  let destructiveConfirm = $state<{ ops: string[] } | null>(null);
+  let pending: { db: string; script: string } | null = null;
 
   // Autocomplete field cache: one sample() per (db, coll) for this tab's lifetime.
   const fieldCache = new Map<string, string[]>();
@@ -76,11 +81,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   const page = $derived(clampPage(pageReq, pgCount));
   const pageDocs = $derived(docs.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize));
 
-  async function run(db: string | null, script: string = statementText) {
-    if (!db) {
-      error = "Select a database first.";
-      return;
-    }
+  async function execute(db: string, script: string) {
     running = true;
     error = null;
     try {
@@ -136,6 +137,37 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     }
   }
 
+  async function run(db: string | null, script: string = statementText) {
+    if (!db) {
+      error = "Select a database first.";
+      return;
+    }
+    const ops = scanDestructive(script);
+    if (ops.length && !settings.suppressDestructiveWarning) {
+      pending = { db, script };
+      destructiveConfirm = { ops };
+      return;
+    }
+    await execute(db, script);
+  }
+
+  async function confirmRun() {
+    const p = pending;
+    destructiveConfirm = null;
+    pending = null;
+    if (p) await execute(p.db, p.script);
+  }
+
+  function cancelConfirm() {
+    destructiveConfirm = null;
+    pending = null;
+  }
+
+  function dontAskAgain() {
+    settings.setSuppressDestructiveWarning(true);
+    void confirmRun();
+  }
+
   function cancel() {
     cancelScript(sessionId);
   }
@@ -166,7 +198,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get colWidths() { return colWidths; },
     get view() { return view; },
     set view(v: "grid" | "tree") { view = v; },
+    get destructiveConfirm() { return destructiveConfirm; },
     run: (db: string | null) => run(db),
+    confirmRun,
+    cancelConfirm,
+    dontAskAgain,
     cancel,
     runSelection,
     setSelection,

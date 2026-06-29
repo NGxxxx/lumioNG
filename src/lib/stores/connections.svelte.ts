@@ -31,6 +31,7 @@ export function createConnectionRegistry() {
   let replicaSet = $state("");
   let tls = $state(false);
   let extraOptions = $state("");
+  let readOnly = $state(false);
 
   function profile(): ConnectionProfile {
     return { scheme, host, port, authMethod, user, authSource, replicaSet, tls, extraOptions };
@@ -41,7 +42,7 @@ export function createConnectionRegistry() {
       label: label.trim(),
       scheme, host, port, authMethod, user,
       passwordEnc: authMethod === "password" ? obfuscate(password) : "",
-      authSource, replicaSet, tls, extraOptions,
+      authSource, replicaSet, tls, extraOptions, readOnly,
     };
   }
 
@@ -69,6 +70,7 @@ export function createConnectionRegistry() {
             scheme: p.scheme, host: p.host, port: p.port, authMethod: p.authMethod,
             user: p.user, passwordEnc: p.authMethod === "password" ? obfuscate(pw) : "",
             authSource: p.authSource, replicaSet: p.replicaSet, tls: p.tls, extraOptions: p.extraOptions,
+            readOnly: false,
           };
           result = await saveConnection(c.id, input);
         }
@@ -83,7 +85,7 @@ export function createConnectionRegistry() {
     editingId = null;
     label = ""; scheme = "mongodb"; host = "localhost"; port = 27017;
     authMethod = "none"; user = ""; password = ""; authSource = ""; replicaSet = "";
-    tls = false; extraOptions = "";
+    tls = false; extraOptions = ""; readOnly = false;
     formError = null;
   }
 
@@ -118,6 +120,7 @@ export function createConnectionRegistry() {
       tls: c.tls, extraOptions: c.extraOptions,
     });
     password = c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
+    readOnly = !!c.readOnly;
     formError = null;
   }
 
@@ -156,6 +159,7 @@ export function createConnectionRegistry() {
     get replicaSet() { return replicaSet; }, set replicaSet(v: string) { replicaSet = v; },
     get tls() { return tls; }, set tls(v: boolean) { tls = v; },
     get extraOptions() { return extraOptions; }, set extraOptions(v: string) { extraOptions = v; },
+    get readOnly() { return readOnly; }, set readOnly(v: boolean) { readOnly = v; },
     load, save, remove, edit, clearForm, connectTo, importFromUri, currentUri,
   };
 }

@@ -80,6 +80,7 @@ pub fn run(
     script: String,
     timeout_ms: u64,
     cap: usize,
+    read_only: bool,
     cancel: Arc<AtomicBool>,
 ) -> ScriptOutcome {
     use crate::script::cursors::CursorStore;
@@ -96,6 +97,7 @@ pub fn run(
         rt.set_memory_limit(256 * 1024 * 1024);
 
         let start = Instant::now();
+        let deadline = start + std::time::Duration::from_millis(timeout_ms);
         let cancel_i = cancel.clone();
         rt.set_interrupt_handler(Some(Box::new(move || {
             start.elapsed().as_millis() as u64 > timeout_ms
@@ -114,6 +116,9 @@ pub fn run(
                 console: console.clone(),
                 cursors: cursors.clone(),
                 cap,
+                read_only,
+                cancel: cancel.clone(),
+                deadline,
             };
 
             host::bind(&ctx, host_ctx).map_err(|e| e.to_string())?;
@@ -234,6 +239,7 @@ mod run_tests {
             "while(true){}".into(),
             60_000,
             1000,
+            false,
             cancel,
         );
 
@@ -259,6 +265,7 @@ mod run_tests {
             r#"throw new Error("")"#.into(),
             30_000,
             1000,
+            false,
             Arc::new(AtomicBool::new(false)),
         );
 
@@ -284,6 +291,7 @@ mod run_tests {
             "while(true){}".into(),
             200,
             1000,
+            false,
             Arc::new(AtomicBool::new(false)),
         );
 
