@@ -1,6 +1,6 @@
 // prelude.js — mongosh read shim for QuickJS
 // Injected globals from Rust host:
-//   __find, __aggregate, __count, __distinct, __runCommand, __listCollections
+//   __find, __aggregate, __count, __distinct, __runCommand, __adminCommand, __listCollections
 //   __cursorFetch, __cursorClose, __print
 //   __DBNAME  (current database name string)
 //
@@ -78,6 +78,18 @@ function _base64(bytes) {
   if (i + 1 === bytes.length) { const b = bytes[i] << 16; out += chars[(b >> 18) & 63] + chars[(b >> 12) & 63] + "=="; }
   else if (i + 2 === bytes.length) { const b = (bytes[i] << 16) | (bytes[i+1] << 8); out += chars[(b >> 18) & 63] + chars[(b >> 12) & 63] + chars[(b >> 6) & 63] + "="; }
   return out;
+}
+
+// Coerce an ExtJSON numeric wrapper ($numberLong/$numberInt/$numberDouble) or raw value
+// into a JS number (for size/count helpers that read command replies).
+function _num(v) {
+  if (v && typeof v === "object") {
+    if (v.$numberLong !== undefined) return Number(v.$numberLong);
+    if (v.$numberInt !== undefined) return Number(v.$numberInt);
+    if (v.$numberDouble !== undefined) return Number(v.$numberDouble);
+    if (v.$numberDecimal !== undefined) return Number(v.$numberDecimal);
+  }
+  return Number(v);
 }
 
 // UUID: stored as $binary with subtype "04" (UUID subtype)
@@ -286,6 +298,14 @@ class Cursor {
   }
 
   size() { return this.count(); }
+
+  explain(verbosity) {
+    var inner = this._kind === "agg"
+      ? { aggregate: this._coll, pipeline: this._q, cursor: {} }
+      : Object.assign({ find: this._coll, filter: this._q }, this._o);
+    var cmd = { explain: inner, verbosity: verbosity || "queryPlanner" };
+    return JSON.parse(__runCommand(this._db, JSON.stringify(cmd)));
+  }
 }
 
 // ── Bulk builder ──────────────────────────────────────────────────────────────
@@ -513,6 +533,50 @@ function makeColl(dbn, c) {
       if (dropTarget) cmd.dropTarget = true;
       return JSON.parse(__runCommand("admin", JSON.stringify(cmd)));
     },
+
+    // ── Collection admin ──────────────────────────────────────────────────
+    stats(scale) {
+      var cmd = { collStats: c };
+      if (scale !== undefined) cmd.scale = scale;
+      return JSON.parse(__runCommand(dbn, JSON.stringify(cmd)));
+    },
+    dataSize()       { return _num(this.stats().size); },
+    storageSize()    { return _num(this.stats().storageSize); },
+    totalIndexSize() { return _num(this.stats().totalIndexSize); },
+    totalSize() {
+      var s = this.stats();
+      return _num(s.storageSize) + _num(s.totalIndexSize);
+    },
+    isCapped()       { return !!this.stats().capped; },
+    validate(opts) {
+      var cmd = { validate: c };
+      if (opts && opts.full) cmd.full = true;
+      if (opts && opts.repair) cmd.repair = true;
+      return JSON.parse(__runCommand(dbn, JSON.stringify(cmd)));
+    },
+    latencyStats(opts) {
+      var stage = { $collStats: { latencyStats: { histograms: !!(opts && opts.histograms) } } };
+      return new Cursor(dbn, c, "agg", [stage], {}).toArray();
+    },
+    explain(verbosity) {
+      var v = verbosity || "queryPlanner";
+      var dbn_ = dbn, c_ = c;
+      return {
+        find(q, p) {
+          var inner = { find: c_, filter: q || {} };
+          if (p) inner.projection = p;
+          return JSON.parse(__runCommand(dbn_, JSON.stringify({ explain: inner, verbosity: v })));
+        },
+        aggregate(pipeline) {
+          var inner = { aggregate: c_, pipeline: pipeline || [], cursor: {} };
+          return JSON.parse(__runCommand(dbn_, JSON.stringify({ explain: inner, verbosity: v })));
+        },
+        count(q) {
+          var inner = { count: c_, query: q || {} };
+          return JSON.parse(__runCommand(dbn_, JSON.stringify({ explain: inner, verbosity: v })));
+        },
+      };
+    },
   };
 }
 
@@ -525,8 +589,165 @@ function makeDb(name) {
     getCollection(c)  { return makeColl(name, c); },
     getCollectionNames() { return JSON.parse(__listCollections(name)); },
     runCommand(cmd)   { return JSON.parse(__runCommand(name, JSON.stringify(cmd))); },
-    // Common admin shortcuts
-    stats()           { return JSON.parse(__runCommand(name, JSON.stringify({ dbStats: 1 }))); },
+    adminCommand(cmd) { return JSON.parse(__adminCommand(JSON.stringify(cmd))); },
+
+    // ── Database diagnostics ──────────────────────────────────────────────
+    stats(scale) {
+      var cmd = { dbStats: 1 };
+      if (scale !== undefined) cmd.scale = scale;
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    serverStatus(opts) {
+      return JSON.parse(__adminCommand(JSON.stringify(Object.assign({ serverStatus: 1 }, opts || {}))));
+    },
+    hostInfo()         { return JSON.parse(__adminCommand(JSON.stringify({ hostInfo: 1 }))); },
+    currentOp(arg) {
+      var cmd = { currentOp: 1 };
+      if (arg && typeof arg === "object") Object.assign(cmd, arg);
+      else if (arg === true) cmd.$all = true;
+      return JSON.parse(__adminCommand(JSON.stringify(cmd)));
+    },
+    killOp(opid)       { return JSON.parse(__adminCommand(JSON.stringify({ killOp: 1, op: opid }))); },
+    serverBuildInfo()  { return JSON.parse(__adminCommand(JSON.stringify({ buildInfo: 1 }))); },
+    serverCmdLineOpts(){ return JSON.parse(__adminCommand(JSON.stringify({ getCmdLineOpts: 1 }))); },
+    version()          { return this.serverBuildInfo().version; },
+    hello()            { return JSON.parse(__runCommand(name, JSON.stringify({ hello: 1 }))); },
+    commandHelp(cmdName) {
+      var cmd = {}; cmd[cmdName] = 1; cmd.help = true;
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    listCommands()     { return JSON.parse(__runCommand(name, JSON.stringify({ listCommands: 1 }))); },
+    getProfilingStatus() { return JSON.parse(__runCommand(name, JSON.stringify({ profile: -1 }))); },
+    setProfilingLevel(level, opts) {
+      var cmd = { profile: level };
+      if (opts && opts.slowms !== undefined) cmd.slowms = opts.slowms;
+      if (opts && opts.sampleRate !== undefined) cmd.sampleRate = opts.sampleRate;
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    getLogComponents() {
+      var r = JSON.parse(__adminCommand(JSON.stringify({ getParameter: 1, logComponentVerbosity: 1 })));
+      return r.logComponentVerbosity;
+    },
+    setLogLevel(level, component) {
+      var verbosity = {};
+      if (component) {
+        // Dotted path e.g. "storage.journal" → nested {storage:{journal:{verbosity:level}}}
+        var parts = component.split(".");
+        var node = verbosity;
+        for (var i = 0; i < parts.length; i++) {
+          node[parts[i]] = (i === parts.length - 1) ? { verbosity: level } : {};
+          node = node[parts[i]];
+        }
+      } else {
+        verbosity.verbosity = level;
+      }
+      return JSON.parse(__adminCommand(JSON.stringify({ setParameter: 1, logComponentVerbosity: verbosity })));
+    },
+    getLog(logName)    { return JSON.parse(__adminCommand(JSON.stringify({ getLog: logName || "global" }))); },
+
+    // ── DDL & database utilities ──────────────────────────────────────────
+    createCollection(collName, opts) {
+      return JSON.parse(__runCommand(name, JSON.stringify(Object.assign({ create: collName }, opts || {}))));
+    },
+    createView(viewName, source, pipeline, opts) {
+      var cmd = Object.assign({ create: viewName, viewOn: source, pipeline: pipeline || [] }, opts || {});
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    dropDatabase()     { return JSON.parse(__runCommand(name, JSON.stringify({ dropDatabase: 1 }))); },
+    getCollectionInfos(filter) {
+      var cmd = { listCollections: 1 };
+      if (filter) cmd.filter = filter;
+      var r = JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+      return (r.cursor && r.cursor.firstBatch) || [];
+    },
+    aggregate(pipeline, opts) {
+      var cmd = Object.assign({ aggregate: 1, pipeline: pipeline || [], cursor: {} }, opts || {});
+      var r = JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+      return (r.cursor && r.cursor.firstBatch) || [];
+    },
+
+    // ── User management (run against the owning db) ───────────────────────
+    createUser(userObj, writeConcern) {
+      userObj = userObj || {};
+      var cmd = { createUser: userObj.user, pwd: userObj.pwd, roles: userObj.roles || [] };
+      if (userObj.customData) cmd.customData = userObj.customData;
+      if (userObj.mechanisms) cmd.mechanisms = userObj.mechanisms;
+      if (userObj.authenticationRestrictions) cmd.authenticationRestrictions = userObj.authenticationRestrictions;
+      if (writeConcern) cmd.writeConcern = writeConcern;
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    dropUser(username, writeConcern) {
+      var cmd = { dropUser: username };
+      if (writeConcern) cmd.writeConcern = writeConcern;
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    dropAllUsers()     { return JSON.parse(__runCommand(name, JSON.stringify({ dropAllUsersFromDatabase: 1 }))); },
+    updateUser(username, update) {
+      return JSON.parse(__runCommand(name, JSON.stringify(Object.assign({ updateUser: username }, update || {}))));
+    },
+    changeUserPassword(username, pwd) {
+      return JSON.parse(__runCommand(name, JSON.stringify({ updateUser: username, pwd: pwd })));
+    },
+    grantRolesToUser(username, roles) {
+      return JSON.parse(__runCommand(name, JSON.stringify({ grantRolesToUser: username, roles: roles || [] })));
+    },
+    revokeRolesFromUser(username, roles) {
+      return JSON.parse(__runCommand(name, JSON.stringify({ revokeRolesFromUser: username, roles: roles || [] })));
+    },
+    getUser(username, args) {
+      var cmd = { usersInfo: { user: username, db: name } };
+      if (args) Object.assign(cmd, args);
+      var r = JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+      return (r.users && r.users[0]) || null;
+    },
+    getUsers(args) {
+      var cmd = { usersInfo: 1 };
+      if (args) Object.assign(cmd, args);
+      var r = JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+      return r.users || [];
+    },
+
+    // ── Role management ───────────────────────────────────────────────────
+    createRole(roleObj, writeConcern) {
+      roleObj = roleObj || {};
+      var cmd = { createRole: roleObj.role, privileges: roleObj.privileges || [], roles: roleObj.roles || [] };
+      if (roleObj.authenticationRestrictions) cmd.authenticationRestrictions = roleObj.authenticationRestrictions;
+      if (writeConcern) cmd.writeConcern = writeConcern;
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    dropRole(rolename, writeConcern) {
+      var cmd = { dropRole: rolename };
+      if (writeConcern) cmd.writeConcern = writeConcern;
+      return JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+    },
+    dropAllRoles()     { return JSON.parse(__runCommand(name, JSON.stringify({ dropAllRolesFromDatabase: 1 }))); },
+    updateRole(rolename, update) {
+      return JSON.parse(__runCommand(name, JSON.stringify(Object.assign({ updateRole: rolename }, update || {}))));
+    },
+    getRole(rolename, args) {
+      var cmd = { rolesInfo: { role: rolename, db: name } };
+      if (args) Object.assign(cmd, args);
+      var r = JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+      return (r.roles && r.roles[0]) || null;
+    },
+    getRoles(args) {
+      var cmd = { rolesInfo: 1 };
+      if (args) Object.assign(cmd, args);
+      var r = JSON.parse(__runCommand(name, JSON.stringify(cmd)));
+      return r.roles || [];
+    },
+    grantPrivilegesToRole(rolename, privileges) {
+      return JSON.parse(__runCommand(name, JSON.stringify({ grantPrivilegesToRole: rolename, privileges: privileges || [] })));
+    },
+    revokePrivilegesFromRole(rolename, privileges) {
+      return JSON.parse(__runCommand(name, JSON.stringify({ revokePrivilegesFromRole: rolename, privileges: privileges || [] })));
+    },
+    grantRolesToRole(rolename, roles) {
+      return JSON.parse(__runCommand(name, JSON.stringify({ grantRolesToRole: rolename, roles: roles || [] })));
+    },
+    revokeRolesFromRole(rolename, roles) {
+      return JSON.parse(__runCommand(name, JSON.stringify({ revokeRolesFromRole: rolename, roles: roles || [] })));
+    },
   };
 
   // Proxy so db.collName works as db.getCollection("collName")
@@ -543,6 +764,88 @@ function makeDb(name) {
 
 // ── db global ─────────────────────────────────────────────────────────────────
 var db = makeDb(__DBNAME);
+
+// ── rs.* (replication) ──────────────────────────────────────────────────────────
+var rs = {
+  status()  { return JSON.parse(__adminCommand(JSON.stringify({ replSetGetStatus: 1 }))); },
+  conf()    { var r = JSON.parse(__adminCommand(JSON.stringify({ replSetGetConfig: 1 }))); return r.config || r; },
+  config()  { return this.conf(); },
+  initiate(cfg) { return JSON.parse(__adminCommand(JSON.stringify({ replSetInitiate: cfg || {} }))); },
+  reconfig(cfg, opts) {
+    var cmd = { replSetReconfig: cfg, force: !!(opts && opts.force) };
+    return JSON.parse(__adminCommand(JSON.stringify(cmd)));
+  },
+  add(hostOrCfg, arbiterOnly) {
+    var cfg = this.conf();
+    var maxId = -1;
+    for (var i = 0; i < cfg.members.length; i++) if (cfg.members[i]._id > maxId) maxId = cfg.members[i]._id;
+    // Copy object input so we never mutate the caller's member object (aliasing).
+    var member = (typeof hostOrCfg === "string") ? { _id: maxId + 1, host: hostOrCfg } : Object.assign({}, hostOrCfg);
+    if (member._id === undefined) member._id = maxId + 1;
+    if (arbiterOnly) member.arbiterOnly = true;
+    cfg.members.push(member);
+    cfg.version = (cfg.version || 1) + 1;
+    return this.reconfig(cfg);
+  },
+  addArb(host) { return this.add(host, true); },
+  remove(host) {
+    var cfg = this.conf();
+    cfg.members = cfg.members.filter(function (m) { return m.host !== host; });
+    cfg.version = (cfg.version || 1) + 1;
+    return this.reconfig(cfg);
+  },
+  freeze(secs)   { return JSON.parse(__adminCommand(JSON.stringify({ replSetFreeze: secs || 0 }))); },
+  stepDown(secs, catchUp) {
+    var cmd = { replSetStepDown: secs || 60 };
+    if (catchUp !== undefined) cmd.secondaryCatchUpPeriodSecs = catchUp;
+    return JSON.parse(__adminCommand(JSON.stringify(cmd)));
+  },
+  syncFrom(host) { return JSON.parse(__adminCommand(JSON.stringify({ replSetSyncFrom: host }))); },
+  // Best-effort: derived summaries printed to the console.
+  printReplicationInfo()          { printjson(this.status()); },
+  printSecondaryReplicationInfo() { printjson(this.status()); },
+};
+
+// ── sh.* (sharding) ─────────────────────────────────────────────────────────────
+var sh = {
+  status() {
+    // Simplified: shard list + balancer state (mongosh's full formatted status reads config.*).
+    return {
+      shards: JSON.parse(__adminCommand(JSON.stringify({ listShards: 1 }))).shards || [],
+      balancer: JSON.parse(__adminCommand(JSON.stringify({ balancerStatus: 1 }))),
+    };
+  },
+  enableSharding(dbName, primaryShard) {
+    var cmd = { enableSharding: dbName };
+    if (primaryShard) cmd.primaryShard = primaryShard;
+    return JSON.parse(__adminCommand(JSON.stringify(cmd)));
+  },
+  shardCollection(ns, key, unique, opts) {
+    var cmd = Object.assign({ shardCollection: ns, key: key, unique: !!unique }, opts || {});
+    return JSON.parse(__adminCommand(JSON.stringify(cmd)));
+  },
+  addShard(uri, name) {
+    var cmd = { addShard: uri };
+    if (name) cmd.name = name;
+    return JSON.parse(__adminCommand(JSON.stringify(cmd)));
+  },
+  addShardToZone(shard, zone)      { return JSON.parse(__adminCommand(JSON.stringify({ addShardToZone: shard, zone: zone }))); },
+  removeShardFromZone(shard, zone) { return JSON.parse(__adminCommand(JSON.stringify({ removeShardFromZone: shard, zone: zone }))); },
+  updateZoneKeyRange(ns, min, max, zone) {
+    return JSON.parse(__adminCommand(JSON.stringify({ updateZoneKeyRange: ns, min: min, max: max, zone: zone })));
+  },
+  moveChunk(ns, query, destination) {
+    return JSON.parse(__adminCommand(JSON.stringify({ moveChunk: ns, find: query, to: destination })));
+  },
+  splitAt(ns, middle)  { return JSON.parse(__adminCommand(JSON.stringify({ split: ns, middle: middle }))); },
+  splitFind(ns, query) { return JSON.parse(__adminCommand(JSON.stringify({ split: ns, find: query }))); },
+  startBalancer()      { return JSON.parse(__adminCommand(JSON.stringify({ balancerStart: 1 }))); },
+  stopBalancer()       { return JSON.parse(__adminCommand(JSON.stringify({ balancerStop: 1 }))); },
+  getBalancerState()   { return !!JSON.parse(__adminCommand(JSON.stringify({ balancerStatus: 1 }))).inBalancerRound; },
+  isBalancerRunning()  { return JSON.parse(__adminCommand(JSON.stringify({ balancerStatus: 1 }))); },
+  enableAutoSplit()    { return JSON.parse(__adminCommand(JSON.stringify({ balancerCollectionStatus: 1 }))); },
+  disableAutoSplit()   { return JSON.parse(__adminCommand(JSON.stringify({ balancerCollectionStatus: 1 }))); },
+};
 
 // ── __finalize ────────────────────────────────────────────────────────────────
 // Called by the engine (Task 7) on the completion value of the user script.
