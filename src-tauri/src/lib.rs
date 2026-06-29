@@ -4,6 +4,7 @@ mod commands;
 mod error;
 mod json_bson;
 mod registry;
+mod script;
 mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -54,6 +55,8 @@ pub fn run() {
             commands::server::server_status,
             commands::server::build_info,
             commands::server::host_info,
+            commands::script::run_script,
+            commands::script::cancel_script,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

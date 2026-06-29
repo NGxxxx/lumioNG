@@ -24,8 +24,9 @@ tauri-plugin-dialog = "2"
 mongodb = "3"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tokio = { version = "1", features = ["sync"] }
+tokio = { version = "1", features = ["sync", "time", "rt-multi-thread"] }
 futures = "0.3"
+rquickjs = { version = "0.9", features = ["loader"] }
 
 # Release profile tuned for a small, self-contained binary (HeidiSQL-like footprint).
 # opt-level "s" + LTO + single codegen unit shrink code size; strip drops symbols;

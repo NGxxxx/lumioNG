@@ -7,7 +7,7 @@
   import { msgKey } from "$lib/msgkey";
 
   let { columns, docs, colWidths, onResize, onReset,
-        selected, menu, menuItems, onRowClick, onOpenMenu, onMenuSelect, onCloseMenu,
+        selected = new Set<number>(), menu = null, menuItems = () => [], onRowClick = () => {}, onOpenMenu = () => {}, onMenuSelect = () => {}, onCloseMenu = () => {},
         editing = null, editText = $bindable(""), editError = null,
         onStartEdit = () => {}, onCommitEdit = () => {}, onCancelEdit = () => {} }: {
     columns: ColumnField[];
@@ -15,13 +15,13 @@
     colWidths: Record<string, number>;
     onResize: (path: string, px: number) => void;
     onReset: (path: string) => void;
-    selected: Set<number>;
-    menu: { x: number; y: number; row: number; key: string } | null;
-    menuItems: () => MenuItem[];
-    onRowClick: (row: number, mods: { ctrl: boolean; shift: boolean }) => void;
-    onOpenMenu: (e: MouseEvent, row: number, key: string) => void;
-    onMenuSelect: (action: string) => void;
-    onCloseMenu: () => void;
+    selected?: Set<number>;
+    menu?: { x: number; y: number; row: number; key: string } | null;
+    menuItems?: () => MenuItem[];
+    onRowClick?: (row: number, mods: { ctrl: boolean; shift: boolean }) => void;
+    onOpenMenu?: (e: MouseEvent, row: number, key: string) => void;
+    onMenuSelect?: (action: string) => void;
+    onCloseMenu?: () => void;
     editing?: { row: number; key: string } | null;
     editText?: string;
     editError?: string | null;

@@ -10,20 +10,16 @@ const stub = {
   get statementText() { return 'db.getCollection("x").aggregate([])'; },
   set statementText(_v: string) {},
   get docs() { return []; }, get columns() { return []; }, get pageDocs() { return []; },
-  get colWidths() { return {}; }, get error() { return null; }, get loading() { return false; },
-  get capped() { return false; }, get ran() { return false; }, get view() { return "grid"; },
-  set view(_v: string) {}, get pageSize() { return 50; }, get currentPage() { return 1; },
-  get pageCount() { return 1; }, get totalCount() { return 0; },
+  get colWidths() { return {}; }, get error() { return null; }, get running() { return false; },
+  get capped() { return false; }, get displayMode() { return "none" as const; },
+  get consoleEntries() { return []; }, get ackJson() { return null; }, get valueJson() { return null; },
+  get view() { return "grid"; }, set view(_v: string) {},
+  get pageSize() { return 50; }, get currentPage() { return 1; },
+  get pageCount() { return 1; },
   setColWidth: vi.fn(), resetColWidth: vi.fn(), goToPage: vi.fn(), setPageSize: vi.fn(),
-  run, runNoLimit: vi.fn(), setSelection: vi.fn(),
+  run, cancel: vi.fn(), setSelection: vi.fn(),
   get hasSelection() { return false; }, runSelection: vi.fn(),
   fieldsFor: vi.fn().mockResolvedValue([]),
-  get srcDb() { return null; }, get srcColl() { return null; },
-  onMenuSelect: vi.fn(), get menu() { return null; }, menuItems: vi.fn().mockReturnValue([]),
-  get selected() { return null; }, clickRow: vi.fn(), openMenu: vi.fn(), closeMenu: vi.fn(),
-  get ioError() { return null; }, get confirmDelete() { return null; },
-  get exportRequest() { return null; }, exportInput: vi.fn().mockReturnValue(null),
-  cancelExport: vi.fn(), cancelDelete: vi.fn(), confirmDeleteRun: vi.fn(),
 };
 vi.mock("../stores/queryRuns.svelte", () => ({ getQueryRun: () => stub }));
 
@@ -43,5 +39,16 @@ describe("QueryTab", () => {
     await fireEvent.contextMenu(editor);
     await fireEvent.click(getByText("Run"));
     expect(run).toHaveBeenCalledWith("shop");
+  });
+
+  it("shows idle hint when displayMode is none", () => {
+    const { getByText } = render(QueryTab, { props });
+    expect(getByText(/Edit the statement/)).toBeTruthy();
+  });
+
+  it("shows Grid and Console view toggle buttons in the result tab", () => {
+    const { getByText } = render(QueryTab, { props });
+    expect(getByText("Grid")).toBeTruthy();
+    expect(getByText("Console")).toBeTruthy();
   });
 });

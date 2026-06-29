@@ -126,6 +126,7 @@
   "query_tab_result": "Result",
   "query_tab_command_log": "Command log",
   "query_tab_view_grid": "Grid",
+  "query_tab_view_console": "Console",
   "query_tab_view_tree": "Tree",
   "query_tab_status_running": "Running…",
   "query_tab_status_idle": "Edit the statement and run it (toolbar ▶ or right-click → Run).",

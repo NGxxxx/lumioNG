@@ -1,7 +1,7 @@
-import { createQueryRun } from "./queryRun.svelte";
+import { createQueryScript } from "./queryScript.svelte";
 
 /** A single Query tab's run store. */
-export type QueryRun = ReturnType<typeof createQueryRun>;
+export type QueryRun = ReturnType<typeof createQueryScript>;
 
 // Plain Map (NOT $state): each store already owns its runes state; wrapping the
 // Map in $state would double-proxy those stores.
@@ -11,7 +11,7 @@ const runs = new Map<number, QueryRun>();
 export function getQueryRun(id: number, sessionId: string, initialStatement: string): QueryRun {
   let r = runs.get(id);
   if (!r) {
-    r = createQueryRun(sessionId, initialStatement);
+    r = createQueryScript(sessionId, initialStatement);
     runs.set(id, r);
   }
   return r;

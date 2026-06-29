@@ -36,7 +36,7 @@ pub async fn connect(
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
 
-    state.sessions.lock().await.insert(session_id, client);
+    state.insert_session(session_id, client, false).await; // read_only wired in Slice 2
     Ok(())
 }
 

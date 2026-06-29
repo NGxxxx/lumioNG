@@ -174,8 +174,8 @@
     onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
     canEditDoc={dataViewActive && (activeDataView.handle?.canEdit ?? false)}
     oneditdocument={() => activeDataView.handle?.editSelected()}
-    canExport={dataViewActive ? (activeDataView.handle?.canExport ?? false) : (activeQueryRun?.canExport ?? false)}
-    onexport={() => (dataViewActive ? activeDataView.handle?.exportCurrent() : activeQueryRun?.requestExport())}
+    canExport={dataViewActive ? (activeDataView.handle?.canExport ?? false) : false}
+    onexport={() => (dataViewActive ? activeDataView.handle?.exportCurrent() : undefined)}
   />
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
@@ -245,8 +245,7 @@
         {#each sm.workTabs as tab (tab.id)}
           <div class="tabpane" hidden={!(active?.zone === "work" && active.id === tab.id)}>
             {#if tab.kind === "query"}
-              <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement} currentDb={sel?.db ?? null}
-                onopendocument={(db, coll, doc, mode) => openDocument(db, coll, doc, mode)} />
+              <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement} currentDb={sel?.db ?? null} />
             {:else}
               <DocumentForm
                 mode={tab.mode}

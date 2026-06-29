@@ -126,6 +126,7 @@
   "query_tab_result": "Kết quả",
   "query_tab_command_log": "Nhật ký lệnh",
   "query_tab_view_grid": "Bảng",
+  "query_tab_view_console": "Console",
   "query_tab_view_tree": "Cây",
   "query_tab_status_running": "Đang chạy…",
   "query_tab_status_idle": "Soạn câu lệnh rồi chạy (nút ▶ trên thanh công cụ hoặc chuột phải → Chạy).",

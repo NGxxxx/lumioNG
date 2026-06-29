@@ -1,4 +1,13 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("../api/script", () => ({
+  runScript: vi.fn(async () => ({ console: [], result: { kind: "none" }, provenance: null, capped: false, error: null })),
+  cancelScript: vi.fn(async () => {}),
+}));
+vi.mock("../api/documents", () => ({
+  sampleDocuments: vi.fn(async () => []),
+}));
+
 import { getQueryRun, disposeQueryRun } from "./queryRuns.svelte";
 
 describe("queryRuns registry", () => {

@@ -3,25 +3,21 @@
   import { getQueryRun } from "../stores/queryRuns.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import QueryResultGrid from "./QueryResultGrid.svelte";
-  import ResultTree from "./ResultTree.svelte";
+  import ConsolePane from "./ConsolePane.svelte";
   import CommandLogView from "./CommandLogView.svelte";
   import ContextMenu from "./ContextMenu.svelte";
-  import ConfirmDialog from "./ConfirmDialog.svelte";
-  import BsonCell from "./BsonCell.svelte";
-  import ExportWizard from "./ExportWizard.svelte";
-  import type { Doc } from "../domain/doc";
   import * as m from "$lib/paraglide/messages";
   import CodeEditor from "./CodeEditor.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
-  import { methodHeadAt, writeFilterIsEmpty, isDestructiveKind, writeTargetSummary } from "../domain/queryStatement";
+  import { methodHeadAt } from "../domain/queryStatement";
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
 
-  let { id, seq, initialStatement, currentDb, onopendocument }:
-    { id: number; seq: number; initialStatement: string; currentDb: string | null;
-      onopendocument?: (db: string, coll: string, doc: Doc, mode: "edit") => void } = $props();
+  let { id, seq, initialStatement, currentDb }:
+    { id: number; seq: number; initialStatement: string; currentDb: string | null } = $props();
 
   const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
   let bottomTab = $state<"result" | "log">("result");
+  let resultView = $state<"grid" | "console">("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
 
   // stopPropagation so ContextMenu's just-mounted window listener doesn't immediately close it.
@@ -63,10 +59,10 @@
     return toCM(completeAt(text, ctx.pos, { collections, fields: [] }));
   };
 
-  function onResultMenu(action: string) {
-    const r = v.onMenuSelect(action);
-    if (r && "open" in r && v.srcDb && v.srcColl) onopendocument?.(v.srcDb, v.srcColl, r.open, "edit");
-  }
+  const showDocs = $derived(
+    v.displayMode === "grid-editable" || v.displayMode === "grid-readonly"
+  );
+  const totalCount = $derived(v.docs.length);
 </script>
 
 <div class="query">
@@ -85,77 +81,53 @@
   </div>
 
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.capped}
-    <div class="cap">{m.query_tab_capped_notice()}
-      <button onclick={() => v.runNoLimit(currentDb)}>{m.query_tab_run_no_limit()}</button>
-    </div>
+    <div class="cap">{m.query_tab_capped_notice()}</div>
   {/if}
 
   <div class="bottom">
     <div class="bottom-tabs">
       <button class:active={bottomTab === "result"} onclick={() => (bottomTab = "result")}>{m.query_tab_result()}</button>
       <button class:active={bottomTab === "log"} onclick={() => (bottomTab = "log")}>{m.query_tab_command_log()}</button>
-      {#if bottomTab === "result" && v.ran && v.resultKind === "docs"}
+      {#if bottomTab === "result"}
         <div class="view-toggle">
-          <button class:active={v.view === "grid"} onclick={() => (v.view = "grid")}>{m.query_tab_view_grid()}</button>
-          <button class:active={v.view === "tree"} onclick={() => (v.view = "tree")}>{m.query_tab_view_tree()}</button>
+          <button class:active={resultView === "grid"} onclick={() => (resultView = "grid")}>{m.query_tab_view_grid()}</button>
+          <button class:active={resultView === "console"} onclick={() => (resultView = "console")}>{m.query_tab_view_console()}</button>
         </div>
       {/if}
     </div>
 
     {#if bottomTab === "log"}
       <CommandLogView />
+    {:else if v.running}
+      <div class="result-pane">
+        <div class="status">
+          {m.query_tab_status_running()}
+          <button class="cancel-btn" onclick={() => v.cancel()}>{m.common_cancel()}</button>
+        </div>
+      </div>
+    {:else if resultView === "console"}
+      <div class="result-pane">
+        <ConsolePane entries={v.consoleEntries} />
+      </div>
     {:else}
       <div class="result-pane">
-        {#if v.loading}
-          <div class="status">{m.query_tab_status_running()}</div>
-        {:else if v.ran && v.resultKind === "scalar"}
-          <div class="scalar">
-            <div class="scalar-num">{v.countResult}</div>
-            <div class="scalar-label">{m.query_tab_count_result({ count: v.countResult ?? 0 })}</div>
-          </div>
-        {:else if v.ran && v.resultKind === "values"}
-          <div class="values">
-            <div class="values-head">
-              <span>{m.query_tab_distinct_count({ count: v.distinctValues.length })}</span>
-              <button onclick={v.copyValues}>{m.query_tab_copy_all()}</button>
-            </div>
-            <div class="values-list">
-              {#each v.distinctValues as val, i (i)}
-                <div class="values-row"><BsonCell value={val} /></div>
-              {/each}
-            </div>
-          </div>
-        {:else if v.ran && v.resultKind === "ack"}
-          <div class="ack">
-            <div class="ack-op">{v.ackResult?.op}</div>
-            <dl class="ack-fields">
-              {#each v.ackResult?.fields ?? [] as f (f.label)}
-                <div class="ack-row"><dt>{f.label}</dt><dd>{f.value}</dd></div>
-              {/each}
-            </dl>
-          </div>
-        {:else if v.ran}
-          {#if v.view === "grid"}
-            <QueryResultGrid columns={v.columns} docs={v.pageDocs} colWidths={v.colWidths}
-              onResize={v.setColWidth} onReset={v.resetColWidth}
-              selected={v.selected} menu={v.menu} menuItems={v.menuItems}
-              onRowClick={v.clickRow} onOpenMenu={v.openMenu}
-              onMenuSelect={onResultMenu} onCloseMenu={v.closeMenu}
-              editing={v.editing} bind:editText={v.editText} editError={v.editError}
-              onStartEdit={v.startEdit} onCommitEdit={v.commitEdit} onCancelEdit={v.cancelEdit} />
-          {:else}
-            <ResultTree docs={v.pageDocs} onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
-            {#if v.menu}
-              <ContextMenu x={v.menu.x} y={v.menu.y} items={v.menuItems()} onselect={onResultMenu} onclose={v.closeMenu} />
-            {/if}
-          {/if}
+        {#if showDocs}
+          <QueryResultGrid
+            columns={v.columns}
+            docs={v.pageDocs}
+            colWidths={v.colWidths}
+            onResize={v.setColWidth}
+            onReset={v.resetColWidth} />
+        {:else if v.displayMode === "ack" && v.ackJson !== null}
+          <div class="value-display"><pre>{v.ackJson}</pre></div>
+        {:else if v.displayMode === "value" && v.valueJson !== null}
+          <div class="value-display"><pre>{v.valueJson}</pre></div>
         {:else}
           <div class="status">{m.query_tab_status_idle()}</div>
         {/if}
       </div>
-      {#if v.ran && v.resultKind === "docs"}
+      {#if showDocs}
         <div class="pager">
           <button onclick={() => v.goToPage(1)} disabled={v.currentPage <= 1}>«</button>
           <button onclick={() => v.goToPage(v.currentPage - 1)} disabled={v.currentPage <= 1}>‹</button>
@@ -166,7 +138,7 @@
             <input type="number" min="1" value={v.pageSize}
               onchange={(e) => v.setPageSize(+e.currentTarget.value)} />
           </label>
-          <span class="pg-total">{m.query_tab_docs_count({ count: v.totalCount })}</span>
+          <span class="pg-total">{m.query_tab_docs_count({ count: totalCount })}</span>
         </div>
       {/if}
     {/if}
@@ -179,38 +151,6 @@
     onselect={onMenu} onclose={() => (menu = null)} />
 {/if}
 
-{#if v.confirmDelete}
-  <ConfirmDialog
-    title={m.query_tab_confirm_delete_title()}
-    message={m.query_tab_confirm_delete_message({ count: v.confirmDelete.count })}
-    confirmLabel={m.common_delete()}
-    danger
-    onconfirm={v.confirmDeleteRun}
-    oncancel={v.cancelDelete}
-  />
-{/if}
-
-{#if v.pendingWrite}
-  {@const pw = v.pendingWrite}
-  {@const empty = writeFilterIsEmpty(pw.parsed)}
-  <ConfirmDialog
-    title={m.query_tab_write_confirm_title({ op: pw.parsed.kind })}
-    message={empty
-      ? m.query_tab_write_empty_filter_warning({ op: pw.parsed.kind, coll: pw.parsed.coll })
-      : m.query_tab_write_confirm_message({ op: pw.parsed.kind, coll: pw.parsed.coll })}
-    detail={writeTargetSummary(pw.parsed)}
-    confirmLabel={m.query_tab_write_run()}
-    danger={isDestructiveKind(pw.parsed.kind)}
-    onconfirm={v.confirmWrite}
-    oncancel={v.cancelWrite}
-  />
-{/if}
-
-{#if v.exportRequest}
-  {@const input = v.exportInput()}
-  {#if input}<ExportWizard {input} onclose={v.cancelExport} />{/if}
-{/if}
-
 <style>
   .query { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; }
   .bar { display: flex; align-items: center; gap: 0.625rem; height: 1.875rem; flex: none; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 0.625rem; }
@@ -218,7 +158,6 @@
   .editor { height: 34%; flex: none; border-bottom: 1px solid var(--gray-cf); box-sizing: border-box; overflow: hidden; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   .cap { background: var(--warn-bg2); color: var(--warn-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.625rem; }
-  .cap button { font-size: 0.75rem; cursor: pointer; }
   .bottom { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .bottom-tabs { display: flex; align-items: center; gap: 0.125rem; height: 1.625rem; flex: none; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 0.375rem; }
   .bottom-tabs > button { height: 1.25rem; padding: 0 0.625rem; font-size: 0.75rem; border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
@@ -227,22 +166,10 @@
   .view-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
   .result-pane { flex: 1; min-height: 0; overflow: hidden; background: var(--panel); }
-  .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; }
-  .scalar { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; }
-  .scalar-num { font-size: 2.5rem; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
-  .scalar-label { font-size: 0.8125rem; color: var(--muted); }
-  .values { height: 100%; display: flex; flex-direction: column; min-height: 0; }
-  .values-head { display: flex; align-items: center; justify-content: space-between; flex: none; height: 1.625rem; padding: 0 0.625rem; border-bottom: 1px solid var(--border); font-size: 0.75rem; color: var(--muted); }
-  .values-head button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
-  .values-list { flex: 1; min-height: 0; overflow: auto; }
-  .values-row { height: 1.375rem; line-height: 1.375rem; border-bottom: 1px solid var(--cell-border); font-size: 0.75rem; }
-  .values-row :global(.cell) { padding: 0 0.5625rem; display: inline-block; height: 1.375rem; line-height: 1.375rem; }
-  .ack { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.625rem; }
-  .ack-op { font-size: 0.8125rem; font-weight: 600; color: var(--fg); font-family: ui-monospace, monospace; }
-  .ack-fields { display: flex; gap: 1.5rem; margin: 0; }
-  .ack-row { display: flex; flex-direction: column; align-items: center; gap: 0.125rem; }
-  .ack-row dt { font-size: 0.6875rem; color: var(--muted); }
-  .ack-row dd { margin: 0; font-size: 1.5rem; font-weight: 700; color: var(--fg); font-variant-numeric: tabular-nums; }
+  .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
+  .cancel-btn { font-size: 0.75rem; cursor: pointer; }
+  .value-display { height: 100%; overflow: auto; padding: 0.5rem 0.75rem; }
+  .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--fg); white-space: pre-wrap; word-break: break-word; }
   .pager { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.75rem; padding: 0 0.625rem; border-top: 1px solid var(--border); background: var(--zebra-alt); font-size: 0.75rem; }
   .pager button { height: 1.25rem; padding: 0 0.5rem; border: 1px solid var(--gray-c4); background: var(--bg); border-radius: 0.125rem; cursor: pointer; color: var(--gray-44); }
   .pager button:disabled { opacity: 0.45; cursor: default; }
