@@ -206,6 +206,8 @@
   "result_table_aria_grid": "Bảng kết quả",
   "result_table_presence_tooltip": "Xuất hiện trong {pct}% mẫu",
   "result_table_col_header_tooltip": "Nhấp: sắp xếp · Shift+nhấp: thêm cột",
+  "result_table_unsaved_edit_title": "Lưu thay đổi?",
+  "result_table_unsaved_edit_message": "Ô này vừa được sửa. Lưu thay đổi trước khi rời khỏi ô?",
   "result_table_delete_doc_title": "Xóa document?",
   "result_table_delete_doc_message": "Bạn sắp xóa document này. Không thể hoàn tác.",
   "result_table_delete_selection_title": "Xóa các document đã chọn?",

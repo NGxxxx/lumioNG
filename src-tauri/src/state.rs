@@ -31,6 +31,11 @@ impl AppState {
         self.sessions.lock().await.get(session_id).map(|s| s.read_only).ok_or(AppError::NotConnected)
     }
 
+    /// Reject a write command when the session's connection is read-only.
+    pub async fn ensure_writable(&self, session_id: &str) -> Result<(), AppError> {
+        crate::error::ensure_writable(self.read_only(session_id).await?)
+    }
+
     /// Returns the session's cancel flag, creating a fresh (false) one on first access.
     pub async fn cancel_flag(&self, session_id: &str) -> Arc<AtomicBool> {
         let mut g = self.cancels.lock().await;
@@ -55,6 +60,15 @@ mod tests {
         let state = AppState::default();
         assert!(matches!(state.client("missing").await.unwrap_err(), AppError::NotConnected));
         assert!(matches!(state.read_only("missing").await.unwrap_err(), AppError::NotConnected));
+    }
+
+    #[tokio::test]
+    async fn ensure_writable_blocks_read_only_session() {
+        let state = AppState::default();
+        state.insert_session("s1".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), true).await;
+        assert!(state.ensure_writable("s1").await.is_err());
+        state.insert_session("s2".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), false).await;
+        assert!(state.ensure_writable("s2").await.is_ok());
     }
 
     #[tokio::test]

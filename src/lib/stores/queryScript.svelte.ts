@@ -10,7 +10,8 @@ import { scanDestructive } from "../domain/scriptScan";
 import { settings } from "./settings.svelte";
 import { updateOne, deleteMany } from "../api/documents";
 import { idJson } from "../domain/docid";
-import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate } from "../domain/celledit";
+import { describeValue } from "../domain/extjson";
+import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath } from "../domain/celledit";
 import { errorMessage } from "../api/errors";
 import * as m from "$lib/paraglide/messages";
 import { idInFilter, rangeBetween, effectiveRows as effectiveRowsOf } from "../domain/selection";
@@ -243,7 +244,6 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   function startEdit(row: number, key: string) {
     if (!isEditable()) return;
-    if (key.includes(".")) return; // nested fields not supported inline
     const doc = pageDocs[row];
     if (!doc || idJson(doc) === null) return;
     const value = getByPath(doc, key);
@@ -257,6 +257,28 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     if (saving) return;
     editing = null;
     editError = null;
+  }
+
+  let editBlurPending = $state(false);
+
+  /** Blur discards silently when nothing changed; otherwise asks for confirmation before
+   *  saving (Enter still saves immediately, no confirmation). */
+  function onEditBlur() {
+    if (!editing || saving) return;
+    const doc = pageDocs[editing.row];
+    const original = doc ? editTextOf(getByPath(doc, editing.key)) : "";
+    if (editText === original) cancelEdit();
+    else editBlurPending = true;
+  }
+
+  async function confirmBlurEdit() {
+    editBlurPending = false;
+    await commitEdit();
+  }
+
+  function discardBlurEdit() {
+    editBlurPending = false;
+    cancelEdit();
   }
 
   async function commitEdit() {
@@ -274,7 +296,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     try {
       await updateOne(sessionId, provenance.db, provenance.coll, filter, update, false);
       const gi = absIndex(row);
-      docs = docs.map((d, i) => (i === gi ? { ...d, [key]: r.value } : d));
+      docs = docs.map((d, i) => (i === gi ? setByPath(d, key, r.value) : d));
       editing = null;
       editError = null;
     } catch (e) {
@@ -321,7 +343,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       items.push({ label: "Open document", action: "open", disabled: !hasId || n !== 1 });
       items.push({
         label: "Edit cell", action: "editCell",
-        disabled: !doc || menu.key.includes(".") || idJson(doc) === null
+        disabled: !doc || idJson(doc) === null
           || !isInlineEditable(menu.key, getByPath(doc, menu.key)),
       });
     }
@@ -359,7 +381,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     switch (action) {
       case "open": menu = null; return doc ? { open: doc } : null;
       case "editCell": { const r = menu.row; const k = menu.key; menu = null; startEdit(r, k); return null; }
-      case "copyValue": copy(JSON.stringify(getByPath(doc, key))); break;
+      case "copyValue": copy(describeValue(getByPath(doc, key)).display); break;
       case "copyId": copy(idJson(doc) ?? ""); break;
       case "copyJson": copy(toJsonArray(picked)); break;
       case "copyCsv": copy(toCsv(picked)); break;
@@ -460,6 +482,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get editText() { return editText; },
     set editText(v: string) { editText = v; },
     get editError() { return editError; },
+    get editBlurPending() { return editBlurPending; },
+    onEditBlur,
+    confirmBlurEdit,
+    discardBlurEdit,
     startEdit,
     commitEdit,
     cancelEdit,

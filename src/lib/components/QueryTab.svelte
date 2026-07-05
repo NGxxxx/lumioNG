@@ -151,7 +151,8 @@
             editError={v.editError}
             onStartEdit={editable ? v.startEdit : () => {}}
             onCommitEdit={v.commitEdit}
-            onCancelEdit={v.cancelEdit} />
+            onCancelEdit={v.cancelEdit}
+            onEditBlur={v.onEditBlur} />
         {:else if v.displayMode === "ack" && v.ackJson !== null}
           <div class="value-display"><pre>{v.ackJson}</pre></div>
         {:else if v.displayMode === "value" && v.valueJson !== null}
@@ -201,6 +202,15 @@
     onrun={() => v.confirmRun()}
     oncancel={() => v.cancelConfirm()}
     ondontask={() => v.dontAskAgain()} />
+{/if}
+
+{#if v.editBlurPending}
+  <ConfirmDialog
+    title={m.result_table_unsaved_edit_title()}
+    message={m.result_table_unsaved_edit_message()}
+    confirmLabel={m.common_save()}
+    onconfirm={() => v.confirmBlurEdit()}
+    oncancel={() => v.discardBlurEdit()} />
 {/if}
 
 {#if v.confirmDelete !== null}

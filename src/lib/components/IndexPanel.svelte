@@ -92,7 +92,7 @@
   .indexpanel { display: flex; flex-direction: column; height: 100%; }
   .toolbar { padding: 0.375rem 0.5rem; border-bottom: 1px solid var(--bg); }
   .scroller { overflow: auto; flex: 1; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; user-select: none; }
   th, td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; text-align: left; }
   th { position: sticky; top: 0; background: var(--zebra); }
   .keys { font-family: ui-monospace, monospace; }

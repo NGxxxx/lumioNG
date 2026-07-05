@@ -343,6 +343,73 @@ describe("inline edit (editable grid)", () => {
     expect(s.docs[2].name).toBe("ZZ");
   });
 
+  it("commitEdit on a nested field sends a dotted $set and patches the nested path locally", async () => {
+    (runScript as any).mockResolvedValue(
+      ok([`{"_id":1,"address":{"city":"Hue","zip":"1000"}}`], { db: "d", coll: "c" }),
+    );
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.startEdit(0, "address.city");
+    s.editText = "Hanoi";
+    await s.commitEdit();
+    expect(updateOne).toHaveBeenCalledWith(
+      "sess", "d", "c", `{"_id": 1}`, `{"$set":{"address.city":"Hanoi"}}`, false,
+    );
+    expect((s.docs[0] as any).address).toEqual({ city: "Hanoi", zip: "1000" });
+    expect(s.editing).toBeNull();
+  });
+
+  it("onEditBlur with unchanged text cancels silently (no confirm dialog)", async () => {
+    (runScript as any).mockResolvedValue(editableDocs());
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.startEdit(0, "name");
+    s.onEditBlur();
+    expect(s.editBlurPending).toBe(false);
+    expect(s.editing).toBeNull();
+    expect(updateOne).not.toHaveBeenCalled();
+  });
+
+  it("onEditBlur with changed text requests confirmation instead of saving immediately", async () => {
+    (runScript as any).mockResolvedValue(editableDocs());
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.startEdit(0, "name");
+    s.editText = "Z";
+    s.onEditBlur();
+    expect(s.editBlurPending).toBe(true);
+    expect(s.editing).not.toBeNull();
+    expect(updateOne).not.toHaveBeenCalled();
+  });
+
+  it("confirmBlurEdit saves the pending change", async () => {
+    (runScript as any).mockResolvedValue(editableDocs());
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.startEdit(0, "name");
+    s.editText = "Z";
+    s.onEditBlur();
+    await s.confirmBlurEdit();
+    expect(updateOne).toHaveBeenCalled();
+    expect(s.docs[0].name).toBe("Z");
+    expect(s.editBlurPending).toBe(false);
+    expect(s.editing).toBeNull();
+  });
+
+  it("discardBlurEdit discards the pending change", async () => {
+    (runScript as any).mockResolvedValue(editableDocs());
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.startEdit(0, "name");
+    s.editText = "Z";
+    s.onEditBlur();
+    s.discardBlurEdit();
+    expect(updateOne).not.toHaveBeenCalled();
+    expect(s.docs[0].name).toBe("A");
+    expect(s.editBlurPending).toBe(false);
+    expect(s.editing).toBeNull();
+  });
+
   it("execute resets editing to null when a new run starts", async () => {
     // First run: editable result with ≥2 rows so startEdit works
     (runScript as any).mockResolvedValueOnce(editableDocs());
@@ -396,6 +463,16 @@ describe("selection / delete / menu (editable grid)", () => {
     expect(actions).not.toContain("deleteSelected");
     expect(actions).not.toContain("open");
     expect(actions).toContain("copyValue"); // copy still available
+  });
+
+  it("onMenuSelect copyValue copies the plain display value, not raw ExtJSON", async () => {
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, writable: true });
+    const s = await setup({ db: "d", coll: "c" });
+    const fakeEvent = { preventDefault() {}, stopPropagation() {}, clientX: 1, clientY: 1 } as unknown as MouseEvent;
+    s.openMenu(fakeEvent, 0, "name");
+    s.onMenuSelect("copyValue");
+    expect(writeText).toHaveBeenCalledWith("A"); // not "\"A\""
   });
 
   it("deleteSelected removes rows and calls deleteMany with the provenance namespace", async () => {

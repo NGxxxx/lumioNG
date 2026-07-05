@@ -61,6 +61,7 @@ pub async fn insert_document(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
@@ -78,6 +79,7 @@ pub async fn replace_document(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let id_bson = canonical_string_to_bson(&id_json)?;
@@ -104,6 +106,7 @@ pub async fn delete_document(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
 
     let id_bson = canonical_string_to_bson(&id_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
@@ -125,6 +128,7 @@ pub async fn update_many(
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     ensure_filter_allowed(&f, allow_all)?;
@@ -146,6 +150,7 @@ pub async fn delete_many(
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     ensure_filter_allowed(&f, allow_all)?;
@@ -162,6 +167,7 @@ pub async fn insert_many(
     state: State<'_, AppState>,
 ) -> Result<InsertManyResult, AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let docs = parse_doc_array(&docs_json)?;
     if docs.is_empty() {
         return Err(AppError::Query("insertMany requires at least one document".into()));
@@ -193,6 +199,7 @@ pub async fn update_one(
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     ensure_filter_allowed(&f, allow_all)?;
@@ -215,6 +222,7 @@ pub async fn replace_one(
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     ensure_filter_allowed(&f, allow_all)?;
@@ -236,6 +244,7 @@ pub async fn delete_one(
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     let f = parse_user_filter(filter.as_deref())?;
     ensure_filter_allowed(&f, allow_all)?;

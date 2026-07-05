@@ -161,6 +161,7 @@
     font-family: Consolas, "Courier New", monospace;
     font-size: 0.78125rem;
     line-height: 1.55;
+    user-select: none;
   }
   /* Spacer that holds the full virtual height; rows are absolutely positioned within it. */
   .tree-sizer { position: relative; width: 100%; }

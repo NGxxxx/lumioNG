@@ -15,17 +15,12 @@
 
   const r = createConnectionRegistry();
 
-  // Selected session id in left panel
   let selectedId = $state<number | null>(null);
-  // Filter text
   let filterText = $state("");
-  // Import URI local state
   let importUri = $state("");
-  // Local connecting flag: true while focusOrOpen is in-flight
   let connecting = $state(false);
-  // Connection error from focusOrOpen (distinct from r.error which is validation/CRUD errors)
+  // Distinct from r.error, which is validation/CRUD errors.
   let connectError = $state<string | null>(null);
-  // Connection pending deletion (shows a confirm dialog before removing)
   let confirmDelete = $state<SavedConnection | null>(null);
 
   const filteredList = $derived(

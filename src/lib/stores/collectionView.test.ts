@@ -218,6 +218,83 @@ describe("createCollectionView — paging", () => {
     expect(v.editing).toBeNull();
   });
 
+  it("commitEdit on a nested field sets the nested path without disturbing siblings", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, address: { city: "Hue", zip: "1000" } }]);
+    samp.mockResolvedValueOnce([]);
+    repl.mockResolvedValueOnce(undefined);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "address.city");
+    v.editText = "Hanoi";
+    await v.commitEdit();
+    expect(repl).toHaveBeenCalled();
+    const sentDoc = JSON.parse((repl.mock.calls[0] as any[])[4] as string);
+    expect(sentDoc.address).toEqual({ city: "Hanoi", zip: "1000" });
+    expect((v.docs[0] as any).address).toEqual({ city: "Hanoi", zip: "1000" });
+    expect(v.editing).toBeNull();
+  });
+
+  it("onEditBlur with unchanged text cancels silently (no confirm dialog)", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "x");
+    v.onEditBlur();
+    expect(v.editBlurPending).toBe(false);
+    expect(v.editing).toBeNull();
+    expect(repl).not.toHaveBeenCalled();
+  });
+
+  it("onEditBlur with changed text requests confirmation instead of saving immediately", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "x");
+    v.editText = "world";
+    v.onEditBlur();
+    expect(v.editBlurPending).toBe(true);
+    expect(v.editing).not.toBeNull();
+    expect(repl).not.toHaveBeenCalled();
+  });
+
+  it("confirmBlurEdit saves the pending change", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
+    samp.mockResolvedValueOnce([]);
+    repl.mockResolvedValueOnce(undefined);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "x");
+    v.editText = "world";
+    v.onEditBlur();
+    await v.confirmBlurEdit();
+    expect(repl).toHaveBeenCalled();
+    expect(v.docs[0].x).toBe("world");
+    expect(v.editBlurPending).toBe(false);
+    expect(v.editing).toBeNull();
+  });
+
+  it("discardBlurEdit discards the pending change", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "x");
+    v.editText = "world";
+    v.onEditBlur();
+    v.discardBlurEdit();
+    expect(repl).not.toHaveBeenCalled();
+    expect(v.docs[0].x).toBe("hello");
+    expect(v.editBlurPending).toBe(false);
+    expect(v.editing).toBeNull();
+  });
+
   it("init calls sampleDocuments and sets schema (columnFields carry type metadata)", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
@@ -788,6 +865,15 @@ describe("selection-aware context menu", () => {
     const exp = items.find((i) => i.label === "Export");
     expect(copy?.children?.some((c) => c.action === "copyJson")).toBe(true);
     expect(exp?.children?.some((c) => c.action === "exportSelected")).toBe(true);
+  });
+
+  it("onMenuSelect copyValue copies the plain display value, not raw ExtJSON", async () => {
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, writable: true });
+    const v = await withTwoDocs();
+    v.openMenu(ev(), 0, "_id");
+    v.onMenuSelect("copyValue");
+    expect(writeText).toHaveBeenCalledWith("a"); // not {"$oid":"a"}
   });
 });
 

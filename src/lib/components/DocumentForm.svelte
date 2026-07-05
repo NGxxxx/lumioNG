@@ -42,13 +42,8 @@
   let saving = $state(false);
   const idText = $derived(mode === "edit" && initial ? idJson(initial) : null);
 
-  // Field count derived from top-level keys of docValue
   const fieldCount = $derived(Object.keys(docValue).length);
-
-  // JSON validation status derived from current text (only relevant in raw view)
   const jsonValid = $derived(view === "raw" ? parseDocumentText(text).ok : true);
-
-  // Line numbers for the JSON gutter
   const lineNumbers = $derived(
     text
       .split("\n")

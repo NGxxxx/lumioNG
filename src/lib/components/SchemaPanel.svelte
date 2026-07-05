@@ -43,7 +43,7 @@
   .bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.625rem; }
   .bar input { width: 4.375rem; }
   .muted { color: var(--muted); }
-  table.schema { border-collapse: collapse; width: 100%; }
+  table.schema { border-collapse: collapse; width: 100%; user-select: none; }
   table.schema th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.25rem 0.75rem 0.25rem 0; border-bottom: 1px solid var(--cell-border); }
   table.schema td { padding: 0.25rem 0.75rem 0.25rem 0; font-family: ui-monospace, monospace; border-bottom: 1px solid var(--row-divider); }
   .field { color: var(--text-strong); }

@@ -1,6 +1,7 @@
 /** Inline-cell editing: editability check, raw-text extraction, and typed value rebuild. */
 import { rebuildNumber, type NumericKind } from "./bsonnum";
 import { editTextOf } from "./bsontree";
+import type { Doc } from "./doc";
 
 export type RebuildResult =
   | { ok: true; value: unknown }
@@ -54,7 +55,16 @@ export function rebuildValue(original: unknown, text: string): RebuildResult {
   return { ok: false, error: "err_inline_unsupported" };
 }
 
-/** ExtJSON update doc that $sets a single top-level field to `value`. */
+/** ExtJSON update doc that $sets a field (dotted key addresses nested paths natively in Mongo). */
 export function buildSetUpdate(key: string, value: unknown): string {
   return JSON.stringify({ $set: { [key]: value } });
+}
+
+/** Immutably set a dot-path on a document, cloning each object along the way. */
+export function setByPath(doc: Doc, path: string, value: unknown): Doc {
+  const [key, ...rest] = path.split(".");
+  if (rest.length === 0) return { ...doc, [key]: value };
+  const child = doc[key];
+  const childDoc = (child !== null && typeof child === "object" && !Array.isArray(child)) ? child as Doc : {};
+  return { ...doc, [key]: setByPath(childDoc, rest.join("."), value) };
 }

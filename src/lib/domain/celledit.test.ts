@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate } from "./celledit";
+import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath } from "./celledit";
 
 describe("isInlineEditable", () => {
   it("false for _id column even when value is a string", () => {
@@ -96,5 +96,35 @@ describe("buildSetUpdate", () => {
     expect(buildSetUpdate("n", { $numberLong: "9000000000" })).toBe(
       '{"$set":{"n":{"$numberLong":"9000000000"}}}',
     );
+  });
+  it("dotted key passes through unchanged (Mongo addresses nested fields by dotted $set key)", () => {
+    expect(buildSetUpdate("address.city", "Hanoi")).toBe('{"$set":{"address.city":"Hanoi"}}');
+  });
+});
+
+describe("setByPath", () => {
+  it("sets a top-level field, leaving siblings untouched", () => {
+    expect(setByPath({ a: 1, b: 2 }, "a", 9)).toEqual({ a: 9, b: 2 });
+  });
+  it("sets a nested field without disturbing sibling nested fields", () => {
+    const doc = { address: { city: "Hue", zip: "1000" }, name: "x" };
+    expect(setByPath(doc, "address.city", "Hanoi")).toEqual({
+      address: { city: "Hanoi", zip: "1000" },
+      name: "x",
+    });
+  });
+  it("sets a deeply nested field (3+ levels)", () => {
+    const doc = { a: { b: { c: 1, d: 2 } } };
+    expect(setByPath(doc, "a.b.c", 99)).toEqual({ a: { b: { c: 99, d: 2 } } });
+  });
+  it("creates missing intermediate objects", () => {
+    expect(setByPath({}, "a.b", 1)).toEqual({ a: { b: 1 } });
+  });
+  it("does not mutate the original document (immutable, for $state.raw reassignment)", () => {
+    const doc = { address: { city: "Hue" } };
+    const next = setByPath(doc, "address.city", "Hanoi");
+    expect(doc.address.city).toBe("Hue");
+    expect(next).not.toBe(doc);
+    expect(next.address).not.toBe(doc.address);
   });
 });

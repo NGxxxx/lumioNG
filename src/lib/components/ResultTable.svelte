@@ -2,21 +2,18 @@
   import { onMount, onDestroy, untrack } from "svelte";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
   import { get } from "svelte/store";
+  import { createColumnResize, GRID_ROW_H } from "./gridInteractions.svelte";
   import { createCollectionView } from "../stores/collectionView.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import type { Doc } from "../domain/doc";
-  import ConfirmDialog from "./ConfirmDialog.svelte";
-  import DropConfirmDialog from "./DropConfirmDialog.svelte";
-  import ContextMenu from "./ContextMenu.svelte";
   import { idJson } from "../domain/docid";
   import { getByPath } from "../domain/schema";
-  import BulkDialog from "./BulkDialog.svelte";
-  import { isEmptyFilter } from "../domain/bulk";
-  import ExportWizard from "./ExportWizard.svelte";
   import { statusPill, jsonValueColor, bsonValueKind } from "../domain/theme";
   import { describeValue } from "../domain/extjson";
   import ResultTree from "./ResultTree.svelte";
+  import CollectionToolbar from "./CollectionToolbar.svelte";
+  import CollectionDialogs from "./CollectionDialogs.svelte";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
@@ -31,51 +28,9 @@
   } = $props();
 
   const v = untrack(() => createCollectionView(sessionManager.active?.id ?? "", db, coll));
-  let openDropdown = $state<"sort" | "fields" | null>(null);
-
-  function toggleDropdown(which: "sort" | "fields") {
-    if (which === "fields" && openDropdown !== "fields") v.resetProjectionDraft();
-    openDropdown = openDropdown === which ? null : which;
-  }
-  function closeDropdown() {
-    openDropdown = null;
-  }
 
   const FALLBACK_COL_W = 160;
-  let resizingCol = $state(false);
-
-  /** Drag the right edge of a column header to resize it. */
-  function startColResize(e: MouseEvent, path: string) {
-    e.preventDefault();
-    e.stopPropagation();
-    resizingCol = true;
-    const startX = e.clientX;
-    const startW = v.colWidths[path] ?? FALLBACK_COL_W;
-    function move(ev: MouseEvent) {
-      v.setColWidth(path, startW + (ev.clientX - startX));
-    }
-    function up() {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      // clear after the click event would have fired, so the header sort is suppressed
-      setTimeout(() => { resizingCol = false; }, 0);
-    }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  }
-
-  /** Close dropdown when clicking outside the button/popover group. */
-  function clickOutside(node: HTMLElement, onOut: () => void) {
-    function handle(e: PointerEvent) {
-      if (!node.contains(e.target as Node)) onOut();
-    }
-    document.addEventListener("pointerdown", handle, true);
-    return {
-      destroy() {
-        document.removeEventListener("pointerdown", handle, true);
-      },
-    };
-  }
+  const colResize = createColumnResize((path) => v.colWidths[path] ?? FALLBACK_COL_W, v.setColWidth);
 
   let view = $state<"grid" | "tree">("grid");
 
@@ -85,14 +40,13 @@
   // Rows are single-line and fixed-height (see `tbody tr[data-index]` in CSS), so the virtualizer
   // trusts ROW_H exactly — no per-row measureElement/ResizeObserver. This removes scroll churn and
   // a ResizeObserver per visible row, which matters a lot when scrolling 25k rows.
-  const ROW_H = 24; // exact row height (px); MUST match `tbody tr[data-index] { height }`
   const OVERSCAN = 8;
   let scrollerEl = $state<HTMLDivElement | null>(null);
 
   const rowVirtualizer = createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count: v.docs.length,
     getScrollElement: () => scrollerEl,
-    estimateSize: () => ROW_H,
+    estimateSize: () => GRID_ROW_H,
     overscan: OVERSCAN,
   });
 
@@ -105,7 +59,7 @@
     get(rowVirtualizer).setOptions({
       count,
       getScrollElement: () => el,
-      estimateSize: () => ROW_H,
+      estimateSize: () => GRID_ROW_H,
       overscan: OVERSCAN,
     });
   });
@@ -127,23 +81,6 @@
       visibleColumns.reduce((sum, c) => sum + (v.colWidths[c.path] ?? FALLBACK_COL_W), 0),
   );
 
-  /** Field summary: visible / total. */
-  const fieldsSummary = $derived(`${visibleColumns.length}/${v.columnFields.length}`);
-
-  /** Sort summary: first field + direction, with "+N" if multiple keys. */
-  const sortSummary = $derived.by(() => {
-    if (v.sortKeys.length === 0) return "";
-    const first = v.sortKeys[0];
-    const arrow = first.dir === 1 ? "▲" : "▼";
-    const extra = v.sortKeys.length - 1;
-    return ` ${first.path}${arrow}${extra > 0 ? ` +${extra}` : ""}`;
-  });
-
-  /** Fields not yet in sort (for the "+ Add field" picker). */
-  const sortableFields = $derived(
-    v.columnFields.filter((c) => !v.sortKeys.some((k) => k.path === c.path)),
-  );
-
   function sortDirOf(path: string): 1 | -1 | null {
     const k = v.sortKeys.find((s) => s.path === path);
     return k ? k.dir : null;
@@ -153,12 +90,6 @@
     const i = v.sortKeys.findIndex((s) => s.path === path);
     return i === -1 ? null : i + 1;
   }
-
-  function applyFields() {
-    v.applyProjection();
-    closeDropdown();
-  }
-
 
   function focusSelect(node: HTMLInputElement) {
     node.focus();
@@ -221,114 +152,7 @@
 <div class="result">
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  <!-- Filter bar: find { … } monospace display + Run button -->
-  <div class="filterbar">
-    <span class="filter-label">find</span>
-    <input
-      class="filter-input"
-      bind:value={v.filterText}
-      placeholder={'{ "field": value }'}
-      onkeydown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          v.applyFilter();
-        }
-      }}
-    />
-    <button class="btn-run" onclick={v.applyFilter}>
-      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z" fill="#fff"/></svg>
-      {m.result_table_run()}
-    </button>
-    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-    <div class="dropwrap" use:clickOutside={closeDropdown} onkeydown={(e) => { if (e.key === "Escape") closeDropdown(); }} role="group" tabindex="-1">
-      <button class="drop-btn" onclick={() => toggleDropdown("sort")} title={m.result_table_sort_title()}>
-        {m.result_table_sort_title()}{sortSummary} ▾
-      </button>
-      {#if openDropdown === "sort"}
-        <div class="dropdown sort-dd">
-          {#if v.sortKeys.length === 0}
-            <div class="dd-empty">{m.result_table_sort_empty()}</div>
-          {:else}
-            {#each v.sortKeys as k, i}
-              <div class="dd-row">
-                <span class="dd-rank">{i + 1}.</span>
-                <span class="dd-field">{k.path}</span>
-                <button class="dd-ic" title={m.result_table_sort_reverse()} onclick={() => v.toggleSortDirAt(k.path)}>{k.dir === 1 ? "▲" : "▼"}</button>
-                <button class="dd-ic" title={m.result_table_sort_move_up()} onclick={() => v.moveSort(k.path, -1)} disabled={i === 0}>↑</button>
-                <button class="dd-ic" title={m.result_table_sort_move_down()} onclick={() => v.moveSort(k.path, 1)} disabled={i === v.sortKeys.length - 1}>↓</button>
-                <button class="dd-ic dd-x" title={m.result_table_sort_remove()} onclick={() => v.removeSort(k.path)}>×</button>
-              </div>
-            {/each}
-          {/if}
-          {#if sortableFields.length > 0}
-            <label class="dd-add">{m.result_table_sort_add_field()}
-              <select
-                onchange={(e) => {
-                  const p = e.currentTarget.value;
-                  if (p) v.addSort(p);
-                  e.currentTarget.value = "";
-                }}
-              >
-                <option value=""></option>
-                {#each sortableFields as c}
-                  <option value={c.path}>{c.path}</option>
-                {/each}
-              </select>
-            </label>
-          {/if}
-          {#if v.sortKeys.length > 0}
-            <button class="dd-clear" onclick={v.clearSort}>{m.result_table_sort_clear_all()}</button>
-          {/if}
-        </div>
-      {/if}
-      <button class="drop-btn" onclick={() => toggleDropdown("fields")} title={m.result_table_fields_title()}>
-        {m.result_table_fields_title()} {fieldsSummary} ▾
-      </button>
-      {#if openDropdown === "fields"}
-        <div class="dropdown fields-dd">
-          <div class="dd-allnone">
-            <button onclick={v.showAllFieldsDraft}>{m.result_table_fields_show_all()}</button>
-            <button onclick={v.hideAllFieldsDraft}>{m.result_table_fields_hide_all()}</button>
-          </div>
-          <div class="fields-list">
-            {#each v.columnFields as c}
-              <label class="chooser-row">
-                <input
-                  type="checkbox"
-                  checked={c.path === "_id" ? true : !v.hiddenDraft.has(c.path)}
-                  disabled={c.path === "_id"}
-                  onchange={() => v.toggleHiddenDraft(c.path)}
-                />
-                {c.path}{#if c.path === "_id"}<span class="locked">{m.result_table_fields_locked()}</span>{/if}
-              </label>
-            {/each}
-          </div>
-          <button class="chooser-apply" onclick={applyFields}>{m.result_table_fields_apply()}</button>
-        </div>
-      {/if}
-    </div>
-    <div class="view-toggle">
-      <button
-        class="toggle-btn"
-        class:toggle-active={view === "grid"}
-        onclick={() => { view = "grid"; }}
-        title={m.result_table_view_grid()}
-      >
-        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16"><rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/><path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="currentColor" stroke-width="0.9"/></svg>
-        {m.result_table_view_grid()}
-      </button>
-      <button
-        class="toggle-btn"
-        class:toggle-active={view === "tree"}
-        onclick={() => { view = "tree"; }}
-        title={m.result_table_view_tree()}
-      >
-        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16"><path d="M6 2.5C4 2.5 4 5 4 6.5S2.5 8 2.5 8 4 8.5 4 10s0 3.5 2 3.5M10 2.5c2 0 2 2.5 2 4s1.5 1.5 1.5 1.5S12 8.5 12 10s0 3.5-2 3.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
-        {m.result_table_view_tree()}
-      </button>
-    </div>
-  </div>
-  {#if v.filterError}<div class="error">{msgKey(v.filterError)}</div>{/if}
+  <CollectionToolbar {v} bind:view />
 
   {#if view === "grid"}
   <div class="grid-region">
@@ -347,7 +171,7 @@
             <th
               class="th-data"
               title={m.result_table_col_header_tooltip()}
-              onclick={(e) => { if (resizingCol) return; v.toggleSort(c.path, e.shiftKey); }}
+              onclick={(e) => { if (colResize.resizing) return; v.toggleSort(c.path, e.shiftKey); }}
             ><span class="colname">{c.path}</span>{#if sortDirOf(c.path)}<span class="sortarrow"
                 >{sortDirOf(c.path) === 1 ? "▲" : "▼"}</span
               >{/if}{#if sortRankOf(c.path)}<span class="sortrank">{sortRankOf(c.path)}</span
@@ -359,7 +183,7 @@
               >{/if}<span
                 class="col-resize"
                 role="presentation"
-                onmousedown={(e) => startColResize(e, c.path)}
+                onmousedown={(e) => colResize.start(e, c.path)}
                 ondblclick={(e) => { e.stopPropagation(); v.resetColWidth(c.path); }}
               ></span></th>
           {/each}
@@ -387,7 +211,7 @@
                     class="celledit"
                     bind:value={v.editText}
                     onkeydown={onEditKey}
-                    onblur={v.cancelEdit}
+                    onblur={v.onEditBlur}
                     use:focusSelect
                   />
                   {#if v.editError}<div class="cellerror">{msgKey(v.editError)}</div>{/if}
@@ -460,84 +284,7 @@
   {/if}
 </div>
 
-{#if v.bulkMode}
-  <BulkDialog
-    mode={v.bulkMode}
-    scope={v.bulkScope}
-    appliedFilter={v.appliedFilter}
-    isEmpty={isEmptyFilter(v.appliedFilter)}
-    selectionCount={v.bulkCount ?? 0}
-    bind:updateText={v.bulkUpdateText}
-    updateError={v.bulkUpdateError}
-    count={v.bulkCount}
-    counting={v.bulkCounting}
-    running={v.bulkRunning}
-    result={v.bulkResult}
-    error={v.bulkError}
-    canRun={v.canRunBulk}
-    oncount={v.countBulk}
-    onrun={v.runBulk}
-    onclose={v.closeBulk}
-  />
-{/if}
-
-{#if v.bulkTypeConfirm}
-  <DropConfirmDialog
-    title={v.bulkMode === "delete" ? m.result_table_bulk_delete_title() : m.result_table_bulk_update_title()}
-    message={m.result_table_bulk_confirm_message({ coll })}
-    expectedName={coll}
-    onconfirm={v.confirmBulkAll}
-    oncancel={v.cancelBulkAll}
-  />
-{/if}
-
-{#if v.confirmDoc}
-  <ConfirmDialog
-    title={m.result_table_delete_doc_title()}
-    message={m.result_table_delete_doc_message()}
-    detail={`_id = ${idJson(v.confirmDoc) ?? "(no _id)"}`}
-    confirmLabel={m.common_delete()}
-    danger
-    onconfirm={v.confirmDelete}
-    oncancel={v.cancelDelete}
-  />
-{/if}
-
-{#if v.confirmSelectionDelete !== null}
-  <ConfirmDialog
-    title={m.result_table_delete_selection_title()}
-    message={m.result_table_delete_selection_message({ count: v.confirmSelectionDelete })}
-    confirmLabel={m.common_delete()}
-    danger
-    onconfirm={v.confirmDeleteSelected}
-    oncancel={v.cancelDeleteSelected}
-  />
-{/if}
-
-{#if v.showAllPending !== null}
-  <ConfirmDialog
-    title={m.result_table_show_all_title()}
-    message={m.result_table_show_all_message({ count: v.showAllPending })}
-    confirmLabel={m.result_table_show_all_confirm()}
-    onconfirm={v.confirmShowAll}
-    oncancel={v.cancelShowAll}
-  />
-{/if}
-
-{#if v.menu}
-  <ContextMenu
-    x={v.menu.x}
-    y={v.menu.y}
-    items={v.menuItems()}
-    onselect={onMenuSelect}
-    onclose={v.closeMenu}
-  />
-{/if}
-
-{#if v.exportRequest}
-  {@const input = v.exportInput()}
-  {#if input}<ExportWizard {input} onclose={v.cancelExport} />{/if}
-{/if}
+<CollectionDialogs {v} {coll} {onMenuSelect} />
 
 <style>
   /* ── Layout ── */
@@ -558,7 +305,7 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Table base ── */
-  table { border-collapse: collapse; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; }
+  table { border-collapse: collapse; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; user-select: none; }
 
   /* ── Header ── */
   th {
@@ -643,89 +390,12 @@
   .sortarrow { margin-left: 0.25rem; font-size: 0.625rem; color: var(--link); }
   .sortrank { margin-left: 0.125rem; font-size: 0.5625rem; color: var(--link); vertical-align: super; }
 
-  /* ── Filter bar ── */
-  .filterbar {
-    display: flex;
-    align-items: center;
-    gap: 0.375rem;
-    height: 1.875rem;
-    flex: none;
-    background: var(--zebra-alt);
-    border-bottom: 1px solid var(--border);
-    padding: 0 0.625rem;
-  }
-  .filter-label { color: var(--gray-77); font-size: 0.75rem; }
-  .filter-input {
-    flex: 1;
-    height: 1.3125rem;
-    background: var(--panel);
-    border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
-    padding: 0 0.5rem;
-    font-family: Consolas, monospace;
-    font-size: 0.75rem;
-    box-sizing: border-box;
-  }
-  .btn-run {
-    display: flex;
-    align-items: center;
-    gap: 0.3125rem;
-    height: 1.375rem;
-    padding: 0 0.75rem;
-    background: var(--run);
-    color: var(--panel);
-    border: none;
-    border-radius: 0.1875rem;
-    cursor: pointer;
-    font-weight: 600;
-    font-size: 0.75rem;
-  }
-  .btn-run:hover { background: var(--run-hover); }
-
-  /* ── Grid / Tree toggle ── */
-  .view-toggle { display: flex; align-items: center; gap: 0.0625rem; margin-left: 0.25rem; }
-  .toggle-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.25rem;
-    height: 1.375rem;
-    padding: 0 0.5rem;
-    font-size: 0.75rem;
-    border: 1px solid var(--gray-c4);
-    background: var(--bg);
-    cursor: pointer;
-    color: var(--gray-44);
-    border-radius: 0.125rem;
-  }
-  .toggle-btn:hover { background: var(--cell-border); }
-  .toggle-active {
-    background: var(--hover);
-    box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
-    color: var(--tab-active-fg);
-  }
-
   /* ── Error / status messages ── */
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
   .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   /* Tree-view loading hint: overlay so it doesn't disturb the 100%-height virtual scroller. */
   .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: var(--gray-77); font-size: 0.75rem;
     background: rgba(255, 255, 255, 0.75); border-radius: 0.1875rem; z-index: 5; }
-
-  /* ── Column chooser ── */
-  .chooser-row { display: block; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }
-  .chooser-apply {
-    display: block;
-    margin: 0.5rem 0 0.125rem auto;
-    height: 1.375rem;
-    padding: 0 0.625rem;
-    font-size: 0.75rem;
-    border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
-    background: var(--bg);
-    color: var(--gray-44);
-    cursor: pointer;
-  }
-  .chooser-apply:hover { background: var(--cell-border); }
 
   /* ── Pager ── */
   .pager {
@@ -759,45 +429,6 @@
   /* ── Tree view ── (rendering lives in the shared, virtualized ResultTree.svelte) */
   .tree-wrap { flex: 1; min-height: 0; position: relative; }
   .tree-wrap > :global(.tree-scroller) { height: 100%; }
-
-  /* ── Header dropdowns (Sort / Fields) ── */
-  .dropwrap { position: relative; display: flex; align-items: center; gap: 0.25rem; margin-left: 0.25rem; }
-  .dropwrap:focus { outline: none; }
-  .drop-btn {
-    height: 1.375rem; padding: 0 0.5rem; font-size: 0.75rem;
-    border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44);
-    border-radius: 0.125rem; cursor: pointer; white-space: nowrap;
-  }
-  .drop-btn:hover { background: var(--cell-border); }
-  .dropdown {
-    position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 0.125rem;
-    background: var(--panel); border: 1px solid var(--gray-c4); padding: 0.375rem;
-    min-width: 11.25rem; max-height: 20rem; overflow: auto;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-  }
-  .dd-allnone { display: flex; gap: 0.375rem; padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--bg); }
-  .dd-allnone button { flex: 1; font-size: 0.6875rem; padding: 0.125rem 0; cursor: pointer; }
-  .locked { color: var(--gray-aa); font-size: 0.625rem; margin-left: 0.25rem; }
-  /* Fields popover: pin Show/Hide-all + Apply, scroll only the field list. */
-  .fields-dd { display: flex; flex-direction: column; overflow: hidden; }
-  .fields-dd .dd-allnone { flex: none; }
-  .fields-list { flex: 1; min-height: 0; overflow: auto; }
-  .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
-
-  .dd-empty { color: var(--gray-99); font-size: 0.75rem; padding: 0.125rem 0.125rem 0.375rem; }
-  .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }
-  .dd-rank { color: var(--gray-99); width: 1rem; }
-  .dd-field { flex: 1; font-family: ui-monospace, monospace; }
-  .dd-ic {
-    width: 1.25rem; height: 1.125rem; border: 1px solid var(--gray-cf); background: var(--th-grad-top);
-    border-radius: 0.125rem; cursor: pointer; font-size: 0.6875rem; line-height: 1; padding: 0; color: var(--gray-44);
-  }
-  .dd-ic:hover { background: var(--tab-inactive-bg); }
-  .dd-ic:disabled { opacity: 0.35; cursor: default; }
-  .dd-x:hover { background: var(--error-bg); color: var(--error); }
-  .dd-add { display: block; font-size: 0.75rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
-  .dd-add select { margin-left: 0.375rem; font-size: 0.75rem; }
-  .dd-clear { margin-top: 0.375rem; width: 100%; font-size: 0.6875rem; cursor: pointer; }
 
   /* ── Column resize handle ── */
   .col-rownum { width: 2.625rem; }

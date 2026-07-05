@@ -98,14 +98,7 @@ pub(crate) fn pipeline_writes(pipeline: &[Document]) -> bool {
 
 // ── Write helpers ─────────────────────────────────────────────────────────────
 
-/// Reject a write when the session is read-only.
-pub(crate) fn ensure_writable(read_only: bool) -> Result<(), crate::error::AppError> {
-    if read_only {
-        Err(crate::error::AppError::Query("Connection is read-only".into()))
-    } else {
-        Ok(())
-    }
-}
+use crate::error::ensure_writable;
 
 /// One parsed write op (BSON already materialized).
 pub(crate) enum WriteOp {

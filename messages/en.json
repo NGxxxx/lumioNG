@@ -206,6 +206,8 @@
   "result_table_aria_grid": "Result grid",
   "result_table_presence_tooltip": "Present in {pct}% of samples",
   "result_table_col_header_tooltip": "Click: sort · Shift+click: add column",
+  "result_table_unsaved_edit_title": "Save changes?",
+  "result_table_unsaved_edit_message": "This cell was edited. Save the change before leaving it?",
   "result_table_delete_doc_title": "Delete document?",
   "result_table_delete_doc_message": "You are about to delete this document. This action cannot be undone.",
   "result_table_delete_selection_title": "Delete selected documents?",

@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import { get } from "svelte/store";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
+  import { createColumnResize, GRID_ROW_H } from "./gridInteractions.svelte";
   import { getByPath, type ColumnField } from "../domain/schema";
   import type { Doc } from "../domain/doc";
   import BsonCell from "./BsonCell.svelte";
@@ -16,7 +17,8 @@
   let { columns, docs, colWidths, onResize, onReset,
         selected = new Set<number>(), onRowClick = () => {}, onOpenMenu = () => {},
         editing = null, editText = $bindable(""), editError = null,
-        onStartEdit = () => {}, onCommitEdit = () => {}, onCancelEdit = () => {} }: {
+        onStartEdit = () => {}, onCommitEdit = () => {}, onCancelEdit = () => {},
+        onEditBlur = () => {} }: {
     columns: ColumnField[];
     docs: Doc[];
     colWidths: Record<string, number>;
@@ -31,6 +33,7 @@
     onStartEdit?: (row: number, key: string) => void;
     onCommitEdit?: () => void;
     onCancelEdit?: () => void;
+    onEditBlur?: () => void;
   } = $props();
 
   const FALLBACK_W = 160;
@@ -42,14 +45,13 @@
   // Rows are virtualized so switching Grid/Tree/Console (or a large result set via the "ALL"
   // cap / Show all) doesn't mount thousands of <tr> at once — see ResultTable.svelte, which uses
   // the same pattern for the same reason.
-  const ROW_H = 24; // exact row height (px); MUST match `tbody tr[data-index] { height }` below
   const OVERSCAN = 8;
   let scrollerEl = $state<HTMLDivElement | null>(null);
 
   const rowVirtualizer = createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count: untrack(() => docs.length),
     getScrollElement: () => scrollerEl,
-    estimateSize: () => ROW_H,
+    estimateSize: () => GRID_ROW_H,
     overscan: OVERSCAN,
   });
 
@@ -61,7 +63,7 @@
     get(rowVirtualizer).setOptions({
       count,
       getScrollElement: () => el,
-      estimateSize: () => ROW_H,
+      estimateSize: () => GRID_ROW_H,
       overscan: OVERSCAN,
     });
   });
@@ -82,22 +84,7 @@
     else if (e.key === "Escape") { e.preventDefault(); onCancelEdit(); }
   }
 
-  let resizing = false;
-  function startResize(e: MouseEvent, path: string) {
-    e.preventDefault();
-    e.stopPropagation();
-    resizing = true;
-    const startX = e.clientX;
-    const startW = colWidths[path] ?? FALLBACK_W;
-    const move = (ev: MouseEvent) => onResize(path, startW + (ev.clientX - startX));
-    const up = () => {
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
-      setTimeout(() => { resizing = false; }, 0);
-    };
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
-  }
+  const colResize = createColumnResize((path) => colWidths[path] ?? FALLBACK_W, (path, px) => onResize(path, px));
 </script>
 
 {#if columns.length === 0}
@@ -115,7 +102,7 @@
           {#each columns as c (c.path)}
             <th><span class="colname">{c.path}</span><span
                 class="col-resize" role="presentation"
-                onmousedown={(e) => startResize(e, c.path)}
+                onmousedown={(e) => colResize.start(e, c.path)}
                 ondblclick={(e) => { e.stopPropagation(); onReset(c.path); }}></span></th>
           {/each}
         </tr>
@@ -137,7 +124,7 @@
                     class="celledit"
                     bind:value={editText}
                     onkeydown={onEditKey}
-                    onblur={onCancelEdit}
+                    onblur={onEditBlur}
                     use:focusSelect
                   />{#if editError}<div class="cellerror">{msgKey(editError)}</div>{/if}{:else if val !== undefined}<BsonCell value={val} />{/if}</td>
             {/each}
@@ -154,7 +141,7 @@
 <style>
   .scroller { overflow: auto; height: 100%; }
   .empty { padding: 1rem; color: var(--muted); font-size: 0.75rem; }
-  table { border-collapse: collapse; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; }
+  table { border-collapse: collapse; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; user-select: none; }
   th { background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom)); border: 1px solid var(--gray-cf); padding: 0.25rem 0.5625rem; font-weight: 600; position: sticky; top: 0; z-index: 2; text-align: left; color: var(--fg); }
   .colname { font-weight: 600; }
   .rownum { width: 2.625rem; text-align: right; color: var(--gray-99); font-size: 0.6875rem; padding: 0.1875rem 0.375rem; }

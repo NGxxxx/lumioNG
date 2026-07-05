@@ -1,14 +1,15 @@
 import * as m from "$lib/paraglide/messages";
-import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, updateMany, deleteMany, exportQueryProgress } from "../api/documents";
+import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, deleteMany, exportQueryProgress } from "../api/documents";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";
+import { describeValue } from "../domain/extjson";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { rangeBetween, idInFilter, resolveIds, effectiveRows as effectiveRowsOf } from "../domain/selection";
 import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
-import { isInlineEditable, editTextOf, rebuildValue } from "../domain/celledit";
+import { isInlineEditable, editTextOf, rebuildValue, setByPath } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import {
   cycleSort,
@@ -20,13 +21,13 @@ import {
   moveSortKey,
   type SortKey,
 } from "../domain/grid";
-import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
 import { buildSkeleton, duplicateForInsert } from "../domain/skeleton";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { findCmd, replaceCmd, deleteOneCmd, updateManyCmd, deleteManyCmd, countCmd } from "../domain/mongosh";
+import { findCmd, replaceCmd, deleteOneCmd, deleteManyCmd } from "../domain/mongosh";
+import { createCollectionBulk } from "./collectionBulk.svelte";
 
 /**
  * State and actions for one collection view: data, paging, inline edit,
@@ -79,27 +80,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const selectedCount = $derived(selected.size);
   let confirmSelectionDelete = $state<number | null>(null);
 
-  // Bulk operations
-  let bulkMode = $state<"update" | "delete" | null>(null);
-  let bulkUpdateText = $state("");
-  let bulkUpdateError = $state<string | null>(null);
-  let bulkCount = $state<number | null>(null);
-  let bulkCounting = $state(false);
-  let bulkRunning = $state(false);
-  let bulkScope = $state<"filter" | "selection">("filter");
-  let bulkFilter = $state("{}");
-  let bulkTypeConfirm = $state(false);
-  let bulkResult = $state<string | null>(null);
-  let bulkError = $state<string | null>(null);
-
   // Export / import I/O
   let ioError = $state<string | null>(null);
   let exportRequest = $state<{ kind: "filter" } | { kind: "selection"; count: number } | null>(null);
   let pendingExportFilter: string | null = "{}";
-
-  const canRunBulk = $derived(
-    !bulkRunning && (bulkScope === "selection" || bulkCount !== null),
-  );
 
   const columnFields = $derived(mergeColumns(schema, docs));
 
@@ -357,7 +341,6 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   }
 
   async function startEdit(row: number, key: string) {
-    if (key.includes(".")) return; // nested fields not yet supported for inline edit
     if (hidden.size > 0) {
       const fullRow = await fullDocFor(docs[row]);
       if (fullRow !== docs[row]) {
@@ -378,6 +361,27 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     editError = null;
   }
 
+  let editBlurPending = $state(false);
+
+  /** Blur (click elsewhere) discards silently when nothing changed; otherwise asks for
+   *  confirmation before saving (Enter still saves immediately, no confirmation). */
+  function onEditBlur() {
+    if (!editing || saving) return;
+    const original = editTextOf(getByPath(docs[editing.row], editing.key));
+    if (editText === original) cancelEdit();
+    else editBlurPending = true;
+  }
+
+  async function confirmBlurEdit() {
+    editBlurPending = false;
+    await commitEdit();
+  }
+
+  function discardBlurEdit() {
+    editBlurPending = false;
+    cancelEdit();
+  }
+
   async function commitEdit() {
     if (!editing || saving) return;
     const { row, key } = editing;
@@ -386,7 +390,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       editError = r.error;
       return;
     }
-    const newDoc: Doc = { ...docs[row], [key]: r.value };
+    const newDoc: Doc = setByPath(docs[row], key, r.value);
     const id = idJson(newDoc);
     if (id === null) {
       editError = m.collection_view_no_id_update();
@@ -474,7 +478,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     items.push({
       label: "Edit cell",
       action: "editCell",
-      disabled: menu.key.includes(".") || !isInlineEditable(menu.key, value),
+      disabled: !isInlineEditable(menu.key, value),
     });
     items.push({
       label: "Copy",
@@ -541,7 +545,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         menu = null;
         return { open: doc };
       case "copyValue":
-        copy(JSON.stringify(getByPath(doc, key)));
+        copy(describeValue(getByPath(doc, key)).display);
         break;
       case "copyId":
         copy(idJson(doc) ?? "");
@@ -559,16 +563,16 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         requestExport("filter");
         break;
       case "updateSelected":
-        openBulk("update", "selection");
+        bulk.openBulk("update", "selection");
         break;
       case "deleteSelected":
         requestDeleteSelected();
         break;
       case "updateAll":
-        openBulk("update", "filter");
+        bulk.openBulk("update", "filter");
         break;
       case "deleteAll":
-        openBulk("delete", "filter");
+        bulk.openBulk("delete", "filter");
         break;
       case "newDoc":
         menu = null;
@@ -586,103 +590,12 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     return null;
   }
 
-  function openBulk(mode: "update" | "delete", scope: "filter" | "selection" = "filter") {
-    bulkMode = mode;
-    bulkScope = scope;
-    bulkUpdateText = "";
-    bulkUpdateError = null;
-    bulkResult = null;
-    bulkError = null;
-    bulkTypeConfirm = false;
-    if (scope === "selection") {
-      const sel = selectedIds();
-      if ("missing" in sel) {
-        bulkFilter = "";
-        bulkCount = null;
-        bulkError = m.collection_view_selection_missing_id();
-        return;
-      }
-      bulkFilter = idInFilter(sel.ids);
-      bulkCount = sel.ids.length;
-    } else {
-      bulkFilter = appliedFilter;
-      bulkCount = null;
-    }
-  }
-
-  function closeBulk() {
-    bulkMode = null;
-    bulkTypeConfirm = false;
-  }
-
-  async function countBulk() {
-    bulkCounting = true;
-    bulkError = null;
-    bulkResult = null;
-    try {
-      bulkCount = await countDocuments(sessionId, db, coll, bulkFilter);
-      commandLog.push(countCmd(coll, bulkFilter), sessionId);
-    } catch (e) {
-      bulkError = errorMessage(e);
-    } finally {
-      bulkCounting = false;
-    }
-  }
-
-  async function runBulk() {
-    if (bulkScope === "filter" && isEmptyFilter(bulkFilter)) {
-      bulkTypeConfirm = true;
-      return;
-    }
-    await performBulk(bulkFilter, false);
-  }
-
-  async function confirmBulkAll() {
-    bulkTypeConfirm = false;
-    await performBulk(bulkFilter, true);
-  }
-
-  function cancelBulkAll() {
-    bulkTypeConfirm = false;
-  }
-
-  async function performBulk(filter: string, allowAll: boolean) {
-    bulkError = null;
-    bulkResult = null;
-    if (bulkMode === "update") {
-      const r = parseUpdateDoc(bulkUpdateText);
-      if (!r.ok) {
-        bulkUpdateError = r.error;
-        return;
-      }
-      bulkUpdateError = null;
-      bulkRunning = true;
-      try {
-        const res = await updateMany(sessionId, db, coll, filter, r.json, allowAll);
-        commandLog.push(updateManyCmd(coll, filter, r.json), sessionId);
-        bulkResult = m.collection_view_bulk_updated({ modified: res.modified, matched: res.matched });
-        await reloadDocs();
-        bulkCount = null;
-      } catch (e) {
-        bulkError = errorMessage(e);
-      } finally {
-        bulkRunning = false;
-      }
-    } else if (bulkMode === "delete") {
-      bulkRunning = true;
-      try {
-        const n = await deleteMany(sessionId, db, coll, filter, allowAll);
-        commandLog.push(deleteManyCmd(coll, filter), sessionId);
-        bulkResult = m.collection_view_bulk_deleted({ n });
-        await reloadDocs();
-        bulkCount = null;
-      } catch (e) {
-        bulkError = errorMessage(e);
-      } finally {
-        bulkRunning = false;
-      }
-    }
-  }
+  const bulk = createCollectionBulk({
+    sessionId, db, coll,
+    getAppliedFilter: () => appliedFilter,
+    getSelectedIds: selectedIds,
+    reload: reloadDocs,
+  });
 
   function requestExport(scope: "filter" | "selection") {
     if (scope === "selection") {
@@ -819,6 +732,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get editError() {
       return editError;
     },
+    get editBlurPending() { return editBlurPending; },
+    onEditBlur,
+    confirmBlurEdit,
+    discardBlurEdit,
     get saving() {
       return saving;
     },
@@ -883,24 +800,24 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     confirmDelete,
     copy,
     get appliedFilter() { return appliedFilter; },
-    get bulkMode() { return bulkMode; },
-    get bulkUpdateText() { return bulkUpdateText; },
-    set bulkUpdateText(v: string) { bulkUpdateText = v; },
-    get bulkUpdateError() { return bulkUpdateError; },
-    get bulkCount() { return bulkCount; },
-    get bulkCounting() { return bulkCounting; },
-    get bulkRunning() { return bulkRunning; },
-    get bulkScope() { return bulkScope; },
-    get bulkTypeConfirm() { return bulkTypeConfirm; },
-    confirmBulkAll,
-    cancelBulkAll,
-    get bulkResult() { return bulkResult; },
-    get bulkError() { return bulkError; },
-    get canRunBulk() { return canRunBulk; },
-    openBulk,
-    closeBulk,
-    countBulk,
-    runBulk,
+    get bulkMode() { return bulk.bulkMode; },
+    get bulkUpdateText() { return bulk.bulkUpdateText; },
+    set bulkUpdateText(v: string) { bulk.bulkUpdateText = v; },
+    get bulkUpdateError() { return bulk.bulkUpdateError; },
+    get bulkCount() { return bulk.bulkCount; },
+    get bulkCounting() { return bulk.bulkCounting; },
+    get bulkRunning() { return bulk.bulkRunning; },
+    get bulkScope() { return bulk.bulkScope; },
+    get bulkTypeConfirm() { return bulk.bulkTypeConfirm; },
+    confirmBulkAll: bulk.confirmBulkAll,
+    cancelBulkAll: bulk.cancelBulkAll,
+    get bulkResult() { return bulk.bulkResult; },
+    get bulkError() { return bulk.bulkError; },
+    get canRunBulk() { return bulk.canRunBulk; },
+    openBulk: bulk.openBulk,
+    closeBulk: bulk.closeBulk,
+    countBulk: bulk.countBulk,
+    runBulk: bulk.runBulk,
     get ioError() { return ioError; },
     get exportRequest() { return exportRequest; },
     requestExport,

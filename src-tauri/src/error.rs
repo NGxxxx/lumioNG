@@ -26,6 +26,15 @@ impl std::fmt::Display for AppError {
 
 impl std::error::Error for AppError {}
 
+/// Reject an operation when the connection is read-only.
+pub fn ensure_writable(read_only: bool) -> Result<(), AppError> {
+    if read_only {
+        Err(AppError::Query("Connection is read-only".into()))
+    } else {
+        Ok(())
+    }
+}
+
 impl From<mongodb::error::Error> for AppError {
     fn from(e: mongodb::error::Error) -> Self {
         AppError::Query(e.to_string())
