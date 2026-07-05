@@ -3,6 +3,7 @@ import { untrack } from "svelte";
 const SUPPRESS_KEY = "suppress-destructive-warning";
 const TIMEOUT_KEY = "query-timeout-ms";
 const CAP_KEY = "query-result-cap";
+const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
 
 // Defaults mirror the Rust script engine fallbacks (commands/script.rs).
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -42,6 +43,7 @@ export function createSettings() {
     hasStorage ? untrack(() => readPosInt(TIMEOUT_KEY, DEFAULT_TIMEOUT_MS)) : DEFAULT_TIMEOUT_MS,
   );
   let cap = $state<number>(hasStorage ? untrack(() => readPosInt(CAP_KEY, DEFAULT_CAP)) : DEFAULT_CAP);
+  let capUnlimited = $state<boolean>(hasStorage ? untrack(() => readBool(CAP_UNLIMITED_KEY)) : false);
 
   return {
     get suppressDestructiveWarning(): boolean {
@@ -66,6 +68,14 @@ export function createSettings() {
       if (!Number.isFinite(v) || v <= 0) return;
       cap = Math.floor(v);
       writeKey(CAP_KEY, String(cap));
+    },
+    /** When true, query runs fetch every matching row (no server-side truncation). */
+    get queryResultCapUnlimited(): boolean {
+      return capUnlimited;
+    },
+    setQueryResultCapUnlimited(v: boolean) {
+      capUnlimited = v;
+      writeKey(CAP_UNLIMITED_KEY, v ? "true" : "false");
     },
   };
 }

@@ -50,7 +50,7 @@ pub struct HostCtx {
     pub handle: Handle,
     pub console: Rc<RefCell<Vec<ConsoleEntry>>>,
     pub cursors: Rc<RefCell<CursorStore>>,
-    /// Maximum number of rows returned per cursor open (cap for result display).
+    /// Maximum number of rows returned per cursor open (cap for result display). `0` = unlimited.
     pub cap: usize,
     /// When true, write/DDL host paths reject the operation.
     pub read_only: bool,
@@ -441,7 +441,7 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         .await
                         .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
-                    let batch_size = h.cap.min(101);
+                    let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
                     // Drain the first batch on the owned cursor, then store only if more remains —
                     // never holds the cursors RefCell borrow across `.await`.
                     let (rows, exhausted) =
@@ -531,7 +531,7 @@ fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         .await
                         .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
-                    let batch_size = h.cap.min(101);
+                    let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
                     // Drain on the owned cursor first; store only if more remains (no RefCell across await).
                     let (rows, exhausted) =
                         crate::script::cursors::CursorStore::drain(&mut cursor, batch_size).await?;

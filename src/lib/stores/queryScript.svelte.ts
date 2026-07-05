@@ -44,6 +44,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   let pageSize = $state(50);
   let pageReq = $state(1);
+  let showingAll = $state(false);
 
   let destructiveConfirm = $state<{ ops: string[] } | null>(null);
   let pending: { db: string; script: string } | null = null;
@@ -110,9 +111,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   const totalCount = $derived(docs.length);
-  const pgCount = $derived(pageCount(totalCount, pageSize));
-  const page = $derived(clampPage(pageReq, pgCount));
-  const pageDocs = $derived(docs.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize));
+  const pgCount = $derived(showingAll ? 1 : pageCount(totalCount, pageSize));
+  const page = $derived(showingAll ? 1 : clampPage(pageReq, pgCount));
+  const pageDocs = $derived(
+    showingAll ? docs : docs.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize),
+  );
 
   async function execute(db: string, script: string) {
     running = true;
@@ -121,11 +124,12 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     anchor = null;
     menu = null;
     editing = null;
+    showingAll = false;
     const startedAt = Date.now();
     try {
       const outcome = await runScript(sessionId, db, script, {
         timeoutMs: settings.queryTimeoutMs,
-        cap: settings.queryResultCap,
+        cap: settings.queryResultCapUnlimited ? 0 : settings.queryResultCap,
       });
 
       // Console entries (always present)
@@ -222,6 +226,19 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   function runSelection(db: string | null) {
     const stmt = hasSelection ? statementText.slice(selStart, selEnd) : statementText;
     return run(db, stmt);
+  }
+
+  /** Show every already-fetched doc on one page (no further server round-trip needed — the
+   *  script already returned this run's full result set, up to the configured cap). */
+  function showAll() {
+    editing = null;
+    showingAll = true;
+  }
+
+  function backToPaged() {
+    editing = null;
+    showingAll = false;
+    pageReq = 1;
   }
 
   function startEdit(row: number, key: string) {
@@ -421,6 +438,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get currentPage() { return page; },
     get pageCount() { return pgCount; },
     get pageSize() { return pageSize; },
+    get allShown() { return showingAll; },
     get colWidths() { return colWidths; },
     get destructiveConfirm() { return destructiveConfirm; },
     run: (db: string | null) => run(db),
@@ -434,6 +452,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get hasSelection() { return hasSelection; },
     goToPage: (p: number) => { editing = null; pageReq = clampPage(p, pgCount); },
     setPageSize: (n: number) => { editing = null; pageSize = Math.max(1, Math.floor(n) || 50); pageReq = 1; },
+    showAll,
+    backToPaged,
     setColWidth: (path: string, px: number) => { colWidths = { ...colWidths, [path]: clampWidth(px) }; },
     resetColWidth: (path: string) => { colWidths = { ...colWidths, [path]: defaultColWidths[path] ?? 160 }; },
     get editing() { return editing; },

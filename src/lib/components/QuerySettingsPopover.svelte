@@ -17,16 +17,22 @@
   {#if open}
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="popover" onclick={(e) => e.stopPropagation()}>
-      <label>
-        {m.query_tab_settings_timeout()}
-        <input type="number" min="1" value={settings.queryTimeoutMs}
+      <label class="field">
+        <span class="field-label">{m.query_tab_settings_timeout()}</span>
+        <input type="number" min="1" class="field-input" value={settings.queryTimeoutMs}
           onchange={(e) => settings.setQueryTimeoutMs(+e.currentTarget.value)} />
       </label>
-      <label>
-        {m.query_tab_settings_cap()}
-        <input type="number" min="1" value={settings.queryResultCap}
+      <div class="field cap-field">
+        <label class="field-label" for="query-cap-input">{m.query_tab_settings_cap()}</label>
+        <input id="query-cap-input" type="number" min="1" class="field-input" value={settings.queryResultCap}
+          disabled={settings.queryResultCapUnlimited}
           onchange={(e) => settings.setQueryResultCap(+e.currentTarget.value)} />
-      </label>
+        <label class="checkbox-row">
+          <input type="checkbox" checked={settings.queryResultCapUnlimited}
+            onchange={(e) => settings.setQueryResultCapUnlimited(e.currentTarget.checked)} />
+          <span>{m.query_tab_settings_cap_all()}</span>
+        </label>
+      </div>
     </div>
   {/if}
 </div>
@@ -35,7 +41,34 @@
   .settings { position: relative; display: inline-flex; }
   .gear { background: none; border: none; cursor: pointer; font-size: 0.875rem; line-height: 1; padding: 0.125rem 0.25rem; color: var(--gray-55); border-radius: 0.1875rem; }
   .gear:hover { background: var(--hover); color: var(--fg); }
-  .popover { position: absolute; top: 1.5rem; right: 0; z-index: 100; background: var(--panel); border: 1px solid var(--border); border-radius: 0.25rem; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18); padding: 0.5rem 0.625rem; display: flex; flex-direction: column; gap: 0.5rem; min-width: 11rem; }
-  .popover label { display: flex; flex-direction: column; gap: 0.1875rem; font-size: 0.6875rem; color: var(--gray-55); }
-  .popover input { height: 1.5rem; padding: 0 0.375rem; font-size: 0.75rem; border: 1px solid var(--gray-c4); border-radius: 0.125rem; background: var(--bg); color: var(--fg); }
+
+  .popover {
+    position: absolute; top: 1.75rem; right: 0; z-index: 100;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 0.375rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+    padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; min-width: 13rem;
+  }
+
+  /* Each setting is its own column: label above control. `.cap-field` additionally nests the
+     ALL checkbox directly under its input (tight gap) since the two are one control, not two. */
+  .field { display: flex; flex-direction: column; gap: 0.3125rem; }
+  .field-label { font-size: 0.6875rem; font-weight: 600; color: var(--gray-55); }
+
+  .field-input {
+    height: 1.625rem; padding: 0 0.5rem; font-size: 0.75rem;
+    border: 1px solid var(--gray-c4); border-radius: 0.1875rem;
+    background: var(--bg); color: var(--fg);
+  }
+  .field-input:focus { outline: none; border-color: var(--focus-ring); }
+  .field-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Row selector (element + class) outweighs `.field`'s column rule so this doesn't get
+     silently overridden by cascade order — see CLAUDE.md note on selector specificity. */
+  label.checkbox-row {
+    display: flex; flex-direction: row; align-items: center; gap: 0.375rem;
+    margin-top: 0.0625rem; font-size: 0.6875rem; font-weight: 400; color: var(--fg); cursor: pointer;
+  }
+  .checkbox-row input[type="checkbox"] {
+    width: 0.8125rem; height: 0.8125rem; margin: 0; accent-color: var(--accent); cursor: pointer;
+  }
 </style>

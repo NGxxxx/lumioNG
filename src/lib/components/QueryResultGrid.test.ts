@@ -1,19 +1,28 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import QueryResultGrid from "./QueryResultGrid.svelte";
 import { mergeColumns } from "../domain/schema";
 
+// The grid is row-virtualized (see QueryResultGrid.svelte); tanstack-virtual falls back to a
+// one-time offsetHeight read when ResizeObserver is unavailable (true in jsdom). Stub a real
+// viewport height so these tests see actual rendered rows instead of the virtualizer's
+// zero-height default (jsdom always reports 0 for layout properties).
+let restoreOffsetHeight: (() => void) | undefined;
+beforeAll(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
+  restoreOffsetHeight = () => {
+    if (descriptor) Object.defineProperty(HTMLElement.prototype, "offsetHeight", descriptor);
+  };
+});
+afterAll(() => restoreOffsetHeight?.());
+
 const noop = vi.fn();
-const noopMenu = () => [];
 
 const baseMenuProps = {
   selected: new Set<number>(),
-  menu: null,
-  menuItems: noopMenu,
   onRowClick: noop,
   onOpenMenu: noop,
-  onMenuSelect: noop,
-  onCloseMenu: noop,
 };
 
 const noop2 = () => {};
@@ -68,5 +77,16 @@ describe("QueryResultGrid", () => {
       props: { columns: [], docs: [], colWidths: {}, onResize: noop, onReset: noop, ...baseMenuProps },
     });
     expect(getByText("No results")).toBeTruthy();
+  });
+
+  it("renders far fewer DOM rows than docs for a large result set (virtualized, not one <tr> per doc)", () => {
+    const docs = Array.from({ length: 1000 }, (_, i) => ({ _id: { $oid: String(i) }, name: `n${i}` }));
+    const columns = mergeColumns(null, docs);
+    const { container } = render(QueryResultGrid, {
+      props: { columns, docs, colWidths: { _id: 160, name: 120 }, onResize: noop, onReset: noop, ...baseMenuProps },
+    });
+    const rowCount = container.querySelectorAll("tbody tr[data-index]").length;
+    expect(rowCount).toBeGreaterThan(0);
+    expect(rowCount).toBeLessThan(100);
   });
 });

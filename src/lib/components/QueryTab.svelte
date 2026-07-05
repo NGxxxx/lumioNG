@@ -3,6 +3,7 @@
   import { getQueryRun } from "../stores/queryRuns.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import QueryResultGrid from "./QueryResultGrid.svelte";
+  import ResultTree from "./ResultTree.svelte";
   import ConsolePane from "./ConsolePane.svelte";
   import CommandLogView from "./CommandLogView.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -12,6 +13,7 @@
   import * as m from "$lib/paraglide/messages";
   import CodeEditor from "./CodeEditor.svelte";
   import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
+  import { settings } from "../stores/settings.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
@@ -23,7 +25,7 @@
 
   const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
   let bottomTab = $state<"result" | "log">("result");
-  let resultView = $state<"grid" | "console">("grid");
+  let resultView = $state<"grid" | "tree" | "console">("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
 
   // stopPropagation so ContextMenu's just-mounted window listener doesn't immediately close it.
@@ -101,7 +103,7 @@
 
   {#if v.error}<div class="error">{v.error}</div>{/if}
   {#if v.capped}
-    <div class="cap">{m.query_tab_capped_notice()}</div>
+    <div class="cap">{m.query_tab_capped_notice({ cap: settings.queryResultCap })}</div>
   {/if}
 
   <div class="bottom">
@@ -111,6 +113,7 @@
       {#if bottomTab === "result"}
         <div class="view-toggle">
           <button class:active={resultView === "grid"} onclick={() => (resultView = "grid")}>{m.query_tab_view_grid()}</button>
+          <button class:active={resultView === "tree"} onclick={() => (resultView = "tree")}>{m.query_tab_view_tree()}</button>
           <button class:active={resultView === "console"} onclick={() => (resultView = "console")}>{m.query_tab_view_console()}</button>
         </div>
       {/if}
@@ -131,7 +134,9 @@
       </div>
     {:else}
       <div class="result-pane">
-        {#if showDocs}
+        {#if showDocs && resultView === "tree"}
+          <ResultTree docs={v.pageDocs} onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
+        {:else if showDocs}
           <QueryResultGrid
             columns={v.columns}
             docs={v.pageDocs}
@@ -139,12 +144,8 @@
             onResize={v.setColWidth}
             onReset={v.resetColWidth}
             selected={v.selected}
-            menu={v.menu}
-            menuItems={v.menuItems}
             onRowClick={v.clickRow}
             onOpenMenu={v.openMenu}
-            onMenuSelect={onGridMenuSelect}
-            onCloseMenu={v.closeMenu}
             editing={editable ? v.editing : null}
             bind:editText={v.editText}
             editError={v.editError}
@@ -159,7 +160,12 @@
           <div class="status">{m.query_tab_status_idle()}</div>
         {/if}
       </div>
-      {#if showDocs}
+      {#if showDocs && v.allShown}
+        <div class="pager">
+          <button onclick={v.backToPaged}>{m.result_table_pager_back_to_paged()}</button>
+          <span class="pg-total">{m.query_tab_docs_count({ count: totalCount })}</span>
+        </div>
+      {:else if showDocs}
         <div class="pager">
           <button onclick={() => v.goToPage(1)} disabled={v.currentPage <= 1}>«</button>
           <button onclick={() => v.goToPage(v.currentPage - 1)} disabled={v.currentPage <= 1}>‹</button>
@@ -170,6 +176,7 @@
             <input type="number" min="1" value={v.pageSize}
               onchange={(e) => v.setPageSize(+e.currentTarget.value)} />
           </label>
+          <button onclick={v.showAll}>{m.result_table_pager_show_all()}</button>
           <span class="pg-total">{m.query_tab_docs_count({ count: totalCount })}</span>
         </div>
       {/if}
@@ -181,6 +188,11 @@
   <ContextMenu x={menu.x} y={menu.y}
     items={[{ label: m.query_tab_menu_run(), action: "run" }, { label: m.query_tab_menu_run_selection(), action: "runSelection", disabled: !v.hasSelection }]}
     onselect={onMenu} onclose={() => (menu = null)} />
+{/if}
+
+<!-- Shared row/cell context menu for both Grid and Tree (they funnel into the same v.menu state). -->
+{#if v.menu}
+  <ContextMenu x={v.menu.x} y={v.menu.y} items={v.menuItems()} onselect={onGridMenuSelect} onclose={v.closeMenu} />
 {/if}
 
 {#if v.destructiveConfirm}

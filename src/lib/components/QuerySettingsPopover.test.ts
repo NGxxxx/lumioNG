@@ -7,6 +7,7 @@ beforeEach(() => {
   localStorage.clear();
   settings.setQueryTimeoutMs(30000);
   settings.setQueryResultCap(1000);
+  settings.setQueryResultCapUnlimited(false);
 });
 
 describe("QuerySettingsPopover", () => {
@@ -25,5 +26,15 @@ describe("QuerySettingsPopover", () => {
     await fireEvent.change(inputs[1], { target: { value: "55" } });
     expect(settings.queryTimeoutMs).toBe(8000);
     expect(settings.queryResultCap).toBe(55);
+  });
+
+  it("toggling No limit (ALL) sets queryResultCapUnlimited and disables the cap input", async () => {
+    const { getByText, getByRole, container } = render(QuerySettingsPopover);
+    await fireEvent.click(getByText("⚙"));
+    const checkbox = getByRole("checkbox") as HTMLInputElement;
+    await fireEvent.click(checkbox);
+    expect(settings.queryResultCapUnlimited).toBe(true);
+    const capInput = container.querySelectorAll("input")[1] as HTMLInputElement;
+    expect(capInput.disabled).toBe(true);
   });
 });

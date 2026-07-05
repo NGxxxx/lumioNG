@@ -38,4 +38,12 @@ describe("settings", () => {
     a.setQueryTimeoutMs(NaN);
     expect(a.queryTimeoutMs).toBe(30000);
   });
+
+  it("defaults queryResultCapUnlimited to false and persists it across instances", () => {
+    const a = createSettings();
+    expect(a.queryResultCapUnlimited).toBe(false);
+    a.setQueryResultCapUnlimited(true);
+    const b = createSettings();
+    expect(b.queryResultCapUnlimited).toBe(true);
+  });
 });

@@ -14,8 +14,9 @@ const stub = {
   get capped() { return false; }, get displayMode() { return "none" as const; },
   get consoleEntries() { return []; }, get ackJson() { return null; }, get valueJson() { return null; },
   get pageSize() { return 50; }, get currentPage() { return 1; },
-  get pageCount() { return 1; },
+  get pageCount() { return 1; }, get allShown() { return false; },
   setColWidth: vi.fn(), resetColWidth: vi.fn(), goToPage: vi.fn(), setPageSize: vi.fn(),
+  showAll: vi.fn(), backToPaged: vi.fn(),
   run, cancel: vi.fn(), setSelection: vi.fn(),
   get hasSelection() { return false; }, runSelection: vi.fn(),
   fieldsFor: vi.fn().mockResolvedValue([]),
@@ -80,10 +81,62 @@ describe("QueryTab", () => {
     expect(getByText(/Edit the statement/)).toBeTruthy();
   });
 
-  it("shows Grid and Console view toggle buttons in the result tab", () => {
+  it("shows Grid, Tree and Console view toggle buttons in the result tab", () => {
     const { getByText } = render(QueryTab, { props });
     expect(getByText("Grid")).toBeTruthy();
+    expect(getByText("Tree")).toBeTruthy();
     expect(getByText("Console")).toBeTruthy();
+  });
+
+  it("switches to the tree view and renders docs as a virtualized tree", async () => {
+    activeStub = editableStub as unknown as typeof stub;
+    try {
+      const { getByText, container } = render(QueryTab, { props });
+      await fireEvent.click(getByText("Tree"));
+      expect(container.querySelector(".tree-scroller")).toBeTruthy();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("right-clicking a row in Tree view opens the shared context menu", async () => {
+    const menuStub = {
+      ...editableStub,
+      get menu() { return { x: 10, y: 20, row: 0, key: "_id" }; },
+      menuItems: () => [{ label: "Open document", action: "open" }],
+    };
+    activeStub = menuStub as unknown as typeof stub;
+    try {
+      const { getByText } = render(QueryTab, { props });
+      await fireEvent.click(getByText("Tree"));
+      expect(getByText("Open document")).toBeTruthy();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("shows a Show all button in the grid pager, which calls showAll()", async () => {
+    const showAllSpy = vi.fn();
+    activeStub = { ...editableStub, showAll: showAllSpy } as unknown as typeof stub;
+    try {
+      const { getByText } = render(QueryTab, { props });
+      await fireEvent.click(getByText("Show all"));
+      expect(showAllSpy).toHaveBeenCalledOnce();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("shows a back-to-paged button instead of the pager once allShown is true", () => {
+    const backSpy = vi.fn();
+    activeStub = { ...editableStub, get allShown() { return true; }, backToPaged: backSpy } as unknown as typeof stub;
+    try {
+      const { getByText, queryByText } = render(QueryTab, { props });
+      expect(getByText("↩ Paged")).toBeTruthy();
+      expect(queryByText("Show all")).toBeNull();
+    } finally {
+      activeStub = stub;
+    }
   });
 
   it("shows the running status and a cancel button while a query runs", () => {

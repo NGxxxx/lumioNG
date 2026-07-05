@@ -205,6 +205,7 @@ describe("execute forwards engine settings", () => {
   afterEach(() => {
     settings.setQueryTimeoutMs(30000);
     settings.setQueryResultCap(1000);
+    settings.setQueryResultCapUnlimited(false);
   });
 
   it("passes the configured timeout and cap to runScript", async () => {
@@ -216,6 +217,51 @@ describe("execute forwards engine settings", () => {
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("mydb");
     expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", { timeoutMs: 7000, cap: 42 });
+  });
+
+  it("passes cap: 0 (unlimited) when queryResultCapUnlimited is on, ignoring the numeric cap", async () => {
+    (runScript as any).mockResolvedValue({
+      console: [], result: { kind: "none" }, provenance: null, capped: false, error: null,
+    });
+    settings.setQueryResultCap(42);
+    settings.setQueryResultCapUnlimited(true);
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("mydb");
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", { timeoutMs: 30000, cap: 0 });
+  });
+});
+
+describe("showAll / backToPaged", () => {
+  it("showAll puts every fetched doc on one page; backToPaged restores normal paging", async () => {
+    const rows = [1, 2, 3, 4, 5].map((n) => JSON.stringify({ n }));
+    (runScript as any).mockResolvedValue(ok(rows, null));
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("mydb");
+    s.setPageSize(2);
+    expect(s.pageDocs.length).toBe(2);
+    expect(s.pageCount).toBe(3);
+
+    s.showAll();
+    expect(s.allShown).toBe(true);
+    expect(s.pageDocs.length).toBe(5);
+    expect(s.pageCount).toBe(1);
+    expect(s.currentPage).toBe(1);
+
+    s.backToPaged();
+    expect(s.allShown).toBe(false);
+    expect(s.pageDocs.length).toBe(2);
+  });
+
+  it("a new run resets allShown back to paged mode", async () => {
+    const rows = [1, 2, 3].map((n) => JSON.stringify({ n }));
+    (runScript as any).mockResolvedValue(ok(rows, null));
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("mydb");
+    s.showAll();
+    expect(s.allShown).toBe(true);
+
+    await s.run("mydb");
+    expect(s.allShown).toBe(false);
   });
 });
 
