@@ -9,31 +9,37 @@ describe("bsonTypeBadge", () => {
       "binary", "string", "bool", "object", "array",
     ];
     for (const t of types) {
-      expect(bsonTypeBadge(t).bg).not.toBe("#eee"); // NEUTRAL_BADGE.bg
+      expect(bsonTypeBadge(t).bg).not.toBe("var(--ctp-surface0)"); // NEUTRAL_BADGE.bg
     }
   });
 
   it("returns the neutral badge for unknown", () => {
-    expect(bsonTypeBadge("unknown")).toEqual({ color: "#555", bg: "#eee" });
+    expect(bsonTypeBadge("unknown")).toEqual({ color: "var(--ctp-subtext0)", bg: "var(--ctp-surface0)" });
   });
 });
 
 describe("statusPill", () => {
   it("known statuses map to their pill colors", () => {
-    expect(statusPill("paid")).toEqual({ color: "#1f7a37", bg: "#e6f4ea" });
-    expect(statusPill("cancelled")).toEqual({ color: "#c0392b", bg: "#fdeaea" });
+    expect(statusPill("paid")).toEqual({
+      color: "var(--ctp-green)",
+      bg: "color-mix(in srgb, var(--ctp-green) 14%, var(--ctp-base))",
+    });
+    expect(statusPill("cancelled")).toEqual({
+      color: "var(--ctp-red)",
+      bg: "color-mix(in srgb, var(--ctp-red) 10%, var(--ctp-base))",
+    });
   });
   it("unknown status falls back to neutral", () => {
-    expect(statusPill("zzz")).toEqual({ color: "#666", bg: "#ededed" });
+    expect(statusPill("zzz")).toEqual({ color: "var(--ctp-subtext0)", bg: "var(--ctp-surface0)" });
   });
 });
 
 describe("jsonValueColor", () => {
   it("returns the color for a token kind", () => {
-    expect(jsonValueColor("string")).toBe("#c41a16");
-    expect(jsonValueColor("number")).toBe("#1c00cf");
-    expect(jsonValueColor("objectid")).toBe("#6b3fa0");
-    expect(jsonValueColor("null")).toBe("#777");
+    expect(jsonValueColor("string")).toBe("var(--ctp-green)");
+    expect(jsonValueColor("number")).toBe("var(--ctp-blue)");
+    expect(jsonValueColor("objectid")).toBe("var(--ctp-mauve)");
+    expect(jsonValueColor("null")).toBe("var(--ctp-overlay0)");
   });
 });
 

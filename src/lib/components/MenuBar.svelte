@@ -4,6 +4,7 @@
   import * as m from "$lib/paraglide/messages";
   import { appLocale } from "../stores/locale.svelte";
   import { uiSize } from "../stores/uiSize.svelte";
+  import { theme } from "../stores/theme.svelte";
   import { UI_SIZES, type UiSizeKey } from "../domain/uiSize";
 
   let {
@@ -54,6 +55,13 @@
             checked: uiSize.current === s.key,
             run: () => uiSize.set(s.key),
           })),
+        },
+        {
+          label: m.menu_theme(),
+          children: [
+            { label: m.theme_light(), checked: theme.current === "latte", run: () => theme.set("latte") },
+            { label: m.theme_dark(), checked: theme.current === "mocha", run: () => theme.set("mocha") },
+          ],
         },
       ],
     },

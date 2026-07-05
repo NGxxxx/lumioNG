@@ -4,6 +4,7 @@ import { render, fireEvent, screen } from "@testing-library/svelte";
 import MenuBar from "./MenuBar.svelte";
 import { appLocale } from "../stores/locale.svelte";
 import { uiSize } from "../stores/uiSize.svelte";
+import { theme } from "../stores/theme.svelte";
 
 const base = { connected: true, onsession: vi.fn(), onrefresh: vi.fn(), onquit: vi.fn() };
 
@@ -68,6 +69,20 @@ describe("MenuBar", () => {
       expect(uiSize.current).toBe("large");
     } finally {
       uiSize.set("default"); // restore shared store for later tests
+    }
+  });
+
+  it("View → Theme submenu lists Light/Dark with the active one checked, and switches", async () => {
+    render(MenuBar, { props: { ...base } });
+    await fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Theme" }));
+    const light = screen.getByRole("button", { name: /Light/ });
+    expect(light.textContent).toContain("✓"); // latte active by default
+    await fireEvent.click(screen.getByRole("button", { name: /Dark/ }));
+    try {
+      expect(theme.current).toBe("mocha");
+    } finally {
+      theme.set("latte"); // restore shared store for later tests
     }
   });
 });

@@ -1,83 +1,142 @@
-/* src/app.css — design tokens LumioNG + base reset nhẹ */
+/* src/app.css — Catppuccin design tokens (Latte default, Mocha override) + base reset */
 :root {
-  --bg: #f0f0f0;
-  --panel: #ffffff;
-  --border: #dcdcdc;
-  --fg: #222222;
-  --muted: #888888;
-  --accent: #13aa52; /* xanh Mongo */
-  --hover: #d9ebf9;
-  --selected: #e3f2fd;
+  /* Catppuccin Latte primitives */
+  --ctp-rosewater: #dc8a78;
+  --ctp-flamingo: #dd7878;
+  --ctp-pink: #ea76cb;
+  --ctp-mauve: #8839ef;
+  --ctp-red: #d20f39;
+  --ctp-maroon: #e64553;
+  --ctp-peach: #fe640b;
+  --ctp-yellow: #df8e1d;
+  --ctp-green: #40a02b;
+  --ctp-teal: #179299;
+  --ctp-sky: #04a5e5;
+  --ctp-sapphire: #209fb5;
+  --ctp-blue: #1e66f5;
+  --ctp-lavender: #7287fd;
+  --ctp-text: #4c4f69;
+  --ctp-subtext1: #5c5f77;
+  --ctp-subtext0: #6c6f85;
+  --ctp-overlay2: #7c7f93;
+  --ctp-overlay1: #8c8fa1;
+  --ctp-overlay0: #9ca0b0;
+  --ctp-surface2: #acb0be;
+  --ctp-surface1: #bcc0cc;
+  --ctp-surface0: #ccd0da;
+  --ctp-base: #eff1f5;
+  --ctp-mantle: #e6e9ef;
+  --ctp-crust: #dce0e8;
+
+  /* app tokens (reference primitives; overriding the primitives above is enough to retheme these) */
+  --bg: var(--ctp-mantle);
+  --panel: var(--ctp-base);
+  --border: var(--ctp-surface0);
+  --fg: var(--ctp-text);
+  --muted: var(--ctp-subtext0);
+  --accent: var(--ctp-green);
+  --hover: color-mix(in srgb, var(--ctp-blue) 12%, var(--ctp-base));
+  --selected: color-mix(in srgb, var(--ctp-blue) 16%, var(--ctp-base));
   --mono: Consolas, "SF Mono", "Liberation Mono", monospace;
   --fs: 0.75rem;
   /* tab + hàng */
-  --tab-active-border: #2f7dd1;
-  --tab-active-fg: #0a4d8c;
-  --tab-inactive-bg: #e8e8e8;
-  --row-selected: #cce4f7;
-  --row-selected-ring: #a8d4f0;
-  --row-hover: #eef6fd;
-  --menu-hover: #d9ebf9;
-  --zebra: #fafafa;
-  --zebra-alt: #fbfcfe;
+  --tab-active-border: var(--ctp-blue);
+  --tab-active-fg: var(--ctp-text);
+  --tab-inactive-bg: var(--ctp-surface0);
+  --row-selected: color-mix(in srgb, var(--ctp-blue) 18%, var(--ctp-base));
+  --row-selected-ring: var(--ctp-blue);
+  --row-hover: color-mix(in srgb, var(--ctp-blue) 8%, var(--ctp-base));
+  --menu-hover: var(--ctp-surface0);
+  --zebra: var(--ctp-base);
+  --zebra-alt: var(--ctp-mantle);
   /* bảng */
-  --th-grad-top: #f6f6f6;
-  --th-grad-bottom: #e9e9e9;
-  --cell-border: #ececec;
-  --th-fg: #666666;        /* table header text */
-  --row-divider: #f0f0f0;  /* in-body row separators */
-  --text-strong: #1a1a1a;  /* primary cell text */
-  --link: #1565c0;
-  --error: #b71c1c;
-  --error-bg: #fdecea;
+  --th-grad-top: var(--ctp-surface0);
+  --th-grad-bottom: var(--ctp-surface1);
+  --cell-border: var(--ctp-surface0);
+  --th-fg: var(--ctp-subtext0);
+  --row-divider: var(--ctp-surface0);
+  --text-strong: var(--ctp-text);
+  --link: var(--ctp-blue);
+  --error: var(--ctp-red);
+  --error-bg: color-mix(in srgb, var(--ctp-red) 10%, var(--ctp-base));
   /* syntax JSON / mongosh */
-  --j-key: #9a2f8f;
-  --j-string: #c41a16;
-  --j-number: #1c00cf;
-  --j-bool: #aa0d91;
-  --j-func: #267f4e;   /* ObjectId()/ISODate() */
-  --j-brace: #7b53b8;
-  --j-op: #1565c0;     /* $gte, $sum… */
-  --j-id: #6b3fa0;     /* ObjectId value */
-  --j-comment: #8a9a8a;
-  /* neutral grays: text + lines (lighter grays fold into --bg/--border/--cell-border/--zebra) */
-  --gray-33: #333333;
-  --gray-44: #444444;
-  --gray-55: #555555;
-  --gray-77: #777777;
-  --gray-99: #999999;
-  --gray-aa: #aaaaaa;
-  --gray-b8: #b8b8b8;
-  --gray-c4: #c4c4c4;
-  --gray-cf: #cfcfcf;
+  --j-key: var(--ctp-mauve);
+  --j-string: var(--ctp-green);
+  --j-number: var(--ctp-blue);
+  --j-bool: var(--ctp-pink);
+  --j-func: var(--ctp-teal);
+  --j-brace: var(--ctp-lavender);
+  --j-op: var(--ctp-sapphire);
+  --j-id: var(--ctp-mauve);
+  --j-comment: var(--ctp-overlay0);
+  /* neutral grays: text + lines, ramp from most-text-like to most-surface-like */
+  --gray-33: var(--ctp-text);
+  --gray-44: var(--ctp-subtext1);
+  --gray-55: var(--ctp-subtext0);
+  --gray-77: var(--ctp-overlay2);
+  --gray-99: var(--ctp-overlay1);
+  --gray-aa: var(--ctp-overlay0);
+  --gray-b8: var(--ctp-surface2);
+  --gray-c4: var(--ctp-surface1);
+  --gray-cf: var(--ctp-surface0);
   /* greens: run / success / progress */
-  --run: #1f9d4d;
-  --run-hover: #1a8a43;
-  --ok-fg: #1b5e20;
-  --ok-bg: #e6f4ea;
-  --ok-bg-tint: #f3f9ee;
-  --ok-strong: #00bb55;
-  --ok-mid: #7cc9a3;
-  --progress: #44cc77;
+  --run: var(--ctp-green);
+  --run-hover: color-mix(in srgb, var(--ctp-green) 80%, var(--ctp-crust) 20%);
+  --ok-fg: var(--ctp-green);
+  --ok-bg: color-mix(in srgb, var(--ctp-green) 14%, var(--ctp-base));
+  --ok-bg-tint: color-mix(in srgb, var(--ctp-green) 7%, var(--ctp-base));
+  --ok-strong: var(--ctp-green);
+  --ok-mid: color-mix(in srgb, var(--ctp-green) 55%, var(--ctp-overlay0) 45%);
+  --progress: var(--ctp-green);
   /* reds: danger */
-  --danger: #e81123;
-  --danger-strong: #cc0000;
-  --danger-mute: #c0504d;
+  --danger: var(--ctp-red);
+  --danger-strong: var(--ctp-red);
+  --danger-mute: var(--ctp-maroon);
   /* blues: info / toggle / focus */
-  --toggle-on-ring: #b9d8f2;
-  --link-strong: #2563c9;
-  --focus-ring: #5aabff;
-  --slate: #555577;
-  --spinner-track: #cfd8e3;
-  --blue-tint5: #eeeeff;
+  --toggle-on-ring: color-mix(in srgb, var(--ctp-blue) 40%, var(--ctp-base));
+  --link-strong: var(--ctp-blue);
+  --focus-ring: var(--ctp-blue);
+  --slate: var(--ctp-subtext1);
+  --spinner-track: var(--ctp-surface1);
+  --blue-tint5: color-mix(in srgb, var(--ctp-blue) 6%, var(--ctp-base));
   /* type colors / cream / warn */
-  --cream: #fffef9;
-  --type-object: #8a6cb5;
-  --type-array: #a07b2f;
-  --warn: #ffb74d;
-  --warn-fg: #8a6300;
-  --warn-bg: #fff4e5;
-  --warn-bg2: #fff8e1;
+  --cream: var(--ctp-base);
+  --type-object: var(--ctp-mauve);
+  --type-array: var(--ctp-peach);
+  --warn: var(--ctp-yellow);
+  --warn-fg: color-mix(in srgb, var(--ctp-yellow) 65%, var(--ctp-text) 35%);
+  --warn-bg: color-mix(in srgb, var(--ctp-yellow) 12%, var(--ctp-base));
+  --warn-bg2: color-mix(in srgb, var(--ctp-yellow) 7%, var(--ctp-base));
+}
+
+/* Catppuccin Mocha — overriding only the primitives re-themes every var(--ctp-*) above */
+:root[data-theme="mocha"] {
+  --ctp-rosewater: #f5e0dc;
+  --ctp-flamingo: #f2cdcd;
+  --ctp-pink: #f5c2e7;
+  --ctp-mauve: #cba6f7;
+  --ctp-red: #f38ba8;
+  --ctp-maroon: #eba0ac;
+  --ctp-peach: #fab387;
+  --ctp-yellow: #f9e2af;
+  --ctp-green: #a6e3a1;
+  --ctp-teal: #94e2d5;
+  --ctp-sky: #89dceb;
+  --ctp-sapphire: #74c7ec;
+  --ctp-blue: #89b4fa;
+  --ctp-lavender: #b4befe;
+  --ctp-text: #cdd6f4;
+  --ctp-subtext1: #bac2de;
+  --ctp-subtext0: #a6adc8;
+  --ctp-overlay2: #9399b2;
+  --ctp-overlay1: #7f849c;
+  --ctp-overlay0: #6c7086;
+  --ctp-surface2: #585b70;
+  --ctp-surface1: #45475a;
+  --ctp-surface0: #313244;
+  --ctp-base: #1e1e2e;
+  --ctp-mantle: #181825;
+  --ctp-crust: #11111b;
 }
 
 html,
