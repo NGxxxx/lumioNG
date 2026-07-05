@@ -125,7 +125,7 @@
             onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(i); } }}
           >
             <svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" class="tree-caret" class:tree-caret-open={isOpen}>
-              <path d={isOpen ? "M1.5 3l3 3 3-3" : "M3 1.5l3 3-3 3"} fill="#888" stroke="#888" stroke-width="0.8" fill-rule="evenodd"/>
+              <path d={isOpen ? "M1.5 3l3 3 3-3" : "M3 1.5l3 3-3 3"} fill="var(--muted)" stroke="var(--muted)" stroke-width="0.8" fill-rule="evenodd"/>
             </svg>
             <span class="tree-n">{startIndex + i + 1}</span>
             <span class="tree-brace">{"{"}</span>

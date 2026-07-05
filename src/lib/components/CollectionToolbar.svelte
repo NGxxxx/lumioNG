@@ -261,7 +261,7 @@
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
   .dd-allnone { display: flex; gap: 0.375rem; padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--bg); }
-  .dd-allnone button { flex: 1; font-size: 0.6875rem; padding: 0.125rem 0; cursor: pointer; }
+  .dd-allnone button { flex: 1; font-size: 0.6875rem; padding: 0.125rem 0; cursor: pointer; border: none; background: none; color: var(--link); }
   .locked { color: var(--gray-aa); font-size: 0.625rem; margin-left: 0.25rem; }
   /* Fields popover: pin Show/Hide-all + Apply, scroll only the field list. */
   .fields-dd { display: flex; flex-direction: column; overflow: hidden; }
@@ -282,5 +282,5 @@
   .dd-x:hover { background: var(--error-bg); color: var(--error); }
   .dd-add { display: block; font-size: 0.75rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
   .dd-add select { margin-left: 0.375rem; font-size: 0.75rem; }
-  .dd-clear { margin-top: 0.375rem; width: 100%; font-size: 0.6875rem; cursor: pointer; }
+  .dd-clear { margin-top: 0.375rem; width: 100%; font-size: 0.6875rem; cursor: pointer; border: none; background: none; color: var(--link); }
 </style>

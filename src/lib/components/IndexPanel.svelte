@@ -91,12 +91,16 @@
 <style>
   .indexpanel { display: flex; flex-direction: column; height: 100%; }
   .toolbar { padding: 0.375rem 0.5rem; border-bottom: 1px solid var(--bg); }
+  .toolbar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .toolbar button:hover { background: var(--bg); }
   .scroller { overflow: auto; flex: 1; }
   table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; user-select: none; }
   th, td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; text-align: left; }
   th { position: sticky; top: 0; background: var(--zebra); }
   .keys { font-family: ui-monospace, monospace; }
   td.act, th.act { white-space: nowrap; }
+  td.act button { border: none; background: none; cursor: pointer; }
+  td.act button:disabled { cursor: default; }
   .danger { color: var(--error); }
   .danger:disabled { color: var(--gray-b8); }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
@@ -107,4 +111,7 @@
   .body { padding: 0.875rem; font-size: 0.8125rem; }
   code { background: var(--bg); padding: 0.0625rem 0.25rem; border-radius: 0.1875rem; font-family: ui-monospace, monospace; }
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
+  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  footer button:hover:not(:disabled) { background: var(--bg); }
+  footer button:disabled { color: var(--gray-b8); cursor: default; }
 </style>

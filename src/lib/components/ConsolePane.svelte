@@ -81,5 +81,5 @@
   .row-actions { display: flex; gap: 0.1875rem; flex: none; opacity: 0; }
   .entry:hover .row-actions { opacity: 1; }
   .line-btn { border: none; background: none; cursor: pointer; font-size: 0.6875rem; color: var(--muted); padding: 0 0.25rem; border-radius: 0.125rem; }
-  .line-btn:hover { color: var(--fg); background: var(--menu-hover, #d9ebf9); }
+  .line-btn:hover { color: var(--fg); background: var(--menu-hover); }
 </style>

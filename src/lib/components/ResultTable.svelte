@@ -299,7 +299,7 @@
   .loading-overlay {
     position: absolute; inset: 0; z-index: 5;
     display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-    background: rgba(255,255,255,.55); color: var(--gray-55); font-size: 0.75rem;
+    background: color-mix(in srgb, var(--panel) 65%, transparent); color: var(--gray-55); font-size: 0.75rem;
   }
   .spinner { width: 0.875rem; height: 0.875rem; border: 2px solid var(--spinner-track); border-top-color: var(--progress); border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
@@ -395,7 +395,7 @@
   .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   /* Tree-view loading hint: overlay so it doesn't disturb the 100%-height virtual scroller. */
   .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: var(--gray-77); font-size: 0.75rem;
-    background: rgba(255, 255, 255, 0.75); border-radius: 0.1875rem; z-index: 5; }
+    background: color-mix(in srgb, var(--panel) 80%, transparent); border-radius: 0.1875rem; z-index: 5; }
 
   /* ── Pager ── */
   .pager {

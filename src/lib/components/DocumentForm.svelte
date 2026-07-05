@@ -113,8 +113,8 @@
   <header>
     <!-- Pencil icon -->
     <svg width="15" height="15" viewBox="0 0 16 16" class="header-icon" aria-hidden="true">
-      <path d="M2 11l7-7 3 3-7 7H2z" fill="#f0d574" stroke="#b89534" stroke-width="0.9"/>
-      <path d="M10 3l2-2 3 3-2 2z" fill="#9fb4cc" stroke="#5b7088" stroke-width="0.8"/>
+      <path d="M2 11l7-7 3 3-7 7H2z" fill="var(--warn)" stroke="var(--fg)" stroke-width="0.9"/>
+      <path d="M10 3l2-2 3 3-2 2z" fill="var(--muted)" stroke="var(--muted)" stroke-width="0.8"/>
     </svg>
     <span class="header-title">
       {mode === "insert" ? m.document_form_title_insert() : m.document_form_title_edit()} — {db}.{coll}

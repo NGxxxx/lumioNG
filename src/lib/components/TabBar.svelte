@@ -48,26 +48,26 @@
       {#if c.kind === "host"}
         <!-- Mongo leaf / green -->
         <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
-          <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="#13aa52" stroke-width="2"/>
-          <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="#13aa52" stroke-width="2"/>
+          <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
+          <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
         </svg>
       {:else if c.kind === "database"}
         <!-- Purple cylinder -->
         <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="#8a6cb5" stroke-width="1.2"/>
-          <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" fill="none" stroke="#8a6cb5" stroke-width="1.2"/>
+          <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
+          <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
         </svg>
       {:else if c.kind === "collection"}
         <!-- Yellow table -->
         <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="#caa84e" stroke-width="1.1"/>
-          <path d="M2 6h12" stroke="#caa84e" stroke-width="0.9"/>
+          <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="var(--warn)" stroke-width="1.1"/>
+          <path d="M2 6h12" stroke="var(--warn)" stroke-width="0.9"/>
         </svg>
       {:else if c.kind === "data"}
         <!-- Blue grid -->
         <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="#2f7dd1" stroke-width="1.1"/>
-          <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="#2f7dd1" stroke-width="0.8"/>
+          <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="var(--link)" stroke-width="1.1"/>
+          <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="var(--link)" stroke-width="0.8"/>
         </svg>
       {/if}
       {c.label}
@@ -85,8 +85,8 @@
     >
       <span
         class="session-dot"
-        style="background:{sess?.color ?? '#aaa'}"
-        data-color={sess?.color ?? '#aaa'}
+        style="background:{sess?.color ?? 'var(--muted)'}"
+        data-color={sess?.color ?? 'var(--muted)'}
         aria-hidden="true"
       ></span>
       <button class="label" onclick={() => onActivateWork(t.id)} title={workTitle(t)}>{workTitle(t)}</button>
@@ -186,7 +186,7 @@
     color: var(--fg);
   }
 
-  .newq { align-self: flex-end; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; }
+  .newq { align-self: flex-end; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; border: none; background: none; }
   .newq:hover { background: var(--panel); }
 
   .session-dot {

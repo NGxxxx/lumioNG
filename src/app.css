@@ -103,6 +103,9 @@
   --cream: var(--ctp-base);
   --type-object: var(--ctp-mauve);
   --type-array: var(--ctp-peach);
+  /* icon paper/bg tints (multi-part decorative SVG glyphs: db/collection/index icons) */
+  --accent-bg-tint: color-mix(in srgb, var(--ctp-green) 14%, var(--panel));
+  --type-object-bg-tint: color-mix(in srgb, var(--ctp-mauve) 14%, var(--panel));
   --warn: var(--ctp-yellow);
   --warn-fg: color-mix(in srgb, var(--ctp-yellow) 65%, var(--ctp-text) 35%);
   --warn-bg: color-mix(in srgb, var(--ctp-yellow) 12%, var(--ctp-base));
@@ -150,4 +153,37 @@ body {
   font-size: var(--fs);
   color: var(--fg);
   background: var(--bg);
+}
+
+/* Form controls: unstyled by default in every browser (own background/text/caret color,
+   ignoring the page theme) — set the baseline here so no component has to repeat it.
+   Any component-scoped rule for the same element is more specific and still wins. */
+input,
+textarea,
+select {
+  color: var(--fg);
+  background: var(--panel);
+  border: 1px solid var(--gray-c4);
+  caret-color: var(--fg);
+  font: inherit;
+}
+
+/* Scrollbars: Chromium/WebView2 (-webkit-*) + Firefox (scrollbar-color) */
+* {
+  scrollbar-color: var(--gray-c4) var(--bg);
+  scrollbar-width: thin;
+}
+::-webkit-scrollbar {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+::-webkit-scrollbar-track {
+  background: var(--bg);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--gray-c4);
+  border-radius: 0.3125rem;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--gray-aa);
 }

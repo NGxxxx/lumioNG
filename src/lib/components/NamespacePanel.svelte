@@ -147,8 +147,8 @@
 
 <div class="ns-search">
   <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16">
-    <circle cx="7" cy="7" r="4.2" fill="none" stroke="#888" stroke-width="1.3"/>
-    <path d="M10.2 10.2 L14 14" stroke="#888" stroke-width="1.5"/>
+    <circle cx="7" cy="7" r="4.2" fill="none" stroke="var(--muted)" stroke-width="1.3"/>
+    <path d="M10.2 10.2 L14 14" stroke="var(--muted)" stroke-width="1.5"/>
   </svg>
   <input
     type="text"
@@ -185,9 +185,9 @@
       >
         <svg aria-hidden="true" class="session-caret" width="9" height="9" viewBox="0 0 9 9">
           {#if isCollapsed}
-            <path d="M2 1.5 L6 4.5 L2 7.5z" fill="#888"/>
+            <path d="M2 1.5 L6 4.5 L2 7.5z" fill="var(--muted)"/>
           {:else}
-            <path d="M1.5 2 L4.5 6 L7.5 2z" fill="#888"/>
+            <path d="M1.5 2 L4.5 6 L7.5 2z" fill="var(--muted)"/>
           {/if}
         </svg>
       </button>
@@ -199,19 +199,19 @@
       {#if sess.status === "connecting"}
         <span class="status-spinner" aria-label="Connecting" title="Connecting…">
           <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" class="spin">
-            <circle cx="12" cy="12" r="9" fill="none" stroke="#888" stroke-width="2.5" stroke-dasharray="30 56"/>
+            <circle cx="12" cy="12" r="9" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-dasharray="30 56"/>
           </svg>
         </span>
       {:else if sess.status === "error"}
         <span class="status-error" aria-label="Connection error" title="Connection error">
           <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10">
-            <circle cx="5" cy="5" r="4" fill="#ef4444" stroke="none"/>
+            <circle cx="5" cy="5" r="4" fill="var(--danger)" stroke="none"/>
           </svg>
         </span>
       {:else}
         <span class="status-ok" aria-label="Connected" title="Connected">
           <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10">
-            <circle cx="5" cy="5" r="4" fill="#22c55e" stroke="none"/>
+            <circle cx="5" cy="5" r="4" fill="var(--ok-strong)" stroke="none"/>
           </svg>
         </span>
       {/if}

@@ -77,7 +77,7 @@
     align-items: center;
     height: 1.5rem;
     flex: none;
-    background: var(--bg, #f0f0f0);
+    background: var(--bg);
     border-top: 1px solid var(--border);
     font-size: 0.6875rem;
     color: var(--gray-55);
@@ -100,7 +100,7 @@
   }
 
   .idle.busy {
-    color: var(--accent, #13aa52);
+    color: var(--accent);
   }
 
   .dot {
@@ -113,6 +113,6 @@
   }
 
   .dot.on {
-    background: var(--accent, #13aa52);
+    background: var(--accent);
   }
 </style>

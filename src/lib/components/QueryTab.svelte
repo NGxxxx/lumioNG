@@ -248,7 +248,7 @@
   .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
   .result-pane { flex: 1; min-height: 0; overflow: hidden; background: var(--panel); }
   .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
-  .cancel-btn { font-size: 0.75rem; cursor: pointer; }
+  .cancel-btn { font-size: 0.75rem; cursor: pointer; border: none; background: none; color: var(--link); }
   .value-display { height: 100%; overflow: auto; padding: 0.5rem 0.75rem; }
   .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--fg); white-space: pre-wrap; word-break: break-word; }
   .pager { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.75rem; padding: 0 0.625rem; border-top: 1px solid var(--border); background: var(--zebra-alt); font-size: 0.75rem; }

@@ -261,11 +261,18 @@
 
   .options { flex: 0 0 12.25rem; display: flex; flex-direction: column; gap: 0.625rem; }
   fieldset { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.625rem; margin: 0; }
+  fieldset button[type="button"]:not(.link) { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  fieldset button[type="button"]:not(.link):hover { background: var(--bg); }
   legend { font-size: 0.75rem; color: var(--gray-77); padding: 0 0.25rem; }
   .options label { display: block; padding: 0.125rem 0; }
   .dir { margin: 0.375rem 0 0; color: var(--th-fg); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
+  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  footer button:hover:not(:disabled) { background: var(--bg); }
+  footer button:disabled { color: var(--gray-b8); cursor: default; }
+  footer .primary { background: var(--run); color: var(--panel); border: none; }
+  footer .primary:hover:not(:disabled) { background: var(--run-hover); }
   .primary { font-weight: 600; }
 
   /* Running phase */

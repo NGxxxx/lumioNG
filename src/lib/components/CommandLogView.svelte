@@ -3,7 +3,7 @@
   import { sessionManager } from "../stores/sessionManager.svelte";
 
   function dotColor(sessionId: string): string {
-    return sessionManager.sessions.find((s) => s.id === sessionId)?.color ?? "#aaa";
+    return sessionManager.sessions.find((s) => s.id === sessionId)?.color ?? "var(--muted)";
   }
 </script>
 

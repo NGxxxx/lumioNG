@@ -112,8 +112,8 @@
         <div class="filter-bar">
           <div class="filter-input-wrap">
             <svg aria-hidden="true" class="filter-icon" width="12" height="12" viewBox="0 0 16 16">
-              <circle cx="6.5" cy="6.5" r="5" fill="none" stroke="#aaa" stroke-width="1.5"/>
-              <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#aaa" stroke-width="1.5" stroke-linecap="round"/>
+              <circle cx="6.5" cy="6.5" r="5" fill="none" stroke="var(--muted)" stroke-width="1.5"/>
+              <line x1="10.5" y1="10.5" x2="14" y2="14" stroke="var(--muted)" stroke-width="1.5" stroke-linecap="round"/>
             </svg>
             <input
               class="filter-input"
@@ -145,8 +145,8 @@
               title={`${c.host} — ${m.session_manager_row_connect_hint()}`}
             >
               <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" class="session-icon">
-                <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
-                <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
+                <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "var(--muted)"} stroke-width="1.8"/>
+                <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "var(--muted)"} stroke-width="1.8"/>
               </svg>
               <span class="session-name">{c.label}</span>
               <span class="session-last" title={absoluteLast(c)}>{formatLast(c)}</span>

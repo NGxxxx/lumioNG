@@ -57,5 +57,8 @@
   .body p { margin: 0 0 0.375rem; }
   code { background: var(--bg); padding: 0.0625rem 0.25rem; border-radius: 0.1875rem; font-family: ui-monospace, monospace; }
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
+  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  footer button:hover:not(:disabled) { background: var(--bg); }
+  footer button:disabled { color: var(--gray-b8); cursor: default; }
   .danger { color: var(--error); }
 </style>

@@ -41,6 +41,8 @@
 <style>
   .schemapanel { overflow: auto; height: 100%; padding: 0.75rem 1rem; font-size: 0.8125rem; }
   .bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.625rem; }
+  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .bar button:hover { background: var(--bg); }
   .bar input { width: 4.375rem; }
   .muted { color: var(--muted); }
   table.schema { border-collapse: collapse; width: 100%; user-select: none; }
