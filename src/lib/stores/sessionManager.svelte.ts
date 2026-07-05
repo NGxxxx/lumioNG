@@ -1,4 +1,5 @@
 import { connect, disconnect } from "../api/connection";
+import { touchConnection } from "../api/connections";
 import { createNamespaceTree } from "./namespaceTree.svelte";
 import { createHostStatus } from "./hostStatus.svelte";
 import { createSessionNav, type SessionNav, type WorkTab, type Active, type ContextKind, type DocumentTabInit } from "./navigation.svelte";
@@ -111,6 +112,7 @@ export function createSessionManager() {
       commandLog.push(connectCmd(maskUri(p.uri)), id);
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });
+      if (p.connId != null) touchConnection(p.connId).catch(() => {}); // non-critical metadata; never blocks connect
       await s.tree.refresh();
       s.host.load(); // fire-and-forget; feeds Host tab + status bar
       return true;
@@ -129,6 +131,7 @@ export function createSessionManager() {
       commandLog.push(connectCmd(maskUri(s.uri)), id);
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });
+      if (s.connId != null) touchConnection(s.connId).catch(() => {}); // non-critical metadata; never blocks connect
       await s.tree.refresh();
       s.host.load(); // fire-and-forget; feeds Host tab + status bar
     } catch {

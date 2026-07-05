@@ -51,6 +51,9 @@ pub struct SavedConnection {
     /// Legacy pre-Phase-E field; present only in un-migrated files. Cleared on next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
+    /// Epoch millis of the last successful connect; `None` if never connected.
+    #[serde(default)]
+    pub last_connected_at: Option<i64>,
 }
 
 impl SavedConnection {
@@ -70,6 +73,7 @@ impl SavedConnection {
             extra_options: input.extra_options,
             read_only: input.read_only,
             uri: None,
+            last_connected_at: None,
         }
     }
 }
@@ -84,7 +88,9 @@ pub fn upsert(
     match id {
         Some(id) => {
             if let Some(c) = list.iter_mut().find(|c| c.id == id) {
+                let last_connected_at = c.last_connected_at;
                 *c = SavedConnection::from_input(id, input);
+                c.last_connected_at = last_connected_at;
             }
             list
         }
@@ -98,6 +104,14 @@ pub fn upsert(
 
 pub fn remove(list: Vec<SavedConnection>, id: u32) -> Vec<SavedConnection> {
     list.into_iter().filter(|c| c.id != id).collect()
+}
+
+/// Stamp `id`'s `last_connected_at` with `now_ms`. Unknown `id` is a no-op (mirrors `upsert`).
+pub fn touch(mut list: Vec<SavedConnection>, id: u32, now_ms: i64) -> Vec<SavedConnection> {
+    if let Some(c) = list.iter_mut().find(|c| c.id == id) {
+        c.last_connected_at = Some(now_ms);
+    }
+    list
 }
 
 /// Missing file → Ok(vec![]); malformed JSON → Parse error; other read errors → Io error.
@@ -232,6 +246,39 @@ mod tests {
         std::fs::write(&path, r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
         let list = load(&path).unwrap();
         assert!(!list[0].read_only);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn touch_stamps_last_connected_at() {
+        let list = upsert(vec![], None, input("a", "ha"));
+        let out = touch(list, 1, 12345);
+        assert_eq!(out[0].last_connected_at, Some(12345));
+    }
+
+    #[test]
+    fn touch_unknown_id_is_noop() {
+        let list = upsert(vec![], None, input("a", "ha"));
+        let out = touch(list.clone(), 99, 12345);
+        assert_eq!(out, list);
+    }
+
+    #[test]
+    fn upsert_existing_preserves_last_connected_at() {
+        let list = touch(upsert(vec![], None, input("old", "oldhost")), 1, 999);
+        let out = upsert(list, Some(1), input("new", "newhost"));
+        assert_eq!(out[0].last_connected_at, Some(999));
+    }
+
+    #[test]
+    fn legacy_file_defaults_last_connected_at_none() {
+        let dir = std::env::temp_dir().join("monglumio_test_registry_last_connected_default");
+        let path = dir.join("connections.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
+        let list = load(&path).unwrap();
+        assert_eq!(list[0].last_connected_at, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

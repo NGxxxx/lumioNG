@@ -19,6 +19,8 @@ export interface SavedConnection extends ConnectionInput {
   id: number;
   /** Legacy pre-Phase-E field; present only on un-migrated entries. */
   uri?: string | null;
+  /** Epoch millis of the last successful connect; null/undefined if never connected. */
+  lastConnectedAt?: number | null;
 }
 
 export async function listConnections(): Promise<SavedConnection[]> {
@@ -34,4 +36,8 @@ export async function saveConnection(
 
 export async function deleteConnection(id: number): Promise<SavedConnection[]> {
   return await invoke<SavedConnection[]>("delete_connection", { id });
+}
+
+export async function touchConnection(id: number): Promise<SavedConnection[]> {
+  return await invoke<SavedConnection[]>("touch_connection", { id });
 }

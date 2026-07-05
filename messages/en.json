@@ -225,6 +225,7 @@
   "session_manager_filter_clear_title": "Clear filter",
   "session_manager_col_name": "Session name",
   "session_manager_col_last": "Last connect",
+  "session_manager_last_never": "Never connected",
   "session_manager_empty": "No saved sessions",
   "session_manager_row_connect_hint": "double-click to connect",
   "session_manager_label_session_name": "Session name:",

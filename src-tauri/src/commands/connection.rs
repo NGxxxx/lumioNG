@@ -106,3 +106,20 @@ pub fn delete_connection(app: AppHandle, id: u32) -> Result<Vec<SavedConnection>
     registry::save(&path, &list)?;
     Ok(list)
 }
+
+fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Stamp a saved connection's last-connected time. Called after a successful `connect`;
+/// failures here must never block the connect flow (see `sessionManager.focusOrOpen`).
+#[tauri::command]
+pub fn touch_connection(app: AppHandle, id: u32) -> Result<Vec<SavedConnection>, AppError> {
+    let path = registry_path(&app)?;
+    let list = registry::touch(registry::load(&path)?, id, now_ms());
+    registry::save(&path, &list)?;
+    Ok(list)
+}

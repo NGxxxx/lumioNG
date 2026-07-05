@@ -10,11 +10,13 @@ import { errorMessage } from "../api/errors";
 import { validateProfile } from "../domain/connections";
 import { buildProfileUri, parseUri, type ConnectionProfile } from "../domain/connuri";
 import { obfuscate, deobfuscate } from "../domain/secret";
+import { sortByRecency } from "../domain/recency";
 
 
 /** Registry of saved connections + the structured add/edit form + connect. Components only bind. */
 export function createConnectionRegistry() {
   let list = $state<SavedConnection[]>([]);
+  const sortedList = $derived(sortByRecency(list));
   let error = $state<string | null>(null);
   let formError = $state<string | null>(null);
   let editingId = $state<number | null>(null);
@@ -143,7 +145,7 @@ export function createConnectionRegistry() {
   }
 
   return {
-    get list() { return list; },
+    get list() { return sortedList; },
     get error() { return error; },
     get formError() { return formError; },
     get editingId() { return editingId; },

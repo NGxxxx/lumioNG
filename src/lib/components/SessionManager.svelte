@@ -4,6 +4,8 @@
   import type { SavedConnection } from "../api/connections";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import * as m from "$lib/paraglide/messages";
+  import { appLocale } from "../stores/locale.svelte";
+  import { relativeParts } from "../domain/recency";
 
   let {
     onconnected,
@@ -46,6 +48,16 @@
   function newSession() {
     selectedId = null;
     r.clearForm();
+  }
+
+  function formatLast(c: SavedConnection): string {
+    if (c.lastConnectedAt == null) return m.session_manager_last_never();
+    const { value, unit } = relativeParts(c.lastConnectedAt, Date.now());
+    return new Intl.RelativeTimeFormat(appLocale.current, { numeric: "auto" }).format(value, unit);
+  }
+
+  function absoluteLast(c: SavedConnection): string | undefined {
+    return c.lastConnectedAt == null ? undefined : new Date(c.lastConnectedAt).toLocaleString();
   }
 
   async function openSession() {
@@ -137,7 +149,7 @@
                 <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "#888"} stroke-width="1.8"/>
               </svg>
               <span class="session-name">{c.label}</span>
-              <span class="session-last">—</span>
+              <span class="session-last" title={absoluteLast(c)}>{formatLast(c)}</span>
             </div>
           {/each}
           {#if filteredList.length === 0}
@@ -435,7 +447,7 @@
   }
   .session-icon { flex: none; }
   .session-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .session-last { width: 5.625rem; color: var(--muted); font-size: 0.6875rem; }
+  .session-last { width: 5.625rem; color: var(--muted); font-size: 0.6875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .session-empty { padding: 1rem 0.5rem; color: var(--muted); font-size: 0.75rem; }
 
   /* ── Right column: connection form ── */

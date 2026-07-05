@@ -102,5 +102,3 @@ src-tauri/src/
   - Backend: `cargo test --manifest-path src-tauri/Cargo.toml`.
 - Design docs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/` (organized by
   slice).
-- Git: branch `<type>/<kebab>` off `master`; single-line commit `<type>: <description>`, no
-  co-author (see personal conventions in `~/.claude/CLAUDE.md`).

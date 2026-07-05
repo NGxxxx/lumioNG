@@ -225,6 +225,7 @@
   "session_manager_filter_clear_title": "Xóa bộ lọc",
   "session_manager_col_name": "Tên phiên",
   "session_manager_col_last": "Lần kết nối gần nhất",
+  "session_manager_last_never": "Chưa từng kết nối",
   "session_manager_empty": "Chưa có phiên nào được lưu",
   "session_manager_row_connect_hint": "nhấp đúp để kết nối",
   "session_manager_label_session_name": "Tên phiên:",
