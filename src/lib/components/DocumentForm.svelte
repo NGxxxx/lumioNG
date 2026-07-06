@@ -90,15 +90,15 @@
       saving = true;
       const sid = sessionManager.active?.id ?? "";
       if (mode === "insert") {
-        await insertDocument(sid, db, coll, docJson);
-        commandLog.push(insertCmd(coll, docJson), sid);
+        await commandLog.pushTimed(insertCmd(coll, docJson), sid, () =>
+          insertDocument(sid, db, coll, docJson));
       } else {
         if (idText === null) {
           error = m.document_form_no_id_error();
           return;
         }
-        await replaceDocument(sid, db, coll, idText, docJson);
-        commandLog.push(replaceCmd(coll, idText, docJson), sid);
+        await commandLog.pushTimed(replaceCmd(coll, idText, docJson), sid, () =>
+          replaceDocument(sid, db, coll, idText, docJson));
       }
       onsaved();
     } catch (e) {

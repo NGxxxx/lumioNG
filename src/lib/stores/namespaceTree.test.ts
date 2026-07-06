@@ -16,6 +16,7 @@ import * as admin from "../api/admin";
 import * as connection from "../api/connection";
 import { createNamespaceTree, type NavLike } from "./namespaceTree.svelte";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
 import {
   createCollectionCmd,
   dropCollectionCmd,
@@ -23,6 +24,7 @@ import {
   duplicateCollectionCmd,
   dropDatabaseCmd,
   truncateCollectionCmd,
+  listDatabasesCmd,
 } from "../domain/mongosh";
 
 const createColl = admin.createCollection as ReturnType<typeof vi.fn>;
@@ -154,46 +156,76 @@ describe("namespaceTree command log", () => {
     commandLog.clear();
   });
 
-  it("createCollection pushes createCollectionCmd to the command log", async () => {
+  it("createCollection pushes createCollectionCmd with a measured duration", async () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.createCollection("shop", "users");
-    expect(commandLog.entries.at(-1)!.text).toBe(createCollectionCmd("users"));
+    // createCollection also awaits refresh(), which now logs its own listDatabasesCmd read
+    // afterward, so the DDL command is no longer necessarily the last entry.
+    const entry = commandLog.entries.find((e) => e.text === createCollectionCmd("users"));
+    expect(entry).toBeDefined();
+    expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
   });
 
   it("createDatabase pushes createCollectionCmd to the command log", async () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.createDatabase("shop", "orders");
-    expect(commandLog.entries.at(-1)!.text).toBe(createCollectionCmd("orders"));
+    expect(commandLog.entries.some((e) => e.text === createCollectionCmd("orders"))).toBe(true);
   });
 
   it("dropCollection pushes dropCollectionCmd to the command log", async () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.dropCollection("shop", "users");
-    expect(commandLog.entries.at(-1)!.text).toBe(dropCollectionCmd("users"));
+    expect(commandLog.entries.some((e) => e.text === dropCollectionCmd("users"))).toBe(true);
   });
 
   it("renameCollection pushes renameCollectionCmd(from, to) to the command log", async () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.renameCollection("shop", "old", "new");
-    expect(commandLog.entries.at(-1)!.text).toBe(renameCollectionCmd("old", "new"));
+    expect(commandLog.entries.some((e) => e.text === renameCollectionCmd("old", "new"))).toBe(true);
   });
 
   it("duplicateCollection pushes duplicateCollectionCmd(source, target) to the command log", async () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.duplicateCollection("shop", "orders", "orders_copy");
-    expect(commandLog.entries.at(-1)!.text).toBe(duplicateCollectionCmd("orders", "orders_copy"));
+    expect(commandLog.entries.some((e) => e.text === duplicateCollectionCmd("orders", "orders_copy"))).toBe(true);
   });
 
   it("dropDatabase pushes dropDatabaseCmd to the command log", async () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.dropDatabase("shop");
-    expect(commandLog.entries.at(-1)!.text).toBe(dropDatabaseCmd());
+    expect(commandLog.entries.some((e) => e.text === dropDatabaseCmd())).toBe(true);
   });
 
   it("truncate pushes truncateCollectionCmd to the command log", async () => {
     truncateMock.mockResolvedValue(5);
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.truncate("shop", "orders");
-    expect(commandLog.entries.at(-1)!.text).toBe(truncateCollectionCmd("orders"));
+    expect(commandLog.entries.some((e) => e.text === truncateCollectionCmd("orders"))).toBe(true);
+  });
+
+  it("refresh pushes listDatabasesCmd with a measured duration", async () => {
+    listNs.mockResolvedValueOnce([{ name: "d", collections: ["c"] }]);
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
+    await nt.refresh();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("namespaceTree activity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listNs.mockResolvedValue([]);
+  });
+
+  it("createCollection reports busy while the DDL call is in flight", async () => {
+    let sawBusy = false;
+    createColl.mockImplementationOnce(async () => {
+      sawBusy = activity.busy;
+    });
+    const nt = createNamespaceTree("conn:1", mockNav().nav);
+    await nt.createCollection("d", "users");
+    expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
   });
 });

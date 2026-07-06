@@ -96,3 +96,10 @@ export const sampleCmd = (coll: string, size: number) =>
 
 export const aggregateCmd = (coll: string, pipeline: string) =>
   `${c(coll)}.aggregate(${pipeline})`;
+
+export const listIndexesCmd = (coll: string) => `${c(coll)}.getIndexes()`;
+
+export const listDatabasesCmd = () => "show dbs";
+
+export const findOneByIdCmd = (coll: string, idJson: string) =>
+  `${c(coll)}.findOne({ "_id": ${idJson} })`;

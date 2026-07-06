@@ -6,12 +6,20 @@ const api = vi.hoisted(() => ({
   exportQueryProgress: vi.fn(),
 }));
 const files = vi.hoisted(() => ({ writeTextFile: vi.fn() }));
-const cmdlog = vi.hoisted(() => ({ push: vi.fn() }));
+const cmdlog = vi.hoisted(() => ({
+  push: vi.fn(),
+  pushTimed: vi.fn(async (text: string, sessionId: string, fn: () => Promise<unknown>) => {
+    const result = await fn();
+    cmdlog.push(text, sessionId, 0);
+    return result;
+  }),
+}));
 vi.mock("../api/documents", () => api);
 vi.mock("../api/files", () => files);
 vi.mock("./commandLog.svelte", () => ({ commandLog: cmdlog }));
 
 import { createExportJob } from "./exportJob.svelte";
+import { activity } from "./activity.svelte";
 
 beforeEach(() => {
   api.exportJsonProgress.mockReset().mockResolvedValue(3);
@@ -98,6 +106,24 @@ it("bson target: exportBsonProgress called, row done with count", async () => {
     "conn:1", "shop", "orders", "{}", null, null, "/out/shop.orders.bson", expect.any(Function));
   expect(job.rows[0].status).toBe("done");
   expect(job.rows[0].done).toBe(2);
+});
+
+it("run reports busy for the whole batch, not per-file", async () => {
+  let sawBusyDuringFirst = false;
+  api.exportJsonProgress.mockImplementationOnce(async () => {
+    sawBusyDuringFirst = activity.busy;
+    return 3;
+  });
+  const job = createExportJob("conn:1", {
+    format: "json", dir: "/out",
+    targets: [
+      { db: "a", coll: "x", source: qSource },
+      { db: "a", coll: "y", source: qSource },
+    ],
+  });
+  await job.run();
+  expect(sawBusyDuringFirst).toBe(true);
+  expect(activity.busy).toBe(false);
 });
 
 it("live progress: onProg callback updates done/total", async () => {

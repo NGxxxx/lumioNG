@@ -134,10 +134,10 @@
     io = null; ioErr = null;
     try {
       const tree = sessionById(sessionId)?.tree ?? null;
-      const res = path.toLowerCase().endsWith(".bson")
-        ? await importBson(sessionId, db, coll, path)
-        : await importDocuments(sessionId, db, coll, path);
-      commandLog.push(importCmd(db, coll, path), sessionId);
+      const res = await commandLog.pushTimed(importCmd(db, coll, path), sessionId, () =>
+        path.toLowerCase().endsWith(".bson")
+          ? importBson(sessionId, db, coll, path)
+          : importDocuments(sessionId, db, coll, path));
       const detail = res.errors.length ? ` ${res.errors.join("; ")}` : "";
       io = m.namespace_panel_import_done({ inserted: res.inserted, failed: res.failed }) + detail;
       await tree?.refresh();

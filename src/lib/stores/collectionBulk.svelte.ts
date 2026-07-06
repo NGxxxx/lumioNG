@@ -4,6 +4,7 @@ import { errorMessage } from "../api/errors";
 import { idInFilter } from "../domain/selection";
 import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
 import { countCmd, updateManyCmd, deleteManyCmd } from "../domain/mongosh";
 
 /** Bulk update/delete flow (dialog state, count, run) for one collection view. */
@@ -66,13 +67,15 @@ export function createCollectionBulk(opts: {
     bulkCounting = true;
     bulkError = null;
     bulkResult = null;
+    activity.begin(m.common_running());
     try {
-      bulkCount = await countDocuments(sessionId, db, coll, bulkFilter);
-      commandLog.push(countCmd(coll, bulkFilter), sessionId);
+      bulkCount = await commandLog.pushTimed(countCmd(coll, bulkFilter), sessionId, () =>
+        countDocuments(sessionId, db, coll, bulkFilter));
     } catch (e) {
       bulkError = errorMessage(e);
     } finally {
       bulkCounting = false;
+      activity.end();
     }
   }
 
@@ -87,9 +90,10 @@ export function createCollectionBulk(opts: {
       }
       bulkUpdateError = null;
       bulkRunning = true;
+      activity.begin(m.common_running());
       try {
-        const res = await updateMany(sessionId, db, coll, filter, r.json, allowAll);
-        commandLog.push(updateManyCmd(coll, filter, r.json), sessionId);
+        const res = await commandLog.pushTimed(updateManyCmd(coll, filter, r.json), sessionId, () =>
+          updateMany(sessionId, db, coll, filter, r.json, allowAll));
         bulkResult = m.collection_view_bulk_updated({ modified: res.modified, matched: res.matched });
         await reload();
         bulkCount = null;
@@ -97,12 +101,14 @@ export function createCollectionBulk(opts: {
         bulkError = errorMessage(e);
       } finally {
         bulkRunning = false;
+        activity.end();
       }
     } else if (bulkMode === "delete") {
       bulkRunning = true;
+      activity.begin(m.common_running());
       try {
-        const n = await deleteMany(sessionId, db, coll, filter, allowAll);
-        commandLog.push(deleteManyCmd(coll, filter), sessionId);
+        const n = await commandLog.pushTimed(deleteManyCmd(coll, filter), sessionId, () =>
+          deleteMany(sessionId, db, coll, filter, allowAll));
         bulkResult = m.collection_view_bulk_deleted({ n });
         await reload();
         bulkCount = null;
@@ -110,6 +116,7 @@ export function createCollectionBulk(opts: {
         bulkError = errorMessage(e);
       } finally {
         bulkRunning = false;
+        activity.end();
       }
     }
   }

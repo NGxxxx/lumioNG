@@ -16,6 +16,7 @@
   import { settings } from "../stores/settings.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
+  import { nextResultView } from "../domain/scriptOutcome";
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
   import type { Doc } from "../domain/doc";
 
@@ -34,9 +35,26 @@
     e.stopPropagation();
     menu = { x: e.clientX, y: e.clientY };
   }
+  /** Re-sync the result view to what the just-finished run produced (Grid/Tree/Console). */
+  function applyPostRunView() {
+    resultView = nextResultView(resultView, v.displayMode, v.consoleEntries.length > 0);
+  }
+
+  async function runQuery() {
+    bottomTab = "result";
+    await v.run(currentDb);
+    applyPostRunView();
+  }
+
+  async function runSelectionQuery() {
+    bottomTab = "result";
+    await v.runSelection(currentDb);
+    applyPostRunView();
+  }
+
   function onMenu(action: string) {
-    if (action === "run") v.run(currentDb);
-    else if (action === "runSelection") v.runSelection(currentDb);
+    if (action === "run") runQuery();
+    else if (action === "runSelection") runSelectionQuery();
     menu = null;
   }
 
@@ -97,7 +115,7 @@
       value={v.statementText}
       onChange={(t) => (v.statementText = t)}
       onSelectionChange={v.setSelection}
-      onRun={() => v.run(currentDb)}
+      onRun={runQuery}
       complete={completionSource} />
   </div>
 
@@ -199,9 +217,15 @@
 {#if v.destructiveConfirm}
   <DestructiveConfirm
     ops={v.destructiveConfirm.ops}
-    onrun={() => v.confirmRun()}
+    onrun={async () => {
+      await v.confirmRun();
+      applyPostRunView();
+    }}
     oncancel={() => v.cancelConfirm()}
-    ondontask={() => v.dontAskAgain()} />
+    ondontask={async () => {
+      await v.dontAskAgain();
+      applyPostRunView();
+    }} />
 {/if}
 
 {#if v.editBlurPending}

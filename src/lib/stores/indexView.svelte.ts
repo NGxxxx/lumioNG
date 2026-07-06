@@ -2,7 +2,9 @@ import { listIndexes, createIndex, dropIndex } from "../api/indexes";
 import { parseIndexList, buildIndexKeys, validateIndexFields, type IndexInfo } from "../domain/indexes";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
-import { createIndexCmd, dropIndexCmd } from "../domain/mongosh";
+import { activity } from "./activity.svelte";
+import * as m from "$lib/paraglide/messages";
+import { createIndexCmd, dropIndexCmd, listIndexesCmd } from "../domain/mongosh";
 
 /**
  * State and actions for the Indexes tab of a collection.
@@ -15,14 +17,17 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
 
   async function refresh() {
     loading = true;
+    activity.begin(m.common_running());
     try {
-      const raw = await listIndexes(sessionId, db, coll);
+      const raw = await commandLog.pushTimed(listIndexesCmd(coll), sessionId, () =>
+        listIndexes(sessionId, db, coll));
       indexes = parseIndexList(raw);
       error = null;
     } catch (e) {
       error = errorMessage(e);
     } finally {
       loading = false;
+      activity.end();
     }
   }
 
@@ -35,18 +40,31 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
     if (msg) throw msg;
     const keys = buildIndexKeys(fields);
     const trimmed = name && name.trim() ? name.trim() : null;
-    await createIndex(sessionId, db, coll, keys, unique, trimmed);
+    activity.begin(m.common_running());
     const opts: Record<string, unknown> = {};
     if (unique) opts.unique = true;
     if (trimmed) opts.name = trimmed;
-    commandLog.push(createIndexCmd(coll, JSON.parse(keys) as Record<string, unknown>, Object.keys(opts).length ? opts : undefined), sessionId);
-    await refresh();
+    try {
+      await commandLog.pushTimed(
+        createIndexCmd(coll, JSON.parse(keys) as Record<string, unknown>, Object.keys(opts).length ? opts : undefined),
+        sessionId,
+        () => createIndex(sessionId, db, coll, keys, unique, trimmed),
+      );
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   async function drop(name: string) {
-    await dropIndex(sessionId, db, coll, name);
-    commandLog.push(dropIndexCmd(coll, name), sessionId);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(dropIndexCmd(coll, name), sessionId, () =>
+        dropIndex(sessionId, db, coll, name));
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   return {

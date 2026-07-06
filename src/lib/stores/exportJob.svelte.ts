@@ -4,6 +4,8 @@ import { toCsv, toJsonArray } from "../domain/exporter";
 import { exportFileName, aggregateProgress } from "../domain/exportPlan";
 import { findCmd, exportBsonCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
+import * as m from "$lib/paraglide/messages";
 import { errorMessage } from "../api/errors";
 import type { Doc } from "../domain/doc";
 
@@ -71,25 +73,25 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
       if (t.source.kind === "memory") {
         const data = t.source.docs;
         const content = config.format === "csv" ? toCsv(data) : toJsonArray(data);
-        await writeTextFile(path, content);
+        await commandLog.pushTimed(findCmd({ coll: t.coll, filter: "{}" }), sessionId, () =>
+          writeTextFile(path, content));
         update(i, { status: "done", done: data.length, total: data.length });
-        commandLog.push(findCmd({ coll: t.coll, filter: "{}" }), sessionId);
         return;
       }
       const { filter, sort, projection } = t.source;
       if (config.format === "bson") {
-        const n = await exportBsonProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg);
+        const n = await commandLog.pushTimed(exportBsonCmd(t.db, t.coll, path), sessionId, () =>
+          exportBsonProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg));
         update(i, { status: "done", done: n, total: n });
-        commandLog.push(exportBsonCmd(t.db, t.coll, path), sessionId);
       } else if (config.format === "json") {
-        const n = await exportJsonProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg);
+        const n = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
+          exportJsonProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg));
         update(i, { status: "done", done: n, total: n });
-        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }), sessionId);
       } else {
-        const data = await exportQueryProgress(sessionId, t.db, t.coll, filter, sort, projection, onProg);
+        const data = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
+          exportQueryProgress(sessionId, t.db, t.coll, filter, sort, projection, onProg));
         await writeTextFile(path, toCsv(data));
         update(i, { status: "done", done: data.length, total: data.length });
-        commandLog.push(findCmd({ coll: t.coll, filter, sort, projection }), sessionId);
       }
     } catch (e) {
       update(i, { status: "error", error: errorMessage(e) });
@@ -99,9 +101,14 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
   async function run() {
     if (running || finished) return;
     running = true;
-    for (let i = 0; i < config.targets.length; i++) {
-      if (cancelled) break;
-      await runOne(i);
+    activity.begin(m.common_running());
+    try {
+      for (let i = 0; i < config.targets.length; i++) {
+        if (cancelled) break;
+        await runOne(i);
+      }
+    } finally {
+      activity.end();
     }
     running = false;
     finished = true;

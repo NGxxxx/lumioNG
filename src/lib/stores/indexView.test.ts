@@ -9,7 +9,8 @@ vi.mock("../api/indexes", () => ({
 import * as api from "../api/indexes";
 import { createIndexView } from "./indexView.svelte";
 import { commandLog } from "./commandLog.svelte";
-import { dropIndexCmd } from "../domain/mongosh";
+import { activity } from "./activity.svelte";
+import { dropIndexCmd, listIndexesCmd } from "../domain/mongosh";
 
 const listIdx = api.listIndexes as ReturnType<typeof vi.fn>;
 const createIdx = api.createIndex as ReturnType<typeof vi.fn>;
@@ -74,11 +75,40 @@ describe("indexView command log", () => {
     commandLog.clear();
   });
 
-  it("drop pushes dropIndexCmd to the command log", async () => {
+  it("drop pushes dropIndexCmd to the command log with a measured duration", async () => {
     dropIdx.mockResolvedValueOnce(undefined);
     listIdx.mockResolvedValueOnce([]);
     const v = createIndexView("conn:1", "d", "c");
     await v.drop("age_1");
-    expect(commandLog.entries.at(-1)!.text).toBe(dropIndexCmd("c", "age_1"));
+    const entry = commandLog.entries.find((e) => e.text === dropIndexCmd("c", "age_1"));
+    expect(entry).toBeDefined();
+    expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("refresh pushes listIndexesCmd with a measured duration", async () => {
+    listIdx.mockResolvedValueOnce([]);
+    const v = createIndexView("conn:1", "d", "c");
+    await v.refresh();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+describe("indexView activity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listIdx.mockResolvedValue([]);
+  });
+
+  it("refresh reports busy while listIndexes is in flight", async () => {
+    let sawBusy = false;
+    listIdx.mockImplementationOnce(async () => {
+      sawBusy = activity.busy;
+      return [];
+    });
+    const v = createIndexView("conn:1", "d", "c");
+    await v.refresh();
+    expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
   });
 });

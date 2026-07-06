@@ -12,6 +12,7 @@ vi.mock("../api/server", () => ({
 import { createSessionManager } from "./sessionManager.svelte";
 import { SESSION_COLORS } from "../domain/session";
 import { connect } from "../api/connection";
+import { commandLog } from "./commandLog.svelte";
 
 describe("sessionManager", () => {
   let sm: ReturnType<typeof createSessionManager>;
@@ -22,6 +23,16 @@ describe("sessionManager", () => {
     expect(sm.sessions.length).toBe(1);
     expect(sm.activeId).toBe("conn:1");
     expect(sm.active?.label).toBe("local");
+  });
+
+  it("focusOrOpen pushes connectCmd with a measured duration", async () => {
+    commandLog.clear();
+    await sm.focusOrOpen({ connId: 1, uri: "mongodb://h", label: "local" });
+    // focusOrOpen also awaits tree.refresh(), which pushes its own listDatabasesCmd entry
+    // afterward, so the connect entry is no longer necessarily last — find it by content.
+    const entry = commandLog.entries.find((e) => e.text.includes("mongosh"));
+    expect(entry).toBeDefined();
+    expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
   });
 
   it("focuses instead of duplicating a saved connection", async () => {

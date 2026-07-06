@@ -33,8 +33,7 @@ export function createDatabaseCollections(sessionId: string, db: string, tree: T
     loading = true;
     rows = names().map((name) => ({ name, state: "idle", stats: null, error: null }));
     try {
-      summary = parseDbStats(await dbStats(sessionId, db));
-      commandLog.push(dbStatsCmd(), sessionId);
+      summary = parseDbStats(await commandLog.pushTimed(dbStatsCmd(), sessionId, () => dbStats(sessionId, db)));
       error = null;
     } catch (e) {
       error = errorMessage(e);
@@ -48,8 +47,9 @@ export function createDatabaseCollections(sessionId: string, db: string, tree: T
     if (!row || row.state === "loading") return;
     row.state = "loading";
     try {
-      const s = parseCollStats(await collStats(sessionId, db, name));
-      commandLog.push(collStatsCmd(name), sessionId);
+      const s = parseCollStats(
+        await commandLog.pushTimed(collStatsCmd(name), sessionId, () => collStats(sessionId, db, name)),
+      );
       row.stats = s;
       row.state = "loaded";
       row.error = null;

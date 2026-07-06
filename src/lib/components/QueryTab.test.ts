@@ -173,6 +173,39 @@ describe("QueryTab", () => {
     }
   });
 
+  it("running a query switches bottomTab back to Result if Command log was active", async () => {
+    const { container, getByText, queryByText } = render(QueryTab, { props });
+    await fireEvent.click(getByText("Command log"));
+    expect(queryByText(/Edit the statement/)).toBeNull();
+
+    const editor = container.querySelector(".editor")!;
+    await fireEvent.contextMenu(editor);
+    await fireEvent.click(getByText("Run"));
+
+    expect(getByText(/Edit the statement/)).toBeTruthy();
+  });
+
+  it("auto-switches resultView to console after a run whose result is console-only", async () => {
+    const consoleOnlyStub = {
+      ...stub,
+      get consoleEntries() { return [{ level: "log" as const, text: "hi" }]; },
+    };
+    activeStub = consoleOnlyStub as unknown as typeof stub;
+    try {
+      const { container, getByText } = render(QueryTab, { props });
+      const editor = container.querySelector(".editor")!;
+      await fireEvent.contextMenu(editor);
+      await fireEvent.click(getByText("Run"));
+      // resultView is assigned after `await v.run(...)` resolves, one microtask past the click's
+      // own flush — a zero-delay timer drains that queue before we assert on the DOM.
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(getByText("Console").classList.contains("active")).toBe(true);
+    } finally {
+      activeStub = stub;
+    }
+  });
+
   it("passes edit handlers to the grid only when editable", () => {
     // Swap the store to an editable result for this test.
     activeStub = editableStub as unknown as typeof stub;

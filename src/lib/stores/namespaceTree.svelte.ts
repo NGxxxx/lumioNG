@@ -4,6 +4,8 @@ import * as admin from "../api/admin";
 import { errorMessage } from "../api/errors";
 import { validateCollectionName, validateDatabaseName } from "../domain/namespaces";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
+import * as m from "$lib/paraglide/messages";
 import {
   createCollectionCmd,
   dropCollectionCmd,
@@ -11,6 +13,7 @@ import {
   duplicateCollectionCmd,
   dropDatabaseCmd,
   truncateCollectionCmd,
+  listDatabasesCmd,
 } from "../domain/mongosh";
 
 export type NavLike = {
@@ -31,20 +34,29 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
   let error = $state<string | null>(null);
 
   async function refresh() {
+    activity.begin(m.common_running());
     try {
-      databases = await listNamespaces(sessionId);
+      databases = await commandLog.pushTimed(listDatabasesCmd(), sessionId, () =>
+        listNamespaces(sessionId));
       error = null;
     } catch (e) {
       error = errorMessage(e);
+    } finally {
+      activity.end();
     }
   }
 
   async function createCollection(db: string, coll: string) {
     const msg = validateCollectionName(coll);
     if (msg) throw msg;
-    await admin.createCollection(sessionId, db, coll);
-    commandLog.push(createCollectionCmd(coll), sessionId);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(createCollectionCmd(coll), sessionId, () =>
+        admin.createCollection(sessionId, db, coll));
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   async function createDatabase(db: string, coll: string) {
@@ -52,46 +64,76 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
     if (dbMsg) throw dbMsg;
     const collMsg = validateCollectionName(coll);
     if (collMsg) throw collMsg;
-    await admin.createCollection(sessionId, db, coll);
-    commandLog.push(createCollectionCmd(coll), sessionId);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(createCollectionCmd(coll), sessionId, () =>
+        admin.createCollection(sessionId, db, coll));
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   async function dropCollection(db: string, coll: string) {
-    await admin.dropCollection(sessionId, db, coll);
-    commandLog.push(dropCollectionCmd(coll), sessionId);
-    nav.closeForCollection(db, coll);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(dropCollectionCmd(coll), sessionId, () =>
+        admin.dropCollection(sessionId, db, coll));
+      nav.closeForCollection(db, coll);
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   async function renameCollection(db: string, from: string, to: string) {
     const msg = validateCollectionName(to);
     if (msg) throw msg;
-    await admin.renameCollection(sessionId, db, from, to);
-    commandLog.push(renameCollectionCmd(from, to), sessionId);
-    nav.renameCollectionTabs(db, from, to);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(renameCollectionCmd(from, to), sessionId, () =>
+        admin.renameCollection(sessionId, db, from, to));
+      nav.renameCollectionTabs(db, from, to);
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   async function duplicateCollection(db: string, source: string, target: string) {
     const msg = validateCollectionName(target);
     if (msg) throw msg;
-    await admin.duplicateCollection(sessionId, db, source, target);
-    commandLog.push(duplicateCollectionCmd(source, target), sessionId);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(duplicateCollectionCmd(source, target), sessionId, () =>
+        admin.duplicateCollection(sessionId, db, source, target));
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   async function dropDatabase(db: string) {
-    await admin.dropDatabase(sessionId, db);
-    commandLog.push(dropDatabaseCmd(), sessionId);
-    nav.closeForDatabase(db);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(dropDatabaseCmd(), sessionId, () =>
+        admin.dropDatabase(sessionId, db));
+      nav.closeForDatabase(db);
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   async function truncate(db: string, coll: string) {
-    await admin.truncateCollection(sessionId, db, coll);
-    commandLog.push(truncateCollectionCmd(coll), sessionId);
-    await refresh();
+    activity.begin(m.common_running());
+    try {
+      await commandLog.pushTimed(truncateCollectionCmd(coll), sessionId, () =>
+        admin.truncateCollection(sessionId, db, coll));
+      await refresh();
+    } finally {
+      activity.end();
+    }
   }
 
   /** Drop all cached namespaces (e.g. on disconnect) so the sidebar shows no stale DBs. */

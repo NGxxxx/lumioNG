@@ -13,6 +13,9 @@ import { idJson } from "../domain/docid";
 import { describeValue } from "../domain/extjson";
 import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath } from "../domain/celledit";
 import { errorMessage } from "../api/errors";
+import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
+import { updateOneCmd, deleteManyCmd } from "../domain/mongosh";
 import * as m from "$lib/paraglide/messages";
 import { idInFilter, rangeBetween, effectiveRows as effectiveRowsOf } from "../domain/selection";
 import { toJsonArray, toCsv } from "../domain/exporter";
@@ -127,11 +130,13 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     editing = null;
     showingAll = false;
     const startedAt = Date.now();
+    activity.begin(m.status_bar_running_query());
     try {
       const outcome = await runScript(sessionId, db, script, {
         timeoutMs: settings.queryTimeoutMs,
         cap: settings.queryResultCapUnlimited ? 0 : settings.queryResultCap,
       });
+      commandLog.push(script, sessionId, Date.now() - startedAt);
 
       // Console entries (always present)
       consoleEntries = outcome.console;
@@ -181,6 +186,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     } finally {
       lastElapsedMs = Date.now() - startedAt;
       running = false;
+      activity.end();
     }
   }
 
@@ -214,9 +220,9 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     pending = null;
   }
 
-  function dontAskAgain() {
+  async function dontAskAgain() {
     settings.setSuppressDestructiveWarning(true);
-    void confirmRun();
+    await confirmRun();
   }
 
   function cancel() {
@@ -283,6 +289,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   async function commitEdit() {
     if (!editing || saving || !provenance) return;
+    const prov = provenance;
     const { row, key } = editing;
     const doc = pageDocs[row];
     if (!doc) { editing = null; return; }
@@ -294,7 +301,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const update = buildSetUpdate(key, r.value);
     saving = true;
     try {
-      await updateOne(sessionId, provenance.db, provenance.coll, filter, update, false);
+      await commandLog.pushTimed(updateOneCmd(prov.coll, filter, update), sessionId, () =>
+        updateOne(sessionId, prov.db, prov.coll, filter, update, false));
       const gi = absIndex(row);
       docs = docs.map((d, i) => (i === gi ? setByPath(d, key, r.value) : d));
       editing = null;
@@ -406,6 +414,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   async function deleteSelected(picked: Doc[]) {
     if (!provenance) return;
+    const prov = provenance;
     const ids: string[] = [];
     for (const d of picked) {
       const id = idJson(d);
@@ -414,7 +423,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     }
     const filter = idInFilter(ids);
     try {
-      await deleteMany(sessionId, provenance.db, provenance.coll, filter, false);
+      await commandLog.pushTimed(deleteManyCmd(prov.coll, filter), sessionId, () =>
+        deleteMany(sessionId, prov.db, prov.coll, filter, false));
       docs = docs.filter((d) => { const id = idJson(d); return id === null || !ids.includes(id); });
       selected = new Set();
       anchor = null;

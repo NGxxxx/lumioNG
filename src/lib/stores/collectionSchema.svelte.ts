@@ -2,6 +2,8 @@ import { sampleDocuments } from "../api/documents";
 import { inferSchema, type FieldSchema } from "../domain/schema";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
+import * as m from "$lib/paraglide/messages";
 import { sampleCmd } from "../domain/mongosh";
 
 /** State + loader for the Collection tab's schema-as-table view. */
@@ -14,17 +16,19 @@ export function createCollectionSchema(sessionId: string, db: string, coll: stri
 
   async function refresh() {
     loading = true;
+    activity.begin(m.common_running());
     try {
-      const docs = await sampleDocuments(sessionId, db, coll, "{}", sampleSize);
+      const docs = await commandLog.pushTimed(sampleCmd(coll, sampleSize), sessionId, () =>
+        sampleDocuments(sessionId, db, coll, "{}", sampleSize));
       const schema = inferSchema(docs);
       fields = schema.fields;
       actualSampled = schema.sampleSize;
-      commandLog.push(sampleCmd(coll, sampleSize), sessionId);
       error = null;
     } catch (e) {
       error = errorMessage(e);
     } finally {
       loading = false;
+      activity.end();
     }
   }
 

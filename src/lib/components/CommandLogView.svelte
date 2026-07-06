@@ -5,14 +5,20 @@
   function dotColor(sessionId: string): string {
     return sessionManager.sessions.find((s) => s.id === sessionId)?.color ?? "var(--muted)";
   }
+
+  function timeOf(at: number): string {
+    return new Date(at).toLocaleTimeString([], { hour12: false });
+  }
 </script>
 
 <div class="body">
   {#each commandLog.entries as e (e.n)}
     <div class="line">
       <span class="n">{e.n}</span>
+      <span class="time">{timeOf(e.at)}</span>
       <span class="session-dot" style="background:{dotColor(e.sessionId)}"></span>
       <code>{e.text}</code>
+      <span class="took">({e.tookMs}ms)</span>
     </div>
   {/each}
 </div>
@@ -22,6 +28,8 @@
   .line { display: flex; align-items: center; padding: 0 0.5rem; white-space: pre; }
   .line:hover { background: var(--bg); }
   .n { width: 1.75rem; flex: none; text-align: right; color: var(--gray-b8); margin-right: 0.375rem; user-select: none; }
+  .time { flex: none; color: var(--muted); margin-right: 0.375rem; }
   .session-dot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; flex: none; margin-right: 0.375rem; }
   code { font-family: var(--mono); }
+  .took { flex: none; color: var(--muted); margin-left: 0.375rem; }
 </style>

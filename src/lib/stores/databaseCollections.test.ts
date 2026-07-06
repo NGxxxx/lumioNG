@@ -4,6 +4,7 @@ vi.mock("../api/stats", () => ({ collStats: vi.fn(), dbStats: vi.fn(), collOptio
 
 import * as api from "../api/stats";
 import { createDatabaseCollections } from "./databaseCollections.svelte";
+import { commandLog } from "./commandLog.svelte";
 
 const collStats = api.collStats as ReturnType<typeof vi.fn>;
 const dbStats = api.dbStats as ReturnType<typeof vi.fn>;
@@ -15,6 +16,7 @@ describe("createDatabaseCollections", () => {
     vi.clearAllMocks();
     dbStats.mockResolvedValue(JSON.stringify({ db: "shop", collections: { $numberInt: "2" } }));
     collStats.mockResolvedValue(JSON.stringify({ ns: "shop.users", count: { $numberInt: "5" } }));
+    commandLog.clear();
   });
 
   it("init lists rows from the tree and loads the dbStats summary", async () => {
@@ -70,5 +72,21 @@ describe("createDatabaseCollections", () => {
     const row = v.rows.find((r) => r.name === "users")!;
     expect(row.state).toBe("error");
     expect(row.error).toContain("nope");
+  });
+
+  it("init pushes dbStatsCmd with a measured duration", async () => {
+    const v = createDatabaseCollections("conn:1", "shop", tree);
+    await v.init();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("loadStats pushes collStatsCmd with a measured duration", async () => {
+    const v = createDatabaseCollections("conn:1", "shop", tree);
+    await v.init();
+    commandLog.clear();
+    await v.loadStats("users");
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
   });
 });

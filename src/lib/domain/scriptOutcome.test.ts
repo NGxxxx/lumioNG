@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { displayMode, parseRows } from "./scriptOutcome";
+import { displayMode, parseRows, nextResultView } from "./scriptOutcome";
 import type { ScriptOutcome } from "../api/script";
 
 const base: ScriptOutcome = { console: [], result: { kind: "none" }, provenance: null, capped: false, error: null };
@@ -21,5 +21,34 @@ describe("displayMode", () => {
 describe("parseRows", () => {
   it("parses ExtJSON rows", () => {
     expect(parseRows([`{"a":1}`])).toEqual([{ a: 1 }]);
+  });
+});
+
+describe("nextResultView", () => {
+  it("console-only output (mode none, has console text) always jumps to console", () => {
+    expect(nextResultView("grid", "none", true)).toBe("console");
+    expect(nextResultView("tree", "none", true)).toBe("console");
+    expect(nextResultView("console", "none", true)).toBe("console");
+  });
+
+  it("leaving console on a docs result lands on grid", () => {
+    expect(nextResultView("console", "grid-editable", false)).toBe("grid");
+    expect(nextResultView("console", "grid-readonly", false)).toBe("grid");
+  });
+
+  it("leaving console on an ack/value result lands on grid", () => {
+    expect(nextResultView("console", "ack", false)).toBe("grid");
+    expect(nextResultView("console", "value", false)).toBe("grid");
+  });
+
+  it("already on grid/tree with a docs result keeps the current choice", () => {
+    expect(nextResultView("grid", "grid-editable", false)).toBe("grid");
+    expect(nextResultView("tree", "grid-editable", false)).toBe("tree");
+    expect(nextResultView("tree", "grid-readonly", false)).toBe("tree");
+  });
+
+  it("none with no console output leaves the current view unchanged", () => {
+    expect(nextResultView("grid", "none", false)).toBe("grid");
+    expect(nextResultView("tree", "none", false)).toBe("tree");
   });
 });

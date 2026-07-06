@@ -26,7 +26,7 @@ import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { findCmd, replaceCmd, deleteOneCmd, deleteManyCmd } from "../domain/mongosh";
+import { findCmd, replaceCmd, deleteOneCmd, deleteManyCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { createCollectionBulk } from "./collectionBulk.svelte";
 
 /**
@@ -107,10 +107,12 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   async function loadSchema() {
     const gen = generation;
+    const startedAt = Date.now();
     try {
       const sample = await sampleDocuments(sessionId, db, coll, appliedFilter, 100);
       if (gen !== generation) return;
       schema = inferSchema(sample);
+      commandLog.push(sampleCmd(coll, 100), sessionId, Date.now() - startedAt);
     } catch {
       if (gen !== generation) return;
       schema = null; // degrade: columns fall back to row-derived
@@ -130,20 +132,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     allShown = false;
     error = null;
     const gen = generation;
+    const startedAt = Date.now();
     activity.begin(m.status_bar_loading());
     try {
       const skip = skipFor(currentPage, pageSize);
-      commandLog.push(
-        findCmd({
-          coll,
-          filter: appliedFilter,
-          projection: buildProjection(hidden),
-          sort: buildSort(sortKeys),
-          skip,
-          limit: pageSize,
-        }),
-        sessionId,
-      );
       const batch = await queryPage(
         sessionId,
         db,
@@ -155,6 +147,18 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         buildProjection(hidden),
       );
       if (gen !== generation) return;
+      commandLog.push(
+        findCmd({
+          coll,
+          filter: appliedFilter,
+          projection: buildProjection(hidden),
+          sort: buildSort(sortKeys),
+          skip,
+          limit: pageSize,
+        }),
+        sessionId,
+        Date.now() - startedAt,
+      );
       docs = batch;
       ensureColWidths();
       clearSelection();
@@ -218,6 +222,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     loading = true;
     error = null;
     const gen = generation;
+    const startedAt = Date.now();
     activity.begin(m.status_bar_loading());
     try {
       const all = await exportQueryProgress(
@@ -233,6 +238,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       commandLog.push(
         findCmd({ coll, filter: appliedFilter, projection: buildProjection(hidden), sort: buildSort(sortKeys) }),
         sessionId,
+        Date.now() - startedAt,
       );
       docs = all;
       ensureColWidths();
@@ -281,7 +287,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     if (hidden.size === 0) return d;
     const id = idJson(d);
     if (id === null) return d;
-    return (await fetchFullDoc(sessionId, db, coll, id)) ?? d;
+    const full = await commandLog.pushTimed(findOneByIdCmd(coll, id), sessionId, () =>
+      fetchFullDoc(sessionId, db, coll, id));
+    return full ?? d;
   }
 
   /** Full document for opening an edit tab (component handles the actual open). */
@@ -398,8 +406,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     }
     saving = true;
     try {
-      await replaceDocument(sessionId, db, coll, id, JSON.stringify(newDoc));
-      commandLog.push(replaceCmd(coll, id, JSON.stringify(newDoc)), sessionId);
+      const docJson = JSON.stringify(newDoc);
+      await commandLog.pushTimed(replaceCmd(coll, id, docJson), sessionId, () =>
+        replaceDocument(sessionId, db, coll, id, docJson));
       docs[row] = newDoc;
       docs = [...docs];
       editing = null;
@@ -649,8 +658,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     }
     const filter = idInFilter(sel.ids);
     try {
-      await deleteMany(sessionId, db, coll, filter, false);
-      commandLog.push(deleteManyCmd(coll, filter), sessionId);
+      await commandLog.pushTimed(deleteManyCmd(coll, filter), sessionId, () =>
+        deleteMany(sessionId, db, coll, filter, false));
       await reloadDocs(); // reloadDocs → loadPage → clearSelection
     } catch (e) {
       error = errorMessage(e);
@@ -675,8 +684,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       return;
     }
     try {
-      await deleteDocument(sessionId, db, coll, id);
-      commandLog.push(deleteOneCmd(coll, id), sessionId);
+      await commandLog.pushTimed(deleteOneCmd(coll, id), sessionId, () =>
+        deleteDocument(sessionId, db, coll, id));
       await reloadDocs();
     } catch (e) {
       error = errorMessage(e);

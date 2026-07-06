@@ -21,7 +21,8 @@ vi.mock("../api/files", () => ({
 import * as documents from "../api/documents";
 import { createCollectionView } from "./collectionView.svelte";
 import { commandLog } from "./commandLog.svelte";
-import { findCmd, deleteOneCmd } from "../domain/mongosh";
+import { activity } from "./activity.svelte";
+import { findCmd, deleteOneCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
 const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
@@ -457,6 +458,19 @@ describe("bulk operations", () => {
     expect(v.bulkUpdateError).toBeTruthy();
   });
 
+  it("countBulk reports busy while counting is in flight", async () => {
+    let sawBusy = false;
+    cnt.mockImplementationOnce(async () => {
+      sawBusy = activity.busy;
+      return 7;
+    });
+    const v = createCollectionView("conn:1", "db", "c");
+    v.openBulk("delete");
+    await v.countBulk();
+    expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
+  });
+
   it("runBulk with a non-empty filter runs directly (no gate)", async () => {
     cnt.mockResolvedValue(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }]); // init
@@ -475,6 +489,16 @@ describe("bulk operations", () => {
     await v.runBulk();
     expect(v.bulkTypeConfirm).toBe(false);
     expect(deleteMany).toHaveBeenCalledWith("conn:1", "d", "c", '{"x":1}', false);
+  });
+
+  it("countBulk pushes countCmd to the command log with a measured duration", async () => {
+    cnt.mockResolvedValueOnce(7);
+    const v = createCollectionView("conn:1", "db", "c");
+    v.openBulk("delete");
+    commandLog.clear();
+    await v.countBulk();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -572,16 +596,20 @@ describe("command log instrumentation", () => {
     commandLog.clear();
   });
 
-  it("loading a page pushes findCmd to the command log", async () => {
+  it("loading a page pushes findCmd to the command log with a measured duration", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([]);
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
-    expect(commandLog.entries.some((e) => e.text === findCmd({ coll: "c", filter: "{}", projection: null, sort: null, limit: 50 }))).toBe(true);
+    const entry = commandLog.entries.find(
+      (e) => e.text === findCmd({ coll: "c", filter: "{}", projection: null, sort: null, limit: 50 }),
+    );
+    expect(entry).toBeDefined();
+    expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("confirmDelete pushes deleteOneCmd to the command log", async () => {
+  it("confirmDelete pushes deleteOneCmd to the command log with a measured duration", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([]);
@@ -593,7 +621,36 @@ describe("command log instrumentation", () => {
     commandLog.clear();
     v.requestDelete(v.docs[0]);
     await v.confirmDelete();
-    expect(commandLog.entries.some((e) => e.text === deleteOneCmd("c", '{"$oid":"a"}'))).toBe(true);
+    const entry = commandLog.entries.find((e) => e.text === deleteOneCmd("c", '{"$oid":"a"}'));
+    expect(entry).toBeDefined();
+    expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("loadSchema pushes sampleCmd to the command log with a measured duration", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    const entry = commandLog.entries.find((e) => e.text === sampleCmd("c", 100));
+    expect(entry).toBeDefined();
+    expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("startEdit with an active projection pushes findOneByIdCmd to the command log", async () => {
+    cnt.mockResolvedValue(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hi" }]); // init
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hi" }]);
+    full.mockResolvedValueOnce({ _id: { $oid: "a" }, x: "hi", secret: 9 });
+    v.resetProjectionDraft();
+    v.toggleHiddenDraft("secret");
+    await v.applyProjection();
+    commandLog.clear();
+    await v.startEdit(0, "x");
+    expect(commandLog.entries.some((e) => e.text === findOneByIdCmd("c", '{"$oid":"a"}'))).toBe(true);
   });
 });
 

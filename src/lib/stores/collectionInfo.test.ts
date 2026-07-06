@@ -8,6 +8,7 @@ vi.mock("../api/stats", () => ({
 
 import * as api from "../api/stats";
 import { createCollectionInfo } from "./collectionInfo.svelte";
+import { commandLog } from "./commandLog.svelte";
 
 const collStats = api.collStats as ReturnType<typeof vi.fn>;
 const collOptions = api.collOptions as ReturnType<typeof vi.fn>;
@@ -20,6 +21,7 @@ describe("createCollectionInfo", () => {
     vi.clearAllMocks();
     collStats.mockResolvedValue("{}");
     collOptions.mockResolvedValue("{}");
+    commandLog.clear();
   });
 
   it("init calls both api endpoints and parses results", async () => {
@@ -39,5 +41,14 @@ describe("createCollectionInfo", () => {
     const v = createCollectionInfo("conn:1", "d", "c");
     await v.refresh();
     expect(v.error).toContain("boom");
+  });
+
+  it("init pushes collStatsCmd with a measured duration", async () => {
+    collStats.mockResolvedValueOnce(statsJson);
+    collOptions.mockResolvedValueOnce(optsJson);
+    const v = createCollectionInfo("conn:1", "d", "c");
+    await v.init();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
   });
 });

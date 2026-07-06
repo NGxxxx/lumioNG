@@ -108,8 +108,8 @@ export function createSessionManager() {
     sessions = [...sessions, s];
     activeId = id;
     try {
-      await connect(id, p.uri, p.readOnly ?? false);
-      commandLog.push(connectCmd(maskUri(p.uri)), id);
+      await commandLog.pushTimed(connectCmd(maskUri(p.uri)), id, () =>
+        connect(id, p.uri, p.readOnly ?? false));
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });
       if (p.connId != null) touchConnection(p.connId).catch(() => {}); // non-critical metadata; never blocks connect
@@ -127,8 +127,8 @@ export function createSessionManager() {
     if (!s) return;
     patchSession(id, { status: "connecting" });
     try {
-      await connect(id, s.uri, s.readOnly);
-      commandLog.push(connectCmd(maskUri(s.uri)), id);
+      await commandLog.pushTimed(connectCmd(maskUri(s.uri)), id, () =>
+        connect(id, s.uri, s.readOnly));
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });
       if (s.connId != null) touchConnection(s.connId).catch(() => {}); // non-critical metadata; never blocks connect

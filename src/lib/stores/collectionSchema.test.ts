@@ -4,6 +4,8 @@ vi.mock("../api/documents", () => ({ sampleDocuments: vi.fn() }));
 
 import * as api from "../api/documents";
 import { createCollectionSchema } from "./collectionSchema.svelte";
+import { activity } from "./activity.svelte";
+import { commandLog } from "./commandLog.svelte";
 
 const sampleDocuments = api.sampleDocuments as ReturnType<typeof vi.fn>;
 
@@ -46,5 +48,39 @@ describe("createCollectionSchema", () => {
     const v = createCollectionSchema("conn:1", "shop", "users");
     await v.refresh();
     expect(v.error).toContain("boom");
+  });
+});
+
+describe("collectionSchema activity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sampleDocuments.mockResolvedValue([]);
+  });
+
+  it("refresh reports busy while sampleDocuments is in flight", async () => {
+    let sawBusy = false;
+    sampleDocuments.mockImplementationOnce(async () => {
+      sawBusy = activity.busy;
+      return [];
+    });
+    const v = createCollectionSchema("conn:1", "shop", "users");
+    await v.refresh();
+    expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
+  });
+});
+
+describe("collectionSchema command log", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sampleDocuments.mockResolvedValue([]);
+    commandLog.clear();
+  });
+
+  it("refresh pushes sampleCmd with a measured duration", async () => {
+    const v = createCollectionSchema("conn:1", "shop", "users");
+    await v.refresh();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
   });
 });

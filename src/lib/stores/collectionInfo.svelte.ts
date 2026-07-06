@@ -19,10 +19,10 @@ export function createCollectionInfo(sessionId: string, db: string, coll: string
   async function refresh() {
     loading = true;
     try {
-      const [s, o] = await Promise.all([collStats(sessionId, db, coll), collOptions(sessionId, db, coll)]);
+      const [s, o] = await commandLog.pushTimed(collStatsCmd(coll), sessionId, () =>
+        Promise.all([collStats(sessionId, db, coll), collOptions(sessionId, db, coll)]));
       stats = parseCollStats(s);
       options = parseCollOptions(o);
-      commandLog.push(collStatsCmd(coll), sessionId);
       error = null;
     } catch (e) {
       error = errorMessage(e);

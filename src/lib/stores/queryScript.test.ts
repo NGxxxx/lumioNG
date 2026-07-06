@@ -18,6 +18,9 @@ import { runScript, cancelScript } from "../api/script";
 import * as docsApi from "../api/documents";
 import { createQueryScript } from "./queryScript.svelte";
 import { settings } from "./settings.svelte";
+import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
+import { updateOneCmd, deleteManyCmd } from "../domain/mongosh";
 
 const sampleDocuments = docsApi.sampleDocuments as ReturnType<typeof vi.fn>;
 const updateOne = docsApi.updateOne as ReturnType<typeof vi.fn>;
@@ -487,5 +490,69 @@ describe("selection / delete / menu (editable grid)", () => {
     expect(deleteMany).toHaveBeenCalledWith("sess", "d", "c", `{"_id":{"$in":[1,3]}}`, false);
     expect(s.docs.map((d) => d._id)).toEqual([2]);
     expect([...s.selected]).toEqual([]);
+  });
+});
+
+describe("queryScript command log + activity", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    commandLog.clear();
+  });
+
+  it("execute pushes the exact script text that ran, with a measured duration", async () => {
+    (runScript as any).mockResolvedValue({
+      console: [], result: { kind: "none" }, provenance: null, capped: false, error: null,
+    });
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.text).toBe("db.c.find()");
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("execute begins/ends the shared activity indicator", async () => {
+    let sawBusy = false;
+    (runScript as any).mockImplementation(async () => {
+      sawBusy = activity.busy;
+      return { console: [], result: { kind: "none" }, provenance: null, capped: false, error: null };
+    });
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
+  });
+
+  it("commitEdit pushes updateOneCmd to the command log with a measured duration", async () => {
+    (runScript as any).mockResolvedValue({
+      console: [], result: { kind: "docs", rows: [`{"_id":1,"name":"A"}`] },
+      provenance: { db: "d", coll: "c" }, capped: false, error: null,
+    });
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    commandLog.clear();
+    s.startEdit(0, "name");
+    s.editText = "Z";
+    await s.commitEdit();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.text).toBe(updateOneCmd("c", `{"_id": 1}`, `{"$set":{"name":"Z"}}`));
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("deleteSelected pushes deleteManyCmd to the command log with a measured duration", async () => {
+    (runScript as any).mockResolvedValue({
+      console: [], result: { kind: "docs", rows: [`{"_id":1,"name":"A"}`, `{"_id":2,"name":"B"}`] },
+      provenance: { db: "d", coll: "c" }, capped: false, error: null,
+    });
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.clickRow(0, { ctrl: false, shift: false });
+    const fakeEvent = { preventDefault() {}, stopPropagation() {}, clientX: 1, clientY: 1 } as unknown as MouseEvent;
+    s.openMenu(fakeEvent, 0, "name");
+    commandLog.clear();
+    s.onMenuSelect("deleteSelected");
+    await s.confirmDeleteRun();
+    const entry = commandLog.entries.at(-1)!;
+    expect(entry.text).toBe(deleteManyCmd("c", `{"_id":{"$in":[1]}}`));
+    expect(entry.tookMs).toBeGreaterThanOrEqual(0);
   });
 });

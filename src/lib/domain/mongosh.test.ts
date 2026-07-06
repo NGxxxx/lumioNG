@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { aggregateCmd, distinctCmd, insertManyCmd, updateOneCmd, replaceOneFilterCmd, deleteOneFilterCmd } from "./mongosh";
+import { aggregateCmd, distinctCmd, insertManyCmd, updateOneCmd, replaceOneFilterCmd, deleteOneFilterCmd, listIndexesCmd, listDatabasesCmd, findOneByIdCmd } from "./mongosh";
 
 describe("aggregateCmd", () => {
   it("wraps the pipeline in db.getCollection(...).aggregate(...)", () => {
@@ -39,5 +39,19 @@ describe("write command-log helpers", () => {
   });
   it("deleteOneFilterCmd", () => {
     expect(deleteOneFilterCmd("c", '{ "a": 1 }')).toBe('db.getCollection("c").deleteOne({ "a": 1 })');
+  });
+});
+
+describe("read command-log helpers", () => {
+  it("listIndexesCmd", () => {
+    expect(listIndexesCmd("orders")).toBe('db.getCollection("orders").getIndexes()');
+  });
+  it("listDatabasesCmd", () => {
+    expect(listDatabasesCmd()).toBe("show dbs");
+  });
+  it("findOneByIdCmd", () => {
+    expect(findOneByIdCmd("orders", '{"$oid":"a"}')).toBe(
+      'db.getCollection("orders").findOne({ "_id": {"$oid":"a"} })',
+    );
   });
 });
