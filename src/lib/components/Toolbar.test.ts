@@ -1,7 +1,8 @@
 // src/lib/components/Toolbar.test.ts
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import Toolbar from "./Toolbar.svelte";
+import { settings } from "../stores/settings.svelte";
 
 const base = { connected: true, canNewDoc: true, onsession: vi.fn(), onrefresh: vi.fn(), onnewdocument: vi.fn(), onToggleLog: vi.fn() };
 
@@ -37,6 +38,21 @@ describe("Toolbar", () => {
     expect(btn.disabled).toBe(false);
     await fireEvent.click(btn);
     expect(onToggleLog).toHaveBeenCalled();
+  });
+});
+
+describe("Toolbar Wrap toggle", () => {
+  beforeEach(() => settings.setWrapLongLines(false));
+
+  it("is always enabled and toggles settings.wrapLongLines on each click", async () => {
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    const btn = getByLabelText("Wrap") as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
+    expect(settings.wrapLongLines).toBe(false);
+    await fireEvent.click(btn);
+    expect(settings.wrapLongLines).toBe(true);
+    await fireEvent.click(btn);
+    expect(settings.wrapLongLines).toBe(false);
   });
 });
 

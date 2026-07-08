@@ -26,10 +26,14 @@ function numericKey(value: unknown): (typeof NUMERIC_KEYS)[number] | null {
   return null;
 }
 
-/** Whether a cell can be edited inline; _id and all non-scalar types cannot. */
+/** Above this length a single-line `<input>` chokes the browser on every keystroke. */
+const MAX_INLINE_EDIT_LEN = 5000;
+
+/** Whether a cell can be edited inline; _id, all non-scalar types, and oversized strings cannot. */
 export function isInlineEditable(key: string, value: unknown): boolean {
   if (key === "_id") return false;
-  if (typeof value === "string" || typeof value === "boolean" || typeof value === "number") return true;
+  if (typeof value === "string") return value.length <= MAX_INLINE_EDIT_LEN;
+  if (typeof value === "boolean" || typeof value === "number") return true;
   return numericKey(value) !== null;
 }
 

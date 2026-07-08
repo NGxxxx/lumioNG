@@ -3,8 +3,9 @@
   import { get } from "svelte/store";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
   import type { Doc } from "../domain/doc";
-  import { describeValue } from "../domain/extjson";
+  import { describeValue, truncateForDisplay } from "../domain/extjson";
   import { jsonValueColor, bsonValueKind } from "../domain/theme";
+  import { settings } from "../stores/settings.svelte";
   import * as m from "$lib/paraglide/messages";
 
   /**
@@ -138,8 +139,8 @@
           {#if isOpen}
             <div class="tree-body">
               {#each otherEntries(doc) as [key, val] (key)}
-                <div class="tree-line">
-                  <span class="tree-key">{key}</span><span class="tree-colon">:</span><span class="tree-val" style={valColor(val)}>{describeValue(val).display}</span>
+                <div class="tree-line" class:wrap={settings.wrapLongLines}>
+                  <span class="tree-key">{key}</span><span class="tree-colon">:</span><span class="tree-val" style={valColor(val)}>{truncateForDisplay(describeValue(val).display)}</span>
                 </div>
               {/each}
               <div class="tree-close">{"}"}</div>
@@ -201,11 +202,14 @@
   .tree-idval { color: var(--j-id); margin-left: 0.3125rem; }
   .tree-summary { color: var(--gray-b8); margin-left: 0.5rem; }
   .tree-body { padding: 0.0625rem 0 0.25rem 0; }
+  /* Default: no-wrap, scrolls horizontally via .tree-scroller. Toolbar's Wrap toggle enables .wrap. */
   .tree-line {
     padding: 0 0.625rem 0 1.625rem;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+  }
+  .tree-line.wrap {
+    white-space: normal;
+    word-break: break-word;
   }
   .tree-key { color: var(--j-key); }
   .tree-colon { color: var(--gray-55); }

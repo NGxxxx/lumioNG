@@ -1,5 +1,22 @@
 import { describe, it, expect } from "vitest";
-import { describeValue, numFromExt } from "./extjson";
+import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN } from "./extjson";
+
+describe("truncateForDisplay", () => {
+  it("leaves short text unchanged", () => {
+    expect(truncateForDisplay("hello")).toBe("hello");
+  });
+  it("truncates text over the threshold and appends an ellipsis", () => {
+    const big = "x".repeat(MAX_DISPLAY_LEN + 1000);
+    const out = truncateForDisplay(big);
+    expect(out.length).toBe(MAX_DISPLAY_LEN + 1);
+    expect(out.endsWith("…")).toBe(true);
+  });
+  it("does not truncate a 16MB string only up to the exact threshold boundary", () => {
+    const huge = "x".repeat(16 * 1024 * 1024);
+    const out = truncateForDisplay(huge);
+    expect(out.length).toBe(MAX_DISPLAY_LEN + 1);
+  });
+});
 
 describe("numFromExt", () => {
   it("raw number", () => expect(numFromExt(42)).toBe(42));

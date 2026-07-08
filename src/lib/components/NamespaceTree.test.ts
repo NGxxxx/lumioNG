@@ -5,18 +5,10 @@ import NamespaceTree from "./NamespaceTree.svelte";
 const databases = [{ name: "shop", collections: ["users"] }];
 
 describe("NamespaceTree", () => {
-  it("right-click connection node emits conn menu", async () => {
-    const onmenu = vi.fn();
-    const { getByText } = render(NamespaceTree, {
-      props: { databases: [], connection: { label: "local" }, onmenu },
-    });
-    await fireEvent.contextMenu(getByText("local"));
-    expect(onmenu).toHaveBeenCalledWith(expect.objectContaining({ kind: "conn" }));
-  });
-
   it("right-click collection → onmenu kind=coll", async () => {
     const onmenu = vi.fn();
     const { getByText } = render(NamespaceTree, { props: { databases, onmenu } });
+    await fireEvent.click(getByText("shop")); // expand — collections are collapsed by default
     await fireEvent.contextMenu(getByText("users"));
     expect(onmenu).toHaveBeenCalledWith(expect.objectContaining({ kind: "coll", db: "shop", coll: "users" }));
   });
@@ -35,9 +27,8 @@ describe("NamespaceTree", () => {
     const bubbled = vi.fn();
     document.addEventListener("contextmenu", bubbled);
     try {
-      const { getByText } = render(NamespaceTree, {
-        props: { databases, connection: { label: "local" }, onmenu },
-      });
+      const { getByText } = render(NamespaceTree, { props: { databases, onmenu } });
+      await fireEvent.click(getByText("shop")); // expand — collections are collapsed by default
       await fireEvent.contextMenu(getByText("users"));
       expect(onmenu).toHaveBeenCalled();
       expect(bubbled).not.toHaveBeenCalled();
@@ -49,17 +40,18 @@ describe("NamespaceTree", () => {
   it("left-click collection still calls onselect", async () => {
     const onselect = vi.fn();
     const { getByText } = render(NamespaceTree, { props: { databases, onselect } });
+    await fireEvent.click(getByText("shop")); // expand — collections are collapsed by default
     await fireEvent.click(getByText("users"));
     expect(onselect).toHaveBeenCalledWith({ db: "shop", coll: "users" });
   });
 
-  it("caret collapse/expand: clicking db hides then shows collection again", async () => {
+  it("databases start collapsed; clicking db shows then hides its collections again", async () => {
     const { getByText, queryByText } = render(NamespaceTree, { props: { databases } });
-    expect(getByText("users")).toBeTruthy();
+    expect(queryByText("users")).toBeNull(); // collapsed by default
     await fireEvent.click(getByText("shop"));
-    expect(queryByText("users")).toBeNull(); // collapsed
+    expect(getByText("users")).toBeTruthy(); // expanded
     await fireEvent.click(getByText("shop"));
-    expect(getByText("users")).toBeTruthy(); // expanded again
+    expect(queryByText("users")).toBeNull(); // collapsed again
   });
 
   it("footer shows database and collection counts", () => {
@@ -69,11 +61,6 @@ describe("NamespaceTree", () => {
     ];
     const { getByText } = render(NamespaceTree, { props: { databases: dbs } });
     expect(getByText("2 databases · 3 collections")).toBeTruthy();
-  });
-
-  it("shows connection node when connection prop is provided", () => {
-    const { getByText } = render(NamespaceTree, { props: { databases, connection: { label: "Local" } } });
-    expect(getByText("Local")).toBeTruthy();
   });
 
   it("left-click db → onselectdb (still toggles collapse/expand)", async () => {

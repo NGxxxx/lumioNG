@@ -6,6 +6,7 @@
   import ResultTree from "./ResultTree.svelte";
   import ConsolePane from "./ConsolePane.svelte";
   import CommandLogView from "./CommandLogView.svelte";
+  import { commandLog } from "../stores/commandLog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import DestructiveConfirm from "./DestructiveConfirm.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -28,6 +29,7 @@
   let bottomTab = $state<"result" | "log">("result");
   let resultView = $state<"grid" | "tree" | "console">("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
+  let editorRef: CodeEditor | undefined;
 
   // stopPropagation so ContextMenu's just-mounted window listener doesn't immediately close it.
   function openMenu(e: MouseEvent) {
@@ -55,6 +57,11 @@
   function onMenu(action: string) {
     if (action === "run") runQuery();
     else if (action === "runSelection") runSelectionQuery();
+    else if (action === "cut") editorRef?.cut();
+    else if (action === "copy") editorRef?.copy();
+    else if (action === "paste") editorRef?.paste();
+    else if (action === "clear") editorRef?.clear();
+    else if (action === "format") editorRef?.format();
     menu = null;
   }
 
@@ -112,6 +119,7 @@
 
   <div class="editor" role="none" oncontextmenu={openMenu}>
     <CodeEditor
+      bind:this={editorRef}
       value={v.statementText}
       onChange={(t) => (v.statementText = t)}
       onSelectionChange={v.setSelection}
@@ -134,6 +142,8 @@
           <button class:active={resultView === "tree"} onclick={() => (resultView = "tree")}>{m.query_tab_view_tree()}</button>
           <button class:active={resultView === "console"} onclick={() => (resultView = "console")}>{m.query_tab_view_console()}</button>
         </div>
+      {:else if bottomTab === "log"}
+        <button class="log-clear" onclick={() => commandLog.clear()}>{m.command_log_clear()}</button>
       {/if}
     </div>
 
@@ -205,7 +215,15 @@
 
 {#if menu}
   <ContextMenu x={menu.x} y={menu.y}
-    items={[{ label: m.query_tab_menu_run(), action: "run" }, { label: m.query_tab_menu_run_selection(), action: "runSelection", disabled: !v.hasSelection }]}
+    items={[
+      { label: m.query_tab_menu_run(), action: "run" },
+      { label: m.query_tab_menu_run_selection(), action: "runSelection", disabled: !v.hasSelection },
+      { label: m.query_tab_menu_cut(), action: "cut", disabled: !v.hasSelection },
+      { label: m.query_tab_menu_copy(), action: "copy", disabled: !v.hasSelection },
+      { label: m.query_tab_menu_paste(), action: "paste" },
+      { label: m.query_tab_menu_clear(), action: "clear" },
+      { label: m.query_tab_menu_format(), action: "format" },
+    ]}
     onselect={onMenu} onclose={() => (menu = null)} />
 {/if}
 
@@ -270,6 +288,8 @@
   .view-toggle { margin-left: auto; display: flex; gap: 0.0625rem; }
   .view-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
+  .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
+  .log-clear:hover { background: var(--hover); }
   .result-pane { flex: 1; min-height: 0; overflow: hidden; background: var(--panel); }
   .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
   .cancel-btn { font-size: 0.75rem; cursor: pointer; border: none; background: none; color: var(--link); }

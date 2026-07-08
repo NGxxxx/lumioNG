@@ -22,6 +22,10 @@ describe("isInlineEditable", () => {
     expect(isInlineEditable("a", [1, 2])).toBe(false);
     expect(isInlineEditable("a", null)).toBe(false);
   });
+  it("false for strings over the inline-edit length cap (a plain <input> chokes on huge text)", () => {
+    expect(isInlineEditable("a", "x".repeat(5000))).toBe(true);
+    expect(isInlineEditable("a", "x".repeat(5001))).toBe(false);
+  });
 });
 
 describe("editTextOf", () => {

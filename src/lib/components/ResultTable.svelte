@@ -10,7 +10,7 @@
   import { idJson } from "../domain/docid";
   import { getByPath } from "../domain/schema";
   import { statusPill, jsonValueColor, bsonValueKind } from "../domain/theme";
-  import { describeValue } from "../domain/extjson";
+  import { describeValue, truncateForDisplay } from "../domain/extjson";
   import ResultTree from "./ResultTree.svelte";
   import CollectionToolbar from "./CollectionToolbar.svelte";
   import CollectionDialogs from "./CollectionDialogs.svelte";
@@ -224,8 +224,9 @@
                     {:else}
                       {@const info = describeValue(val)}
                       {@const kind = bsonValueKind(info.type)}
-                      <span class="cell {info.type}" title={info.display}
-                        style={kind ? `color:${jsonValueColor(kind)}` : undefined}>{info.display}</span>
+                      {@const shown = truncateForDisplay(info.display)}
+                      <span class="cell {info.type}" title={shown}
+                        style={kind ? `color:${jsonValueColor(kind)}` : undefined}>{shown}</span>
                     {/if}
                   {/if}
                 {/if}
@@ -293,7 +294,8 @@
      child of the scroll container anchors to the content top and scrolls out of view, so the
      spinner would hide above the fold after scrolling down (e.g. on Show all). */
   .grid-region { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .scroller { overflow: auto; flex: 1; position: relative; }
+  /* Isolates paint context to avoid a WebView2 compositing glitch on the sticky header seam. */
+  .scroller { overflow: auto; flex: 1; position: relative; contain: paint; isolation: isolate; }
 
   /* ── Loading overlay (covers the visible grid region, fixed regardless of scroll) ── */
   .loading-overlay {
@@ -305,10 +307,12 @@
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Table base ── */
-  table { border-collapse: collapse; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; user-select: none; }
+  /* separate + zero spacing: collapse + sticky is a known Chromium hairline-gap bug. */
+  table { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; user-select: none; }
 
   /* ── Header ── */
   th {
+    box-sizing: border-box;
     background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom));
     border: 1px solid var(--gray-cf);
     padding: 0.25rem 0.5625rem;
@@ -320,6 +324,9 @@
     user-select: none;
     color: var(--fg);
     text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    will-change: transform;
   }
   .th-rownum {
     width: 2.625rem;
@@ -335,6 +342,8 @@
 
   /* ── Cells ── */
   td {
+    /* border-box: border-collapse is now separate, so border+padding must count toward width. */
+    box-sizing: border-box;
     border: 1px solid var(--cell-border);
     padding: 0.1875rem 0.5625rem;
     white-space: nowrap;

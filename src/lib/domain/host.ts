@@ -36,13 +36,15 @@ function dateIso(v: unknown): string | null {
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 
-/** Curate serverStatus (+ buildInfo, optional hostInfo) into the Host tab's metrics. */
+/** Curate serverStatus (+ buildInfo, optional hostInfo) into the Host tab's metrics.
+ *  `serverStatusJson` is null when the connection lacks the privilege to run it (common on
+ *  restricted-access users) — the tab still renders buildInfo-derived fields in that case. */
 export function parseHostInfo(
-  serverStatusJson: string,
+  serverStatusJson: string | null,
   buildInfoJson: string,
   hostInfoJson: string | null,
 ): HostInfo {
-  const ss = JSON.parse(serverStatusJson) as Record<string, unknown>;
+  const ss = serverStatusJson ? (JSON.parse(serverStatusJson) as Record<string, unknown>) : {};
   const bi = JSON.parse(buildInfoJson) as Record<string, unknown>;
   const hi = hostInfoJson ? (JSON.parse(hostInfoJson) as Record<string, unknown>) : {};
 

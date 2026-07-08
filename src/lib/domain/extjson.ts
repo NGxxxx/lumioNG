@@ -31,6 +31,18 @@ function previewJson(v: unknown, max = 80): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
+/** Above this length, rendering a value's full text into the DOM (grid cell, tree field, title
+ *  attribute) is what makes the UI lag on multi-MB string fields — truncate for *display only*.
+ *  Matches the editability threshold in `domain/celledit.ts` (`MAX_INLINE_EDIT_LEN`): anything
+ *  short enough to safely inline-edit is also short enough to render in full. Callers that need
+ *  the exact value (Copy, export) must use the original value, not this truncated text. */
+export const MAX_DISPLAY_LEN = 5000;
+
+/** Truncate arbitrary display text for rendering; a no-op under the threshold. */
+export function truncateForDisplay(s: string, max = MAX_DISPLAY_LEN): string {
+  return s.length > max ? s.slice(0, max) + "…" : s;
+}
+
 export function describeValue(v: unknown): ValueInfo {
   if (v === null) return { type: "null", display: "null" };
   if (typeof v === "string") return { type: "string", display: v };

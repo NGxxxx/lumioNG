@@ -180,7 +180,6 @@
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
       <NamespacePanel
-        connection={shell.connection}
         onselect={(d) => nav?.selectCollection(d.db, d.coll)}
         onselectdb={(d) => nav?.selectDatabase(d.db)}
         onnewquery={(d) => { nav?.selectCollection(d.db, d.coll); sm.openQuery(aggregateTemplate(d.coll)); }}

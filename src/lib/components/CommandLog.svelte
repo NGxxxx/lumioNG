@@ -25,6 +25,9 @@
     flex-direction: column;
     border-top: 1px solid var(--border);
     background: var(--panel);
+    /* Isolates rendering from the rest of the page — avoids a WebView2 compositing glitch
+       where a heavy sidebar can bleed through this panel. */
+    contain: paint;
   }
   header {
     display: flex;

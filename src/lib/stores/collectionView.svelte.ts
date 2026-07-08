@@ -1,5 +1,5 @@
 import * as m from "$lib/paraglide/messages";
-import { queryPage, sampleDocuments, deleteDocument, replaceDocument, fetchFullDoc, countDocuments, deleteMany, exportQueryProgress } from "../api/documents";
+import { queryPage, sampleDocuments, deleteDocument, updateOne, fetchFullDoc, countDocuments, deleteMany, exportQueryProgress } from "../api/documents";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
@@ -9,7 +9,7 @@ import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { rangeBetween, idInFilter, resolveIds, effectiveRows as effectiveRowsOf } from "../domain/selection";
 import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
-import { isInlineEditable, editTextOf, rebuildValue, setByPath } from "../domain/celledit";
+import { isInlineEditable, editTextOf, rebuildValue, setByPath, buildSetUpdate } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import {
   cycleSort,
@@ -26,7 +26,7 @@ import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import type { MenuItem } from "../components/ContextMenu.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { findCmd, replaceCmd, deleteOneCmd, deleteManyCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
+import { findCmd, updateOneCmd, deleteOneCmd, deleteManyCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { createCollectionBulk } from "./collectionBulk.svelte";
 
 /**
@@ -398,18 +398,21 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       editError = r.error;
       return;
     }
-    const newDoc: Doc = setByPath(docs[row], key, r.value);
-    const id = idJson(newDoc);
+    const id = idJson(docs[row]);
     if (id === null) {
       editError = m.collection_view_no_id_update();
       return;
     }
+    // $set only the touched path — a full replaceDocument would re-send every other field too,
+    // including any huge untouched sibling (e.g. a multi-MB value), which is what made editing
+    // one small cell serialize + transmit the entire document.
+    const filter = `{"_id": ${id}}`;
+    const update = buildSetUpdate(key, r.value);
     saving = true;
     try {
-      const docJson = JSON.stringify(newDoc);
-      await commandLog.pushTimed(replaceCmd(coll, id, docJson), sessionId, () =>
-        replaceDocument(sessionId, db, coll, id, docJson));
-      docs[row] = newDoc;
+      await commandLog.pushTimed(updateOneCmd(coll, filter, update), sessionId, () =>
+        updateOne(sessionId, db, coll, filter, update, false));
+      docs[row] = setByPath(docs[row], key, r.value);
       docs = [...docs];
       editing = null;
       editError = null;

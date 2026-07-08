@@ -98,40 +98,53 @@ fn read_bson_docs(mut bytes: &[u8]) -> Result<Vec<Document>, AppError> {
     Ok(out)
 }
 
-/// Insert pre-parsed docs unordered; remap batch write-errors to raw indices; summarize.
+/// Insert pre-parsed docs unordered in `PROGRESS_BATCH`-sized chunks, reporting done/total after
+/// each; remaps each chunk's write-errors back to raw file indices. `total` is the raw doc count
+/// (including parse failures), so progress reflects the whole file.
 async fn insert_parsed(
     collection: &mongodb::Collection<Document>,
     parsed: Vec<Document>,
     parsed_raw_idx: Vec<usize>,
     mut errors: Vec<String>,
+    total: u64,
+    on_progress: &Channel<ExportProgress>,
 ) -> ImportResult {
-    let valid = parsed.len() as u64;
-    if parsed.is_empty() {
-        return summarize_import(0, errors);
-    }
-    let inserted = match collection.insert_many(parsed).ordered(false).await {
-        Ok(res) => res.inserted_ids.len() as u64,
-        Err(e) => {
-            let write_errors = match &*e.kind {
-                ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
-                _ => None,
-            };
-            match write_errors {
-                Some(we) => {
-                    for w in &we {
-                        let raw = parsed_raw_idx.get(w.index).copied().unwrap_or(w.index);
-                        errors.push(format!("doc#{raw}: {}", w.message));
+    let mut inserted: u64 = 0;
+    let mut done: u64 = total - parsed.len() as u64; // docs that already failed to parse
+    let mut start = 0;
+    while start < parsed.len() {
+        let end = (start + PROGRESS_BATCH as usize).min(parsed.len());
+        let chunk: Vec<Document> = parsed[start..end].to_vec();
+        let chunk_raw_idx = &parsed_raw_idx[start..end];
+        let chunk_len = chunk.len() as u64;
+        match collection.insert_many(chunk).ordered(false).await {
+            Ok(res) => inserted += res.inserted_ids.len() as u64,
+            Err(e) => {
+                let write_errors = match &*e.kind {
+                    ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
+                    _ => None,
+                };
+                match write_errors {
+                    Some(we) => {
+                        for w in &we {
+                            let raw = chunk_raw_idx.get(w.index).copied().unwrap_or(w.index);
+                            errors.push(format!("doc#{raw}: {}", w.message));
+                        }
+                        inserted += chunk_len.saturating_sub(we.len() as u64);
                     }
-                    valid.saturating_sub(we.len() as u64)
-                }
-                None => {
-                    // Plan-mandated: non-write errors are recorded into `errors`, not propagated (keeps the helper infallible and consistent with BSON import).
-                    errors.push(e.to_string());
-                    0
+                    None => {
+                        // Plan-mandated: non-write errors are recorded into `errors`, not propagated (keeps the helper infallible and consistent with BSON import).
+                        errors.push(e.to_string());
+                    }
                 }
             }
         }
-    };
+        done += chunk_len;
+        start = end;
+        let _ = on_progress.send(ExportProgress { done, total });
+    }
+    // Final send in case every doc failed to parse (loop above never runs).
+    let _ = on_progress.send(ExportProgress { done, total });
     summarize_import(inserted, errors)
 }
 
@@ -150,10 +163,12 @@ pub async fn import_documents(
     db: String,
     coll: String,
     path: String,
+    on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
     let content = std::fs::read_to_string(&path).map_err(|e| AppError::Io(e.to_string()))?;
     let raw_docs = split_import(&content)?;
+    let total = raw_docs.len() as u64;
 
     let mut errors: Vec<String> = Vec::new();
     let mut parsed: Vec<Document> = Vec::new();
@@ -171,7 +186,7 @@ pub async fn import_documents(
 
     let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, errors).await)
+    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, errors, total, &on_progress).await)
 }
 
 #[tauri::command]
@@ -287,14 +302,16 @@ pub async fn import_bson(
     db: String,
     coll: String,
     path: String,
+    on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
     let bytes = std::fs::read(&path).map_err(|e| AppError::Io(e.to_string()))?;
     let parsed = read_bson_docs(&bytes)?;
+    let total = parsed.len() as u64;
     let parsed_raw_idx: Vec<usize> = (0..parsed.len()).collect();
     let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, Vec::new()).await)
+    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, Vec::new(), total, &on_progress).await)
 }
 
 #[cfg(test)]

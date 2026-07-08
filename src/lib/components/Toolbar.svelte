@@ -1,5 +1,6 @@
 <!-- src/lib/components/Toolbar.svelte -->
 <script lang="ts">
+  import { settings } from "../stores/settings.svelte";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -169,6 +170,22 @@
     </svg>
   </button>
 
+  <!-- Wrap long lines (always enabled — shared across Tree view, Edit Document, query cells) -->
+  <button
+    aria-label={m.wrap_toggle_label()}
+    title={m.wrap_toggle_title()}
+    class="btn-icon"
+    class:active={settings.wrapLongLines}
+    onclick={() => settings.setWrapLongLines(!settings.wrapLongLines)}
+  >
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+      <path d="M2 4.5h12M2 8h8.5M2 11.5h8.5" stroke="var(--muted)" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+      <path d="M10.5 11.5h2.5v-2.2M13 11.5l-1.8-1.8" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
+
+  <div class="sep"></div>
+
   <!-- Command log (always enabled) -->
   <button aria-label={m.toolbar_command_log()} title={m.toolbar_command_log()} class="btn-icon" onclick={onToggleLog}>
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
@@ -211,6 +228,11 @@
   .btn-icon:disabled {
     opacity: 0.4;
     cursor: default;
+  }
+
+  .btn-icon.active {
+    background: var(--hover);
+    box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
   }
 
   .sep {

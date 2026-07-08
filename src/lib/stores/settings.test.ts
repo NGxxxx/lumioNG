@@ -46,4 +46,12 @@ describe("settings", () => {
     const b = createSettings();
     expect(b.queryResultCapUnlimited).toBe(true);
   });
+
+  it("defaults wrapLongLines to false and persists it across instances", () => {
+    const a = createSettings();
+    expect(a.wrapLongLines).toBe(false);
+    a.setWrapLongLines(true);
+    const b = createSettings();
+    expect(b.wrapLongLines).toBe(true);
+  });
 });

@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import TreeNode from "./TreeNode.svelte";
+import { settings } from "../stores/settings.svelte";
 
 const noop = () => {};
 
@@ -55,6 +56,59 @@ describe("TreeNode leaf", () => {
     });
     expect(container.querySelector("input.leaf")).toBeNull();
     expect(getByText("🔒")).toBeTruthy();
+  });
+});
+
+describe("TreeNode wrap mode (app-wide Wrap toggle)", () => {
+  beforeEach(() => settings.setWrapLongLines(false));
+
+  const longValue = "x".repeat(110); // over the 100-char threshold
+  const shortValue = "English"; // well under it
+
+  it("a long string leaf renders a wrapping textarea instead of an input when wrap is on", () => {
+    settings.setWrapLongLines(true);
+    const { container } = render(TreeNode, {
+      props: { label: "bio", value: longValue, path: "bio", onchange: noop, onremove: noop, onerror: noop },
+    });
+    expect(container.querySelector("input.leaf")).toBeNull();
+    expect(container.querySelector("textarea.leaf")).toBeTruthy();
+  });
+
+  it("a short string leaf stays a plain input even when wrap is on (textarea would look odd)", () => {
+    settings.setWrapLongLines(true);
+    const { container } = render(TreeNode, {
+      props: { label: "language", value: shortValue, path: "language", onchange: noop, onremove: noop, onerror: noop },
+    });
+    expect(container.querySelector("textarea.leaf")).toBeNull();
+    expect(container.querySelector("input.leaf")).toBeTruthy();
+  });
+
+  it("a long string leaf stays a plain input when wrap is off", () => {
+    const { container } = render(TreeNode, {
+      props: { label: "bio", value: longValue, path: "bio", onchange: noop, onremove: noop, onerror: noop },
+    });
+    expect(container.querySelector("textarea.leaf")).toBeNull();
+    expect(container.querySelector("input.leaf")).toBeTruthy();
+  });
+
+  it("editing via the wrapping textarea still calls onchange with the new value", async () => {
+    settings.setWrapLongLines(true);
+    const onchange = vi.fn();
+    const { container } = render(TreeNode, {
+      props: { label: "bio", value: longValue, path: "bio", onchange, onremove: noop, onerror: noop },
+    });
+    const textarea = container.querySelector("textarea.leaf")!;
+    await fireEvent.input(textarea, { target: { value: "b" } });
+    expect(onchange).toHaveBeenCalledWith("b");
+  });
+
+  it("non-string leaves (numbers) keep the plain input even when wrap is on", () => {
+    settings.setWrapLongLines(true);
+    const { container } = render(TreeNode, {
+      props: { label: "n", value: { $numberInt: "2" }, path: "n", onchange: noop, onremove: noop, onerror: noop },
+    });
+    expect(container.querySelector("textarea.leaf")).toBeNull();
+    expect(container.querySelector("input.leaf")).toBeTruthy();
   });
 });
 

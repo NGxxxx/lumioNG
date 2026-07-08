@@ -35,6 +35,18 @@ describe("createHostStatus", () => {
     expect(v.error).toBeNull();
   });
 
+  it("serverStatus rejection (restricted-privilege connection) still yields info from buildInfo alone", async () => {
+    serverStatus.mockRejectedValueOnce({
+      kind: "Query",
+      message: "not authorized on admin to execute command { serverStatus: 1 }",
+    });
+    const v = createHostStatus("conn:1");
+    await v.load();
+    expect(v.info?.version).toBe("7.0.5"); // from buildInfo
+    expect(v.info?.uptimeSeconds).toBeNull();
+    expect(v.error).toBeNull(); // no raw driver error dumped into the tab
+  });
+
   it("clear resets state", async () => {
     const v = createHostStatus("conn:1");
     await v.load();

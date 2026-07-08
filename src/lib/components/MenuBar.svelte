@@ -32,6 +32,7 @@
     {
       name: m.menu_file(),
       items: [
+        { label: m.menu_session_manager(), run: onsession },
         { label: m.menu_refresh(), run: onrefresh, disabled: !connected },
         { label: m.menu_quit(), run: onquit },
       ],
@@ -66,7 +67,6 @@
       ],
     },
     { name: m.menu_query(), items: [{ label: m.menu_run_query(), disabled: true }] },
-    { name: m.menu_tools(), items: [{ label: m.menu_session_manager(), run: onsession }] },
     { name: m.menu_go_to(), items: [], disabled: true },
     { name: m.menu_help(), items: [{ label: m.menu_about(), disabled: true }] },
   ]);

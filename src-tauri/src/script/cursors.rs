@@ -6,6 +6,13 @@ use mongodb::bson::Document;
 use mongodb::Cursor;
 use std::collections::HashMap;
 
+/// Per-call cap on the total row-JSON bytes a single `drain()` pulls from the driver. Without
+/// this, a handful of huge documents (e.g. 10 docs x 16MB) can be pulled into memory in one
+/// batch — far exceeding the QuickJS engine's heap limit before the JS-side row cap (__CAP)
+/// ever gets a chance to stop anything, since a `find()`'s first batch alone can be up to 101
+/// docs. Not user-configurable — an internal safety valve, like the engine's memory limit.
+pub const MAX_DRAIN_BYTES: usize = 20 * 1024 * 1024;
+
 #[derive(Default)]
 pub struct CursorStore {
     next: u32,
@@ -31,17 +38,29 @@ impl CursorStore {
         self.open.remove(&handle)
     }
 
-    /// Pull up to `n` docs as ExtJSON from an owned cursor; returns (rows, exhausted).
-    /// Free of `&mut self`, so callers borrow the store only to take/put, never across `.await`.
+    /// Pull up to `n` docs as ExtJSON from an owned cursor, stopping early once `max_bytes` of
+    /// row JSON has accumulated (`0` = unlimited); returns (rows, exhausted). `exhausted` is only
+    /// true if the cursor itself ran out — a byte-budget stop leaves it false so the caller keeps
+    /// the cursor open for a later fetch. Free of `&mut self`, so callers borrow the store only
+    /// to take/put, never across `.await`.
     pub async fn drain(
         cursor: &mut Cursor<Document>,
         n: usize,
+        max_bytes: usize,
     ) -> Result<(Vec<String>, bool), AppError> {
         let mut rows = Vec::new();
+        let mut bytes = 0usize;
         let mut exhausted = false;
         for _ in 0..n {
             match cursor.try_next().await? {
-                Some(d) => rows.push(doc_to_canonical_string(d)?),
+                Some(d) => {
+                    let s = doc_to_canonical_string(d)?;
+                    bytes += s.len();
+                    rows.push(s);
+                    if max_bytes != 0 && bytes >= max_bytes {
+                        break;
+                    }
+                }
                 None => {
                     exhausted = true;
                     break;

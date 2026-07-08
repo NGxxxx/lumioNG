@@ -39,6 +39,7 @@ describe("NamespacePanel", () => {
   it("collection menu shows Export/Import/Truncate; db menu has no Stats", async () => {
     const { getByText, queryByText } = render(NamespacePanel, { props: {} });
 
+    await fireEvent.click(getByText("shop")); // expand — collections are collapsed by default
     // Open collection context menu
     await fireEvent.contextMenu(getByText("users"));
     expect(getByText("Export…")).toBeTruthy();
@@ -60,6 +61,7 @@ describe("NamespacePanel", () => {
       writable: true,
     });
     const { getByText } = render(NamespacePanel, { props: {} });
+    await fireEvent.click(getByText("shop")); // expand — collections are collapsed by default
     await fireEvent.contextMenu(getByText("users"));
     await fireEvent.click(getByText("Copy name"));
     expect(writeText).toHaveBeenCalledWith("shop.users");
@@ -111,6 +113,39 @@ describe("NamespacePanel", () => {
 
     reconnectSpy.mockRestore();
     focusSpy.mockRestore();
+  });
+
+  it("right-click session header shows New database…/Refresh/Manage sessions…/Disconnect", async () => {
+    const { getByText } = render(NamespacePanel, { props: {} });
+    await fireEvent.contextMenu(getByText("local"));
+    expect(getByText("New database…")).toBeTruthy();
+    expect(getByText("Refresh")).toBeTruthy();
+    expect(getByText("Manage sessions…")).toBeTruthy();
+    expect(getByText("Disconnect")).toBeTruthy();
+  });
+
+  it("session menu Disconnect asks for confirmation before calling ondisconnect", async () => {
+    const ondisconnect = vi.fn();
+    const { getByText, queryByText } = render(NamespacePanel, { props: { ondisconnect } });
+    await fireEvent.contextMenu(getByText("local"));
+    await fireEvent.click(getByText("Disconnect"));
+    expect(ondisconnect).not.toHaveBeenCalled();
+    // Menu item closed with the menu; only the confirm dialog's own button remains.
+    expect(queryByText("Disconnect session?")).toBeTruthy();
+    await fireEvent.click(getByText("Disconnect"));
+    expect(ondisconnect).toHaveBeenCalled();
+  });
+
+  it("session close (X) button asks for confirmation before closing the session", async () => {
+    const sess = sessionManager.sessions[0];
+    const closeSpy = vi.spyOn(sessionManager, "closeSession");
+    const { getByLabelText, getByText, queryByText } = render(NamespacePanel, { props: {} });
+    await fireEvent.click(getByLabelText("Close session"));
+    expect(closeSpy).not.toHaveBeenCalled();
+    expect(queryByText("Disconnect session?")).toBeTruthy();
+    await fireEvent.click(getByText("Disconnect"));
+    expect(closeSpy).toHaveBeenCalledWith(sess.id);
+    closeSpy.mockRestore();
   });
 
   it("caret toggles collapse without changing activeId", async () => {

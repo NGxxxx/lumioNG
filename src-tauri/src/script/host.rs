@@ -368,6 +368,38 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
 
 // ── __find ───────────────────────────────────────────────────────────────────
 
+/// Maps the JS-side find options doc onto a driver `FindOptions`; unit-testable in isolation.
+fn apply_find_options(opts_doc: Option<&Document>, find_opts: &mut mongodb::options::FindOptions) {
+    use mongodb::bson::Bson;
+    let Some(o) = opts_doc else { return };
+    // maxTimeMS
+    if let Some(Bson::Int64(ms)) = o.get("maxTimeMS") {
+        find_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
+    } else if let Some(Bson::Int32(ms)) = o.get("maxTimeMS") {
+        find_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
+    }
+    // sort
+    if let Some(Bson::Document(sort)) = o.get("sort") {
+        find_opts.sort = Some(sort.clone());
+    }
+    // limit
+    if let Some(Bson::Int64(l)) = o.get("limit") {
+        find_opts.limit = Some(*l);
+    } else if let Some(Bson::Int32(l)) = o.get("limit") {
+        find_opts.limit = Some(*l as i64);
+    }
+    // skip
+    if let Some(Bson::Int64(s)) = o.get("skip") {
+        find_opts.skip = Some(*s as u64);
+    } else if let Some(Bson::Int32(s)) = o.get("skip") {
+        find_opts.skip = Some(*s as u64);
+    }
+    // projection
+    if let Some(Bson::Document(proj)) = o.get("projection") {
+        find_opts.projection = Some(proj.clone());
+    }
+}
+
 fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
     let h = host.clone();
     // args: db, coll, filterJson, optionsJson
@@ -386,7 +418,6 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                 cancel, deadline,
                 async move {
                     use crate::json_bson::canonical_string_to_doc;
-                    use mongodb::bson::Bson;
                     use mongodb::options::FindOptions;
 
                     let filter = canonical_string_to_doc(&filter_json)?;
@@ -395,30 +426,7 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                     let collection = h.client.database(&db).collection::<Document>(&coll);
 
                     let mut find_opts = FindOptions::default();
-                    if let Some(ref o) = opts_doc {
-                        // maxTimeMS
-                        if let Some(Bson::Int64(ms)) = o.get("maxTimeMS") {
-                            find_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
-                        } else if let Some(Bson::Int32(ms)) = o.get("maxTimeMS") {
-                            find_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
-                        }
-                        // sort
-                        if let Some(Bson::Document(sort)) = o.get("sort") {
-                            find_opts.sort = Some(sort.clone());
-                        }
-                        // limit
-                        if let Some(Bson::Int64(l)) = o.get("limit") {
-                            find_opts.limit = Some(*l);
-                        } else if let Some(Bson::Int32(l)) = o.get("limit") {
-                            find_opts.limit = Some(*l as i64);
-                        }
-                        // skip
-                        if let Some(Bson::Int64(s)) = o.get("skip") {
-                            find_opts.skip = Some(*s as u64);
-                        } else if let Some(Bson::Int32(s)) = o.get("skip") {
-                            find_opts.skip = Some(*s as u64);
-                        }
-                    }
+                    apply_find_options(opts_doc.as_ref(), &mut find_opts);
 
                     // Inject default maxTimeMS from deadline if not set by caller
                     if find_opts.max_time.is_none() {
@@ -436,9 +444,12 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
 
                     let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
                     // Drain the first batch on the owned cursor, then store only if more remains —
-                    // never holds the cursors RefCell borrow across `.await`.
-                    let (rows, exhausted) =
-                        crate::script::cursors::CursorStore::drain(&mut cursor, batch_size).await?;
+                    // never holds the cursors RefCell borrow across `.await`. Bytes-capped so a
+                    // handful of huge documents can't be pulled in as one giant batch.
+                    let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
+                        &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
+                    )
+                    .await?;
                     let handle_id = {
                         let mut store = h.cursors.borrow_mut();
                         let id = store.next_handle();
@@ -453,8 +464,9 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         .map(|s| s.as_str())
                         .collect::<Vec<_>>()
                         .join(",");
+                    let bytes = rows_json.len();
                     Ok::<String, crate::error::AppError>(format!(
-                        r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted}}}"#
+                        r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
                     ))
                 },
             ));
@@ -526,8 +538,11 @@ fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
 
                     let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
                     // Drain on the owned cursor first; store only if more remains (no RefCell across await).
-                    let (rows, exhausted) =
-                        crate::script::cursors::CursorStore::drain(&mut cursor, batch_size).await?;
+                    // Bytes-capped so a handful of huge documents can't be pulled in as one giant batch.
+                    let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
+                        &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
+                    )
+                    .await?;
                     let handle_id = {
                         let mut store = h.cursors.borrow_mut();
                         let id = store.next_handle();
@@ -542,8 +557,9 @@ fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         .map(|s| s.as_str())
                         .collect::<Vec<_>>()
                         .join(",");
+                    let bytes = rows_json.len();
                     Ok::<String, crate::error::AppError>(format!(
-                        r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted}}}"#
+                        r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
                     ))
                 },
             ));
@@ -771,14 +787,17 @@ fn bind_cursor_fetch(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         Some(c) => c,
                         None => return Err(crate::error::AppError::Query("unknown cursor".into())),
                     };
-                    let (rows, exhausted) =
-                        crate::script::cursors::CursorStore::drain(&mut cursor, n).await?;
+                    let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
+                        &mut cursor, n, crate::script::cursors::MAX_DRAIN_BYTES,
+                    )
+                    .await?;
                     if !exhausted {
                         h.cursors.borrow_mut().put(handle, cursor);
                     }
                     let rows_json = rows.join(",");
+                    let bytes = rows_json.len();
                     Ok::<String, crate::error::AppError>(format!(
-                        r#"{{"rows":[{rows_json}],"exhausted":{exhausted}}}"#
+                        r#"{{"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
                     ))
                 },
             ));
@@ -997,6 +1016,108 @@ globalThis.__DBNAME = "testdb";
         let opens = eval_int(r#"var c = db.c.find(); var r = __finalize(c);"#, "__openCount");
         assert_eq!(opens, 1);
     }
+
+    // First batch already meeting __CAP must skip __cursorFetch entirely.
+    const CAP_STUBS: &str = r#"
+globalThis.__CAP = 2;
+globalThis.__fetchCount = 0;
+globalThis.__find = function(db, coll, q, o){
+  return JSON.stringify({ handle: 1, rows: [{a:1},{a:2}], exhausted: false });
+};
+globalThis.__aggregate = globalThis.__find;
+globalThis.__cursorFetch = function(handle, n){
+  __fetchCount += 1;
+  return JSON.stringify({ rows: [{a:3}], exhausted: true });
+};
+globalThis.__cursorClose = function(){};
+globalThis.__count = function(){ throw new Error("no count in read test"); };
+globalThis.__distinct = function(){ throw new Error("no distinct in read test"); };
+globalThis.__runCommand = function(){ return JSON.stringify({ ok: 1 }); };
+globalThis.__listCollections = function(){ return "[]"; };
+globalThis.__write = function(){ throw new Error("no write in read test"); };
+globalThis.__print = function(){};
+globalThis.__DBNAME = "testdb";
+"#;
+
+    #[test]
+    fn to_array_stops_draining_once_cap_already_met() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let (rows, fetches) = ctx.with(|ctx| {
+            ctx.eval::<(), _>(CAP_STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = db.c.find().toArray();"#).unwrap();
+            let rows: i32 = ctx.eval("__r.length").unwrap();
+            let fetches: i32 = ctx.eval("__fetchCount").unwrap();
+            (rows, fetches)
+        });
+        assert_eq!(rows, 2, "should not pull past the cap");
+        assert_eq!(fetches, 0, "cursorFetch must not run once the first batch already meets cap");
+    }
+
+    #[test]
+    fn to_array_ignores_cap_when_zero() {
+        // __CAP == 0 means unlimited: existing unbounded-drain behavior is preserved.
+        let opens = eval_int(
+            r#"var c = db.c.find(); var r = c.toArray();"#,
+            "__openCount",
+        );
+        assert_eq!(opens, 1);
+    }
+
+    // A handful of huge documents (e.g. 10 docs x 16MB) must stop toArray() even though the row
+    // count never comes close to __CAP — bug: previously only row count was checked, so large
+    // documents could exhaust the QuickJS heap well before __CAP kicked in.
+    const BYTE_CAP_STUBS: &str = r#"
+globalThis.__fetchCount = 0;
+globalThis.__find = function(db, coll, q, o){
+  return JSON.stringify({ handle: 1, rows: [{a:1}], exhausted: false, bytes: 999999999999 });
+};
+globalThis.__aggregate = globalThis.__find;
+globalThis.__cursorFetch = function(handle, n){
+  __fetchCount += 1;
+  return JSON.stringify({ rows: [{a:2}], exhausted: true, bytes: 1 });
+};
+globalThis.__cursorClose = function(){};
+globalThis.__count = function(){ throw new Error("no count in read test"); };
+globalThis.__distinct = function(){ throw new Error("no distinct in read test"); };
+globalThis.__runCommand = function(){ return JSON.stringify({ ok: 1 }); };
+globalThis.__listCollections = function(){ return "[]"; };
+globalThis.__write = function(){ throw new Error("no write in read test"); };
+globalThis.__print = function(){};
+globalThis.__DBNAME = "testdb";
+"#;
+
+    #[test]
+    fn to_array_stops_draining_once_byte_cap_exceeded() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let (rows, fetches, capped) = ctx.with(|ctx| {
+            ctx.eval::<(), _>(BYTE_CAP_STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__c = db.c.find(); globalThis.__r = __c.toArray();"#).unwrap();
+            let rows: i32 = ctx.eval("__r.length").unwrap();
+            let fetches: i32 = ctx.eval("__fetchCount").unwrap();
+            let capped: bool = ctx.eval("__c._capped").unwrap();
+            (rows, fetches, capped)
+        });
+        assert_eq!(rows, 1, "should stop after the first oversized batch");
+        assert_eq!(fetches, 0, "cursorFetch must not run once the byte cap is already exceeded");
+        assert!(capped, "cursor should report it stopped before natural exhaustion");
+    }
+
+    #[test]
+    fn to_array_reports_uncapped_when_cursor_exhausts_naturally() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let capped: bool = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__c = db.c.find(); globalThis.__r = __c.toArray();"#).unwrap();
+            ctx.eval("__c._capped").unwrap()
+        });
+        assert!(!capped, "a fully-drained cursor is not capped");
+    }
 }
 
 #[cfg(test)]
@@ -1030,6 +1151,44 @@ mod interrupt_tests {
         let deadline = Instant::now() + Duration::from_secs(60);
         let fut = async { Ok::<u8, crate::error::AppError>(7) };
         assert_eq!(with_interrupt(cancel, deadline, fut).await.unwrap(), 7);
+    }
+}
+
+#[cfg(test)]
+mod find_options_tests {
+    use super::*;
+    use mongodb::bson::doc;
+    use mongodb::options::FindOptions;
+
+    #[test]
+    fn projection_is_mapped_onto_find_options() {
+        let opts_doc = doc! { "projection": { "name": 1, "_id": 0 } };
+        let mut find_opts = FindOptions::default();
+        apply_find_options(Some(&opts_doc), &mut find_opts);
+        assert_eq!(find_opts.projection, Some(doc! { "name": 1, "_id": 0 }));
+    }
+
+    #[test]
+    fn sort_limit_skip_are_still_mapped_alongside_projection() {
+        let opts_doc = doc! {
+            "sort": { "a": -1 },
+            "limit": 5i32,
+            "skip": 2i32,
+            "projection": { "a": 1 },
+        };
+        let mut find_opts = FindOptions::default();
+        apply_find_options(Some(&opts_doc), &mut find_opts);
+        assert_eq!(find_opts.sort, Some(doc! { "a": -1 }));
+        assert_eq!(find_opts.limit, Some(5));
+        assert_eq!(find_opts.skip, Some(2));
+        assert_eq!(find_opts.projection, Some(doc! { "a": 1 }));
+    }
+
+    #[test]
+    fn no_options_leaves_defaults() {
+        let mut find_opts = FindOptions::default();
+        apply_find_options(None, &mut find_opts);
+        assert_eq!(find_opts.projection, None);
     }
 }
 

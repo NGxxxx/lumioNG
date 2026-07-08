@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
+import { commandLog } from "../stores/commandLog.svelte";
 
 vi.mock("../stores/sessionManager.svelte", () => ({
-  sessionManager: { active: null },
+  sessionManager: { active: null, sessions: [] },
 }));
 
 const run = vi.fn();
@@ -171,6 +172,15 @@ describe("QueryTab", () => {
     } finally {
       activeStub = stub;
     }
+  });
+
+  it("Command log tab's Clear button empties the shared command log", async () => {
+    commandLog.push("db.x.find()", "s1", 5);
+    const { getByText } = render(QueryTab, { props });
+    await fireEvent.click(getByText("Command log"));
+    expect(commandLog.entries.length).toBeGreaterThan(0);
+    await fireEvent.click(getByText("Clear"));
+    expect(commandLog.entries).toHaveLength(0);
   });
 
   it("running a query switches bottomTab back to Result if Command log was active", async () => {

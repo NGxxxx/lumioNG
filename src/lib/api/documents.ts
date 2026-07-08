@@ -247,19 +247,30 @@ export interface ImportResult {
   errors: string[];
 }
 
-/** Reads a file (JSON array or JSONL) and inserts via insert_many(ordered=false). */
+/** Reads a file (JSON array or JSONL) and inserts via insert_many(ordered=false); reports progress. */
 export async function importDocuments(
   sessionId: string,
   db: string,
   coll: string,
   path: string,
+  onProgress: ProgressCb,
 ): Promise<ImportResult> {
-  return await invoke<ImportResult>("import_documents", { sessionId, db, coll, path });
+  return await invoke<ImportResult>("import_documents", {
+    sessionId, db, coll, path, onProgress: progressChannel(onProgress),
+  });
 }
 
-/** Import a concatenated-BSON (.bson) file via insert_many(ordered=false). */
-export async function importBson(sessionId: string, db: string, coll: string, path: string): Promise<ImportResult> {
-  return await invoke<ImportResult>("import_bson", { sessionId, db, coll, path });
+/** Import a concatenated-BSON (.bson) file via insert_many(ordered=false); reports progress. */
+export async function importBson(
+  sessionId: string,
+  db: string,
+  coll: string,
+  path: string,
+  onProgress: ProgressCb,
+): Promise<ImportResult> {
+  return await invoke<ImportResult>("import_bson", {
+    sessionId, db, coll, path, onProgress: progressChannel(onProgress),
+  });
 }
 
 /** Run an aggregate pipeline (ExtJSON array string). limit≠null appends a trailing $limit. */

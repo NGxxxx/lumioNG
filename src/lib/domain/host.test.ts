@@ -42,6 +42,13 @@ describe("parseHostInfo", () => {
     expect(h.version).toBe("6.0.1");
   });
 
+  it("soft-fails when serverStatus is absent (e.g. lacking clusterMonitor privilege)", () => {
+    const h = parseHostInfo(null, bi, null);
+    expect(h.version).toBe("7.0.5"); // still falls back to buildInfo
+    expect(h.uptimeSeconds).toBeNull();
+    expect(h.connectionsCurrent).toBeNull();
+  });
+
   it("builds os from name alone when version is missing", () => {
     const h = parseHostInfo(ss, bi, JSON.stringify({ os: { name: "Ubuntu" } }));
     expect(h.os).toBe("Ubuntu");

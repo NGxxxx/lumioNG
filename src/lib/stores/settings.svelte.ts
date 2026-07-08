@@ -4,6 +4,7 @@ const SUPPRESS_KEY = "suppress-destructive-warning";
 const TIMEOUT_KEY = "query-timeout-ms";
 const CAP_KEY = "query-result-cap";
 const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
+const WRAP_KEY = "wrap-long-lines";
 
 // Defaults mirror the Rust script engine fallbacks (commands/script.rs).
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -44,6 +45,7 @@ export function createSettings() {
   );
   let cap = $state<number>(hasStorage ? untrack(() => readPosInt(CAP_KEY, DEFAULT_CAP)) : DEFAULT_CAP);
   let capUnlimited = $state<boolean>(hasStorage ? untrack(() => readBool(CAP_UNLIMITED_KEY)) : false);
+  let wrapLongLines = $state<boolean>(hasStorage ? untrack(() => readBool(WRAP_KEY)) : false);
 
   return {
     get suppressDestructiveWarning(): boolean {
@@ -76,6 +78,14 @@ export function createSettings() {
     setQueryResultCapUnlimited(v: boolean) {
       capUnlimited = v;
       writeKey(CAP_UNLIMITED_KEY, v ? "true" : "false");
+    },
+    /** When true, long field/document text wraps instead of scrolling horizontally. */
+    get wrapLongLines(): boolean {
+      return wrapLongLines;
+    },
+    setWrapLongLines(v: boolean) {
+      wrapLongLines = v;
+      writeKey(WRAP_KEY, v ? "true" : "false");
     },
   };
 }

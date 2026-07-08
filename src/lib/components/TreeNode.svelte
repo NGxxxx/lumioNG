@@ -11,6 +11,7 @@
     type LeafInputType,
     type AddableType,
   } from "../domain/bsontree";
+  import { settings } from "../stores/settings.svelte";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
@@ -40,6 +41,9 @@
 
   const info = $derived(describeValue(value));
   const type = $derived(info.type);
+
+  // Below this length a single-line input reads fine; only longer values switch to a textarea.
+  const WRAP_TEXTAREA_THRESHOLD = 100;
 
   // ----- leaf edit state -----
   let editText = $state("");
@@ -184,7 +188,8 @@
   </ul>
   {@render adder(true)}
 {:else if hasInput(type) && !locked}
-  <div class="node">
+  {@const wrapped = type === "string" && settings.wrapLongLines && typeof value === "string" && value.length > WRAP_TEXTAREA_THRESHOLD}
+  <div class="node" class:node-wrap={wrapped}>
     <span class="label">{label}</span>
     <span class="badge">{type}</span>
     {#if type === "bool"}
@@ -192,6 +197,8 @@
         <option value="true">true</option>
         <option value="false">false</option>
       </select>
+    {:else if wrapped}
+      <textarea class="leaf leaf-wrap" bind:value={editText} oninput={onLeafInput} spellcheck="false" rows="3"></textarea>
     {:else}
       <input class="leaf" bind:value={editText} oninput={onLeafInput} spellcheck="false" />
     {/if}
@@ -212,10 +219,14 @@
   .tree { list-style: none; margin: 0; padding-left: 1.125rem; border-left: 1px solid var(--bg); }
   .tree li { margin: 0.0625rem 0; }
   .node { display: flex; align-items: center; gap: 0.375rem; padding: 0.0625rem 0; }
-  .label { font-family: ui-monospace, monospace; font-size: 0.8125rem; color: var(--gray-33); }
-  .badge { background: var(--blue-tint5); color: var(--slate); padding: 0 0.375rem; border-radius: 0.1875rem; font-size: 0.6875rem; font-family: ui-monospace, monospace; }
+  /* Top-align a wrapped (multi-line textarea) row instead of centering it. */
+  .node-wrap { align-items: flex-start; }
+  .label { font-family: ui-monospace, monospace; font-size: 0.8125rem; color: var(--gray-33); flex: none; }
+  .badge { background: var(--blue-tint5); color: var(--slate); padding: 0 0.375rem; border-radius: 0.1875rem; font-size: 0.6875rem; font-family: ui-monospace, monospace; flex: none; }
   .display { color: var(--gray-55); font-family: ui-monospace, monospace; font-size: 0.8125rem; }
-  .leaf { font-family: ui-monospace, monospace; font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
+  /* flex+min-width:0: a bare input/textarea otherwise sizes to its tiny intrinsic default. */
+  .leaf { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
+  .leaf-wrap { resize: vertical; white-space: pre-wrap; word-break: break-word; }
   .x { border: none; background: none; color: var(--danger-strong); cursor: pointer; font-size: 0.75rem; }
   .lock { font-size: 0.75rem; }
   .cellerror { color: var(--error); font-size: 0.6875rem; margin-left: 0.375rem; }

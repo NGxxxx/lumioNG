@@ -9,6 +9,7 @@ vi.mock("../api/documents", () => ({
   fetchFullDoc: vi.fn(),
   countDocuments: vi.fn(),
   updateMany: vi.fn(),
+  updateOne: vi.fn(),
   deleteMany: vi.fn(),
   exportQueryProgress: vi.fn(),
 }));
@@ -27,6 +28,7 @@ import { findCmd, deleteOneCmd, sampleCmd, findOneByIdCmd } from "../domain/mong
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
 const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
 const repl = documents.replaceDocument as ReturnType<typeof vi.fn>;
+const upd = documents.updateOne as ReturnType<typeof vi.fn>;
 const samp = documents.sampleDocuments as ReturnType<typeof vi.fn>;
 const full = documents.fetchFullDoc as ReturnType<typeof vi.fn>;
 const expQ = documents.exportQueryProgress as ReturnType<typeof vi.fn>;
@@ -204,34 +206,57 @@ describe("createCollectionView — paging", () => {
     expect(v.totalCount).toBe(0);
   });
 
-  it("commitEdit with valid value → calls replaceDocument and updates the cell", async () => {
+  it("commitEdit with valid value → calls updateOne with a minimal $set (not replaceDocument)", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
     samp.mockResolvedValueOnce([]);
-    repl.mockResolvedValueOnce(undefined);
+    upd.mockResolvedValueOnce({ matched: 1, modified: 1 });
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.startEdit(0, "x");
     v.editText = "world";
     await v.commitEdit();
-    expect(repl).toHaveBeenCalled();
+    // Full-document replace would re-send every other field too — a $set only sends the
+    // touched path, so a huge sibling field never has to round-trip for a one-cell edit.
+    expect(upd).toHaveBeenCalledWith("conn:1", "d", "c", '{"_id": {"$oid":"a"}}', '{"$set":{"x":"world"}}', false);
+    expect(repl).not.toHaveBeenCalled();
     expect(v.docs[0].x).toBe("world");
     expect(v.editing).toBeNull();
   });
 
-  it("commitEdit on a nested field sets the nested path without disturbing siblings", async () => {
+  it("commitEdit never sends a huge untouched sibling field (bug #7 regression)", async () => {
+    // Reproduces the reported scenario: a doc with a ~16MB sibling field. Editing an unrelated
+    // small field must not JSON.stringify or transmit that sibling — a full replaceDocument
+    // round-trip of a 16MB doc for a one-cell edit is what caused the reported UI lag.
+    const heavy = "x".repeat(16 * 1024 * 1024);
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "old", value: heavy }]);
+    samp.mockResolvedValueOnce([]);
+    upd.mockResolvedValueOnce({ matched: 1, modified: 1 });
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "name");
+    v.editText = "new";
+    await v.commitEdit();
+    expect(upd).toHaveBeenCalledWith("conn:1", "d", "c", '{"_id": {"$oid":"a"}}', '{"$set":{"name":"new"}}', false);
+    expect(repl).not.toHaveBeenCalled();
+    expect((v.docs[0] as any).value).toBe(heavy); // untouched sibling survives locally, unsent
+  });
+
+  it("commitEdit on a nested field sets the nested path via $set without disturbing siblings", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, address: { city: "Hue", zip: "1000" } }]);
     samp.mockResolvedValueOnce([]);
-    repl.mockResolvedValueOnce(undefined);
+    upd.mockResolvedValueOnce({ matched: 1, modified: 1 });
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.startEdit(0, "address.city");
     v.editText = "Hanoi";
     await v.commitEdit();
-    expect(repl).toHaveBeenCalled();
-    const sentDoc = JSON.parse((repl.mock.calls[0] as any[])[4] as string);
-    expect(sentDoc.address).toEqual({ city: "Hanoi", zip: "1000" });
+    expect(upd).toHaveBeenCalledWith(
+      "conn:1", "d", "c", '{"_id": {"$oid":"a"}}', '{"$set":{"address.city":"Hanoi"}}', false,
+    );
+    expect(repl).not.toHaveBeenCalled();
     expect((v.docs[0] as any).address).toEqual({ city: "Hanoi", zip: "1000" });
     expect(v.editing).toBeNull();
   });
@@ -246,7 +271,7 @@ describe("createCollectionView — paging", () => {
     v.onEditBlur();
     expect(v.editBlurPending).toBe(false);
     expect(v.editing).toBeNull();
-    expect(repl).not.toHaveBeenCalled();
+    expect(upd).not.toHaveBeenCalled();
   });
 
   it("onEditBlur with changed text requests confirmation instead of saving immediately", async () => {
@@ -260,21 +285,21 @@ describe("createCollectionView — paging", () => {
     v.onEditBlur();
     expect(v.editBlurPending).toBe(true);
     expect(v.editing).not.toBeNull();
-    expect(repl).not.toHaveBeenCalled();
+    expect(upd).not.toHaveBeenCalled();
   });
 
   it("confirmBlurEdit saves the pending change", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "hello" }]);
     samp.mockResolvedValueOnce([]);
-    repl.mockResolvedValueOnce(undefined);
+    upd.mockResolvedValueOnce({ matched: 1, modified: 1 });
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     await v.startEdit(0, "x");
     v.editText = "world";
     v.onEditBlur();
     await v.confirmBlurEdit();
-    expect(repl).toHaveBeenCalled();
+    expect(upd).toHaveBeenCalled();
     expect(v.docs[0].x).toBe("world");
     expect(v.editBlurPending).toBe(false);
     expect(v.editing).toBeNull();
@@ -290,7 +315,7 @@ describe("createCollectionView — paging", () => {
     v.editText = "world";
     v.onEditBlur();
     v.discardBlurEdit();
-    expect(repl).not.toHaveBeenCalled();
+    expect(upd).not.toHaveBeenCalled();
     expect(v.docs[0].x).toBe("hello");
     expect(v.editBlurPending).toBe(false);
     expect(v.editing).toBeNull();

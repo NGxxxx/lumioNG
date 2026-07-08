@@ -9,10 +9,10 @@ import { theme } from "../stores/theme.svelte";
 const base = { connected: true, onsession: vi.fn(), onrefresh: vi.fn(), onquit: vi.fn() };
 
 describe("MenuBar", () => {
-  it("Tools → Session manager calls onsession", async () => {
+  it("File → Session manager calls onsession", async () => {
     const onsession = vi.fn();
     const { getByText } = render(MenuBar, { props: { ...base, onsession } });
-    await fireEvent.click(getByText("Tools"));
+    await fireEvent.click(getByText("File"));
     await fireEvent.click(getByText("Session manager"));
     expect(onsession).toHaveBeenCalled();
   });

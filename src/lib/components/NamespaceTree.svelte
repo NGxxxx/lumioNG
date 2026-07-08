@@ -12,7 +12,6 @@
   let {
     databases = [],
     selected = null,
-    connection = null,
     forceExpand = null,
     onselect,
     onselectdb,
@@ -20,22 +19,22 @@
   }: {
     databases?: DbInfo[];
     selected?: { db: string; coll: string | null } | null;
-    connection?: { label: string } | null;
     forceExpand?: Set<string> | null;
     onselect?: (d: { db: string; coll: string }) => void;
     onselectdb?: (d: { db: string }) => void;
     onmenu?: (t: TreeMenuTarget) => void;
   } = $props();
 
-  let collapsed = $state<Set<string>>(new Set());
-  const isOpen = (db: string) => (forceExpand?.has(db) ?? false) || !collapsed.has(db);
+  // Databases start collapsed; opening one is explicit (or a search match via forceExpand).
+  let expanded = $state<Set<string>>(new Set());
+  const isOpen = (db: string) => (forceExpand?.has(db) ?? false) || expanded.has(db);
   const collCount = $derived(databases.reduce((n, d) => n + d.collections.length, 0));
 
   function toggle(db: string) {
-    const next = new Set(collapsed);
+    const next = new Set(expanded);
     if (next.has(db)) next.delete(db);
     else next.add(db);
-    collapsed = next;
+    expanded = next;
   }
   function selectDb(db: string) {
     onselectdb?.({ db });
@@ -49,11 +48,6 @@
     e.stopPropagation();
     onmenu?.({ kind: "db", db, x: e.clientX, y: e.clientY });
   }
-  function connMenu(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    onmenu?.({ kind: "conn", x: e.clientX, y: e.clientY });
-  }
   function collMenu(e: MouseEvent, db: string, coll: string) {
     e.preventDefault();
     e.stopPropagation();
@@ -62,17 +56,6 @@
 </script>
 
 <div class="tree" role="tree">
-  {#if connection}
-    <div class="conn" role="treeitem" tabindex="-1" aria-selected="false" oncontextmenu={connMenu}>
-      <!-- Mongo leaf SVG icon -->
-      <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" class="icon-mongo">
-        <path d="M12 2c-4 0-7 1.6-7 3.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6C19 3.6 16 2 12 2z" fill="none" stroke="var(--accent)" stroke-width="1.6"/>
-        <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="var(--accent-bg-tint)" stroke="var(--accent)" stroke-width="1.6"/>
-      </svg>
-      <span class="conn-label">{connection.label}</span>
-      <span class="status-dot"></span>
-    </div>
-  {/if}
   {#each databases as d (d.name)}
     <div
       class="db"
@@ -130,30 +113,6 @@
     display: flex;
     flex-direction: column;
     background: var(--panel);
-  }
-
-  /* ── Connection node ── */
-  .conn {
-    display: flex;
-    align-items: center;
-    height: 1.375rem;
-    padding: 0 0.375rem;
-    gap: 0;
-    border-bottom: 1px solid var(--border);
-    cursor: default;
-    user-select: none;
-  }
-  .conn:hover { background: var(--row-hover); }
-  .icon-mongo { margin-right: 0.3125rem; flex: none; }
-  .conn-label { font-weight: 600; color: var(--text-strong); flex: 1; }
-  .status-dot {
-    width: 0.4375rem;
-    height: 0.4375rem;
-    border-radius: 50%;
-    background: var(--accent);
-    display: inline-block;
-    margin-left: 0.375rem;
-    flex: none;
   }
 
   /* ── Database row ── */

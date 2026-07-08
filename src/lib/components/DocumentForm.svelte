@@ -9,6 +9,7 @@
   import { commandLog } from "../stores/commandLog.svelte";
   import { insertCmd, replaceCmd } from "../domain/mongosh";
   import TreeEditor from "./TreeEditor.svelte";
+  import { settings } from "../stores/settings.svelte";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
@@ -144,7 +145,7 @@
     {:else}
       <div class="json-area">
         <div class="gutter" aria-hidden="true">{lineNumbers}</div>
-        <textarea bind:value={text} spellcheck="false" class="json-textarea"></textarea>
+        <textarea bind:value={text} spellcheck="false" class="json-textarea" class:wrap={settings.wrapLongLines}></textarea>
       </div>
     {/if}
   </div>
@@ -276,6 +277,12 @@
     overflow-x: auto;
     min-height: 100%;
   }
+  /* Opt-in wrap mode (Toolbar's Wrap toggle): wraps instead of scrolling horizontally. */
+  .json-textarea.wrap {
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    overflow-x: hidden;
+  }
 
   /* Error */
   .error {
@@ -327,6 +334,7 @@
     height: 1.75rem;
     padding: 0 1.25rem;
     background: var(--panel);
+    color: var(--fg);
     border: 1px solid var(--gray-b8);
     border-radius: 0.1875rem;
     cursor: pointer;

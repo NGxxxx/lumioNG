@@ -26,7 +26,8 @@
     "@tanstack/svelte-virtual": "^3.13.29",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
-    "@tauri-apps/plugin-opener": "^2"
+    "@tauri-apps/plugin-opener": "^2",
+    "js-beautify": "^2.0.3"
   },
   "devDependencies": {
     "@inlang/paraglide-js": "^2.20.1",
@@ -36,6 +37,7 @@
     "@tauri-apps/cli": "^2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.3.1",
+    "@types/js-beautify": "^1.14.3",
     "@types/node": "^25.9.3",
     "jsdom": "^29.1.1",
     "svelte": "^5.0.0",

@@ -13,6 +13,7 @@
     type CompletionSource,
   } from "@codemirror/autocomplete";
   import { javascript } from "@codemirror/lang-javascript";
+  import { js as beautifyJs } from "js-beautify";
   import { appEditorTheme } from "../domain/cmTheme";
 
   let { value, onChange, onSelectionChange, onRun, complete, readonly = false }: {
@@ -68,6 +69,59 @@
       view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: next } });
     }
   });
+
+  // Imperative commands for the context menu, called via bind:this.
+  export function cut() {
+    if (!view) return;
+    const sel = view.state.selection.main;
+    if (sel.empty) return;
+    navigator.clipboard?.writeText(view.state.sliceDoc(sel.from, sel.to)).catch(() => {});
+    view.dispatch({ changes: { from: sel.from, to: sel.to, insert: "" } });
+    view.focus();
+  }
+
+  export function copy() {
+    if (!view) return;
+    const sel = view.state.selection.main;
+    if (sel.empty) return;
+    navigator.clipboard?.writeText(view.state.sliceDoc(sel.from, sel.to)).catch(() => {});
+  }
+
+  export async function paste() {
+    if (!view || !navigator.clipboard) return;
+    try {
+      const text = await navigator.clipboard.readText();
+      const sel = view.state.selection.main;
+      view.dispatch({
+        changes: { from: sel.from, to: sel.to, insert: text },
+        selection: { anchor: sel.from + text.length },
+      });
+      view.focus();
+    } catch {
+      // Clipboard permission denied — silently no-op.
+    }
+  }
+
+  export function clear() {
+    if (!view) return;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: "" } });
+    view.focus();
+  }
+
+  // Pretty-prints the whole document (js-beautify), so one-liner queries like
+  // db.users.find({name:"a"}) get expanded into readable multi-line code, not just reindented.
+  export function format() {
+    if (!view) return;
+    const current = view.state.doc.toString();
+    const formatted = beautifyJs(current, {
+      indent_size: 2,
+      space_in_empty_paren: false,
+      brace_style: "collapse",
+    });
+    if (formatted === current) return;
+    view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: formatted } });
+    view.focus();
+  }
 </script>
 
 <div class="cm-host" bind:this={host}></div>

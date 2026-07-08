@@ -3,28 +3,24 @@
   import NamespaceTree, { type TreeMenuTarget } from "./NamespaceTree.svelte";
   import { filterNamespaces } from "../domain/nsfilter";
   import ContextMenu from "./ContextMenu.svelte";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import NameDialog from "./NameDialog.svelte";
   import NewDatabaseDialog from "./NewDatabaseDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import ExportWizard from "./ExportWizard.svelte";
+  import ImportDialog from "./ImportDialog.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
   import { openDialog } from "../api/files";
-  import { importDocuments, importBson } from "../api/documents";
-  import { importCmd } from "../domain/mongosh";
-  import { commandLog } from "../stores/commandLog.svelte";
-  import { errorMessage } from "../api/errors";
   import * as m from "$lib/paraglide/messages";
   import type { Session } from "../stores/sessionManager.svelte";
 
   let {
-    connection = null,
     onselect,
     onselectdb,
     onnewquery,
     onmanagesessions,
     ondisconnect,
   }: {
-    connection?: { label: string } | null;
     onselect?: (d: { db: string; coll: string }) => void;
     onselectdb?: (d: { db: string }) => void;
     onnewquery?: (d: { db: string; coll: string }) => void;
@@ -81,8 +77,9 @@
 
   let dialog = $state<Dialog | null>(null);
   let exportWizard = $state<ExportWizardInput | null>(null);
-  let io = $state<string | null>(null);
-  let ioErr = $state<string | null>(null);
+  let importDialog = $state<{ sessionId: string; db: string; coll: string; path: string } | null>(null);
+  // Confirmation gate shared by the session X button and the right-click Disconnect action.
+  let confirmDisconnect = $state<{ label: string; run: () => void } | null>(null);
 
   function sessionById(id: string): Session | undefined {
     return sessionManager.sessions.find((s) => s.id === id);
@@ -100,7 +97,9 @@
       if (action === "newDb") dialog = { type: "newDb", sessionId: target.sessionId };
       else if (action === "refresh") tree?.refresh();
       else if (action === "manageSessions") onmanagesessions?.();
-      else if (action === "disconnect") ondisconnect?.();
+      else if (action === "disconnect") {
+        confirmDisconnect = { label: sess?.label ?? target.sessionId, run: () => ondisconnect?.() };
+      }
     } else if (target.kind === "db") {
       if (action === "newColl") dialog = { type: "newColl", db: target.db, sessionId: target.sessionId };
       else if (action === "copyName") navigator.clipboard.writeText(target.db);
@@ -131,17 +130,13 @@
   async function runImport(sessionId: string, db: string, coll: string) {
     const path = await openDialog([{ name: "JSON / JSONL / BSON", extensions: ["json", "jsonl", "bson"] }]);
     if (path === null) return;
-    io = null; ioErr = null;
-    try {
-      const tree = sessionById(sessionId)?.tree ?? null;
-      const res = await commandLog.pushTimed(importCmd(db, coll, path), sessionId, () =>
-        path.toLowerCase().endsWith(".bson")
-          ? importBson(sessionId, db, coll, path)
-          : importDocuments(sessionId, db, coll, path));
-      const detail = res.errors.length ? ` ${res.errors.join("; ")}` : "";
-      io = m.namespace_panel_import_done({ inserted: res.inserted, failed: res.failed }) + detail;
-      await tree?.refresh();
-    } catch (e) { ioErr = errorMessage(e); }
+    importDialog = { sessionId, db, coll, path };
+  }
+
+  function closeImportDialog() {
+    if (!importDialog) return;
+    sessionById(importDialog.sessionId)?.tree?.refresh();
+    importDialog = null;
   }
 </script>
 
@@ -159,6 +154,7 @@
   {#if query}<button class="ns-clear" aria-label={m.namespace_panel_clear_filter()} onclick={() => (query = "")}>×</button>{/if}
 </div>
 
+<div class="sessions-scroll">
 {#each sessionManager.sessions as sess (sess.id)}
   {@const isCollapsed = collapsedSessions.has(sess.id)}
   {@const databases = sess.tree?.databases ?? []}
@@ -172,6 +168,7 @@
       class="session-header"
       onclick={() => sess.status === "error" ? sessionManager.reconnect(sess.id) : sessionManager.focusSession(sess.id)}
       onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") sess.status === "error" ? sessionManager.reconnect(sess.id) : sessionManager.focusSession(sess.id); }}
+      oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); menu = { kind: "conn", x: e.clientX, y: e.clientY, sessionId: sess.id }; }}
       role="button"
       tabindex="0"
     >
@@ -220,7 +217,7 @@
         class="session-close"
         aria-label="Close session"
         title="Close session"
-        onclick={(e) => { e.stopPropagation(); sessionManager.closeSession(sess.id); }}
+        onclick={(e) => { e.stopPropagation(); confirmDisconnect = { label: sess.label, run: () => sessionManager.closeSession(sess.id) }; }}
       >✕</button>
     </div>
 
@@ -233,7 +230,6 @@
         databases={filtered.databases}
         forceExpand={query ? filtered.expand : null}
         selected={sess.nav.selection}
-        connection={null}
         onselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); onselect?.(d); }}
         onselectdb={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectDatabase(d.db); onselectdb?.(d); }}
         onmenu={(t) => (menu = { ...t, sessionId: sess.id })}
@@ -241,6 +237,7 @@
     {/if}
   </div>
 {/each}
+</div>
 
 {#if menu}
   <ContextMenu
@@ -333,13 +330,28 @@
   <ExportWizard input={exportWizard} onclose={() => (exportWizard = null)} />
 {/if}
 
-{#if io}<div class="io-ok">{io}</div>{/if}
-{#if ioErr}<div class="error">{ioErr}</div>{/if}
+{#if confirmDisconnect}
+  {@const cd = confirmDisconnect}
+  <ConfirmDialog
+    title={m.namespace_panel_disconnect_confirm_title()}
+    message={m.namespace_panel_disconnect_confirm_message({ label: cd.label })}
+    confirmLabel={m.namespace_panel_menu_disconnect()}
+    danger
+    onconfirm={() => { cd.run(); confirmDisconnect = null; }}
+    oncancel={() => (confirmDisconnect = null)}
+  />
+{/if}
+
+{#if importDialog}
+  {@const d = importDialog}
+  <ImportDialog sessionId={d.sessionId} db={d.db} coll={d.coll} path={d.path} onclose={closeImportDialog} />
+{/if}
 
 <style>
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-  .ns-search { display: flex; align-items: center; gap: 0.3125rem; height: 1.625rem; padding: 0 0.5rem; border-bottom: 1px solid var(--border); background: var(--panel); }
+  .ns-search { display: flex; align-items: center; gap: 0.3125rem; height: 1.625rem; padding: 0 0.5rem; border-bottom: 1px solid var(--border); background: var(--panel); flex: none; }
+  /* <aside> clips overflow (+page.svelte); this is the actual scroll region. */
+  .sessions-scroll { flex: 1; min-height: 0; overflow-y: auto; }
   .ns-search input { flex: 1; border: none; background: none; font-size: 0.75rem; outline: none; }
   .ns-clear { border: none; background: none; cursor: pointer; color: var(--gray-99); font-size: 0.875rem; line-height: 1; padding: 0 0.125rem; }
   .ns-clear:hover { color: var(--gray-44); }

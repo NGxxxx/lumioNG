@@ -5,12 +5,21 @@
 //   __DBNAME  (current database name string)
 //
 // All host fns accept/return Canonical Extended JSON strings.
-// __find / __aggregate return: {"handle":<u32>,"rows":[<doc>,...],"exhausted":<bool>}
-// __cursorFetch returns:       {"rows":[<doc>,...],"exhausted":<bool>}
+// __find / __aggregate return: {"handle":<u32>,"rows":[<doc>,...],"exhausted":<bool>,"bytes":<u32>}
+// __cursorFetch returns:       {"rows":[<doc>,...],"exhausted":<bool>,"bytes":<u32>}
 // __count returns:             {"$numberLong":"<n>"}
 // __distinct returns:          [<value>, ...]
+//
+// "bytes" is the size in bytes of the batch's row JSON, reported by the host so Cursor.toArray()
+// can stop pulling more once the accumulated result gets too large — a handful of huge documents
+// (e.g. 10 docs x 16MB) would otherwise exhaust the QuickJS heap long before __CAP (a row count)
+// ever kicks in.
 
 "use strict";
+
+// Total accumulated row-JSON bytes toArray() will pull before stopping (0 = unlimited). Not
+// user-configurable — like the engine's 256MB heap limit, it's an internal safety valve.
+var __BYTE_CAP = 48 * 1024 * 1024;
 
 // ── BSON constructors ─────────────────────────────────────────────────────────
 // Each returns a plain object with toJSON() that emits Canonical Extended JSON,
@@ -201,8 +210,10 @@ class Cursor {
     this._noId = false;   // true if projection excludes _id — also disables inline-edit
     // look-ahead buffer for hasNext/next
     this._buf = null;     // null = not opened yet; array when open
+    this._bufBytes = 0;   // byte size of the batch buffered into _buf
     this._handle = null;
     this._exhausted = false;
+    this._capped = false; // true once toArray() stopped before natural exhaustion (row or byte cap)
   }
 
   sort(s)       { this._o.sort = s; return this; }
@@ -233,25 +244,33 @@ class Cursor {
 
   // Materialize all rows into an array. Reuses a handle already opened by hasNext()/next()
   // (look-ahead buffer) instead of re-running the query, which would leak the first handle.
+  // Stops draining once __CAP rows OR __BYTE_CAP bytes are collected (0 = unlimited), so
+  // neither an unbounded collection nor a handful of huge documents can exhaust the QuickJS heap.
   toArray() {
-    let handle, out, exhausted;
+    let handle, out, exhausted, bytes;
     if (this._buf !== null) {
       // Opened lazily by hasNext()/next(): drain the existing handle, don't re-open.
       out = this._buf.slice();
       handle = this._handle;
       exhausted = this._exhausted;
+      bytes = this._bufBytes;
       this._buf = [];
     } else {
       const r0 = this._open();
       handle = r0.handle;
       out = r0.rows.slice();
       exhausted = r0.exhausted;
+      bytes = r0.bytes || 0;
     }
-    while (!exhausted) {
+    const cap = typeof __CAP !== "undefined" ? __CAP : 0;
+    const byteCap = typeof __BYTE_CAP !== "undefined" ? __BYTE_CAP : 0;
+    while (!exhausted && (cap === 0 || out.length < cap) && (byteCap === 0 || bytes < byteCap)) {
       const b = JSON.parse(__cursorFetch(handle, 1000));
       out.push.apply(out, b.rows);
+      bytes += b.bytes || 0;
       exhausted = b.exhausted;
     }
+    this._capped = !exhausted;
     if (handle != null) { try { __cursorClose(handle); } catch (_) {} }
     this._handle = null;
     this._exhausted = true;
@@ -283,6 +302,7 @@ class Cursor {
       this._handle = r.exhausted ? null : r.handle;
       this._exhausted = r.exhausted;
       this._buf = r.rows.slice();
+      this._bufBytes = r.bytes || 0;
     }
   }
 
@@ -293,6 +313,7 @@ class Cursor {
     // Fetch more
     const r = JSON.parse(__cursorFetch(this._handle, 100));
     this._buf = r.rows.slice();
+    this._bufBytes = r.bytes || 0;
     this._exhausted = r.exhausted;
     if (r.exhausted) this._handle = null;
     return this._buf.length > 0;
@@ -864,14 +885,15 @@ var sh = {
 // Returns a tagged object the engine maps to ResultDisplay.
 //
 // Tags:
-//   { t: "cursor", pure, src, rows }   — Cursor (no row cap here; Task 7 caps)
+//   { t: "cursor", pure, src, rows, capped } — Cursor (row cap applied in toArray() via __CAP/
+//                                              __BYTE_CAP; `capped` flags early stop to the engine)
 //   { t: "array",  rows }              — plain array
 //   { t: "none" }                      — undefined, null, function
 //   { t: "value",  json }              — any other value, serialized
 //
 // Note: "ack" (write-result) is reserved for Slice 2 write commands.
-// Note: row capping is intentionally NOT applied here — Task 7's engine does it
-//       so the cap value lives in one place (host.rs HostCtx::cap).
+// Note: engine.rs's classify() still re-applies the row cap on `rows` as defense in depth, but
+//       `capped` is the source of truth for whether the result was truncated (row OR byte cap).
 
 function __finalize(v) {
   if (v instanceof Cursor) {
@@ -881,6 +903,7 @@ function __finalize(v) {
       pure: v._pure && !v._noId,
       src: { db: v._db, coll: v._coll },
       rows: rows,
+      capped: v._capped,
     };
   }
 
