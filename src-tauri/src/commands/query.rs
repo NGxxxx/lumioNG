@@ -67,6 +67,34 @@ fn build_aggregate_stages(mut stages: Vec<Document>, skip: Option<i64>, limit: O
     stages
 }
 
+/// Build `{explain: {find: coll, filter, sort, [projection], [skip], [limit]}, verbosity: "executionStats"}`.
+fn build_explain_find_command(
+    coll: &str,
+    filter_doc: Document,
+    sort_doc: Document,
+    proj_doc: Option<Document>,
+    skip: i64,
+    limit: Option<i64>,
+) -> Document {
+    let mut find_cmd = doc! { "find": coll, "filter": filter_doc, "sort": sort_doc };
+    if let Some(p) = proj_doc {
+        find_cmd.insert("projection", p);
+    }
+    if skip > 0 {
+        find_cmd.insert("skip", skip);
+    }
+    if let Some(l) = limit {
+        find_cmd.insert("limit", l);
+    }
+    doc! { "explain": find_cmd, "verbosity": "executionStats" }
+}
+
+/// Build `{explain: {aggregate: coll, pipeline, cursor: {}}, verbosity: "executionStats"}`.
+fn build_explain_aggregate_command(coll: &str, stages: Vec<Document>) -> Document {
+    let agg_cmd = doc! { "aggregate": coll, "pipeline": stages, "cursor": {} };
+    doc! { "explain": agg_cmd, "verbosity": "executionStats" }
+}
+
 /// Reads the `n` field out of a `$count` stage's single output document (`None` when the
 /// pipeline matched nothing, since `$count` omits the stage's output document entirely then).
 fn parse_count_doc(d: Option<Document>) -> u64 {
@@ -208,6 +236,44 @@ pub async fn distinct(
     values.iter().map(bson_to_canonical_string).collect()
 }
 
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn explain_find(
+    session_id: String,
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    sort: Option<String>,
+    projection: Option<String>,
+    skip: i64,
+    limit: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
+    let (filter_doc, sort_doc, proj_doc) =
+        build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
+    let cmd = build_explain_find_command(&coll, filter_doc, sort_doc, proj_doc, skip, limit);
+    let reply = client.database(&db).run_command(cmd).await?;
+    doc_to_canonical_string(reply)
+}
+
+#[tauri::command]
+pub async fn explain_aggregate(
+    session_id: String,
+    db: String,
+    coll: String,
+    pipeline: String,
+    skip: Option<i64>,
+    limit: Option<i64>,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
+    let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
+    let cmd = build_explain_aggregate_command(&coll, stages);
+    let reply = client.database(&db).run_command(cmd).await?;
+    doc_to_canonical_string(reply)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +365,66 @@ mod tests {
     fn parse_count_doc_missing_or_none_is_zero() {
         assert_eq!(parse_count_doc(None), 0);
         assert_eq!(parse_count_doc(Some(Document::new())), 0);
+    }
+
+    #[test]
+    fn build_explain_find_command_wraps_find_with_verbosity() {
+        let (filter, sort, proj) = build_find_options(Some(r#"{"a":{"$numberInt":"1"}}"#), None, None).unwrap();
+        let cmd = build_explain_find_command("orders", filter.clone(), sort.clone(), proj, 0, None);
+        assert_eq!(
+            cmd,
+            doc! {
+                "explain": {
+                    "find": "orders",
+                    "filter": filter,
+                    "sort": sort,
+                },
+                "verbosity": "executionStats",
+            }
+        );
+    }
+
+    #[test]
+    fn build_explain_find_command_includes_skip_and_limit_when_set() {
+        let (filter, sort, proj) = build_find_options(None, None, None).unwrap();
+        let cmd = build_explain_find_command("orders", filter, sort, proj, 10, Some(5));
+        let find_cmd = cmd.get_document("explain").unwrap();
+        assert_eq!(find_cmd.get_i64("skip").unwrap(), 10);
+        assert_eq!(find_cmd.get_i64("limit").unwrap(), 5);
+    }
+
+    #[test]
+    fn build_explain_find_command_omits_zero_skip_and_missing_limit() {
+        let (filter, sort, proj) = build_find_options(None, None, None).unwrap();
+        let cmd = build_explain_find_command("orders", filter, sort, proj, 0, None);
+        let find_cmd = cmd.get_document("explain").unwrap();
+        assert!(!find_cmd.contains_key("skip"));
+        assert!(!find_cmd.contains_key("limit"));
+    }
+
+    #[test]
+    fn build_explain_find_command_includes_projection_when_set() {
+        let (filter, sort, proj) =
+            build_find_options(None, None, Some(r#"{"big":{"$numberInt":"0"}}"#)).unwrap();
+        let cmd = build_explain_find_command("orders", filter, sort, proj, 0, None);
+        let find_cmd = cmd.get_document("explain").unwrap();
+        assert!(find_cmd.contains_key("projection"));
+    }
+
+    #[test]
+    fn build_explain_aggregate_command_wraps_aggregate_with_cursor_and_verbosity() {
+        let stages = build_aggregate_stages(vec![doc! {"$match": {"a": 1}}], None, None);
+        let cmd = build_explain_aggregate_command("orders", stages.clone());
+        assert_eq!(
+            cmd,
+            doc! {
+                "explain": {
+                    "aggregate": "orders",
+                    "pipeline": stages,
+                    "cursor": {},
+                },
+                "verbosity": "executionStats",
+            }
+        );
     }
 }

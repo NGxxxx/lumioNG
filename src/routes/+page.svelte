@@ -172,6 +172,8 @@
     onrun={() => activeQueryRun?.run(sel?.db ?? null)}
     canRunSelection={activeQueryRun?.hasSelection ?? false}
     onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
+    canExplainQuery={activeQueryRun != null}
+    onexplainquery={() => activeQueryRun?.explainAfterRun(sel?.db ?? null)}
     canEditDoc={dataViewActive && (activeDataView.handle?.canEdit ?? false)}
     oneditdocument={() => activeDataView.handle?.editSelected()}
     canExport={dataViewActive ? (activeDataView.handle?.canExport ?? false) : false}

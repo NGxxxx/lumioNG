@@ -68,3 +68,18 @@ describe("Toolbar Run query", () => {
     expect(onrun).toHaveBeenCalled();
   });
 });
+
+describe("Toolbar Explain", () => {
+  it("is disabled when canExplainQuery is false (default)", () => {
+    const { getByTitle } = render(Toolbar, { props: { ...base } });
+    expect((getByTitle("Explain") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls onexplainquery when enabled and clicked", async () => {
+    const onexplainquery = vi.fn();
+    const { getByTitle } = render(Toolbar, {
+      props: { ...base, canExplainQuery: true, onexplainquery },
+    });
+    await fireEvent.click(getByTitle("Explain"));
+    expect(onexplainquery).toHaveBeenCalled();
+  });
+});

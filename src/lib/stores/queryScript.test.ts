@@ -16,10 +16,16 @@ vi.mock("../api/documents", () => ({
   aggregate: vi.fn(),
   aggregateCount: vi.fn(),
   countDocuments: vi.fn(),
+  explainQuery: vi.fn(),
+}));
+
+vi.mock("../api/indexes", () => ({
+  createIndex: vi.fn(),
 }));
 
 import { runScript, cancelScript } from "../api/script";
 import * as docsApi from "../api/documents";
+import * as indexApi from "../api/indexes";
 import { createQueryScript } from "./queryScript.svelte";
 import { settings } from "./settings.svelte";
 import { commandLog } from "./commandLog.svelte";
@@ -34,6 +40,8 @@ const agg = docsApi.aggregate as ReturnType<typeof vi.fn>;
 const aggCount = docsApi.aggregateCount as ReturnType<typeof vi.fn>;
 const cnt = docsApi.countDocuments as ReturnType<typeof vi.fn>;
 const run = runScript as ReturnType<typeof vi.fn>;
+const createIndexMock = indexApi.createIndex as ReturnType<typeof vi.fn>;
+const explainQueryMock = docsApi.explainQuery as ReturnType<typeof vi.fn>;
 
 const ok = (rows: string[], prov: { db: string; coll: string } | null) => ({
   console: [{ level: "log", text: "hi" }],
@@ -744,5 +752,225 @@ describe("createQueryScript — pure-cursor paging", () => {
 
     expect(v.currentPage).toBe(3);
     expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
+  });
+});
+
+describe("explain", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  async function runPureFind() {
+    run.mockResolvedValue({
+      console: [],
+      result: {
+        kind: "cursorQuery",
+        cursorKind: "find", db: "d", coll: "c",
+        query: '{"status":"pending"}', sort: null, projection: null,
+        baseSkip: 0, fixedLimit: null,
+      },
+      provenance: { db: "d", coll: "c" },
+      capped: false,
+      error: null,
+    });
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    const s = createQueryScript("sess", "db.c.find({status:'pending'})");
+    await s.run("d");
+    return s;
+  }
+
+  const collscanJson = JSON.stringify({
+    queryPlanner: { winningPlan: { stage: "COLLSCAN" } },
+    executionStats: {
+      nReturned: 0, executionTimeMillis: 20, totalDocsExamined: 1000,
+      executionStages: { stage: "COLLSCAN", nReturned: 0, executionTimeMillisEstimate: 20, docsExamined: 1000 },
+    },
+  });
+  const ixscanJson = JSON.stringify({
+    queryPlanner: { winningPlan: { stage: "IXSCAN" } },
+    executionStats: {
+      nReturned: 0, executionTimeMillis: 1, totalDocsExamined: 0,
+      executionStages: {
+        stage: "IXSCAN", nReturned: 0, executionTimeMillisEstimate: 1, keysExamined: 0, indexName: "status_1",
+      },
+    },
+  });
+
+  it("canExplain is true only when a pure-cursor recipe exists", async () => {
+    const s = await runPureFind();
+    expect(s.canExplain).toBe(true);
+  });
+
+  it("canExplain is false for a non-pure (materialized) result", async () => {
+    run.mockResolvedValue(ok([`{"_id":1,"a":2}`], { db: "d", coll: "c" }));
+    const s = createQueryScript("sess", "db.c.find().map(x=>x)");
+    await s.run("d");
+    expect(s.canExplain).toBe(false);
+  });
+
+  it("runExplain calls explainQuery with the recipe's exact fields and summarizes the result", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    await s.runExplain();
+    expect(explainQueryMock).toHaveBeenCalledWith(
+      "sess", "find", "d", "c", '{"status":"pending"}', null, null, 0, null,
+    );
+    expect(s.explainSummary?.verdict).toBe("collscan");
+    expect(s.explainRawJson).toBe(collscanJson);
+  });
+
+  it("indexSuggestion is populated only for a collscan verdict", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    await s.runExplain();
+    expect(s.indexSuggestion).toEqual({
+      keys: { status: 1 },
+      snippet: 'db.getCollection("c").createIndex({"status":1})',
+    });
+  });
+
+  it("createSuggestedIndex creates the index, snapshots the previous summary, and re-runs explain", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValueOnce(collscanJson).mockResolvedValueOnce(ixscanJson);
+    createIndexMock.mockResolvedValue(undefined);
+
+    await s.runExplain();
+    await s.createSuggestedIndex();
+
+    expect(createIndexMock).toHaveBeenCalledWith("sess", "d", "c", '{"status":1}', false, null);
+    expect(s.explainPrevSummary?.verdict).toBe("collscan");
+    expect(s.explainSummary?.verdict).toBe("ixscan");
+    expect(explainQueryMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("createSuggestedIndex surfaces a failure via ioError without touching explainPrevSummary", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    await s.runExplain();
+    createIndexMock.mockRejectedValue(new Error("index build failed"));
+
+    await s.createSuggestedIndex();
+
+    expect(s.ioError).toMatch(/index build failed/);
+    expect(s.explainPrevSummary).toBeNull();
+    expect(s.explainSummary?.verdict).toBe("collscan");
+  });
+
+  it("execute() resets all explain state on a fresh run", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    await s.runExplain();
+    expect(s.explainSummary).not.toBeNull();
+
+    await s.run("d");
+    expect(s.explainSummary).toBeNull();
+    expect(s.explainRawJson).toBeNull();
+    expect(s.explainPrevSummary).toBeNull();
+    expect(s.explainError).toBeNull();
+  });
+
+  it("ensureExplain fetches once, then does nothing on repeated calls while already loaded", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    s.ensureExplain();
+    await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
+    s.ensureExplain();
+    s.ensureExplain();
+    expect(explainQueryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("ensureExplain does not fire a second fetch while one is already in flight", async () => {
+    const s = await runPureFind();
+    let resolveExplain: (v: string) => void = () => {};
+    explainQueryMock.mockReturnValue(new Promise<string>((resolve) => { resolveExplain = resolve; }));
+    s.ensureExplain();
+    s.ensureExplain();
+    expect(explainQueryMock).toHaveBeenCalledTimes(1);
+    resolveExplain(collscanJson);
+    await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
+  });
+
+  it("a fresh run discards a stale in-flight explain instead of letting it overwrite the reset state", async () => {
+    const s = await runPureFind();
+    let resolveExplain: (v: string) => void = () => {};
+    explainQueryMock.mockReturnValue(new Promise<string>((resolve) => { resolveExplain = resolve; }));
+    const explainPromise = s.runExplain();
+    // A fresh run starts while the above explain is still in flight.
+    run.mockResolvedValue({
+      console: [],
+      result: {
+        kind: "cursorQuery",
+        cursorKind: "find", db: "d", coll: "c",
+        query: '{"status":"active"}', sort: null, projection: null,
+        baseSkip: 0, fixedLimit: null,
+      },
+      provenance: { db: "d", coll: "c" },
+      capped: false,
+      error: null,
+    });
+    await s.run("d");
+    expect(s.explainSummary).toBeNull();
+    expect(s.explainLoading).toBe(false);
+    // The stale explain call now resolves — it must be discarded, not applied.
+    resolveExplain(collscanJson);
+    await explainPromise;
+    expect(s.explainSummary).toBeNull();
+  });
+
+  it("showExplain bumps explainRequestSeq (for components outside the tab to react to) and fetches", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    const before = s.explainRequestSeq;
+    s.showExplain();
+    expect(s.explainRequestSeq).toBe(before + 1);
+    await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
+  });
+
+  it("showExplain bumps explainRequestSeq again on a repeated call even while already loaded", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    s.showExplain();
+    await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
+    const seqAfterFirst = s.explainRequestSeq;
+    s.showExplain();
+    expect(s.explainRequestSeq).toBe(seqAfterFirst + 1);
+    // Already loaded — ensureExplain's guard means no second fetch, only the signal re-fires.
+    expect(explainQueryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("explainAfterRun runs the query first when not yet explainable, then fetches explain", async () => {
+    run.mockResolvedValue({
+      console: [],
+      result: {
+        kind: "cursorQuery",
+        cursorKind: "find", db: "d", coll: "c",
+        query: '{"status":"pending"}', sort: null, projection: null,
+        baseSkip: 0, fixedLimit: null,
+      },
+      provenance: { db: "d", coll: "c" },
+      capped: false,
+      error: null,
+    });
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    explainQueryMock.mockResolvedValue(collscanJson);
+    const s = createQueryScript("sess", "db.c.find({status:'pending'})");
+    expect(s.canExplain).toBe(false);
+
+    await s.explainAfterRun("d");
+
+    expect(run).toHaveBeenCalledWith("sess", "d", "db.c.find({status:'pending'})", expect.anything());
+    expect(s.canExplain).toBe(true);
+    await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
+  });
+
+  it("explainAfterRun does not re-run the query when already explainable", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    run.mockClear();
+
+    await s.explainAfterRun("d");
+
+    expect(run).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
   });
 });

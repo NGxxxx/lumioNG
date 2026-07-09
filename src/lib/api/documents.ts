@@ -295,3 +295,22 @@ export async function aggregateCount(
 ): Promise<number> {
   return await invoke<number>("aggregate_count", { sessionId, db, coll, pipeline });
 }
+
+/** Runs `explain` (verbosity "executionStats") for a pure find/aggregate cursor recipe. Returns
+ *  the raw Canonical ExtJSON string of the explain reply, unparsed — same convention as the
+ *  `value`/`ack` script results: the caller decides how to interpret it (see `domain/explainPlan.ts`). */
+export async function explainQuery(
+  sessionId: string,
+  cursorKind: "find" | "agg",
+  db: string,
+  coll: string,
+  query: string,
+  sort: string | null,
+  projection: string | null,
+  skip: number,
+  limit: number | null,
+): Promise<string> {
+  return cursorKind === "agg"
+    ? await invoke<string>("explain_aggregate", { sessionId, db, coll, pipeline: query, skip, limit })
+    : await invoke<string>("explain_find", { sessionId, db, coll, filter: query, sort, projection, skip, limit });
+}

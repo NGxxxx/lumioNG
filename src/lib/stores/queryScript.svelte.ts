@@ -1,6 +1,6 @@
 import { untrack } from "svelte";
 import { runScript, cancelScript, type ConsoleEntry, type Provenance } from "../api/script";
-import { sampleDocuments, queryPage, aggregate, aggregateCount, countDocuments } from "../api/documents";
+import { sampleDocuments, queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
 import { mergeColumns, inferSchema, getByPath, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
@@ -9,6 +9,9 @@ import type { Doc } from "../domain/doc";
 import { scanDestructive } from "../domain/scriptScan";
 import { settings } from "./settings.svelte";
 import { updateOne, deleteMany } from "../api/documents";
+import { createIndex } from "../api/indexes";
+import { summarizeExplain, type ExplainSummary } from "../domain/explainPlan";
+import { suggestIndex, type IndexSuggestion } from "../domain/indexAdvisor";
 import { idJson } from "../domain/docid";
 import { describeValue } from "../domain/extjson";
 import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath } from "../domain/celledit";
@@ -43,6 +46,16 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     fixedLimit: number | null;
   };
   let recipe = $state<PagedRecipe | null>(null);
+
+  let explainSummary = $state<ExplainSummary | null>(null);
+  let explainRawJson = $state<string | null>(null);
+  let explainPrevSummary = $state<ExplainSummary | null>(null);
+  let explainLoading = $state(false);
+  let explainError = $state<string | null>(null);
+  // Bumped by `showExplain()` — QueryTab.svelte watches this (its own `resultView` stays local,
+  // real $state) so a trigger outside the tab component (the global Toolbar's Explain button,
+  // which can't reach into QueryTab's local state directly) can still switch its view.
+  let explainRequestSeq = $state(0);
 
   // `docs` always means "current page," in EITHER mode — reassigned wholesale by every
   // fetch/page-change/edit ($state.raw: see CLAUDE.md on large document arrays).
@@ -132,6 +145,12 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     selEnd = end;
   }
 
+  const indexSuggestion = $derived(
+    recipe && explainSummary?.verdict === "collscan"
+      ? suggestIndex(recipe.coll, recipe.query, recipe.sort)
+      : null,
+  );
+
   const pgCount = $derived(
     recipe && recipe.fixedLimit !== null ? 1 : (showingAll ? 1 : pageCount(totalCount, pageSize)),
   );
@@ -177,6 +196,77 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     }
   }
 
+  async function runExplain(): Promise<void> {
+    if (!recipe) return;
+    const r = recipe;
+    const gen = generation;
+    explainLoading = true;
+    explainError = null;
+    try {
+      const json = await explainQuery(
+        sessionId, r.cursorKind, r.db, r.coll, r.query, r.sort, r.projection, r.baseSkip, r.fixedLimit,
+      );
+      if (gen !== generation) return; // a fresh run superseded this in-flight explain — discard it
+      explainRawJson = json;
+      explainSummary = summarizeExplain(JSON.parse(json));
+    } catch (e) {
+      if (gen !== generation) return;
+      explainError = e instanceof Error ? e.message : String(e);
+    } finally {
+      if (gen === generation) explainLoading = false;
+    }
+  }
+
+  /** Fetches Explain only if it hasn't been fetched since the last run — called when the tab
+   *  switches into the Explain view, so repeated toggling doesn't re-run the (potentially slow,
+   *  real-execution) explain command. */
+  function ensureExplain(): void {
+    if (!explainSummary && !explainLoading) void runExplain();
+  }
+
+  /** Entry point for the Explain action from OUTSIDE the tab component (global Toolbar button) —
+   *  bumps a signal QueryTab.svelte watches to switch its own local `resultView` to "explain",
+   *  and fetches it (on demand, via ensureExplain's guard). The editor's right-click menu lives
+   *  inside QueryTab.svelte itself, so it sets `resultView` directly and calls `ensureExplain()`
+   *  without going through this signal. */
+  function showExplain(): void {
+    explainRequestSeq++;
+    ensureExplain();
+  }
+
+  /** Explain, running the query first if it hasn't been run yet (or its last run wasn't a pure
+   *  find/aggregate cursor) — the recipe Explain needs only exists after a run, since determining
+   *  it requires actually executing the mongosh-syntax script through the QuickJS engine (there's
+   *  no separate static-parse path for arbitrary script text). If a destructive-write confirm is
+   *  pending after `run()` (irrelevant for genuine find/aggregate scripts, but possible in
+   *  principle), or the result still isn't a pure cursor, this quietly does nothing further —
+   *  the user sees their query's normal result, same as clicking Run alone. */
+  async function explainAfterRun(db: string | null): Promise<void> {
+    if (!recipe) {
+      await run(db);
+    }
+    if (recipe) {
+      showExplain();
+    }
+  }
+
+  async function createSuggestedIndex(): Promise<void> {
+    if (!recipe || !indexSuggestion || !explainSummary) return;
+    const r = recipe;
+    const suggestion = indexSuggestion;
+    const prev = explainSummary;
+    const gen = generation;
+    try {
+      await commandLog.pushTimed(suggestion.snippet, sessionId, () =>
+        createIndex(sessionId, r.db, r.coll, JSON.stringify(suggestion.keys), false, null));
+      if (gen !== generation) return; // a fresh run superseded this before the index finished
+      explainPrevSummary = prev;
+      await runExplain();
+    } catch (e) {
+      ioError = errorMessage(e);
+    }
+  }
+
   async function execute(db: string, script: string) {
     running = true;
     error = null;
@@ -187,6 +277,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     showingAll = false;
     pageReq = 1;
     recipe = null;
+    explainSummary = null;
+    explainRawJson = null;
+    explainPrevSummary = null;
+    explainLoading = false;
+    explainError = null;
     showAllPending = null;
     generation++; // invalidate any still in-flight paged fetch from before this fresh run
     const startedAt = Date.now();
@@ -631,6 +726,19 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get pageSize() { return pageSize; },
     get allShown() { return showingAll; },
     get colWidths() { return colWidths; },
+    get canExplain() { return recipe !== null; },
+    get explainSummary() { return explainSummary; },
+    get explainRawJson() { return explainRawJson; },
+    get explainPrevSummary() { return explainPrevSummary; },
+    get explainLoading() { return explainLoading; },
+    get explainError() { return explainError; },
+    get indexSuggestion() { return indexSuggestion; },
+    get explainRequestSeq() { return explainRequestSeq; },
+    ensureExplain,
+    showExplain,
+    explainAfterRun,
+    runExplain,
+    createSuggestedIndex,
     get destructiveConfirm() { return destructiveConfirm; },
     run: (db: string | null) => run(db),
     confirmRun,

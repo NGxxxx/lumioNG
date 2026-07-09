@@ -71,4 +71,10 @@ describe("nextResultView", () => {
     expect(nextResultView("grid", "none", false)).toBe("grid");
     expect(nextResultView("tree", "none", false)).toBe("tree");
   });
+
+  it("leaving explain always lands on grid, same as leaving console", () => {
+    expect(nextResultView("explain", "grid-editable", false)).toBe("grid");
+    expect(nextResultView("explain", "grid-readonly", false)).toBe("grid");
+    expect(nextResultView("explain", "none", false)).toBe("grid");
+  });
 });

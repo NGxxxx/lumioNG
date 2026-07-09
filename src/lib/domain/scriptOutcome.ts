@@ -17,7 +17,7 @@ export function parseRows(rows: string[]): Doc[] {
   return rows.map((s) => JSON.parse(s) as Doc);
 }
 
-export type ResultViewMode = "grid" | "tree" | "console";
+export type ResultViewMode = "grid" | "tree" | "console" | "explain";
 
 /** Decide the result view to show after a run, given what it produced.
  *  Console-only output (no docs/value/ack) always jumps to Console; otherwise leaving
@@ -28,6 +28,6 @@ export function nextResultView(
   hasConsoleOutput: boolean,
 ): ResultViewMode {
   if (mode === "none" && hasConsoleOutput) return "console";
-  if (current === "console") return "grid";
+  if (current === "console" || current === "explain") return "grid";
   return current;
 }

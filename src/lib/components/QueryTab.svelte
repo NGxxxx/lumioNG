@@ -6,6 +6,7 @@
   import ResultPager from "./ResultPager.svelte";
   import ResultTree from "./ResultTree.svelte";
   import ConsolePane from "./ConsolePane.svelte";
+  import ExplainPane from "./ExplainPane.svelte";
   import CommandLogView from "./CommandLogView.svelte";
   import { commandLog } from "../stores/commandLog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
@@ -19,7 +20,7 @@
   import { createPaneResize } from "./paneResize.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
-  import { nextResultView } from "../domain/scriptOutcome";
+  import { nextResultView, type ResultViewMode } from "../domain/scriptOutcome";
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
   import type { Doc } from "../domain/doc";
 
@@ -29,7 +30,7 @@
 
   const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
   let bottomTab = $state<"result" | "log">("result");
-  let resultView = $state<"grid" | "tree" | "console">("grid");
+  let resultView = $state<ResultViewMode>("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
   let editorRef: CodeEditor | undefined;
   let editorEl = $state<HTMLDivElement | null>(null);
@@ -47,6 +48,18 @@
     resultView = nextResultView(resultView, v.displayMode, v.consoleEntries.length > 0);
   }
 
+  /** The global Toolbar's Explain button lives outside this component and can't reach
+   *  `resultView` directly — it bumps `v.explainRequestSeq` instead; mirror that into our own
+   *  local (real, testable) `resultView` state whenever it changes. Skipped on the initial 0. */
+  let lastExplainRequestSeq = untrack(() => v.explainRequestSeq);
+  $effect(() => {
+    if (v.explainRequestSeq !== lastExplainRequestSeq) {
+      lastExplainRequestSeq = v.explainRequestSeq;
+      bottomTab = "result";
+      resultView = "explain";
+    }
+  });
+
   async function runQuery() {
     bottomTab = "result";
     await v.run(currentDb);
@@ -59,9 +72,22 @@
     applyPostRunView();
   }
 
+  /** Explain entry point from the editor's own right-click menu — runs the query first if it
+   *  isn't already explainable, then sets the view directly (no need for the cross-component
+   *  `explainRequestSeq` signal used by the global Toolbar's Explain button). */
+  async function explainFromMenu() {
+    bottomTab = "result";
+    if (!v.canExplain) await v.run(currentDb);
+    if (v.canExplain) {
+      resultView = "explain";
+      v.ensureExplain();
+    }
+  }
+
   function onMenu(action: string) {
     if (action === "run") runQuery();
     else if (action === "runSelection") runSelectionQuery();
+    else if (action === "explain") explainFromMenu();
     else if (action === "cut") editorRef?.cut();
     else if (action === "copy") editorRef?.copy();
     else if (action === "paste") editorRef?.paste();
@@ -176,6 +202,20 @@
       <div class="result-pane">
         <ConsolePane entries={v.consoleEntries} elapsedMs={v.lastElapsedMs} onClear={v.clearConsole} />
       </div>
+    {:else if resultView === "explain"}
+      <div class="result-pane">
+        <ExplainPane
+          summary={v.explainSummary}
+          prevSummary={v.explainPrevSummary}
+          rawJson={v.explainRawJson}
+          loading={v.explainLoading}
+          error={v.explainError}
+          suggestion={v.indexSuggestion}
+          coll={v.provenance?.coll ?? ""}
+          oncreateindex={() => v.createSuggestedIndex()}
+          onrefresh={() => v.runExplain()}
+        />
+      </div>
     {:else}
       <div class="result-pane">
         {#if showDocs && resultView === "tree"}
@@ -202,6 +242,7 @@
     items={[
       { label: m.query_tab_menu_run(), action: "run" },
       { label: m.query_tab_menu_run_selection(), action: "runSelection", disabled: !v.hasSelection },
+      { label: m.query_tab_menu_explain(), action: "explain" },
       { label: m.query_tab_menu_cut(), action: "cut", disabled: !v.hasSelection },
       { label: m.query_tab_menu_copy(), action: "copy", disabled: !v.hasSelection },
       { label: m.query_tab_menu_paste(), action: "paste" },

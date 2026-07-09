@@ -14,6 +14,8 @@
     onrun = () => {},
     canRunSelection = false,
     onrunselection = () => {},
+    canExplainQuery = false,
+    onexplainquery = () => {},
     canEditDoc = false,
     oneditdocument = () => {},
     canExport = false,
@@ -29,6 +31,8 @@
     onrun?: () => void;
     canRunSelection?: boolean;
     onrunselection?: () => void;
+    canExplainQuery?: boolean;
+    onexplainquery?: () => void;
     canEditDoc?: boolean;
     oneditdocument?: () => void;
     canExport?: boolean;
@@ -124,6 +128,17 @@
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
       <path d="M3 3l6 5-6 5z" fill="var(--run)"/>
       <rect x="11" y="3" width="2.2" height="10" fill="var(--run)"/>
+    </svg>
+  </button>
+
+  <!-- Explain (enabled when the active query tab has a pure find/aggregate cursor result) -->
+  <button aria-label={m.toolbar_explain()} title={m.toolbar_explain()} class="btn-icon" disabled={!canExplainQuery} onclick={onexplainquery}>
+    <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+      <circle cx="7" cy="7" r="4.2" fill="none" stroke="var(--muted)" stroke-width="1.3"/>
+      <path d="M10.2 10.2 L14 14" stroke="var(--muted)" stroke-width="1.5"/>
+      <rect x="5" y="7.5" width="1.2" height="2" fill="var(--run)"/>
+      <rect x="6.8" y="6" width="1.2" height="3.5" fill="var(--run)"/>
+      <rect x="8.6" y="4.7" width="1.2" height="4.8" fill="var(--run)"/>
     </svg>
   </button>
 

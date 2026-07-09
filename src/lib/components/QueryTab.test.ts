@@ -42,6 +42,15 @@ const stub = {
   cancelExport: vi.fn(),
   get ioError() { return null; },
   confirmRun: vi.fn(), cancelConfirm: vi.fn(), dontAskAgain: vi.fn(),
+  get canExplain() { return false; },
+  get explainSummary() { return null; },
+  get explainRawJson() { return null; },
+  get explainPrevSummary() { return null; },
+  get explainLoading() { return false; },
+  get explainError() { return null; },
+  get indexSuggestion() { return null; },
+  get explainRequestSeq() { return 0; },
+  ensureExplain: vi.fn(), runExplain: vi.fn(), createSuggestedIndex: vi.fn(),
 };
 
 const editableStub = {
@@ -78,6 +87,51 @@ describe("QueryTab", () => {
     await fireEvent.contextMenu(editor);
     await fireEvent.click(getByText("Run"));
     expect(run).toHaveBeenCalledWith("shop");
+  });
+
+  it("right-click menu's Explain item runs the query first when not yet explainable, then shows the Explain view", async () => {
+    let canExplainNow = false;
+    const runSpy = vi.fn(async () => { canExplainNow = true; });
+    const ensureExplainSpy = vi.fn();
+    activeStub = {
+      ...stub,
+      get canExplain() { return canExplainNow; },
+      run: runSpy,
+      ensureExplain: ensureExplainSpy,
+    } as unknown as typeof stub;
+    try {
+      const { container, getByText } = render(QueryTab, { props });
+      const editor = container.querySelector(".editor")!;
+      await fireEvent.contextMenu(editor);
+      await fireEvent.click(getByText("Explain"));
+      expect(runSpy).toHaveBeenCalledWith("shop");
+      expect(ensureExplainSpy).toHaveBeenCalledOnce();
+      expect(container.querySelector(".explain-pane")).toBeTruthy();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("right-click menu's Explain item does not re-run when the store is already explainable", async () => {
+    const runSpy = vi.fn();
+    const ensureExplainSpy = vi.fn();
+    activeStub = {
+      ...stub,
+      get canExplain() { return true; },
+      run: runSpy,
+      ensureExplain: ensureExplainSpy,
+    } as unknown as typeof stub;
+    try {
+      const { container, getByText } = render(QueryTab, { props });
+      const editor = container.querySelector(".editor")!;
+      await fireEvent.contextMenu(editor);
+      await fireEvent.click(getByText("Explain"));
+      expect(runSpy).not.toHaveBeenCalled();
+      expect(ensureExplainSpy).toHaveBeenCalledOnce();
+      expect(container.querySelector(".explain-pane")).toBeTruthy();
+    } finally {
+      activeStub = stub;
+    }
   });
 
   it("shows idle hint when displayMode is none", () => {
