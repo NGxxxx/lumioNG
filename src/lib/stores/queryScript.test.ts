@@ -12,6 +12,10 @@ vi.mock("../api/documents", () => ({
   sampleDocuments: vi.fn(async () => [{ _id: { $oid: "1" }, name: "A", age: 30 }]),
   updateOne: vi.fn(async () => ({ matched: 1, modified: 1 })),
   deleteMany: vi.fn(async () => 1),
+  queryPage: vi.fn(),
+  aggregate: vi.fn(),
+  aggregateCount: vi.fn(),
+  countDocuments: vi.fn(),
 }));
 
 import { runScript, cancelScript } from "../api/script";
@@ -25,6 +29,11 @@ import { updateOneCmd, deleteManyCmd } from "../domain/mongosh";
 const sampleDocuments = docsApi.sampleDocuments as ReturnType<typeof vi.fn>;
 const updateOne = docsApi.updateOne as ReturnType<typeof vi.fn>;
 const deleteMany = docsApi.deleteMany as ReturnType<typeof vi.fn>;
+const qp = docsApi.queryPage as ReturnType<typeof vi.fn>;
+const agg = docsApi.aggregate as ReturnType<typeof vi.fn>;
+const aggCount = docsApi.aggregateCount as ReturnType<typeof vi.fn>;
+const cnt = docsApi.countDocuments as ReturnType<typeof vi.fn>;
+const run = runScript as ReturnType<typeof vi.fn>;
 
 const ok = (rows: string[], prov: { db: string; coll: string } | null) => ({
   console: [{ level: "log", text: "hi" }],
@@ -234,25 +243,44 @@ describe("execute forwards engine settings", () => {
   });
 });
 
-describe("showAll / backToPaged", () => {
-  it("showAll puts every fetched doc on one page; backToPaged restores normal paging", async () => {
+describe("requestShowAll / exiting show-all via page navigation", () => {
+  it("requestShowAll puts every fetched doc on one page; goToPage(1) restores normal paging", async () => {
     const rows = [1, 2, 3, 4, 5].map((n) => JSON.stringify({ n }));
     (runScript as any).mockResolvedValue(ok(rows, null));
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("mydb");
-    s.setPageSize(2);
-    expect(s.pageDocs.length).toBe(2);
+    await s.setPageSize(2);
+    expect(s.docs.length).toBe(2);
     expect(s.pageCount).toBe(3);
 
-    s.showAll();
+    await s.requestShowAll();
     expect(s.allShown).toBe(true);
-    expect(s.pageDocs.length).toBe(5);
+    expect(s.docs.length).toBe(5);
     expect(s.pageCount).toBe(1);
     expect(s.currentPage).toBe(1);
 
-    s.backToPaged();
+    // Regression: ResultPager's "back to paged" button calls firstPage()/goToPage(1), not a
+    // dedicated exit method — every page-navigation action must unconditionally drop showingAll,
+    // otherwise the fully-shown result set gets silently truncated while allShown still reads true.
+    await s.goToPage(1);
     expect(s.allShown).toBe(false);
-    expect(s.pageDocs.length).toBe(2);
+    expect(s.docs.length).toBe(2);
+  });
+
+  it("nextPage() also exits show-all mode, not just goToPage", async () => {
+    const rows = [1, 2, 3, 4, 5].map((n) => JSON.stringify({ n }));
+    (runScript as any).mockResolvedValue(ok(rows, null));
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("mydb");
+    await s.setPageSize(2);
+
+    await s.confirmShowAll();
+    expect(s.allShown).toBe(true);
+    expect(s.docs.length).toBe(5);
+
+    await s.nextPage();
+    expect(s.allShown).toBe(false);
+    expect(s.docs.length).toBe(2);
   });
 
   it("a new run resets allShown back to paged mode", async () => {
@@ -260,7 +288,7 @@ describe("showAll / backToPaged", () => {
     (runScript as any).mockResolvedValue(ok(rows, null));
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("mydb");
-    s.showAll();
+    await s.requestShowAll();
     expect(s.allShown).toBe(true);
 
     await s.run("mydb");
@@ -337,13 +365,13 @@ describe("inline edit (editable grid)", () => {
     (runScript as any).mockResolvedValue(ok(rows, { db: "d", coll: "c" }));
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("d");
-    s.setPageSize(2);   // page 1 = rows 0,1 ; page 2 = row 2
-    s.goToPage(2);
-    s.startEdit(0, "name"); // page-relative row 0 → absolute index 2
+    await s.setPageSize(2);   // page 1 = rows 0,1 ; page 2 = row 2
+    await s.goToPage(2);
+    s.startEdit(0, "name"); // page-relative row 0 on page 2 → the 3rd underlying doc
     s.editText = "ZZ";
     await s.commitEdit();
     expect(updateOne).toHaveBeenCalledWith("sess", "d", "c", `{"_id": 3}`, `{"$set":{"name":"ZZ"}}`, false);
-    expect(s.docs[2].name).toBe("ZZ");
+    expect(s.docs[0].name).toBe("ZZ");
   });
 
   it("commitEdit on a nested field sends a dotted $set and patches the nested path locally", async () => {
@@ -554,5 +582,167 @@ describe("queryScript command log + activity", () => {
     const entry = commandLog.entries.at(-1)!;
     expect(entry.text).toBe(deleteManyCmd("c", `{"_id":{"$in":[1]}}`));
     expect(entry.tookMs).toBeGreaterThanOrEqual(0);
+  });
+});
+
+function cursorQueryOutcome(overrides: Partial<{
+  cursorKind: "find" | "agg"; query: string; sort: string | null; projection: string | null;
+  baseSkip: number; fixedLimit: number | null;
+}> = {}) {
+  return {
+    console: [],
+    result: {
+      kind: "cursorQuery" as const,
+      cursorKind: overrides.cursorKind ?? "find",
+      db: "d", coll: "c",
+      query: overrides.query ?? "{}",
+      sort: overrides.sort ?? null,
+      projection: overrides.projection ?? null,
+      baseSkip: overrides.baseSkip ?? 0,
+      fixedLimit: overrides.fixedLimit === undefined ? null : overrides.fixedLimit,
+    },
+    provenance: { db: "d", coll: "c" },
+    capped: false,
+    error: null,
+  };
+}
+
+describe("createQueryScript — pure-cursor paging", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValue(0);
+    qp.mockResolvedValue([]);
+    agg.mockResolvedValue([]);
+    aggCount.mockResolvedValue(0);
+  });
+
+  it("a pure find() result counts and loads page 1 via query_page", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome());
+    cnt.mockResolvedValueOnce(3);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    expect(v.docs).toEqual([{ _id: { $oid: "a" } }]);
+    expect(v.totalCount).toBe(3);
+    expect(v.currentPage).toBe(1);
+    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 0, 50, "{}", null, null);
+  });
+
+  it("a pure aggregate() result counts via aggregateCount and pages via aggregate(skip, limit)", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome({ cursorKind: "agg", query: "[]" }));
+    aggCount.mockResolvedValueOnce(120);
+    agg.mockResolvedValueOnce([{ _id: { $oid: "p1" } }]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    expect(v.totalCount).toBe(120);
+    expect(agg).toHaveBeenCalledWith("conn:1", "d", "c", "[]", 0, 50);
+  });
+
+  it("goToPage(3) re-fetches with the correct skip and replaces docs", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome());
+    cnt.mockResolvedValueOnce(200);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "p1" } }]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    qp.mockResolvedValueOnce([{ _id: { $oid: "p3" } }]);
+    await v.goToPage(3);
+    expect(v.currentPage).toBe(3);
+    expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 100, 50, "{}", null, null);
+  });
+
+  it("an explicit .limit() on the script hides the pager and fetches exactly that slice once", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome({ baseSkip: 10, fixedLimit: 5 }));
+    qp.mockResolvedValueOnce([{ _id: { $oid: "x" } }]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 10, 5, "{}", null, null);
+    expect(cnt).not.toHaveBeenCalled();
+    expect(v.pageCount).toBe(1);
+    await v.goToPage(2);
+    expect(qp).toHaveBeenCalledTimes(1); // pager is disabled: no second fetch
+  });
+
+  it("requestShowAll gates on the same threshold as collectionView, then fetches everything", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome());
+    cnt.mockResolvedValue(6000); // over SHOW_ALL_WARN_THRESHOLD (5000)
+    qp.mockResolvedValueOnce([]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    await v.requestShowAll();
+    expect(v.showAllPending).toBe(6000);
+    qp.mockResolvedValueOnce(Array.from({ length: 6000 }, (_, i) => ({ _id: { $oid: String(i) } })));
+    await v.confirmShowAll();
+    expect(v.allShown).toBe(true);
+    expect(v.docs.length).toBe(6000);
+  });
+
+  it("a fresh run() clears a stale showAllPending left over from a previous run", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome());
+    cnt.mockResolvedValue(6000); // over SHOW_ALL_WARN_THRESHOLD (5000)
+    qp.mockResolvedValueOnce([]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    await v.requestShowAll();
+    expect(v.showAllPending).toBe(6000); // still pending confirmation from the first run
+
+    run.mockResolvedValueOnce(cursorQueryOutcome());
+    qp.mockResolvedValueOnce([]);
+    await v.run("d"); // a fresh run must not leave the old confirmation dialog dangling
+    expect(v.showAllPending).toBeNull();
+  });
+
+  it("a non-pure (.map()) result is unaffected: docs come from runScript rows, no paging calls", async () => {
+    run.mockResolvedValueOnce({
+      console: [], result: { kind: "docs", rows: ['{"a":1}'] }, provenance: null, capped: false, error: null,
+    });
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    expect(v.docs).toEqual([{ a: 1 }]);
+    expect(qp).not.toHaveBeenCalled();
+    expect(agg).not.toHaveBeenCalled();
+  });
+
+  it("requestShowAll no-ops when the recipe has a fixed limit (no count/fetch calls)", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome({ baseSkip: 10, fixedLimit: 5 }));
+    qp.mockResolvedValueOnce([{ _id: { $oid: "x" } }]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    expect(qp).toHaveBeenCalledTimes(1); // the fixed-limit page load from run()
+
+    vi.clearAllMocks();
+    await v.requestShowAll();
+    expect(cnt).not.toHaveBeenCalled();
+    expect(aggCount).not.toHaveBeenCalled();
+    expect(qp).not.toHaveBeenCalled();
+    expect(agg).not.toHaveBeenCalled();
+    expect(v.allShown).toBe(false);
+  });
+
+  it("an out-of-order stale page response does not clobber a later page's docs (generation guard)", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome());
+    cnt.mockResolvedValueOnce(200);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "p1" } }]); // initial page-1 load from run()
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+
+    // goToPage(2)'s fetch resolves LATE (after goToPage(3)'s fetch already resolved).
+    let resolvePage2!: (docs: unknown[]) => void;
+    const page2Promise = new Promise<unknown[]>((resolve) => { resolvePage2 = resolve; });
+    qp.mockReturnValueOnce(page2Promise);
+
+    const goToPage2 = v.goToPage(2); // starts the slow fetch, does not await yet
+
+    qp.mockResolvedValueOnce([{ _id: { $oid: "p3" } }]); // goToPage(3)'s fetch resolves fast
+    await v.goToPage(3);
+    expect(v.currentPage).toBe(3);
+    expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
+
+    // Now let the stale goToPage(2) fetch resolve — it must NOT overwrite the page-3 state.
+    resolvePage2([{ _id: { $oid: "p2" } }]);
+    await goToPage2;
+
+    expect(v.currentPage).toBe(3);
+    expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
   });
 });

@@ -23,6 +23,7 @@ pub fn run() {
             commands::connection::disconnect,
             commands::query::query_page,
             commands::query::aggregate,
+            commands::query::aggregate_count,
             commands::query::sample_documents,
             commands::query::count_documents,
             commands::query::distinct,

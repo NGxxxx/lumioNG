@@ -16,6 +16,26 @@ describe("displayMode", () => {
     expect(displayMode({ ...base, result: { kind: "value", json: "1" } })).toBe("value");
     expect(displayMode(base)).toBe("none");
   });
+
+  it("cursorQuery + provenance → grid-editable", () => {
+    const cursorQueryResult = {
+      kind: "cursorQuery" as const,
+      cursorKind: "find" as const,
+      db: "d", coll: "c", query: "{}", sort: null, projection: null,
+      baseSkip: 0, fixedLimit: null,
+    };
+    expect(displayMode({ ...base, result: cursorQueryResult, provenance: { db: "d", coll: "c" } })).toBe("grid-editable");
+  });
+
+  it("cursorQuery without provenance → grid-readonly", () => {
+    const cursorQueryResult = {
+      kind: "cursorQuery" as const,
+      cursorKind: "find" as const,
+      db: "d", coll: "c", query: "{}", sort: null, projection: null,
+      baseSkip: 0, fixedLimit: null,
+    };
+    expect(displayMode({ ...base, result: cursorQueryResult, provenance: null })).toBe("grid-readonly");
+  });
 });
 
 describe("parseRows", () => {

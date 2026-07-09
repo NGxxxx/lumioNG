@@ -273,14 +273,25 @@ export async function importBson(
   });
 }
 
-/** Run an aggregate pipeline (ExtJSON array string). limit≠null appends a trailing $limit. */
+/** Run an aggregate pipeline (ExtJSON array string). skip/limit append trailing $skip/$limit stages. */
 export async function aggregate(
   sessionId: string,
   db: string,
   coll: string,
   pipeline: string,
+  skip: number | null,
   limit: number | null,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("aggregate", { sessionId, db, coll, pipeline, limit });
+  const rows = await invoke<string[]>("aggregate", { sessionId, db, coll, pipeline, skip, limit });
   return rows.map((s) => JSON.parse(s) as Doc);
+}
+
+/** Counts documents an aggregate pipeline would produce (appends a $count stage). */
+export async function aggregateCount(
+  sessionId: string,
+  db: string,
+  coll: string,
+  pipeline: string,
+): Promise<number> {
+  return await invoke<number>("aggregate_count", { sessionId, db, coll, pipeline });
 }

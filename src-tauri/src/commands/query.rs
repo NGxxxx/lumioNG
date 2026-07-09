@@ -53,22 +53,43 @@ fn build_sample_pipeline(user: Document, size: i64) -> Vec<Document> {
     }
 }
 
+/// Appends optional `$skip`/`$limit` stages (in that order) to a pipeline. `skip <= 0` is a no-op
+/// (page 1 needs no `$skip` stage at all).
+fn build_aggregate_stages(mut stages: Vec<Document>, skip: Option<i64>, limit: Option<i64>) -> Vec<Document> {
+    if let Some(n) = skip {
+        if n > 0 {
+            stages.push(doc! { "$skip": n });
+        }
+    }
+    if let Some(n) = limit {
+        stages.push(doc! { "$limit": n });
+    }
+    stages
+}
+
+/// Reads the `n` field out of a `$count` stage's single output document (`None` when the
+/// pipeline matched nothing, since `$count` omits the stage's output document entirely then).
+fn parse_count_doc(d: Option<Document>) -> u64 {
+    d.and_then(|d| {
+        d.get_i64("n").ok().map(|n| n as u64).or_else(|| d.get_i32("n").ok().map(|n| n as u64))
+    })
+    .unwrap_or(0)
+}
+
 #[tauri::command]
 pub async fn aggregate(
     session_id: String,
     db: String,
     coll: String,
     pipeline: String,
+    skip: Option<i64>,
     limit: Option<i64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let client = state.client(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
-    let mut stages = parse_pipeline(&pipeline)?;
-    if let Some(n) = limit {
-        stages.push(doc! { "$limit": n });
-    }
+    let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
 
     let mut cursor = collection.aggregate(stages).await?;
     let mut docs = Vec::new();
@@ -76,6 +97,25 @@ pub async fn aggregate(
         docs.push(doc_to_canonical_string(d)?);
     }
     Ok(docs)
+}
+
+#[tauri::command]
+pub async fn aggregate_count(
+    session_id: String,
+    db: String,
+    coll: String,
+    pipeline: String,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let client = state.client(&session_id).await?;
+    let collection = client.database(&db).collection::<Document>(&coll);
+
+    let mut stages = parse_pipeline(&pipeline)?;
+    stages.push(doc! { "$count": "n" });
+
+    let mut cursor = collection.aggregate(stages).await?;
+    let doc = cursor.try_next().await?;
+    Ok(parse_count_doc(doc))
 }
 
 #[tauri::command]
@@ -226,5 +266,38 @@ mod tests {
         let (_, _, proj) =
             build_find_options(None, None, Some(r#"{"big":{"$numberInt":"0"}}"#)).unwrap();
         assert!(proj.is_some());
+    }
+
+    #[test]
+    fn build_aggregate_stages_appends_skip_before_limit() {
+        let stages = build_aggregate_stages(vec![doc! {"$match": {}}], Some(10), Some(5));
+        assert_eq!(
+            stages,
+            vec![doc! {"$match": {}}, doc! {"$skip": 10_i64}, doc! {"$limit": 5_i64}]
+        );
+    }
+
+    #[test]
+    fn build_aggregate_stages_skips_a_zero_or_none_skip() {
+        assert_eq!(build_aggregate_stages(vec![], Some(0), None), Vec::<Document>::new());
+        assert_eq!(build_aggregate_stages(vec![], None, None), Vec::<Document>::new());
+    }
+
+    #[test]
+    fn build_aggregate_stages_with_no_options_is_a_passthrough() {
+        let stages = build_aggregate_stages(vec![doc! {"$match": {}}], None, None);
+        assert_eq!(stages, vec![doc! {"$match": {}}]);
+    }
+
+    #[test]
+    fn parse_count_doc_reads_i32_or_i64_n() {
+        assert_eq!(parse_count_doc(Some(doc! {"n": 7_i32})), 7);
+        assert_eq!(parse_count_doc(Some(doc! {"n": 7_i64})), 7);
+    }
+
+    #[test]
+    fn parse_count_doc_missing_or_none_is_zero() {
+        assert_eq!(parse_count_doc(None), 0);
+        assert_eq!(parse_count_doc(Some(Document::new())), 0);
     }
 }

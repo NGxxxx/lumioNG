@@ -3,6 +3,17 @@ import { invoke } from "@tauri-apps/api/core";
 export type ConsoleEntry = { level: "log" | "error"; text: string };
 export type ResultDisplay =
   | { kind: "docs"; rows: string[] }
+  | {
+      kind: "cursorQuery";
+      cursorKind: "find" | "agg";
+      db: string;
+      coll: string;
+      query: string;
+      sort: string | null;
+      projection: string | null;
+      baseSkip: number;
+      fixedLimit: number | null;
+    }
   | { kind: "value"; json: string }
   | { kind: "ack"; json: string }
   | { kind: "none" };

@@ -2,7 +2,8 @@
   import { untrack } from "svelte";
   import { getQueryRun } from "../stores/queryRuns.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
-  import QueryResultGrid from "./QueryResultGrid.svelte";
+  import ResultGrid from "./ResultGrid.svelte";
+  import ResultPager from "./ResultPager.svelte";
   import ResultTree from "./ResultTree.svelte";
   import ConsolePane from "./ConsolePane.svelte";
   import CommandLogView from "./CommandLogView.svelte";
@@ -15,6 +16,7 @@
   import CodeEditor from "./CodeEditor.svelte";
   import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
   import { settings } from "../stores/settings.svelte";
+  import { createPaneResize } from "./paneResize.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
   import { nextResultView } from "../domain/scriptOutcome";
@@ -30,6 +32,9 @@
   let resultView = $state<"grid" | "tree" | "console">("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
   let editorRef: CodeEditor | undefined;
+  let editorEl = $state<HTMLDivElement | null>(null);
+  let bottomEl = $state<HTMLDivElement | null>(null);
+  const paneResize = createPaneResize((px) => settings.setQueryEditorHeightPx(px));
 
   // stopPropagation so ContextMenu's just-mounted window listener doesn't immediately close it.
   function openMenu(e: MouseEvent) {
@@ -95,8 +100,6 @@
   const showDocs = $derived(
     v.displayMode === "grid-editable" || v.displayMode === "grid-readonly"
   );
-  const editable = $derived(v.displayMode === "grid-editable");
-  const totalCount = $derived(v.docs.length);
 
   async function onGridMenuSelect(action: string) {
     const r = v.onMenuSelect(action);
@@ -117,7 +120,13 @@
     <QuerySettingsPopover />
   </div>
 
-  <div class="editor" role="none" oncontextmenu={openMenu}>
+  <div
+    class="editor"
+    role="none"
+    oncontextmenu={openMenu}
+    bind:this={editorEl}
+    style={settings.queryEditorHeightPx !== null ? `height:${settings.queryEditorHeightPx}px` : undefined}
+  >
     <CodeEditor
       bind:this={editorRef}
       value={v.statementText}
@@ -127,12 +136,19 @@
       complete={completionSource} />
   </div>
 
+  <div
+    class="pane-divider"
+    role="presentation"
+    onmousedown={(e) => editorEl && bottomEl && paneResize.start(e, editorEl, bottomEl)}
+    ondblclick={() => settings.resetQueryEditorHeight()}
+  ></div>
+
   {#if v.error}<div class="error">{v.error}</div>{/if}
   {#if v.capped}
     <div class="cap">{m.query_tab_capped_notice({ cap: settings.queryResultCap })}</div>
   {/if}
 
-  <div class="bottom">
+  <div class="bottom" bind:this={bottomEl}>
     <div class="bottom-tabs">
       <button class:active={bottomTab === "result"} onclick={() => (bottomTab = "result")}>{m.query_tab_result()}</button>
       <button class:active={bottomTab === "log"} onclick={() => (bottomTab = "log")}>{m.query_tab_command_log()}</button>
@@ -163,24 +179,9 @@
     {:else}
       <div class="result-pane">
         {#if showDocs && resultView === "tree"}
-          <ResultTree docs={v.pageDocs} onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
+          <ResultTree docs={v.docs} onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
         {:else if showDocs}
-          <QueryResultGrid
-            columns={v.columns}
-            docs={v.pageDocs}
-            colWidths={v.colWidths}
-            onResize={v.setColWidth}
-            onReset={v.resetColWidth}
-            selected={v.selected}
-            onRowClick={v.clickRow}
-            onOpenMenu={v.openMenu}
-            editing={editable ? v.editing : null}
-            bind:editText={v.editText}
-            editError={v.editError}
-            onStartEdit={editable ? v.startEdit : () => {}}
-            onCommitEdit={v.commitEdit}
-            onCancelEdit={v.cancelEdit}
-            onEditBlur={v.onEditBlur} />
+          <ResultGrid {v} />
         {:else if v.displayMode === "ack" && v.ackJson !== null}
           <div class="value-display"><pre>{v.ackJson}</pre></div>
         {:else if v.displayMode === "value" && v.valueJson !== null}
@@ -189,25 +190,8 @@
           <div class="status">{m.query_tab_status_idle()}</div>
         {/if}
       </div>
-      {#if showDocs && v.allShown}
-        <div class="pager">
-          <button onclick={v.backToPaged}>{m.result_table_pager_back_to_paged()}</button>
-          <span class="pg-total">{m.query_tab_docs_count({ count: totalCount })}</span>
-        </div>
-      {:else if showDocs}
-        <div class="pager">
-          <button onclick={() => v.goToPage(1)} disabled={v.currentPage <= 1}>«</button>
-          <button onclick={() => v.goToPage(v.currentPage - 1)} disabled={v.currentPage <= 1}>‹</button>
-          <span class="pg-info">{v.currentPage} / {v.pageCount}</span>
-          <button onclick={() => v.goToPage(v.currentPage + 1)} disabled={v.currentPage >= v.pageCount}>›</button>
-          <button onclick={() => v.goToPage(v.pageCount)} disabled={v.currentPage >= v.pageCount}>»</button>
-          <label class="pg-rows">{m.query_tab_rows_label()}
-            <input type="number" min="1" value={v.pageSize}
-              onchange={(e) => v.setPageSize(+e.currentTarget.value)} />
-          </label>
-          <button onclick={v.showAll}>{m.result_table_pager_show_all()}</button>
-          <span class="pg-total">{m.query_tab_docs_count({ count: totalCount })}</span>
-        </div>
+      {#if showDocs}
+        <ResultPager {v} />
       {/if}
     {/if}
   </div>
@@ -265,6 +249,15 @@
     oncancel={() => v.cancelDelete()} />
 {/if}
 
+{#if v.showAllPending !== null}
+  <ConfirmDialog
+    title={m.result_table_show_all_title()}
+    message={m.result_table_show_all_message({ count: v.showAllPending })}
+    confirmLabel={m.result_table_show_all_confirm()}
+    onconfirm={() => v.confirmShowAll()}
+    oncancel={() => v.cancelShowAll()} />
+{/if}
+
 {#if v.exportRequest}
   {@const input = v.exportInput()}
   {#if input}<ExportWizard {input} onclose={() => v.cancelExport()} />{/if}
@@ -278,7 +271,9 @@
   .readonly-badge { font-size: 0.6875rem; color: var(--warn-fg); background: var(--warn-bg2); border: 1px solid var(--warn-fg); border-radius: 0.1875rem; padding: 0 0.375rem; line-height: 1.4; }
   .db { color: var(--gray-77); font-size: 0.75rem; }
   .bar-spacer { flex: 1; }
-  .editor { height: 34%; flex: none; border-bottom: 1px solid var(--gray-cf); box-sizing: border-box; overflow: hidden; }
+  .editor { height: 34%; flex: none; box-sizing: border-box; overflow: hidden; }
+  .pane-divider { flex: none; height: 5px; cursor: row-resize; position: relative; border-bottom: 1px solid var(--gray-cf); }
+  .pane-divider:hover { background: var(--tab-active-border); opacity: 0.5; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   .cap { background: var(--warn-bg2); color: var(--warn-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.625rem; }
   .bottom { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -290,16 +285,9 @@
   .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
   .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .log-clear:hover { background: var(--hover); }
-  .result-pane { flex: 1; min-height: 0; overflow: hidden; background: var(--panel); }
+  .result-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
   .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
   .cancel-btn { font-size: 0.75rem; cursor: pointer; border: none; background: none; color: var(--link); }
   .value-display { height: 100%; overflow: auto; padding: 0.5rem 0.75rem; }
   .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--fg); white-space: pre-wrap; word-break: break-word; }
-  .pager { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.75rem; padding: 0 0.625rem; border-top: 1px solid var(--border); background: var(--zebra-alt); font-size: 0.75rem; }
-  .pager button { height: 1.25rem; padding: 0 0.5rem; border: 1px solid var(--gray-c4); background: var(--bg); border-radius: 0.125rem; cursor: pointer; color: var(--gray-44); }
-  .pager button:disabled { opacity: 0.45; cursor: default; }
-  .pg-info { color: var(--gray-55); }
-  .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
-  .pg-rows input { width: 3.5rem; height: 1.25rem; text-align: center; }
-  .pg-total { margin-left: auto; color: var(--muted); }
 </style>

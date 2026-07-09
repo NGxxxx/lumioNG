@@ -10,14 +10,17 @@ const run = vi.fn();
 const stub = {
   get statementText() { return 'db.getCollection("x").aggregate([])'; },
   set statementText(_v: string) {},
-  get docs() { return []; }, get columns() { return []; }, get pageDocs() { return []; },
+  get docs() { return []; }, get columnFields() { return []; },
   get colWidths() { return {}; }, get error() { return null; }, get running() { return false; },
   get capped() { return false; }, get displayMode() { return "none" as const; },
   get consoleEntries() { return []; }, get ackJson() { return null; }, get valueJson() { return null; },
   get pageSize() { return 50; }, get currentPage() { return 1; },
   get pageCount() { return 1; }, get allShown() { return false; },
+  get totalCount() { return 0; }, get loading() { return false; },
   setColWidth: vi.fn(), resetColWidth: vi.fn(), goToPage: vi.fn(), setPageSize: vi.fn(),
-  showAll: vi.fn(), backToPaged: vi.fn(),
+  nextPage: vi.fn(), prevPage: vi.fn(), firstPage: vi.fn(), lastPage: vi.fn(),
+  requestShowAll: vi.fn(), confirmShowAll: vi.fn(), cancelShowAll: vi.fn(),
+  get showAllPending() { return null; },
   run, cancel: vi.fn(), setSelection: vi.fn(),
   get hasSelection() { return false; }, runSelection: vi.fn(),
   fieldsFor: vi.fn().mockResolvedValue([]),
@@ -45,8 +48,8 @@ const editableStub = {
   ...stub,
   get displayMode() { return "grid-editable" as const; },
   get provenance() { return { db: "shop", coll: "items" }; },
-  get pageDocs() { return [{ _id: "1", name: "test" }]; },
-  get columns() { return [{ path: "name", label: "name" }]; },
+  get docs() { return [{ _id: "1", name: "test" }]; },
+  get columnFields() { return [{ path: "name", label: "name" }]; },
 };
 
 const cancelSpy = vi.fn();
@@ -118,7 +121,7 @@ describe("QueryTab", () => {
 
   it("shows a Show all button in the grid pager, which calls showAll()", async () => {
     const showAllSpy = vi.fn();
-    activeStub = { ...editableStub, showAll: showAllSpy } as unknown as typeof stub;
+    activeStub = { ...editableStub, requestShowAll: showAllSpy } as unknown as typeof stub;
     try {
       const { getByText } = render(QueryTab, { props });
       await fireEvent.click(getByText("Show all"));
@@ -128,13 +131,15 @@ describe("QueryTab", () => {
     }
   });
 
-  it("shows a back-to-paged button instead of the pager once allShown is true", () => {
+  it("shows a back-to-paged button instead of the pager once allShown is true, wired to firstPage", async () => {
     const backSpy = vi.fn();
-    activeStub = { ...editableStub, get allShown() { return true; }, backToPaged: backSpy } as unknown as typeof stub;
+    activeStub = { ...editableStub, get allShown() { return true; }, firstPage: backSpy } as unknown as typeof stub;
     try {
       const { getByText, queryByText } = render(QueryTab, { props });
       expect(getByText("↩ Paged")).toBeTruthy();
       expect(queryByText("Show all")).toBeNull();
+      await fireEvent.click(getByText("↩ Paged"));
+      expect(backSpy).toHaveBeenCalledOnce();
     } finally {
       activeStub = stub;
     }
@@ -216,6 +221,26 @@ describe("QueryTab", () => {
     }
   });
 
+  it("renders the Show all confirmation dialog when showAllPending is set, and wires confirm/cancel", async () => {
+    const confirmSpy = vi.fn();
+    const cancelSpy2 = vi.fn();
+    activeStub = {
+      ...editableStub,
+      get showAllPending() { return 6000; },
+      confirmShowAll: confirmSpy,
+      cancelShowAll: cancelSpy2,
+    } as unknown as typeof stub;
+    try {
+      const { getByText } = render(QueryTab, { props });
+      expect(getByText("Show all?")).toBeTruthy();
+      await fireEvent.click(getByText("Show all", { selector: "footer button" }));
+      expect(confirmSpy).toHaveBeenCalledOnce();
+      expect(cancelSpy2).not.toHaveBeenCalled();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
   it("passes edit handlers to the grid only when editable", () => {
     // Swap the store to an editable result for this test.
     activeStub = editableStub as unknown as typeof stub;
@@ -224,6 +249,7 @@ describe("QueryTab", () => {
       // and the result-pane element should be present in the DOM.
       const { container } = render(QueryTab, { props });
       expect(container.querySelector(".result-pane")).toBeTruthy();
+      expect(container.querySelector(".pane-divider")).toBeTruthy();
     } finally {
       activeStub = stub; // restore for subsequent tests
     }

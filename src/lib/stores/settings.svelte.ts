@@ -5,6 +5,10 @@ const TIMEOUT_KEY = "query-timeout-ms";
 const CAP_KEY = "query-result-cap";
 const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
 const WRAP_KEY = "wrap-long-lines";
+const EDITOR_H_KEY = "query-editor-height-px";
+
+/** Absolute floor (px) for either side of the Query tab's editor/bottom split. */
+export const MIN_PANE_PX = 120;
 
 // Defaults mirror the Rust script engine fallbacks (commands/script.rs).
 const DEFAULT_TIMEOUT_MS = 30000;
@@ -28,6 +32,17 @@ function readPosInt(key: string, fallback: number): number {
   }
 }
 
+/** Like `readPosInt`, but returns `null` for missing/invalid values instead of a fallback —
+ *  `null` means "no user override, use the CSS default". */
+function readPosIntOrNull(key: string): number | null {
+  try {
+    const n = Number(localStorage.getItem(key));
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
+  } catch {
+    return null;
+  }
+}
+
 function writeKey(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
@@ -46,6 +61,9 @@ export function createSettings() {
   let cap = $state<number>(hasStorage ? untrack(() => readPosInt(CAP_KEY, DEFAULT_CAP)) : DEFAULT_CAP);
   let capUnlimited = $state<boolean>(hasStorage ? untrack(() => readBool(CAP_UNLIMITED_KEY)) : false);
   let wrapLongLines = $state<boolean>(hasStorage ? untrack(() => readBool(WRAP_KEY)) : false);
+  let queryEditorHeightPx = $state<number | null>(
+    hasStorage ? untrack(() => readPosIntOrNull(EDITOR_H_KEY)) : null,
+  );
 
   return {
     get suppressDestructiveWarning(): boolean {
@@ -86,6 +104,22 @@ export function createSettings() {
     setWrapLongLines(v: boolean) {
       wrapLongLines = v;
       writeKey(WRAP_KEY, v ? "true" : "false");
+    },
+    /** Query tab editor height override (px); null = use the CSS default (34%). */
+    get queryEditorHeightPx(): number | null {
+      return queryEditorHeightPx;
+    },
+    setQueryEditorHeightPx(px: number) {
+      queryEditorHeightPx = Math.max(MIN_PANE_PX, Math.round(px));
+      writeKey(EDITOR_H_KEY, String(queryEditorHeightPx));
+    },
+    resetQueryEditorHeight() {
+      queryEditorHeightPx = null;
+      try {
+        localStorage.removeItem(EDITOR_H_KEY);
+      } catch {
+        /* storage unavailable — keep the in-memory value */
+      }
     },
   };
 }

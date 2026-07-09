@@ -1,0 +1,93 @@
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { render, fireEvent } from "@testing-library/svelte";
+import ResultGrid from "./ResultGrid.svelte";
+import { mergeColumns } from "../domain/schema";
+import type { GridPageView } from "../domain/gridView";
+import type { Doc } from "../domain/doc";
+
+let restoreOffsetHeight: (() => void) | undefined;
+beforeAll(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
+  restoreOffsetHeight = () => {
+    if (descriptor) Object.defineProperty(HTMLElement.prototype, "offsetHeight", descriptor);
+  };
+});
+afterAll(() => restoreOffsetHeight?.());
+
+function baseView(docs: Doc[], overrides: Partial<GridPageView> = {}): GridPageView {
+  return {
+    docs,
+    columnFields: mergeColumns(null, docs),
+    colWidths: { _id: 160, name: 120 },
+    setColWidth: vi.fn(), resetColWidth: vi.fn(),
+    currentPage: 1, pageCount: 1, totalCount: docs.length, pageSize: 50, allShown: false, loading: false,
+    goToPage: vi.fn(), nextPage: vi.fn(), prevPage: vi.fn(), firstPage: vi.fn(), lastPage: vi.fn(),
+    setPageSize: vi.fn(), requestShowAll: vi.fn(),
+    selected: new Set<number>(), clickRow: vi.fn(), menu: null, openMenu: vi.fn(), closeMenu: vi.fn(),
+    menuItems: () => [],
+    editing: null, editText: "", editError: null,
+    startEdit: vi.fn(), commitEdit: vi.fn(), cancelEdit: vi.fn(), onEditBlur: vi.fn(),
+    ...overrides,
+  };
+}
+
+describe("ResultGrid inline edit", () => {
+  it("renders an input when editing matches a cell", () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs, { editing: { row: 0, key: "name" }, editText: "x" });
+    const { container } = render(ResultGrid, { props: { v } });
+    expect(container.querySelector("input.celledit")).toBeTruthy();
+  });
+
+  it("double-clicking a data cell calls startEdit", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs);
+    const { container } = render(ResultGrid, { props: { v } });
+    const cells = container.querySelectorAll("td.data-cell"); // [0]=_id, [1]=name
+    await fireEvent.dblClick(cells[1]);
+    expect(v.startEdit).toHaveBeenCalledWith(0, "name");
+  });
+});
+
+describe("ResultGrid", () => {
+  it("renders a header and a row per page doc", () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }, { _id: { $oid: "b" }, name: "y" }];
+    const v = baseView(docs);
+    const { getByText, container } = render(ResultGrid, { props: { v } });
+    expect(getByText("name")).toBeTruthy();
+    expect(container.querySelectorAll("tbody tr").length).toBe(2);
+  });
+
+  it("shows an empty hint when there are no columns", () => {
+    const v = baseView([]);
+    const { getByText } = render(ResultGrid, { props: { v } });
+    expect(getByText("No results")).toBeTruthy();
+  });
+
+  it("renders far fewer DOM rows than docs for a large result set (virtualized)", () => {
+    const docs = Array.from({ length: 1000 }, (_, i) => ({ _id: { $oid: String(i) }, name: `n${i}` }));
+    const v = baseView(docs);
+    const { container } = render(ResultGrid, { props: { v } });
+    const rowCount = container.querySelectorAll("tbody tr[data-index]").length;
+    expect(rowCount).toBeGreaterThan(0);
+    expect(rowCount).toBeLessThan(100);
+  });
+
+  it("hides the sort-header affordance when the view has no toggleSort (Query tab)", () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs); // no sortKeys/toggleSort
+    const { container } = render(ResultGrid, { props: { v } });
+    expect(container.querySelector(".sortarrow")).toBeNull();
+  });
+
+  it("shows the sort-header affordance when the view provides toggleSort (Collection tab)", () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs, {
+      sortKeys: [{ path: "name", dir: 1 }],
+      toggleSort: vi.fn(),
+    });
+    const { container } = render(ResultGrid, { props: { v } });
+    expect(container.querySelector(".sortarrow")).toBeTruthy();
+  });
+});

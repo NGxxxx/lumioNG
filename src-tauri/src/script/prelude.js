@@ -207,7 +207,10 @@ class Cursor {
     this._q = query;      // filter doc (find) or pipeline array (agg)
     this._o = opts || {}; // find options: sort, limit, skip, projection, hint, maxTimeMS
     this._pure = true;    // false if .map() was called — disables inline-edit in the grid
-    this._noId = false;   // true if projection excludes _id — also disables inline-edit
+    // true if projection excludes _id — also disables inline-edit. Covers both the two-arg
+    // `find(q, {_id:0})` form (projection arrives via opts here) and the chained
+    // `.find(q).projection({_id:0})` form (set again by the projection() method below).
+    this._noId = !!(this._o.projection && this._o.projection._id === 0);
     // look-ahead buffer for hasNext/next
     this._buf = null;     // null = not opened yet; array when open
     this._bufBytes = 0;   // byte size of the batch buffered into _buf
@@ -885,6 +888,9 @@ var sh = {
 // Returns a tagged object the engine maps to ResultDisplay.
 //
 // Tags:
+//   { t: "cursorRef", kind, db, coll, q, o } — pure Cursor (no .map(), no {_id:0} projection,
+//                                              no $out/$merge): a query recipe, NOT materialized.
+//                                              The frontend re-runs it via query_page/aggregate.
 //   { t: "cursor", pure, src, rows, capped } — Cursor (row cap applied in toArray() via __CAP/
 //                                              __BYTE_CAP; `capped` flags early stop to the engine)
 //   { t: "array",  rows }              — plain array
@@ -895,8 +901,35 @@ var sh = {
 // Note: engine.rs's classify() still re-applies the row cap on `rows` as defense in depth, but
 //       `capped` is the source of truth for whether the result was truncated (row OR byte cap).
 
+// Scans a Canonical-ExtJSON aggregation pipeline (plain JS array of stage objects) for a
+// top-level $out/$merge stage. Mirrors host.rs's own pipeline_writes check: the recipe bypass
+// re-runs the pipeline on every count and every page turn, so a write stage must never take
+// this path (it would re-run the write as a side effect of browsing results).
+function _hasWriteStage(pipeline) {
+  if (!Array.isArray(pipeline)) return false;
+  for (var i = 0; i < pipeline.length; i++) {
+    var stage = pipeline[i];
+    if (stage && (Object.prototype.hasOwnProperty.call(stage, "$out") ||
+                  Object.prototype.hasOwnProperty.call(stage, "$merge"))) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function __finalize(v) {
   if (v instanceof Cursor) {
+    var pipelineUnsafe = v._kind === "agg" && _hasWriteStage(v._q);
+    // v._buf === null means the host query was never opened (no hasNext()/next() call yet).
+    // If it HAS been opened, a row may already be buffered and a host handle may be open —
+    // bypassing here would silently drop that row and leak the handle (toArray() is what
+    // drains the buffer and closes the handle), so fall through to the materialize path.
+    if (v._pure && !v._noId && !pipelineUnsafe && v._buf === null) {
+      // Pure cursor, no .map(), no {_id:0} projection, no $out/$merge: return the query
+      // "recipe" instead of materializing anything. The frontend pages this directly via
+      // query_page/aggregate (Rust only) — no rows ever cross into QuickJS's JS heap.
+      return { t: "cursorRef", kind: v._kind, db: v._db, coll: v._coll, q: v._q, o: v._o };
+    }
     const rows = v.toArray();
     return {
       t: "cursor",

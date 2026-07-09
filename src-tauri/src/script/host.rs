@@ -1012,9 +1012,12 @@ globalThis.__DBNAME = "testdb";
 
     #[test]
     fn plain_finalize_without_hasnext_opens_once() {
-        // The common path (no hasNext) is unchanged: exactly one open.
+        // Superseded by Task 3 (see `pure_find_finalizes_to_cursor_ref_without_opening_the_host_query`
+        // below): a pure find with no prior hasNext()/next() call now bypasses materialization
+        // entirely, so the host query is never opened at all — that's the point of the recipe
+        // bypass. This test previously asserted the pre-Task-3 "always materializes" behavior.
         let opens = eval_int(r#"var c = db.c.find(); var r = __finalize(c);"#, "__openCount");
-        assert_eq!(opens, 1);
+        assert_eq!(opens, 0, "pure find with no hasNext() bypasses materialization, so it never opens the host query");
     }
 
     // First batch already meeting __CAP must skip __cursorFetch entirely.
@@ -1117,6 +1120,131 @@ globalThis.__DBNAME = "testdb";
             ctx.eval("__c._capped").unwrap()
         });
         assert!(!capped, "a fully-drained cursor is not capped");
+    }
+
+    #[test]
+    fn pure_find_finalizes_to_cursor_ref_without_opening_the_host_query() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let (tag, opens) = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.find({a:1}));"#).unwrap();
+            let tag: String = ctx.eval("__r.t").unwrap();
+            let opens: i32 = ctx.eval("__openCount").unwrap();
+            (tag, opens)
+        });
+        assert_eq!(tag, "cursorRef");
+        assert_eq!(opens, 0, "a pure cursor must not open the host query at all");
+    }
+
+    #[test]
+    fn cursor_ref_carries_db_coll_kind_and_options() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let (kind, db, coll, limit): (String, String, String, i32) = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.find({a:1}).limit(5));"#).unwrap();
+            (
+                ctx.eval("__r.kind").unwrap(),
+                ctx.eval("__r.db").unwrap(),
+                ctx.eval("__r.coll").unwrap(),
+                ctx.eval("__r.o.limit").unwrap(),
+            )
+        });
+        assert_eq!(kind, "find");
+        assert_eq!(db, "testdb");
+        assert_eq!(coll, "c");
+        assert_eq!(limit, 5);
+    }
+
+    #[test]
+    fn mapped_cursor_still_materializes_via_to_array() {
+        // Note: Cursor.map() (see prelude.js) sets `_pure = false` and returns
+        // `this.toArray().map(fn)` — a plain JS array, not `this`. So by the time __finalize
+        // sees it, `v` is already `Array.isArray(v) === true` and never reaches the Cursor
+        // branch at all. It gets tag "array", not "cursor" — engine.rs's classify() treats
+        // "cursor" and "array" identically (never a cursorRef bypass), so the invariant this
+        // test guards (.map() must never produce "cursorRef") holds either way.
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let tag: String = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.find({}).map(function(d){return d;}));"#).unwrap();
+            ctx.eval("__r.t").unwrap()
+        });
+        assert_eq!(tag, "array", ".map() must keep using the old materialize path (never cursorRef)");
+    }
+
+    #[test]
+    fn projection_excluding_id_still_materializes_via_to_array() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let tag: String = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.find({}, {_id: 0}));"#).unwrap();
+            ctx.eval("__r.t").unwrap()
+        });
+        assert_eq!(tag, "cursor", "{{_id:0}} projection disables the recipe bypass (matches editable-grid gating)");
+    }
+
+    #[test]
+    fn aggregate_pipeline_with_out_stage_is_excluded_from_the_bypass() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let tag: String = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.aggregate([{"$out":"other"}]));"#).unwrap();
+            ctx.eval("__r.t").unwrap()
+        });
+        assert_eq!(tag, "cursor", "$out/$merge pipelines must not use the recipe bypass (would re-run the write stage repeatedly)");
+    }
+
+    #[test]
+    fn aggregate_pipeline_with_merge_stage_is_excluded_from_the_bypass() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let tag: String = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.aggregate([{"$merge":"other"}]));"#).unwrap();
+            ctx.eval("__r.t").unwrap()
+        });
+        assert_eq!(tag, "cursor");
+    }
+
+    #[test]
+    fn plain_aggregate_pipeline_without_out_or_merge_uses_the_bypass() {
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let tag: String = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.aggregate([{"$match":{}}]));"#).unwrap();
+            ctx.eval("__r.t").unwrap()
+        });
+        assert_eq!(tag, "cursorRef");
+    }
+
+    #[test]
+    fn impure_cursor_returned_directly_still_materializes_via_to_array() {
+        // When a cursor's ._pure is set to false (via .map()), but the original
+        // cursor instance is returned to __finalize (not the array .map() produced),
+        // __finalize must see the Cursor, recognize _pure=false, and fall through to
+        // the old materialize/toArray() path ("cursor" tag, not "cursorRef").
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let tag: String = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"var c = db.c.find({}); c.map(function(d){return d;}); globalThis.__r = __finalize(c);"#).unwrap();
+            ctx.eval("__r.t").unwrap()
+        });
+        assert_eq!(tag, "cursor", "impure cursor (_pure=false) returned directly to __finalize must materialize via toArray()");
     }
 }
 

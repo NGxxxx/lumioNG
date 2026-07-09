@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { createSettings } from "./settings.svelte";
+import { createSettings, MIN_PANE_PX } from "./settings.svelte";
 
 beforeEach(() => localStorage.clear());
 
@@ -53,5 +53,28 @@ describe("settings", () => {
     a.setWrapLongLines(true);
     const b = createSettings();
     expect(b.wrapLongLines).toBe(true);
+  });
+
+  it("defaults queryEditorHeightPx to null", () => {
+    expect(createSettings().queryEditorHeightPx).toBeNull();
+  });
+
+  it("persists queryEditorHeightPx across instances, floored at MIN_PANE_PX", () => {
+    const a = createSettings();
+    a.setQueryEditorHeightPx(300);
+    const b = createSettings();
+    expect(b.queryEditorHeightPx).toBe(300);
+
+    a.setQueryEditorHeightPx(10); // below the floor
+    expect(a.queryEditorHeightPx).toBe(MIN_PANE_PX);
+  });
+
+  it("resetQueryEditorHeight clears the override back to null and drops the storage key", () => {
+    const a = createSettings();
+    a.setQueryEditorHeightPx(300);
+    a.resetQueryEditorHeight();
+    expect(a.queryEditorHeightPx).toBeNull();
+    const b = createSettings();
+    expect(b.queryEditorHeightPx).toBeNull();
   });
 });

@@ -533,30 +533,40 @@ describe("Show ALL", () => {
     cnt.mockResolvedValue(0);
   });
 
-  it("below threshold → exports immediately, allShown=true", async () => {
-    cnt.mockResolvedValueOnce(3);
-    expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
+  /** requestShowAll gates off the already-known totalCount (set by init/refreshCount), so tests
+   *  seed it via a real init() instead of feeding requestShowAll its own count mock. */
+  async function withTotal(n: number) {
+    cnt.mockResolvedValueOnce(n);
+    qp.mockResolvedValueOnce([]);
+    samp.mockResolvedValueOnce([]);
     const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    return v;
+  }
+
+  it("below threshold → exports immediately, allShown=true", async () => {
+    const v = await withTotal(3);
+    expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
     await v.requestShowAll();
     expect(v.allShown).toBe(true);
     expect(v.showAllPending).toBeNull();
     expect(v.docs.length).toBe(3);
     expect(expQ).toHaveBeenCalledWith("conn:1", "d", "c", "{}", null, null, expect.any(Function));
+    expect(cnt).toHaveBeenCalledTimes(1); // only init's count — no extra re-count round-trip
   });
 
   it("above threshold → sets showAllPending, does NOT export yet", async () => {
-    cnt.mockResolvedValueOnce(6000);
-    const v = createCollectionView("conn:1", "d", "c");
+    const v = await withTotal(6000);
     await v.requestShowAll();
     expect(v.showAllPending).toBe(6000);
     expect(v.allShown).toBe(false);
     expect(expQ).not.toHaveBeenCalled();
+    expect(cnt).toHaveBeenCalledTimes(1); // only init's count — no extra re-count round-trip
   });
 
   it("confirmShowAll after warning → exports and sets allShown", async () => {
-    cnt.mockResolvedValueOnce(6000);
+    const v = await withTotal(6000);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
-    const v = createCollectionView("conn:1", "d", "c");
     await v.requestShowAll();
     await v.confirmShowAll();
     expect(v.showAllPending).toBeNull();
@@ -565,8 +575,7 @@ describe("Show ALL", () => {
   });
 
   it("cancelShowAll → clears pending, does not export", async () => {
-    cnt.mockResolvedValueOnce(6000);
-    const v = createCollectionView("conn:1", "d", "c");
+    const v = await withTotal(6000);
     await v.requestShowAll();
     v.cancelShowAll();
     expect(v.showAllPending).toBeNull();
@@ -574,9 +583,8 @@ describe("Show ALL", () => {
   });
 
   it("navigating a page after Show ALL → allShown resets to false", async () => {
-    cnt.mockResolvedValueOnce(3);
+    const v = await withTotal(3);
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }]);
-    const v = createCollectionView("conn:1", "d", "c");
     await v.requestShowAll();
     expect(v.allShown).toBe(true);
     cnt.mockResolvedValue(3);
@@ -585,32 +593,29 @@ describe("Show ALL", () => {
     expect(v.allShown).toBe(false);
   });
 
-  it("requestShowAll race: second call wins, first is discarded by stale-guard", async () => {
-    // Call 1: count hangs (would be above threshold if not guarded → 6000)
-    let resolveCount1!: (n: number) => void;
-    cnt.mockImplementationOnce(() => new Promise<number>((r) => (resolveCount1 = r)));
+  it("confirmShowAll race: second call wins, first is discarded by stale-guard", async () => {
+    const v = await withTotal(3);
 
-    const v = createCollectionView("conn:1", "d", "c");
-    const p1 = v.requestShowAll(); // in-flight, count not yet resolved
+    // Call 1: export hangs
+    let resolveExport1!: (docs: unknown[]) => void;
+    expQ.mockImplementationOnce(() => new Promise((r) => (resolveExport1 = r)));
+    const p1 = v.confirmShowAll(); // in-flight, export not yet resolved
 
-    // Call 2: count below threshold (3) → exports immediately, allShown = true
-    cnt.mockResolvedValueOnce(3);
+    // Call 2: export resolves fast
     expQ.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }, { _id: { $oid: "c" } }]);
-    await v.requestShowAll();
+    await v.confirmShowAll();
 
     expect(v.allShown).toBe(true);
-    expect(v.showAllPending).toBeNull();
-    expect(expQ).toHaveBeenCalledTimes(1);
+    expect(v.docs.length).toBe(3);
+    expect(expQ).toHaveBeenCalledTimes(2);
 
-    // Resolve the late count from call 1 with an above-threshold value
-    // Without the stale-guard, call 1 would overwrite showAllPending = 6000
-    resolveCount1(6000);
+    // Resolve the late export from call 1 — without the stale-guard this would overwrite
+    // the state that call 2 already committed.
+    resolveExport1([{ _id: { $oid: "stale" } }]);
     await p1;
 
-    // Stale-guard must block: state must remain clean
-    expect(v.allShown).toBe(true);
-    expect(v.showAllPending).toBeNull();
-    expect(expQ).toHaveBeenCalledTimes(1); // expQ called exactly once (call 2)
+    // Stale-guard must block: state must remain from call 2
+    expect(v.docs.length).toBe(3);
   });
 });
 

@@ -116,6 +116,32 @@ pub fn classify(finalized_json: &str, console: Vec<ConsoleEntry>, cap: usize) ->
             None,
             false,
         ),
+        "cursorRef" => {
+            let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("find").to_string();
+            let db = v.get("db").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let coll = v.get("coll").and_then(|x| x.as_str()).unwrap_or("").to_string();
+            let query = v.get("q").map(|q| q.to_string()).unwrap_or_else(|| "{}".into());
+            let o = v.get("o");
+            let sort = o.and_then(|o| o.get("sort")).map(|s| s.to_string());
+            let projection = o.and_then(|o| o.get("projection")).map(|p| p.to_string());
+            let base_skip = o.and_then(|o| o.get("skip")).and_then(|s| s.as_i64()).unwrap_or(0);
+            let fixed_limit = o.and_then(|o| o.get("limit")).and_then(|l| l.as_i64());
+            let provenance = Some(Provenance { db: db.clone(), coll: coll.clone() });
+            (
+                ResultDisplay::CursorQuery {
+                    cursor_kind: kind,
+                    db,
+                    coll,
+                    query,
+                    sort,
+                    projection,
+                    base_skip,
+                    fixed_limit,
+                },
+                provenance,
+                false,
+            )
+        }
         _ => (ResultDisplay::None, None, false),
     };
     ScriptOutcome { console, result, provenance, capped, error: None }
@@ -288,6 +314,44 @@ mod classify_tests {
         let o = classify(j, vec![], 0);
         assert!(matches!(o.result, ResultDisplay::Docs { ref rows } if rows.len() == 3));
         assert!(!o.capped);
+    }
+
+    #[test]
+    fn cursor_ref_yields_cursor_query_with_recipe_fields() {
+        let j = r#"{"t":"cursorRef","kind":"find","db":"d","coll":"c","q":{"a":1},"o":{"sort":{"a":1},"skip":10,"limit":5,"projection":{"b":0}}}"#;
+        let o = classify(j, vec![], 1000);
+        match o.result {
+            ResultDisplay::CursorQuery {
+                ref cursor_kind, ref db, ref coll, ref query, ref sort, ref projection, base_skip, fixed_limit,
+            } => {
+                assert_eq!(cursor_kind, "find");
+                assert_eq!(db, "d");
+                assert_eq!(coll, "c");
+                assert_eq!(query, r#"{"a":1}"#);
+                assert_eq!(sort.as_deref(), Some(r#"{"a":1}"#));
+                assert_eq!(projection.as_deref(), Some(r#"{"b":0}"#));
+                assert_eq!(base_skip, 10);
+                assert_eq!(fixed_limit, Some(5));
+            }
+            ref other => panic!("expected CursorQuery, got {other:?}"),
+        }
+        assert_eq!(o.provenance, Some(Provenance { db: "d".into(), coll: "c".into() }));
+        assert!(!o.capped);
+    }
+
+    #[test]
+    fn cursor_ref_without_limit_or_skip_defaults_to_zero_and_none() {
+        let j = r#"{"t":"cursorRef","kind":"agg","db":"d","coll":"c","q":[{"$match":{}}],"o":{}}"#;
+        let o = classify(j, vec![], 1000);
+        match o.result {
+            ResultDisplay::CursorQuery { ref cursor_kind, ref query, base_skip, fixed_limit, .. } => {
+                assert_eq!(cursor_kind, "agg");
+                assert_eq!(query, r#"[{"$match":{}}]"#);
+                assert_eq!(base_skip, 0);
+                assert_eq!(fixed_limit, None);
+            }
+            ref other => panic!("expected CursorQuery, got {other:?}"),
+        }
     }
 
     #[test]

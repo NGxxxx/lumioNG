@@ -12,6 +12,19 @@ pub struct ConsoleEntry {
 pub enum ResultDisplay {
     /// Canonical ExtJSON rows for the grid.
     Docs { rows: Vec<String> },
+    /// A pure find()/aggregate() cursor's query "recipe" — no rows are materialized in QuickJS;
+    /// the frontend pages this directly via `query_page`/`aggregate`.
+    #[serde(rename_all = "camelCase")]
+    CursorQuery {
+        cursor_kind: String, // "find" | "agg"
+        db: String,
+        coll: String,
+        query: String, // filter (find) or pipeline (agg), Canonical ExtJSON
+        sort: Option<String>,
+        projection: Option<String>,
+        base_skip: i64,           // script's own .skip(n), if any
+        fixed_limit: Option<i64>, // script's own .limit(n), if any — disables tab pager
+    },
     /// A single non-doc value (scalar/object), Canonical ExtJSON.
     Value { json: String },
     /// A write acknowledgement (matched/modified/insertedId…), Canonical ExtJSON. (Slice 2.)
@@ -53,5 +66,31 @@ mod tests {
         assert!(j.contains(r#""kind":"docs""#));
         assert!(j.contains(r#""capped":true"#));
         assert!(j.contains(r#""provenance":{"db":"d","coll":"c"}"#));
+    }
+
+    #[test]
+    fn serializes_cursor_query_with_camelcase_fields() {
+        let o = ScriptOutcome {
+            console: vec![],
+            result: ResultDisplay::CursorQuery {
+                cursor_kind: "find".into(),
+                db: "d".into(),
+                coll: "c".into(),
+                query: r#"{"a":1}"#.into(),
+                sort: Some(r#"{"a":1}"#.into()),
+                projection: None,
+                base_skip: 10,
+                fixed_limit: Some(5),
+            },
+            provenance: Some(Provenance { db: "d".into(), coll: "c".into() }),
+            capped: false,
+            error: None,
+        };
+        let j = serde_json::to_string(&o).unwrap();
+        assert!(j.contains(r#""kind":"cursorQuery""#));
+        assert!(j.contains(r#""cursorKind":"find""#));
+        assert!(j.contains(r#""baseSkip":10"#));
+        assert!(j.contains(r#""fixedLimit":5"#));
+        assert!(j.contains(r#""projection":null"#));
     }
 }

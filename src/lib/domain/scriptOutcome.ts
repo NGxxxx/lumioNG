@@ -6,6 +6,7 @@ export type DisplayMode = "grid-editable" | "grid-readonly" | "ack" | "value" | 
 export function displayMode(o: ScriptOutcome): DisplayMode {
   switch (o.result.kind) {
     case "docs": return o.provenance ? "grid-editable" : "grid-readonly";
+    case "cursorQuery": return o.provenance ? "grid-editable" : "grid-readonly";
     case "ack": return "ack";
     case "value": return "value";
     default: return "none";

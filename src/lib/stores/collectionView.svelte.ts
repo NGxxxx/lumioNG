@@ -196,31 +196,25 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const firstPage = () => goToPage(1);
   const lastPage = () => goToPage(pgCount);
 
-  /** Show ALL: count first; prompt for confirmation when above threshold, otherwise load immediately. */
-  async function requestShowAll() {
+  /** Show ALL: totalCount is already kept fresh by refreshCount() on every filter/sort/mutation,
+   *  so gate off it directly instead of re-counting — avoids a redundant round-trip on click. */
+  function requestShowAll(): void | Promise<void> {
     error = null;
-    generation++;
-    const gen = generation;
-    try {
-      const n = await countDocuments(sessionId, db, coll, appliedFilter);
-      if (gen !== generation) return;
-      totalCount = n;
-      if (n > SHOW_ALL_WARN_THRESHOLD) {
-        showAllPending = n;
-        return;
-      }
-      await confirmShowAll();
-    } catch (e) {
-      if (gen !== generation) return;
-      error = errorMessage(e);
+    if (totalCount > SHOW_ALL_WARN_THRESHOLD) {
+      generation++; // invalidate any other in-flight load — this supersedes it
+      showAllPending = totalCount;
+      return;
     }
+    return confirmShowAll();
   }
 
-  /** Fetch all matching docs into the grid (export_query); hides the pager. */
+  /** Fetch all matching docs into the grid (export_query); hides the pager. Self-guarding: bumps
+   *  `generation` so a second call (or any other in-flight load) discards a stale first call. */
   async function confirmShowAll() {
     showAllPending = null;
     loading = true;
     error = null;
+    generation++;
     const gen = generation;
     const startedAt = Date.now();
     activity.begin(m.status_bar_loading());
