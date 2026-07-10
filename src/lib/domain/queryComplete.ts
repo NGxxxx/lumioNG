@@ -27,9 +27,7 @@ function tokenBefore(text: string, pos: number): { from: number; prefix: string 
 type Frame = { type: "obj"; expectKey: boolean } | { type: "arr" } | { type: "paren" };
 interface ScanResult { pos: "stage" | "field" | "value" | "none"; inString: boolean }
 
-/** Walk `[from,to)` tracking string state + a bracket stack (obj/arr/paren); classify the position
- *  at `to`. `obj` frames carry expectKey (true right after "{" or ","; false after ":"). A top-level
- *  aggregate pipeline object key ([arr, obj]) is a stage; every other obj key is a field. */
+/** Walk `[from,to)` tracking string state + a bracket stack (obj/arr/paren) to classify the position at `to` as a top-level pipeline stage key vs. an ordinary field key. */
 function scanContext(text: string, from: number, to: number, isAggregate: boolean): ScanResult {
   const stack: Frame[] = [];
   let inStr = false;
@@ -80,8 +78,7 @@ export function contextAt(text: string, pos: number): CtxResult {
     return { kind: "method", from, prefix };
   }
 
-  // Cursor method: right after a cursor-returning call's close paren — `find(…).` / `aggregate(…).`
-  // or a chained cursor method `…sort({}).`. Restricted to find/aggregate so writes don't qualify.
+  // Cursor method: right after a cursor-returning call's close paren, restricted to find/aggregate so writes don't qualify.
   if (/\)\s*\.\s*$/.test(before)) {
     const cursorHead = methodHeadAt(text, pos);
     if (cursorHead && (cursorHead.method === "find" || cursorHead.method === "aggregate")) {
@@ -98,8 +95,7 @@ export function contextAt(text: string, pos: number): CtxResult {
   if (scanned.pos === "stage") return { kind: "stage", from, prefix };
   if (scanned.pos === "field") return { kind: "field", from, prefix };
   if (scanned.pos === "value" && prefix.startsWith("$")) {
-    // a $-prefixed token inside an open string is a field reference (e.g. "$amount");
-    // a bare $-prefixed token is an expression operator (e.g. $sum).
+    // a $-prefixed token inside an open string is a field reference (e.g. "$amount"), otherwise an expression operator (e.g. $sum).
     return { kind: scanned.inString ? "fieldRef" : "exprOp", from, prefix };
   }
   return { kind: "none", from, prefix };

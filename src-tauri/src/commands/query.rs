@@ -8,17 +8,14 @@ use mongodb::bson::{doc, Document};
 use std::time::{Duration, Instant};
 use tauri::State;
 
-/// Default op deadline when the frontend doesn't pass one (matches `run_script`'s default and
-/// `settings.queryTimeoutMs`'s default in the frontend).
+/// Default op deadline when the frontend doesn't pass one (matches `run_script`'s and `settings.queryTimeoutMs`'s defaults in the frontend).
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 
 fn deadline_from(timeout_ms: Option<u64>) -> Instant {
     Instant::now() + Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS))
 }
 
-/// Time remaining until `deadline`, or `None` once it's passed. `with_interrupt` only abandons
-/// the *client's* wait on a hung/slow query — without also telling MongoDB itself to give up via
-/// `maxTimeMS`, a "cancelled" query keeps consuming server CPU/IO after the UI has moved on.
+/// Time remaining until `deadline` (`None` once passed); fed into `maxTimeMS` so a "cancelled" query also stops consuming server CPU/IO, not just the client's wait.
 fn remaining_until(deadline: Instant) -> Option<Duration> {
     let remaining = deadline.saturating_duration_since(Instant::now());
     if remaining.is_zero() { None } else { Some(remaining) }
@@ -41,9 +38,7 @@ pub(crate) fn parse_user_filter(filter: Option<&str>) -> Result<Document, AppErr
     }
 }
 
-/// Build the shared "filter + sort + projection" query from optional string args.
-/// Default sort is `{_id: 1}`; empty/None sort keeps that default.
-/// Returns `(filter_doc, sort_doc, projection_doc)`.
+/// Build the shared "filter + sort + projection" query from optional string args; default sort is `{_id: 1}` when empty/None.
 pub(crate) fn build_find_options(
     filter: Option<&str>,
     sort: Option<&str>,
@@ -61,8 +56,7 @@ pub(crate) fn build_find_options(
     Ok((filter_doc, sort_doc, projection_doc))
 }
 
-/// Build a sampling pipeline for schema inspection, optionally pre-filtering.
-/// Empty filter → `$sample` only; non-empty filter → `$match` then `$sample`.
+/// Build a sampling pipeline for schema inspection: empty filter → `$sample` only, non-empty → `$match` then `$sample`.
 fn build_sample_pipeline(user: Document, size: i64) -> Vec<Document> {
     if user.is_empty() {
         vec![doc! { "$sample": { "size": size } }]
@@ -71,8 +65,7 @@ fn build_sample_pipeline(user: Document, size: i64) -> Vec<Document> {
     }
 }
 
-/// Appends optional `$skip`/`$limit` stages (in that order) to a pipeline. `skip <= 0` is a no-op
-/// (page 1 needs no `$skip` stage at all).
+/// Appends optional `$skip`/`$limit` stages (in that order) to a pipeline; `skip <= 0` is a no-op since page 1 needs no `$skip` stage at all.
 fn build_aggregate_stages(mut stages: Vec<Document>, skip: Option<i64>, limit: Option<i64>) -> Vec<Document> {
     if let Some(n) = skip {
         if n > 0 {
@@ -113,8 +106,7 @@ fn build_explain_aggregate_command(coll: &str, stages: Vec<Document>) -> Documen
     doc! { "explain": agg_cmd, "verbosity": "executionStats" }
 }
 
-/// Reads the `n` field out of a `$count` stage's single output document (`None` when the
-/// pipeline matched nothing, since `$count` omits the stage's output document entirely then).
+/// Reads the `n` field out of a `$count` stage's single output document (`None` when the pipeline matched nothing, since `$count` then omits it entirely).
 fn parse_count_doc(d: Option<Document>) -> u64 {
     d.and_then(|d| {
         d.get_i64("n").ok().map(|n| n as u64).or_else(|| d.get_i32("n").ok().map(|n| n as u64))

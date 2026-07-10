@@ -8,13 +8,7 @@
   import { settings } from "../stores/settings.svelte";
   import * as m from "$lib/paraglide/messages";
 
-  /**
-   * Shared, virtualized tree view for both the collection data grid and query results.
-   * Only the visible documents are rendered; row heights are measured so expanding a doc
-   * (variable height) stays smooth even with 25k+ rows. `startIndex` offsets the row number
-   * (collection view passes the page offset; query view leaves it 0 = page-local numbering).
-   * `onRowMenu` lets the parent open its own context menu (copy/open/export/delete) on right-click.
-   */
+  /** Shared, virtualized tree view (collection grid + query results); only visible docs render, row heights are measured so expanding stays smooth at 25k+ rows. */
   let { docs, startIndex = 0, onRowMenu }:
     { docs: Doc[]; startIndex?: number; onRowMenu?: (e: MouseEvent, index: number) => void } = $props();
 
@@ -26,8 +20,7 @@
     openRows = next;
   }
 
-  // Reset expansion when the underlying docs change (paging/sort/filter/new query) so a
-  // previously-open index doesn't show the wrong row — and stale heights get re-measured.
+  // Reset expansion when docs change (paging/sort/filter/new query) so stale open rows/heights don't leak across.
   let lastDocs = untrack(() => docs);
   $effect(() => {
     if (docs !== lastDocs) {
@@ -62,11 +55,7 @@
     return Object.entries(doc).filter(([k]) => k !== "_id");
   }
 
-  // === Virtualization (variable row height → measureElement) ===
-  // Collapsed rows are uniform and locked to ROW_EST px in CSS (.tree-doc fixed height), so the
-  // virtualizer's estimate matches their *measured* height exactly — no totalSize churn while
-  // scrolling => the scrollbar thumb tracks the drag 1:1. Only expanded rows measure taller.
-  // MUST match `.tree-doc { height }` in the CSS below.
+  // Collapsed rows are locked to ROW_EST px (must match `.tree-doc { height }` below) so the virtualizer's estimate matches exactly and the scrollbar doesn't churn; only expanded rows measure taller.
   const ROW_EST = 27; // collapsed-row height (px); expanded rows are measured
   const OVERSCAN = 6;
   let scrollerEl = $state<HTMLDivElement | null>(null);

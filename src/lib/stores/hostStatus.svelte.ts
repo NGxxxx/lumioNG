@@ -11,10 +11,7 @@ export function createHostStatus(sessionId: string) {
   async function load() {
     loading = true;
     try {
-      // serverStatus and hostInfo may require privileges the connected user lacks (common on
-      // restricted-access/shared clusters) → treat either as absent rather than failing the
-      // whole tab. buildInfo needs no special privilege; its rejection means the connection
-      // itself is broken, so it's left to surface as a real error.
+      // serverStatus/hostInfo may require privileges the user lacks → treat either as absent rather than failing the tab; buildInfo's rejection means the connection itself is broken.
       const [biResult, ssResult, hiResult] = await Promise.allSettled([
         buildInfo(sessionId),
         serverStatus(sessionId),

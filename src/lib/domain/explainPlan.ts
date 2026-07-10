@@ -40,10 +40,7 @@ function toExplainStage(stage: Record<string, unknown>): ExplainStage {
   };
 }
 
-/** Depth-first walk from the execution-stage root down to its leaf, following single-child
- *  `inputStage` and flattening multi-child `inputStages` (e.g. SORT_MERGE/OR) in array order —
- *  then reversed so the result reads in real execution order (scan/index access first, transforms
- *  like SORT/PROJECTION after). Also captures the first IXSCAN node's `indexName` along the way. */
+/** Depth-first walk from the execution-stage root to its leaf, flattening multi-child `inputStages`, then reversed so the result reads in real execution order (scan first, transforms after). */
 function flattenExecutionStages(
   root: Record<string, unknown> | null,
 ): { stages: ExplainStage[]; indexName: string | null } {
@@ -113,16 +110,14 @@ export function summarizeExplain(raw: unknown): ExplainSummary {
   const doc = asObj(raw);
   if (!doc) return emptySummary();
 
-  // find-shape (and some server versions' "simple" aggregate shape): queryPlanner + executionStats
-  // sit at the top level.
+  // find-shape (and some server versions' "simple" aggregate shape): queryPlanner + executionStats sit at the top level.
   if (doc["queryPlanner"] !== undefined) {
     const executionStats = asObj(doc["executionStats"]);
     if (!executionStats) return emptySummary();
     return buildSummary(asObj(executionStats["executionStages"]), executionStats, []);
   }
 
-  // aggregate-shape: `stages` array, first `$cursor`-bearing element carries the real stats;
-  // subsequent elements are later pipeline stages (name-only, no per-stage numeric stats in v1).
+  // aggregate-shape: `stages` array, first `$cursor`-bearing element carries the real stats; subsequent elements are name-only later pipeline stages.
   const stagesArr = doc["stages"];
   if (Array.isArray(stagesArr)) {
     let cursorExecutionStats: Record<string, unknown> | null = null;

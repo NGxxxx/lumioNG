@@ -1,11 +1,7 @@
 /** Validate update documents and filter helpers for bulk (updateMany/deleteMany) operations. */
 export type ParseResult = { ok: true; json: string } | { ok: false; error: string };
 
-/**
- * Validate an update document for updateMany: must be a non-empty object
- * where every top-level key starts with '$' (prevents accidental full-replace).
- * Operator semantics are validated by the Rust driver, not here.
- */
+/** Validate an update document for updateMany: must be a non-empty object where every top-level key starts with '$', preventing an accidental full-replace. */
 export function parseUpdateDoc(text: string): ParseResult {
   const trimmed = text.trim();
   if (trimmed === "") return { ok: false, error: "err_update_empty" };

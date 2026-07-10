@@ -8,10 +8,7 @@ export interface ValueInfo {
   display: string;
 }
 
-/**
- * Extract a JS number from an ExtJSON wrapper ($numberInt/$numberLong/$numberDouble/$numberDecimal)
- * or a raw number; returns null when the value cannot be resolved (including NaN after parse).
- */
+/** Extract a JS number from an ExtJSON numeric wrapper or a raw number; returns null when unresolvable (including NaN after parse). */
 export function numFromExt(v: unknown): number | null {
   if (typeof v === "number") return v;
   if (v && typeof v === "object") {
@@ -31,11 +28,7 @@ function previewJson(v: unknown, max = 80): string {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
-/** Above this length, rendering a value's full text into the DOM (grid cell, tree field, title
- *  attribute) is what makes the UI lag on multi-MB string fields — truncate for *display only*.
- *  Matches the editability threshold in `domain/celledit.ts` (`MAX_INLINE_EDIT_LEN`): anything
- *  short enough to safely inline-edit is also short enough to render in full. Callers that need
- *  the exact value (Copy, export) must use the original value, not this truncated text. */
+/** Above this length, rendering a value's full text into the DOM is what makes the UI lag on multi-MB string fields — truncate for *display only*; callers needing the exact value (Copy, export) must use the original. */
 export const MAX_DISPLAY_LEN = 5000;
 
 /** Truncate arbitrary display text for rendering; a no-op under the threshold. */

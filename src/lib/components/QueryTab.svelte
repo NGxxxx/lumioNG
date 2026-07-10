@@ -50,9 +50,7 @@
     resultView = nextResultView(resultView, v.displayMode, v.consoleEntries.length > 0);
   }
 
-  /** The global Toolbar's Explain button lives outside this component and can't reach
-   *  `resultView` directly — it bumps `v.explainRequestSeq` instead; mirror that into our own
-   *  local (real, testable) `resultView` state whenever it changes. Skipped on the initial 0. */
+  /** Global Toolbar's Explain button can't reach `resultView` directly, so it bumps `v.explainRequestSeq`; mirror that into local state here (skipping the initial 0). */
   let lastExplainRequestSeq = untrack(() => v.explainRequestSeq);
   $effect(() => {
     if (v.explainRequestSeq !== lastExplainRequestSeq) {
@@ -74,9 +72,7 @@
     applyPostRunView();
   }
 
-  /** Explain entry point from the editor's own right-click menu — runs the query first if it
-   *  isn't already explainable, then sets the view directly (no need for the cross-component
-   *  `explainRequestSeq` signal used by the global Toolbar's Explain button). */
+  /** Explain entry point from the editor's own right-click menu — runs the query first if needed, then sets the view directly. */
   async function explainFromMenu() {
     bottomTab = "result";
     if (!v.canExplain) await v.run(currentDb);
@@ -136,9 +132,7 @@
     }
   }
 
-  // Bridge for the global toolbar (Edit document / Export / Delete). Registered only while this
-  // tab is the active one — Query tabs stay mounted (hidden) when inactive, unlike ResultTable's
-  // mount-gated Data pane, so registration can't be tied to onMount/onDestroy alone.
+  // Bridge for the global toolbar (Edit document / Export / Delete); registered only while this tab is active since Query tabs stay mounted when hidden.
   const dataViewHandle = {
     get canEdit() { return v.canEditSelected; },
     get canExport() { return true; },
@@ -149,8 +143,7 @@
     },
     exportCurrent() { v.requestExportCurrent(); },
     deleteSelected() { v.requestDeleteSelected(); },
-    // The search box only renders in the "result" tab's Grid view (it has no effect elsewhere),
-    // so switch there first.
+    // Search box only renders in the "result" tab's Grid view, so switch there first.
     async focusSearch() {
       bottomTab = "result";
       if (resultView !== "grid") resultView = "grid";
@@ -209,22 +202,24 @@
       <button class:active={bottomTab === "result"} onclick={() => (bottomTab = "result")}>{m.query_tab_result()}</button>
       <button class:active={bottomTab === "log"} onclick={() => (bottomTab = "log")}>{m.query_tab_command_log()}</button>
       {#if bottomTab === "result"}
-        <div class="view-toggle">
-          <button class:active={resultView === "grid"} onclick={() => (resultView = "grid")}>{m.query_tab_view_grid()}</button>
-          <button class:active={resultView === "tree"} onclick={() => (resultView = "tree")}>{m.query_tab_view_tree()}</button>
-          <button class:active={resultView === "console"} onclick={() => (resultView = "console")}>{m.query_tab_view_console()}</button>
+        <div class="right-tools">
+          {#if showDocs && resultView === "grid"}
+            <input
+              class="search-input"
+              class:search-invalid={v.searchInvalid}
+              bind:this={searchInputEl}
+              bind:value={v.searchTerm}
+              placeholder={m.result_table_search_placeholder()}
+              title={m.result_table_search_title()}
+              aria-label={m.result_table_search_title()}
+            />
+          {/if}
+          <div class="view-toggle">
+            <button class:active={resultView === "grid"} onclick={() => (resultView = "grid")}>{m.query_tab_view_grid()}</button>
+            <button class:active={resultView === "tree"} onclick={() => (resultView = "tree")}>{m.query_tab_view_tree()}</button>
+            <button class:active={resultView === "console"} onclick={() => (resultView = "console")}>{m.query_tab_view_console()}</button>
+          </div>
         </div>
-        {#if showDocs && resultView === "grid"}
-          <input
-            class="search-input"
-            class:search-invalid={v.searchInvalid}
-            bind:this={searchInputEl}
-            bind:value={v.searchTerm}
-            placeholder={m.result_table_search_placeholder()}
-            title={m.result_table_search_title()}
-            aria-label={m.result_table_search_title()}
-          />
-        {/if}
       {:else if bottomTab === "log"}
         <button class="log-clear" onclick={() => commandLog.clear()}>{m.command_log_clear()}</button>
       {/if}
@@ -362,10 +357,11 @@
   .bottom-tabs { display: flex; align-items: center; gap: 0.125rem; height: 1.625rem; flex: none; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 0.375rem; }
   .bottom-tabs > button { height: 1.25rem; padding: 0 0.625rem; font-size: 0.75rem; border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
   .bottom-tabs > button.active { background: var(--panel); color: var(--tab-active-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--tab-active-border); }
-  .view-toggle { margin-left: auto; display: flex; gap: 0.0625rem; }
+  .right-tools { margin-left: auto; display: flex; align-items: center; gap: 0.375rem; }
+  .view-toggle { display: flex; gap: 0.0625rem; }
   .view-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
-  .search-input { margin-left: 0.375rem; width: 8rem; height: 1.25rem; background: var(--panel); border: 1px solid var(--gray-c4); border-radius: 0.125rem; padding: 0 0.5rem; font-family: Consolas, monospace; font-size: 0.6875rem; box-sizing: border-box; }
+  .search-input { width: 8rem; height: 1.25rem; background: var(--panel); border: 1px solid var(--gray-c4); border-radius: 0.125rem; padding: 0 0.5rem; font-family: Consolas, monospace; font-size: 0.6875rem; box-sizing: border-box; }
   .search-invalid { border-color: var(--error); color: var(--error); }
   .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .log-clear:hover { background: var(--hover); }

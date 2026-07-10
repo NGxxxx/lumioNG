@@ -1,10 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import type { Doc } from "../domain/doc";
 
-/**
- * Returns documents parsed from Canonical Extended JSON strings.
- * Pagination via skip/limit: `skip` = docs to skip (computed by the frontend from page). Empty `sort` defaults to {_id:1}.
- */
+/** Returns documents parsed from Canonical Extended JSON strings; paginated via skip/limit, empty `sort` defaults to {_id:1}. */
 export async function queryPage(
   sessionId: string,
   db: string,
@@ -308,9 +305,7 @@ export async function aggregateCount(
   return await invoke<number>("aggregate_count", { sessionId, db, coll, pipeline, timeoutMs });
 }
 
-/** Runs `explain` (verbosity "executionStats") for a pure find/aggregate cursor recipe. Returns
- *  the raw Canonical ExtJSON string of the explain reply, unparsed — same convention as the
- *  `value`/`ack` script results: the caller decides how to interpret it (see `domain/explainPlan.ts`). */
+/** Runs `explain` (verbosity "executionStats") for a pure find/aggregate cursor recipe; returns the raw Canonical ExtJSON reply, unparsed (see `domain/explainPlan.ts`). */
 export async function explainQuery(
   sessionId: string,
   cursorKind: "find" | "agg",

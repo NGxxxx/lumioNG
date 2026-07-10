@@ -12,8 +12,7 @@ pub struct ConsoleEntry {
 pub enum ResultDisplay {
     /// Canonical ExtJSON rows for the grid.
     Docs { rows: Vec<String> },
-    /// A pure find()/aggregate() cursor's query "recipe" — no rows are materialized in QuickJS;
-    /// the frontend pages this directly via `query_page`/`aggregate`.
+    /// A pure find()/aggregate() cursor's query "recipe" — no rows materialized in QuickJS, the frontend pages it directly via `query_page`/`aggregate`.
     #[serde(rename_all = "camelCase")]
     CursorQuery {
         cursor_kind: String, // "find" | "agg"

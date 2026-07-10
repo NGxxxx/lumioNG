@@ -6,11 +6,7 @@ use mongodb::bson::Document;
 use mongodb::Cursor;
 use std::collections::HashMap;
 
-/// Per-call cap on the total row-JSON bytes a single `drain()` pulls from the driver. Without
-/// this, a handful of huge documents (e.g. 10 docs x 16MB) can be pulled into memory in one
-/// batch — far exceeding the QuickJS engine's heap limit before the JS-side row cap (__CAP)
-/// ever gets a chance to stop anything, since a `find()`'s first batch alone can be up to 101
-/// docs. Not user-configurable — an internal safety valve, like the engine's memory limit.
+/// Per-call cap on total row-JSON bytes a single `drain()` pulls, so a handful of huge documents can't blow the QuickJS heap before the JS-side row cap (__CAP) ever kicks in.
 pub const MAX_DRAIN_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Default)]
@@ -32,17 +28,12 @@ impl CursorStore {
         self.open.insert(handle, cursor);
     }
 
-    /// Remove and return a cursor so it can be drained without holding the store's RefCell
-    /// borrow across `.await` (clippy `await_holding_refcell_ref`).
+    /// Remove and return a cursor so it can be drained without holding the store's RefCell borrow across `.await` (clippy `await_holding_refcell_ref`).
     pub fn take(&mut self, handle: u32) -> Option<Cursor<Document>> {
         self.open.remove(&handle)
     }
 
-    /// Pull up to `n` docs as ExtJSON from an owned cursor, stopping early once `max_bytes` of
-    /// row JSON has accumulated (`0` = unlimited); returns (rows, exhausted). `exhausted` is only
-    /// true if the cursor itself ran out — a byte-budget stop leaves it false so the caller keeps
-    /// the cursor open for a later fetch. Free of `&mut self`, so callers borrow the store only
-    /// to take/put, never across `.await`.
+    /// Pull up to `n` docs as ExtJSON from an owned cursor, stopping early once `max_bytes` accumulates (`0` = unlimited); `exhausted` is true only if the cursor itself ran out, not on a byte-budget stop.
     pub async fn drain(
         cursor: &mut Cursor<Document>,
         n: usize,

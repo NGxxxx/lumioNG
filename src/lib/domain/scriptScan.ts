@@ -1,6 +1,4 @@
-/** Method names that mutate or destroy data. Pure inserts are intentionally excluded
- *  (matching Studio 3T): they get no destructive warning. This is a best-effort static
- *  scan; the hard boundary is the Rust read-only lock. */
+/** Method names that mutate or destroy data (pure inserts intentionally excluded, matching Studio 3T); best-effort static scan, the hard boundary is the Rust read-only lock. */
 const DESTRUCTIVE = [
   "updateOne", "updateMany", "update",
   "replaceOne", "replace",

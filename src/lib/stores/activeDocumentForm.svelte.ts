@@ -1,16 +1,11 @@
-/**
- * Bridge to the currently active Document Form work tab (insert/edit) so the global toolbar's
- * Save button can drive it. Mirrors activeDataView: DocumentForm registers a handle while it's
- * the active work tab and unregisters when it stops being active or unmounts.
- */
+/** Bridge to the currently active Document Form tab so the global toolbar's Save button can drive it; DocumentForm registers/unregisters the handle as it becomes/stops being active (mirrors activeDataView). */
 export type DocumentFormHandle = {
   readonly canSave: boolean;
   save: () => void;
 };
 
 export function createActiveDocumentForm() {
-  // $state.raw: the handle is an opaque reference (and carries getters); proxying it would both
-  // break the identity check in unregister() and double-wrap the getters. Reassignment stays reactive.
+  // $state.raw: the handle is an opaque reference with getters — proxying would break unregister()'s identity check and double-wrap the getters.
   let handle = $state.raw<DocumentFormHandle | null>(null);
   return {
     get handle() {

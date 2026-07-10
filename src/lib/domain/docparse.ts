@@ -9,11 +9,7 @@ function isPlainObject(v: unknown): v is Doc {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/**
- * Parse text JSON → document. Returns a message key on failure:
- * - syntax error: `err_doc_syntax` (with optional `detail`)
- * - non-object: `err_doc_not_object`
- */
+/** Parse text JSON → document, returning a message key on failure (`err_doc_syntax` with optional `detail`, or `err_doc_not_object`). */
 export function parseDocumentText(text: string): ParseDocumentResult {
   let parsed: unknown;
   try {

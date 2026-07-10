@@ -12,8 +12,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   let openDropdown = $state<"sort" | "fields" | null>(null);
   let searchInputEl = $state<HTMLInputElement | null>(null);
 
-  // Imperative command for the global toolbar's "Find" button, called via bind:this. The search
-  // box only renders in Grid view (it has no effect in Tree view), so switch there first.
+  // Imperative command for the global toolbar's "Find" button (bind:this); search box only renders in Grid view, so switch there first.
   export async function focusSearch() {
     if (view !== "grid") view = "grid";
     await tick();
@@ -152,6 +151,17 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
       </div>
     {/if}
   </div>
+  {#if view === "grid"}
+    <input
+      class="search-input"
+      class:search-invalid={v.searchInvalid}
+      bind:this={searchInputEl}
+      bind:value={v.searchTerm}
+      placeholder={m.result_table_search_placeholder()}
+      title={m.result_table_search_title()}
+      aria-label={m.result_table_search_title()}
+    />
+  {/if}
   <div class="view-toggle">
     <button
       class="toggle-btn"
@@ -172,17 +182,6 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
       {m.result_table_view_tree()}
     </button>
   </div>
-  {#if view === "grid"}
-    <input
-      class="search-input"
-      class:search-invalid={v.searchInvalid}
-      bind:this={searchInputEl}
-      bind:value={v.searchTerm}
-      placeholder={m.result_table_search_placeholder()}
-      title={m.result_table_search_title()}
-      aria-label={m.result_table_search_title()}
-    />
-  {/if}
 </div>
 {#if v.filterError}<div class="error">{msgKey(v.filterError)}</div>{/if}
 

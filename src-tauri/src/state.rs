@@ -14,15 +14,7 @@ pub struct Session {
 #[derive(Default)]
 pub struct AppState {
     pub sessions: Mutex<HashMap<String, Session>>,
-    /// Per-session cooperative cancel flag, shared by every cancellable operation on that
-    /// session (script runs, and every `commands/query.rs` command). Every one of those callers
-    /// clears the flag before starting its own work (see `clear_cancel`), matching the existing
-    /// `run_script` pattern — but this means the flag is NOT per-operation: if op A is cancelled
-    /// (flag set true) and op B starts on the same session before A's poll loop observes it, B's
-    /// startup `clear_cancel` silently resets the flag and A's cancellation is lost. This is a
-    /// known, accepted trade-off of the single-flag design (reusing per-request cancel tokens
-    /// would need `Vec<Arc<AtomicBool>>` per session, registered/unregistered per op) rather than
-    /// a bug to fix opportunistically — flagged here so it isn't rediscovered as a surprise.
+    /// Per-session cooperative cancel flag, shared by every cancellable op on that session — see git history for the single-flag tradeoff rationale if this surprises you.
     pub cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 

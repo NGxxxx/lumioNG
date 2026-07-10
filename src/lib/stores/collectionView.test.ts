@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { countDocuments, updateMany, deleteMany } from "../api/documents";
 
 vi.mock("../api/documents", () => ({
@@ -859,10 +859,12 @@ describe("delete selected", () => {
 describe("createCollectionView — quick search", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     cnt.mockResolvedValueOnce(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alpha" }, { _id: { $oid: "b" }, name: "Beta" }]);
     samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alpha" }, { _id: { $oid: "b" }, name: "Beta" }]);
   });
+  afterEach(() => vi.useRealTimers());
 
   it("visibleIndices is null (unfiltered) when searchTerm is empty", async () => {
     const v = createCollectionView("conn:1", "d", "c");
@@ -870,19 +872,31 @@ describe("createCollectionView — quick search", () => {
     expect(v.visibleIndices).toBeNull();
   });
 
-  it("visibleIndices narrows to the matching rows for a valid regex", async () => {
+  it("visibleIndices narrows to the matching rows for a valid regex, after the debounce", async () => {
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.searchTerm = "alpha";
+    expect(v.visibleIndices).toBeNull(); // not yet applied — still debouncing
+    vi.advanceTimersByTime(1000);
     expect(v.visibleIndices).toEqual([0]);
     expect(v.searchInvalid).toBe(false);
   });
 
-  it("searchInvalid is true for an invalid regex, and visibleIndices stays null", async () => {
+  it("searchInvalid is true for an invalid regex immediately (not debounced), and visibleIndices stays null", async () => {
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.searchTerm = "[unterminated";
     expect(v.searchInvalid).toBe(true);
+    expect(v.visibleIndices).toBeNull();
+  });
+
+  it("clearing the term back to empty applies immediately, skipping the debounce", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.searchTerm = "alpha";
+    vi.advanceTimersByTime(1000);
+    expect(v.visibleIndices).toEqual([0]);
+    v.searchTerm = "";
     expect(v.visibleIndices).toBeNull();
   });
 
@@ -894,6 +908,7 @@ describe("createCollectionView — quick search", () => {
     v.toggleHiddenDraft("name");
     await v.applyProjection();
     v.searchTerm = "alpha";
+    vi.advanceTimersByTime(1000);
     expect(v.visibleIndices).toEqual([]); // "name" is hidden; _id doesn't contain "alpha"
   });
 });
@@ -903,6 +918,7 @@ describe("createCollectionView — search filter and multi-row selection safety"
   // the visible index space — the exact condition that broke naive shift-range/select-all.
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     cnt.mockResolvedValueOnce(5);
     qp.mockResolvedValueOnce([
       { _id: { $oid: "0" }, name: "A" },
@@ -913,11 +929,13 @@ describe("createCollectionView — search filter and multi-row selection safety"
     ]);
     samp.mockResolvedValueOnce([]);
   });
+  afterEach(() => vi.useRealTimers());
 
   it("shift-click range-select never includes a row the active search filter hid", async () => {
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.searchTerm = "^[^2C]$"; // excludes doc index 2 only
+    vi.advanceTimersByTime(1000);
     expect(v.visibleIndices).toEqual([0, 1, 3, 4]);
     v.clickRow(0, { ctrl: false, shift: false });
     v.clickRow(4, { ctrl: false, shift: true });
@@ -928,6 +946,7 @@ describe("createCollectionView — search filter and multi-row selection safety"
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.searchTerm = "^[^2C]$";
+    vi.advanceTimersByTime(1000);
     v.selectAll();
     expect([...v.selected].sort((a, b) => a - b)).toEqual([0, 1, 3, 4]);
   });

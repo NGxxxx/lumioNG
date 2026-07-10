@@ -32,10 +32,7 @@
     oncancel: () => void;
   } = $props();
 
-  // Source of truth: tree object. Deep-clone via JSON for safety across all environments.
-  // Props are immutable for the component lifetime (tab remounts by id) — read only initial values.
-  // `initial` serves both edit (original doc) and pre-filled insert (New skeleton / Duplicate copy);
-  // insert without initial → empty form.
+  // Source of truth: tree object, JSON-deep-cloned from `initial` (edit doc, pre-filled insert, or empty).
   let docValue = $state<Doc>(
     untrack(() => (initial ? JSON.parse(JSON.stringify(initial)) : {})),
   );
@@ -112,8 +109,7 @@
     }
   }
 
-  // Bridge for the global toolbar's Save button: only the currently active work tab registers,
-  // so switching tabs (component instances persist, keyed by tab id) hands the handle over cleanly.
+  // Bridge for the global toolbar's Save button: only the currently active work tab registers.
   $effect(() => {
     if (!active) return;
     const h: DocumentFormHandle = {

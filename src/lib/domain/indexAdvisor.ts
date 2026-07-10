@@ -1,7 +1,4 @@
-/** Suggests a compound index for a COLLSCAN via the Equality-Sort-Range (ESR) rule, computed
- *  from the query's own filter + sort. A heuristic, not a query planner — deliberately
- *  conservative: bails to `null` rather than guessing on `$or`/`$nor`/`$and` or an empty query.
- *  Pure; no Tauri/Svelte. */
+/** Suggests a compound index for a COLLSCAN via the Equality-Sort-Range (ESR) rule; a deliberately conservative heuristic that bails to `null` on `$or`/`$nor`/`$and` or an empty query. */
 import { createIndexCmd } from "./mongosh";
 
 export type IndexSuggestion = { keys: Record<string, 1 | -1>; snippet: string };
@@ -37,9 +34,7 @@ export function suggestIndex(coll: string, filterJson: string, sortJson: string 
   if (filterKeys.some((k) => BAIL_OPERATORS.has(k))) return null;
   if (filterKeys.length === 0 && Object.keys(sort).length === 0) return null;
 
-  // Equality = anything that isn't shaped like a range/other operator — covers plain scalars,
-  // {$eq: ...}, and BSON type-wrapper literals ({$oid: ...}, {$numberInt: ...}, {$date: ...}, ...),
-  // since those represent a literal value, not a query operator.
+  // Equality = anything that isn't shaped like a range/other operator — covers plain scalars, {$eq: ...}, and BSON type-wrapper literals.
   const equalityFields = filterKeys.filter((k) => !isRangeValue(filter[k]));
   const sortFields = Object.keys(sort).filter((k) => !equalityFields.includes(k));
   const rangeFields = filterKeys.filter(

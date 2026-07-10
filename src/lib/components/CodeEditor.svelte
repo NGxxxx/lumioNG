@@ -61,8 +61,7 @@
     };
   });
 
-  // Push EXTERNAL value changes into the view — only on a real diff, to avoid the
-  // onChange → store → value feedback loop and wasted reparse transactions.
+  // Push EXTERNAL value changes into the view only on a real diff, to avoid an onChange → store → value feedback loop.
   $effect(() => {
     const next = value;
     if (view && next !== view.state.doc.toString()) {
@@ -108,8 +107,7 @@
     view.focus();
   }
 
-  // Pretty-prints the whole document (js-beautify), so one-liner queries like
-  // db.users.find({name:"a"}) get expanded into readable multi-line code, not just reindented.
+  // Pretty-prints the whole document (js-beautify) so one-liner queries get expanded into readable multi-line code.
   export function format() {
     if (!view) return;
     const current = view.state.doc.toString();

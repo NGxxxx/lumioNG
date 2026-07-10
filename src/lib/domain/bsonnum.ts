@@ -4,14 +4,7 @@ import type { RebuildResult } from "./celledit";
 /** BSON numeric kinds that share validation rules across inline-edit and the tree. */
 export type NumericKind = "int" | "long" | "double" | "decimal";
 
-/**
- * Validate and build an ExtJSON value for a BSON numeric kind from raw text.
- * Shared error keys and behavior match celledit and bsontree:
- * - int: 32-bit integer
- * - long: integer within 64-bit range (BigInt)
- * - double: Number.isFinite
- * - decimal: pattern -?\d+(\.\d+)?
- */
+/** Validate and build an ExtJSON value for a BSON numeric kind from raw text; shared error keys and behavior match celledit and bsontree. */
 export function rebuildNumber(kind: NumericKind, t: string): RebuildResult {
   switch (kind) {
     case "int": {

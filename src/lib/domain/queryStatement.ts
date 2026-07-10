@@ -10,10 +10,7 @@ export function aggregateTemplate(coll: string): string {
 const HEAD =
   /(?:getCollection\(\s*["']([^"']*)["']\s*\)|\bdb\s*\.\s*([A-Za-z0-9_$.]+))\s*\.\s*(aggregate|find|countDocuments|count|distinct|insertOne|insertMany|updateOne|updateMany|replaceOne|deleteOne|deleteMany)\s*\(/;
 
-/** Locate the supported method call governing the cursor: the last `db.<coll>.<method>(` whose `(`
- *  is at or before `pos`. Cursor-aware so multi-statement editors classify the statement the cursor
- *  is in (not just the first). Returns the method name, the collection, and the index of the `(`.
- *  Null when no method call starts at/before `pos`. */
+/** Locate the supported method call governing the cursor: the last `db.<coll>.<method>(` whose `(` is at or before `pos`, so multi-statement editors classify the right statement; null if none. */
 export function methodHeadAt(
   text: string,
   pos: number,

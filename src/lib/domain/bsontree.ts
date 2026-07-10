@@ -53,12 +53,7 @@ export function editTextOf(value: unknown): string {
   return "";
 }
 
-/**
- * Rebuild an ExtJSON value of the given `type` from user-entered text.
- * Intentionally overlaps with celledit.rebuildValue: celledit locks on the
- * runtime type of the original value (inline-edit); bsontree locks on the
- * named type and is a superset that adds date/objectId.
- */
+/** Rebuild an ExtJSON value of the given `type` from user-entered text; intentionally overlaps with celledit.rebuildValue but is a superset that also handles date/objectId. */
 export function rebuildLeaf(type: LeafInputType, text: string): RebuildResult {
   const t = text.trim();
   switch (type) {
@@ -85,11 +80,7 @@ export function rebuildLeaf(type: LeafInputType, text: string): RebuildResult {
   }
 }
 
-/**
- * Validate a new field name before adding it to an object. Returns a message
- * key (e.g. `err_field_name_empty`, `err_field_name_duplicate`) or null when
- * valid. The name is trimmed before checking.
- */
+/** Validate a new field name before adding it to an object, returning a message key (e.g. `err_field_name_duplicate`) or null when valid. */
 export function validateNewFieldName(name: string, existingKeys: string[]): string | null {
   const n = name.trim();
   if (n === "") return "err_field_name_empty";

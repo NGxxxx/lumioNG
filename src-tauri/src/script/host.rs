@@ -1,8 +1,4 @@
-//! QuickJS host context and global function bindings for the script engine.
-//!
-//! `HostCtx` carries the MongoDB client, Tokio handle, console sink, cursor registry, and
-//! row-cap for a single script run. `bind(ctx, host)` registers all `__xxx` globals that
-//! the JS prelude (Task 6) calls.
+//! QuickJS host context and global function bindings for the script engine; `bind(ctx, host)` registers all `__xxx` globals the JS prelude calls.
 use crate::script::cursors::CursorStore;
 use crate::script::outcome::ConsoleEntry;
 use mongodb::{bson::{Bson, Document}, Client};
@@ -16,9 +12,7 @@ use tokio::runtime::Handle;
 
 // ── with_interrupt ────────────────────────────────────────────────────────────
 
-/// Race a driver future against the cancel flag and a deadline. Polls every 50 ms while
-/// the future is blocked (the future itself isn't pollable for cancellation), so a hung
-/// query is interrupted by Cancel or timeout.
+/// Race a driver future against the cancel flag and a deadline, polling every 50ms since the future itself isn't pollable for cancellation.
 pub(crate) async fn with_interrupt<T>(
     cancel: Arc<AtomicBool>,
     deadline: Instant,
@@ -42,8 +36,7 @@ pub(crate) async fn with_interrupt<T>(
 
 // ── HostCtx ──────────────────────────────────────────────────────────────────
 
-/// Shared context passed into every host function closure. `Rc`-based because
-/// QuickJS is single-threaded; all host fn calls happen on the same worker thread.
+/// Shared context passed into every host function closure; `Rc`-based since QuickJS is single-threaded and all host fn calls happen on the same worker thread.
 #[derive(Clone)]
 pub struct HostCtx {
     pub client: Client,
@@ -90,8 +83,7 @@ pub(crate) fn is_write_command(cmd: &Document) -> bool {
         .unwrap_or(false)
 }
 
-/// True if an aggregation pipeline writes to a collection: any `$out` or `$merge` stage.
-/// (`$out` must be last and `$merge` last per server rules, but we scan all stages defensively.)
+/// True if an aggregation pipeline writes to a collection: any `$out` or `$merge` stage (scanned defensively, though server rules require them last).
 pub(crate) fn pipeline_writes(pipeline: &[Document]) -> bool {
     pipeline.iter().any(|s| s.contains_key("$out") || s.contains_key("$merge"))
 }
@@ -346,9 +338,7 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         if ordered {
                             return Err(e);
                         }
-                        // NOTE: on a mid-op driver failure (e.g. duplicate key), counts/ids for the
-                        // partially-applied op are not reflected in the ack — the op's result is lost
-                        // to the error path. Acceptable for v1; the surfaced error signals the failure.
+                        // NOTE: on a mid-op driver failure, counts/ids for the partially-applied op are lost to the error path — acceptable for v1.
                         first_err.get_or_insert(e);
                     }
                 }
@@ -443,9 +433,7 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
                     let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
-                    // Drain the first batch on the owned cursor, then store only if more remains —
-                    // never holds the cursors RefCell borrow across `.await`. Bytes-capped so a
-                    // handful of huge documents can't be pulled in as one giant batch.
+                    // Drain the first batch on the owned cursor (never across the RefCell borrow via `.await`), bytes-capped so huge documents can't fill one giant batch.
                     let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
                         &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
                     )
@@ -537,8 +525,7 @@ fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
                     let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
-                    // Drain on the owned cursor first; store only if more remains (no RefCell across await).
-                    // Bytes-capped so a handful of huge documents can't be pulled in as one giant batch.
+                    // Drain on the owned cursor first (no RefCell across await), bytes-capped so huge documents can't fill one giant batch.
                     let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
                         &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
                     )

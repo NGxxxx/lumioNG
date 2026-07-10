@@ -34,11 +34,7 @@ function setByPath(root: Record<string, unknown>, path: string, value: unknown):
   cur[segs[segs.length - 1]] = value;
 }
 
-/**
- * Build an empty document skeleton from a collection's inferred fields (leaf dot-paths),
- * so "New document" pre-fills every known field with a typed empty value (the user only fills
- * in values). `_id` is excluded so the server generates a fresh one on insert.
- */
+/** Build an empty document skeleton from a collection's inferred fields so "New document" pre-fills every known field with a typed empty value; `_id` is excluded so the server generates a fresh one. */
 export function buildSkeleton(fields: { path: string; type?: BsonType }[]): Doc {
   const doc: Doc = {};
   for (const f of fields) {

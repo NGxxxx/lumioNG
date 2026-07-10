@@ -1,9 +1,7 @@
 use crate::error::AppError;
 use mongodb::bson::{Bson, Document};
 
-/// Serialize a Document to a Canonical Extended JSON string (lossless).
-/// Takes the Document by value: `into_canonical_extjson` consumes it, so passing
-/// ownership lets cursor-loop callers move each doc in instead of deep-cloning it.
+/// Serialize a Document to a Canonical Extended JSON string (lossless); takes it by value so cursor-loop callers can move each doc in instead of deep-cloning it.
 pub fn doc_to_canonical_string(doc: Document) -> Result<String, AppError> {
     let value = Bson::Document(doc).into_canonical_extjson();
     serde_json::to_string(&value).map_err(|e| AppError::Serialize(e.to_string()))

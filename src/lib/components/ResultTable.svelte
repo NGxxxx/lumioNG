@@ -34,13 +34,7 @@
 
   const visibleColumns = $derived(v.columnFields.filter((c) => !v.hidden.has(c.path)));
 
-  /** Thin GridPageView wrapper: forwards every member of `v` unchanged EXCEPT `columnFields`,
-   *  which is overridden to the hide-columns-filtered list. `ResultGrid` renders headers/cells
-   *  straight off `columnFields`, so passing `v` directly would re-show fields the user hid via
-   *  the column chooser (`v.hidden` — a collectionView-only feature `ResultPager` never touches,
-   *  so it still gets the real `v` below). This is a plain object of live getters (not a
-   *  one-shot `{...v}` spread), so it stays reactive and `editText`'s setter still forwards
-   *  writes back into the underlying store. */
+  /** Thin GridPageView wrapper forwarding `v` unchanged except `columnFields`, filtered by `v.hidden` so column-chooser hides actually hide (live getters, not a one-shot spread, so it stays reactive). */
   const gridView: GridPageView = {
     get docs() { return v.docs; },
     get visibleIndices() { return v.visibleIndices; },
@@ -90,9 +84,7 @@
     else if (r && "insert" in r) onopendocument(r.insert, "insert");
   }
 
-  // Bridge for the global toolbar (Edit document / Export). Getters keep the toolbar reactive
-  // to selection. Edit targets the single selected row (must have an _id); Export uses the
-  // selection if any, else the whole filtered set — both reuse the store's existing flows.
+  // Bridge for the global toolbar (Edit document / Export); getters keep it reactive to selection.
   const dataViewHandle = {
     get canEdit() {
       if (v.selectedCount !== 1) return false;

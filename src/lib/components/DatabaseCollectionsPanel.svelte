@@ -6,8 +6,7 @@
   import * as m from "$lib/paraglide/messages";
 
   let { db, onopen }: { db: string; onopen: (coll: string) => void } = $props();
-  // Pass the ACTIVE session's tree: the default `namespaceTree` singleton stays empty in
-  // multi-session mode (each session owns its tree), so without this the collection list is blank.
+  // Pass the ACTIVE session's tree — the default `namespaceTree` singleton stays empty in multi-session mode.
   const v = untrack(() =>
     createDatabaseCollections(sessionManager.active?.id ?? "", db, sessionManager.active?.tree),
   );

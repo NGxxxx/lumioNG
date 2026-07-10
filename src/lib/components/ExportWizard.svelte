@@ -25,8 +25,7 @@
 
   const isMemory = $derived(input.mode === "scopedMemory");
 
-  // Tree-driven ("pick") mode exports the ACTIVE session, matching the `active!.id`
-  // used for the export api call below. Guard so a null active session shows no DBs.
+  // Tree-driven ("pick") mode exports the ACTIVE session; guard so a null active session shows no DBs.
   const databases = $derived(sessionManager.active?.tree?.databases ?? []);
 
   function collsOf(db: string): string[] {

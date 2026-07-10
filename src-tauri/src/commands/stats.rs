@@ -13,9 +13,7 @@ pub async fn coll_stats(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    // The `collStats` run_command is deprecated; use the $collStats aggregation stage instead.
-    // $collStats nests metrics under `storageStats` (size, count, storageSize, indexSizes...).
-    // Flatten to top-level to match the shape expected by the frontend (domain/stats.ts).
+    // `collStats` run_command is deprecated; use $collStats and flatten storageStats to top-level to match the frontend's expected shape (domain/stats.ts).
     let pipeline = vec![doc! { "$collStats": { "storageStats": {} } }];
     let mut cursor = client
         .database(&db)

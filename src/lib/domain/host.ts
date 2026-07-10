@@ -36,9 +36,7 @@ function dateIso(v: unknown): string | null {
 const obj = (v: unknown): Record<string, unknown> =>
   v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 
-/** Curate serverStatus (+ buildInfo, optional hostInfo) into the Host tab's metrics.
- *  `serverStatusJson` is null when the connection lacks the privilege to run it (common on
- *  restricted-access users) — the tab still renders buildInfo-derived fields in that case. */
+/** Curate serverStatus (+ buildInfo, optional hostInfo) into the Host tab's metrics; `serverStatusJson` is null when the connection lacks privilege, and the tab still renders buildInfo-derived fields. */
 export function parseHostInfo(
   serverStatusJson: string | null,
   buildInfoJson: string,

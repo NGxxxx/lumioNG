@@ -16,8 +16,7 @@ pub fn canonical_string_to_doc(s: &str) -> Result<Document, AppError> {
     }
 }
 
-/// Parse a Canonical Extended JSON **array** whose every element must be a document.
-/// `array_err` reports a non-array top level; `element_err` reports a non-document element.
+/// Parse a Canonical Extended JSON **array** whose every element must be a document (`array_err`/`element_err` cover each failure case).
 pub fn canonical_string_to_doc_array(
     s: &str,
     array_err: &str,

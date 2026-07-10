@@ -67,11 +67,7 @@ export function pickColumns(docs: Doc[], paths: string[]): Doc[] {
   });
 }
 
-/**
- * Input contract for the Export Wizard. Defined here in `domain/` (not in the
- * component) so stores can reference it without a store→component dependency,
- * keeping the one-directional layering `components → stores → api`, all using `domain`.
- */
+/** Input contract for the Export Wizard, defined here in `domain/` (not the component) so stores can reference it without a store→component dependency. */
 export type ExportWizardInput =
   | { mode: "pick"; preChecked: { db: string; coll: string }[] }
   | {

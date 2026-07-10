@@ -6,12 +6,7 @@ export interface SortKey {
   dir: 1 | -1;
 }
 
-/**
- * Cycle the sort on a header click.
- * - shift = false: single-key mode, cycles none→asc→desc→none for this field.
- * - shift = true: multi-key mode, appends a new field (asc) or cycles an existing one
- *   (asc→desc→remove), leaving other keys untouched.
- */
+/** Cycle the sort on a header click: without shift, single-key mode cycles none→asc→desc→none; with shift, multi-key mode appends/cycles this field while leaving others untouched. */
 export function cycleSort(keys: SortKey[], path: string, shift: boolean): SortKey[] {
   if (!shift) {
     const only = keys.length === 1 && keys[0].path === path ? keys[0] : null;

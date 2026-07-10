@@ -1,6 +1,4 @@
-/** App chrome state: active connection and sidebar/log dimensions. (db/collection counts are
- *  derived per-session in the page from the active session's tree — not here, to avoid binding
- *  to the empty `namespaceTree` singleton that multi-session never populates.) */
+/** App chrome state: active connection and sidebar/log dimensions (db/collection counts are derived per-session in the page, not here). */
 export function createShell() {
   let connection = $state<{ label: string; uri: string } | null>(null);
   let connectedAt = $state<number | null>(null); // epoch ms of the active connection (status-bar clock)

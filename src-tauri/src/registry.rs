@@ -2,8 +2,7 @@ use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-/// Profile fields supplied by the frontend on save (no id). `password_enc` is already
-/// obfuscated by the frontend `domain/secret` transform — never plaintext.
+/// Profile fields supplied by the frontend on save (no id); `password_enc` is already obfuscated by the frontend `domain/secret` transform — never plaintext.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ConnectionInput {
@@ -78,8 +77,7 @@ impl SavedConnection {
     }
 }
 
-/// `id` None → append (id = max(id)+1, empty list → 1). `id` matching → overwrite all profile
-/// fields and clear the legacy `uri`. `id` not matching → list unchanged.
+/// `id` None → append; `id` matching → overwrite profile fields and clear legacy `uri`; `id` not matching → list unchanged.
 pub fn upsert(
     mut list: Vec<SavedConnection>,
     id: Option<u32>,

@@ -598,7 +598,11 @@ describe("activeDataView bridge (canEditSelected/canDeleteSelected/getSelectedFo
 });
 
 describe("quick search (visibleIndices/searchInvalid)", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
 
   const setup = async () => {
     (runScript as any).mockResolvedValue(
@@ -614,14 +618,16 @@ describe("quick search (visibleIndices/searchInvalid)", () => {
     expect(s.visibleIndices).toBeNull();
   });
 
-  it("visibleIndices narrows to the matching rows for a valid regex", async () => {
+  it("visibleIndices narrows to the matching rows for a valid regex, after the debounce", async () => {
     const s = await setup();
     s.searchTerm = "^(alpha|gamma)$";
+    expect(s.visibleIndices).toBeNull(); // not yet applied — still debouncing
+    vi.advanceTimersByTime(1000);
     expect(s.visibleIndices).toEqual([0, 2]);
     expect(s.searchInvalid).toBe(false);
   });
 
-  it("searchInvalid is true for an invalid regex, and visibleIndices stays null", async () => {
+  it("searchInvalid is true for an invalid regex immediately (not debounced), and visibleIndices stays null", async () => {
     const s = await setup();
     s.searchTerm = "[unterminated";
     expect(s.searchInvalid).toBe(true);
@@ -630,7 +636,11 @@ describe("quick search (visibleIndices/searchInvalid)", () => {
 });
 
 describe("quick search interacts safely with shift-click range-select", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
 
   it("never includes a row the active search filter hid", async () => {
     (runScript as any).mockResolvedValue(
@@ -642,6 +652,7 @@ describe("quick search interacts safely with shift-click range-select", () => {
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("d");
     s.searchTerm = "^[^2C]$"; // excludes doc index 2 only
+    vi.advanceTimersByTime(1000);
     expect(s.visibleIndices).toEqual([0, 1, 3, 4]);
     s.clickRow(0, { ctrl: false, shift: false });
     s.clickRow(4, { ctrl: false, shift: true });
@@ -803,6 +814,20 @@ describe("createQueryScript — pure-cursor paging", () => {
     await v.confirmShowAll();
     expect(v.allShown).toBe(true);
     expect(v.docs.length).toBe(6000);
+  });
+
+  it("regression: confirmShowAll surfaces a backend AppError object as readable text, not [object Object]", async () => {
+    run.mockResolvedValueOnce(cursorQueryOutcome({ cursorKind: "agg", query: "[]" }));
+    aggCount.mockResolvedValueOnce(6000); // over SHOW_ALL_WARN_THRESHOLD (5000)
+    agg.mockResolvedValueOnce([]);
+    const v = createQueryScript("conn:1", "");
+    await v.run("d");
+    await v.requestShowAll();
+    // Tauri invoke() rejects with the Rust AppError's JSON shape, not a JS Error instance —
+    // e.g. a query that times out with the user's configured timeout.
+    agg.mockRejectedValueOnce({ kind: "Query", message: "operation exceeded time limit" });
+    await v.confirmShowAll();
+    expect(v.error).toBe("Query: operation exceeded time limit");
   });
 
   it("a fresh run() clears a stale showAllPending left over from a previous run", async () => {

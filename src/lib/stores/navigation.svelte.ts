@@ -29,10 +29,7 @@ export type Active =
   | { zone: "work"; id: number }
   | null;
 
-/**
- * Per-session tree-selection slice. Holds only selection + collection-section state;
- * the shared tab strip (context + work tabs) lives in `sessionManager`.
- */
+/** Per-session tree-selection slice; holds only selection + collection-section state (the shared tab strip lives in `sessionManager`). */
 export function createSessionNav() {
   let selDb = $state<string | null>(null);
   let selColl = $state<string | null>(null);

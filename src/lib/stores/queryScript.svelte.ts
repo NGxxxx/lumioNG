@@ -67,7 +67,19 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let searchTerm = $state("");
   const searchRegex = $derived(compileSearch(searchTerm));
   const searchInvalid = $derived(searchTerm !== "" && searchRegex === null);
-  const visibleIndices = $derived(matchingIndices(docs, columnFields, searchRegex));
+  // matchingIndices() rescans every doc/column on every keystroke; debounce it (immediate on
+  // clear) so typing stays smooth once `docs` is large (e.g. "Show all" on thousands of rows).
+  const SEARCH_DEBOUNCE_MS = 1000;
+  let searchApplied = $state("");
+  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+  function setSearchTerm(v: string) {
+    searchTerm = v;
+    clearTimeout(searchDebounce);
+    if (v === "") searchApplied = "";
+    else searchDebounce = setTimeout(() => { searchApplied = v; }, SEARCH_DEBOUNCE_MS);
+  }
+  const appliedSearchRegex = $derived(compileSearch(searchApplied));
+  const visibleIndices = $derived(matchingIndices(docs, columnFields, appliedSearchRegex));
 
   let displayModeVal = $state<DisplayMode>("none");
   let valueJson = $state<string | null>(null);
@@ -195,7 +207,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       colWidths = { ...defaultColWidths };
     } catch (e) {
       if (gen !== generation) return;
-      error = e instanceof Error ? e.message : String(e);
+      error = errorMessage(e);
     } finally {
       if (gen === generation) loading = false;
       activity.end();
@@ -219,7 +231,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       explainSummary = summarizeExplain(JSON.parse(json));
     } catch (e) {
       if (gen !== generation) return;
-      explainError = e instanceof Error ? e.message : String(e);
+      explainError = errorMessage(e);
     } finally {
       if (gen === generation) explainLoading = false;
       activity.end();
@@ -361,7 +373,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
       error = outcome.error;
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      error = errorMessage(e);
     } finally {
       lastElapsedMs = Date.now() - startedAt;
       running = false;
@@ -446,7 +458,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
         fullDocs = docs;
       } catch (e) {
         if (gen !== generation) return;
-        error = e instanceof Error ? e.message : String(e);
+        error = errorMessage(e);
         showingAll = false;
       } finally {
         if (gen === generation) loading = false;
@@ -727,7 +739,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get visibleIndices() { return visibleIndices; },
     get columnFields() { return columnFields; },
     get searchTerm() { return searchTerm; },
-    set searchTerm(v: string) { searchTerm = v; },
+    set searchTerm(v: string) { setSearchTerm(v); },
     get searchInvalid() { return searchInvalid; },
     get consoleEntries() { return consoleEntries; },
     get lastElapsedMs() { return lastElapsedMs; },

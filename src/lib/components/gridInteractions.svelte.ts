@@ -1,7 +1,4 @@
-// NOTE: the `createVirtualizer`/`$effect`/`$store` wiring itself stays duplicated in each grid
-// component (not factored out here) — mirroring tanstack-virtual's store into `$state` from a
-// `.svelte.ts` module causes an infinite update loop (`$store` auto-subscribe only works in
-// `.svelte` files). Don't retry that extraction.
+// NOTE: virtualizer wiring stays duplicated per grid component — mirroring its store into `$state` from a `.svelte.ts` module causes an infinite update loop. Don't retry that extraction.
 export const GRID_ROW_H = 24;
 
 /** `resizing` lets callers suppress a click action (e.g. sort-on-header) on mouseup. */

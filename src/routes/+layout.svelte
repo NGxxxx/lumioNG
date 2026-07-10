@@ -3,9 +3,7 @@
   import "../app.css";
   let { children } = $props();
 
-  // Ctrl/Cmd+A in a desktop app must not "select all" the whole UI like a web page.
-  // Allow it only when an editable field (input/textarea/contenteditable) has focus;
-  // everywhere else, suppress the browser's select-all.
+  // Ctrl/Cmd+A must not "select all" the whole desktop UI; allow it only when an editable field has focus.
   function onKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
       const el = e.target as HTMLElement | null;

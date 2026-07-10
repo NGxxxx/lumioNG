@@ -3,10 +3,7 @@ export type ParseResult =
   | { ok: true; json: string }
   | { ok: false; error: string };
 
-/**
- * Validate the syntax of a user-supplied filter (Extended JSON object).
- * Empty input normalizes to "{}". Operator/BSON-type correctness is left to Rust.
- */
+/** Validate the syntax of a user-supplied filter (Extended JSON object); empty input normalizes to "{}", operator/BSON-type correctness is left to Rust. */
 export function parseFilter(text: string): ParseResult {
   const trimmed = text.trim();
   if (trimmed === "") return { ok: true, json: "{}" };

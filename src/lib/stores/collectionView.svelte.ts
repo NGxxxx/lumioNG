@@ -48,6 +48,18 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let searchTerm = $state("");
   const searchRegex = $derived(compileSearch(searchTerm));
   const searchInvalid = $derived(searchTerm !== "" && searchRegex === null);
+  // matchingIndices() rescans every doc/column on every keystroke; debounce it (immediate on
+  // clear) so typing stays smooth once `docs` is large (e.g. "Show all" on thousands of rows).
+  const SEARCH_DEBOUNCE_MS = 1000;
+  let searchApplied = $state("");
+  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+  function setSearchTerm(v: string) {
+    searchTerm = v;
+    clearTimeout(searchDebounce);
+    if (v === "") searchApplied = "";
+    else searchDebounce = setTimeout(() => { searchApplied = v; }, SEARCH_DEBOUNCE_MS);
+  }
+  const appliedSearchRegex = $derived(compileSearch(searchApplied));
 
   let sortKeys = $state<SortKey[]>([]);
   let hidden = $state<Set<string>>(new Set());
@@ -89,7 +101,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const columnFields = $derived(mergeColumns(schema, docs));
   // Search only currently-visible columns (matches what the column chooser hid and what the grid actually renders), not the full unfiltered columnFields.
   const searchableColumns = $derived(columnFields.filter((c) => !hidden.has(c.path)));
-  const visibleIndices = $derived(matchingIndices(docs, searchableColumns, searchRegex));
+  const visibleIndices = $derived(matchingIndices(docs, searchableColumns, appliedSearchRegex));
 
   /** Compute default widths once per column-set; recompute only when the paths change. */
   function ensureColWidths() {
@@ -718,7 +730,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       return searchTerm;
     },
     set searchTerm(v: string) {
-      searchTerm = v;
+      setSearchTerm(v);
     },
     get searchInvalid() {
       return searchInvalid;

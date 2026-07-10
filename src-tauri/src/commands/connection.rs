@@ -16,11 +16,7 @@ pub async fn connect(
     read_only: bool,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    // Parse the URI into options so we can override the driver defaults. The default
-    // server_selection_timeout is 30s, which turns any transient Atlas hiccup (failover,
-    // throttled shared tier, network blip) into a 30s freeze on every operation. Fail
-    // faster so the UI surfaces the error promptly; the user can retry. Set app_name so
-    // the connection is identifiable in Atlas metrics/profiler.
+    // Override the driver's 30s server_selection_timeout default so a transient Atlas hiccup doesn't freeze every operation for 30s; also set app_name for Atlas metrics/profiler.
     let mut opts = ClientOptions::parse(&uri)
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
@@ -114,8 +110,7 @@ fn now_ms() -> i64 {
         .unwrap_or(0)
 }
 
-/// Stamp a saved connection's last-connected time. Called after a successful `connect`;
-/// failures here must never block the connect flow (see `sessionManager.focusOrOpen`).
+/// Stamp a saved connection's last-connected time after a successful `connect`; failures here must never block the connect flow (see `sessionManager.focusOrOpen`).
 #[tauri::command]
 pub fn touch_connection(app: AppHandle, id: u32) -> Result<Vec<SavedConnection>, AppError> {
     let path = registry_path(&app)?;

@@ -40,9 +40,7 @@ export function createSessionManager() {
     return sessions.find((s) => s.id === sessionId)?.nav ?? null;
   }
 
-  /** Apply a partial update to a session, replacing it with a new object so Svelte's
-   *  deep-proxy reactivity fires. Mutating the raw makeSession() object in place updates
-   *  the target but not the per-property signal → spinner stays stuck on "connecting". */
+  /** Apply a partial update to a session by replacing it with a new object — mutating the raw session in place leaves the spinner stuck on "connecting". */
   function patchSession(id: string, patch: Partial<Session>) {
     sessions = sessions.map((s) => (s.id === id ? { ...s, ...patch } : s));
   }
@@ -56,9 +54,7 @@ export function createSessionManager() {
     const nav = navOf(sessionId);
     if (nav && nav.selDb === db && nav.selColl === coll) {
       nav.clearCollection();
-      // Mirror old navigation.closeForCollection: when the dropped collection is the one
-      // being viewed in the active session, demote the context view to the Database tab
-      // (not Host, which is closeWork's empty-state fallback).
+      // When the dropped collection is the one being viewed in the active session, demote the context view to the Database tab (not Host).
       if (sessionId === activeId) zone = { zone: "context", kind: "database" };
     }
   }
@@ -70,8 +66,7 @@ export function createSessionManager() {
     const nav = navOf(sessionId);
     if (nav && nav.selDb === db) {
       nav.clearSelection();
-      // Mirror old navigation.closeForDatabase: when the dropped db is the one being
-      // viewed in the active session, clear the context view (old code set active = null).
+      // When the dropped db is the one being viewed in the active session, clear the context view.
       if (sessionId === activeId) zone = null;
     }
   }
