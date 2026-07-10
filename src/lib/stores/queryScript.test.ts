@@ -143,7 +143,7 @@ describe("fieldsFor", () => {
     sampleDocuments.mockResolvedValueOnce([{ _id: { $oid: "1" }, name: "A", age: 30 }]);
     const s = createQueryScript("sess", "x");
     const fields = await s.fieldsFor("mydb", "mycoll");
-    expect(sampleDocuments).toHaveBeenCalledWith("sess", "mydb", "mycoll", "{}", 50);
+    expect(sampleDocuments).toHaveBeenCalledWith("sess", "mydb", "mycoll", "{}", 50, 30000);
     expect(fields).toEqual(expect.arrayContaining(["name", "age"]));
   });
 
@@ -529,6 +529,126 @@ describe("selection / delete / menu (editable grid)", () => {
   });
 });
 
+describe("activeDataView bridge (canEditSelected/canDeleteSelected/getSelectedForEdit/requestDeleteSelected/requestExportCurrent)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const setup = async (prov: { db: string; coll: string } | null) => {
+    (runScript as any).mockResolvedValue(
+      ok([`{"_id":1,"name":"A"}`, `{"_id":2,"name":"B"}`, `{"_id":3,"name":"C"}`], prov),
+    );
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    return s;
+  };
+
+  it("canEditSelected is true only for exactly one selected row with an _id", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    expect(s.canEditSelected).toBe(false); // nothing selected yet
+    s.clickRow(0, { ctrl: false, shift: false });
+    expect(s.canEditSelected).toBe(true);
+    s.clickRow(1, { ctrl: true, shift: false });
+    expect(s.canEditSelected).toBe(false); // two rows selected
+  });
+
+  it("canEditSelected is false when the result isn't a live editable cursor", async () => {
+    const s = await setup(null);
+    s.clickRow(0, { ctrl: false, shift: false });
+    expect(s.canEditSelected).toBe(false);
+  });
+
+  it("getSelectedForEdit returns the single selected doc, or null otherwise", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    expect(s.getSelectedForEdit()).toBeNull();
+    s.clickRow(1, { ctrl: false, shift: false });
+    expect(s.getSelectedForEdit()).toEqual({ _id: 2, name: "B" });
+  });
+
+  it("canDeleteSelected is true when every selected row has an _id", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    expect(s.canDeleteSelected).toBe(false);
+    s.clickRow(0, { ctrl: false, shift: false });
+    s.clickRow(2, { ctrl: true, shift: false });
+    expect(s.canDeleteSelected).toBe(true);
+  });
+
+  it("requestDeleteSelected opens the confirm dialog for the current selection", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    s.clickRow(0, { ctrl: false, shift: false });
+    s.clickRow(2, { ctrl: true, shift: false });
+    s.requestDeleteSelected();
+    expect(s.confirmDelete?.count).toBe(2);
+  });
+
+  it("requestExportCurrent exports the selection when non-empty", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    s.clickRow(1, { ctrl: false, shift: false });
+    s.requestExportCurrent();
+    const input = s.exportInput();
+    expect(input?.mode).toBe("scopedMemory");
+    expect(input && input.mode === "scopedMemory" ? input.docs : null).toEqual([{ _id: 2, name: "B" }]);
+  });
+
+  it("requestExportCurrent exports every loaded row when nothing is selected", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    s.requestExportCurrent();
+    const input = s.exportInput();
+    expect(input?.mode).toBe("scopedMemory");
+    expect(input && input.mode === "scopedMemory" ? input.docs.length : null).toBe(3);
+  });
+});
+
+describe("quick search (visibleIndices/searchInvalid)", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  const setup = async () => {
+    (runScript as any).mockResolvedValue(
+      ok([`{"_id":1,"name":"Alpha"}`, `{"_id":2,"name":"Beta"}`, `{"_id":3,"name":"Gamma"}`], { db: "d", coll: "c" }),
+    );
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    return s;
+  };
+
+  it("visibleIndices is null (unfiltered) when searchTerm is empty", async () => {
+    const s = await setup();
+    expect(s.visibleIndices).toBeNull();
+  });
+
+  it("visibleIndices narrows to the matching rows for a valid regex", async () => {
+    const s = await setup();
+    s.searchTerm = "^(alpha|gamma)$";
+    expect(s.visibleIndices).toEqual([0, 2]);
+    expect(s.searchInvalid).toBe(false);
+  });
+
+  it("searchInvalid is true for an invalid regex, and visibleIndices stays null", async () => {
+    const s = await setup();
+    s.searchTerm = "[unterminated";
+    expect(s.searchInvalid).toBe(true);
+    expect(s.visibleIndices).toBeNull();
+  });
+});
+
+describe("quick search interacts safely with shift-click range-select", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("never includes a row the active search filter hid", async () => {
+    (runScript as any).mockResolvedValue(
+      ok([
+        `{"_id":0,"name":"A"}`, `{"_id":1,"name":"B"}`, `{"_id":2,"name":"C"}`,
+        `{"_id":3,"name":"D"}`, `{"_id":4,"name":"E"}`,
+      ], { db: "d", coll: "c" }),
+    );
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.searchTerm = "^[^2C]$"; // excludes doc index 2 only
+    expect(s.visibleIndices).toEqual([0, 1, 3, 4]);
+    s.clickRow(0, { ctrl: false, shift: false });
+    s.clickRow(4, { ctrl: false, shift: true });
+    expect([...s.selected].sort((a, b) => a - b)).toEqual([0, 1, 3, 4]);
+  });
+});
+
 describe("queryScript command log + activity", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -633,7 +753,7 @@ describe("createQueryScript — pure-cursor paging", () => {
     expect(v.docs).toEqual([{ _id: { $oid: "a" } }]);
     expect(v.totalCount).toBe(3);
     expect(v.currentPage).toBe(1);
-    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 0, 50, "{}", null, null);
+    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 0, 50, "{}", null, null, 30000);
   });
 
   it("a pure aggregate() result counts via aggregateCount and pages via aggregate(skip, limit)", async () => {
@@ -643,7 +763,7 @@ describe("createQueryScript — pure-cursor paging", () => {
     const v = createQueryScript("conn:1", "");
     await v.run("d");
     expect(v.totalCount).toBe(120);
-    expect(agg).toHaveBeenCalledWith("conn:1", "d", "c", "[]", 0, 50);
+    expect(agg).toHaveBeenCalledWith("conn:1", "d", "c", "[]", 0, 50, 30000);
   });
 
   it("goToPage(3) re-fetches with the correct skip and replaces docs", async () => {
@@ -656,7 +776,7 @@ describe("createQueryScript — pure-cursor paging", () => {
     await v.goToPage(3);
     expect(v.currentPage).toBe(3);
     expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 100, 50, "{}", null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 100, 50, "{}", null, null, 30000);
   });
 
   it("an explicit .limit() on the script hides the pager and fetches exactly that slice once", async () => {
@@ -664,7 +784,7 @@ describe("createQueryScript — pure-cursor paging", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "x" } }]);
     const v = createQueryScript("conn:1", "");
     await v.run("d");
-    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 10, 5, "{}", null, null);
+    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 10, 5, "{}", null, null, 30000);
     expect(cnt).not.toHaveBeenCalled();
     expect(v.pageCount).toBe(1);
     await v.goToPage(2);
@@ -812,7 +932,7 @@ describe("explain", () => {
     explainQueryMock.mockResolvedValue(collscanJson);
     await s.runExplain();
     expect(explainQueryMock).toHaveBeenCalledWith(
-      "sess", "find", "d", "c", '{"status":"pending"}', null, null, 0, null,
+      "sess", "find", "d", "c", '{"status":"pending"}', null, null, 0, null, 30000,
     );
     expect(s.explainSummary?.verdict).toBe("collscan");
     expect(s.explainRawJson).toBe(collscanJson);
@@ -972,5 +1092,63 @@ describe("explain", () => {
 
     expect(run).not.toHaveBeenCalled();
     await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
+  });
+
+  it("canExplain goes false after editing the statement without re-running", async () => {
+    const s = await runPureFind();
+    expect(s.canExplain).toBe(true);
+    s.statementText = "db.c.find({status:'done'})";
+    expect(s.canExplain).toBe(false);
+  });
+
+  it("canExplain stays true after Run Selection, even though the selection differs from statementText", async () => {
+    run.mockResolvedValue({
+      console: [],
+      result: {
+        kind: "cursorQuery",
+        cursorKind: "find", db: "d", coll: "c",
+        query: '{"status":"pending"}', sort: null, projection: null,
+        baseSkip: 0, fixedLimit: null,
+      },
+      provenance: { db: "d", coll: "c" },
+      capped: false,
+      error: null,
+    });
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    const s = createQueryScript("sess", "db.c.find({status:'pending'}) db.c.count()");
+    s.setSelection(0, 27); // "db.c.find({status:'pending'})"
+    await s.runSelection("d");
+    // The selection substring never equals the full statementText — canExplain must not
+    // key off that mismatch, only off whether the editor was touched since this run.
+    expect(s.canExplain).toBe(true);
+  });
+
+  it("explainAfterRun re-runs and refreshes explain when the statement was edited since the last run", async () => {
+    const s = await runPureFind();
+    explainQueryMock.mockResolvedValue(collscanJson);
+    await s.showExplain();
+    await vi.waitFor(() => expect(s.explainSummary).not.toBeNull());
+
+    s.statementText = "db.c.find({status:'done'})";
+    run.mockResolvedValue({
+      console: [],
+      result: {
+        kind: "cursorQuery",
+        cursorKind: "find", db: "d", coll: "c",
+        query: '{"status":"done"}', sort: null, projection: null,
+        baseSkip: 0, fixedLimit: null,
+      },
+      provenance: { db: "d", coll: "c" },
+      capped: false,
+      error: null,
+    });
+    explainQueryMock.mockResolvedValue(ixscanJson);
+    run.mockClear();
+
+    await s.explainAfterRun("d");
+
+    expect(run).toHaveBeenCalledWith("sess", "d", "db.c.find({status:'done'})", expect.anything());
+    await vi.waitFor(() => expect(s.explainSummary?.verdict).toBe("ixscan"));
   });
 });

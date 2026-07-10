@@ -231,6 +231,8 @@
   "result_table_fields_apply": "Áp dụng",
   "result_table_view_grid": "Bảng",
   "result_table_view_tree": "Cây",
+  "result_table_search_placeholder": "Tìm kiếm…",
+  "result_table_search_title": "Tìm nhanh (regex, không phân biệt hoa thường) trong các dòng đã tải",
   "wrap_toggle_label": "Ngắt dòng",
   "wrap_toggle_title": "Ngắt dòng nội dung dài thay vì cuộn ngang",
   "result_table_pager_back_to_paged": "↩ Phân trang",

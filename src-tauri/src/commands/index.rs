@@ -44,8 +44,8 @@ pub async fn create_index(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let keys_doc = canonical_string_to_doc(&keys)?;
-    // IndexOptions/IndexModel use builder setters that accept Option directly.
     // name = None ⇒ driver auto-generates a default name (field_dir_...).
     let options = IndexOptions::builder()
         .unique(unique.then_some(true))
@@ -69,6 +69,7 @@ pub async fn drop_index(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     client
         .database(&db)
         .collection::<Document>(&coll)

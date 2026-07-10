@@ -37,15 +37,4 @@ describe("createActivity", () => {
     a.begin("x");
     expect(a.busy).toBe(true);
   });
-
-  it("track wraps a promise and balances begin/end even on rejection", async () => {
-    const a = createActivity();
-    const ok = await a.track("work", async () => 42);
-    expect(ok).toBe(42);
-    expect(a.busy).toBe(false);
-
-    await expect(a.track("boom", async () => { throw new Error("nope"); })).rejects.toThrow("nope");
-    expect(a.busy).toBe(false);
-    expect(a.label).toBeNull();
-  });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { rangeBetween, idInFilter, resolveIds, effectiveRows } from "./selection";
+import { rangeBetween, idInFilter, resolveIds, effectiveRows, clickRowSelection, selectForMenu } from "./selection";
 
 describe("rangeBetween", () => {
   it("forward range is inclusive", () => expect(rangeBetween(2, 5)).toEqual([2, 3, 4, 5]));
@@ -41,4 +41,52 @@ describe("effectiveRows", () => {
 
   it("menu row outside selection → just the menu row", () =>
     expect(effectiveRows(3, new Set([0, 2]))).toEqual([3]));
+});
+
+describe("clickRowSelection", () => {
+  const none = { selected: new Set<number>(), anchor: null };
+
+  it("plain click selects only that row and becomes the anchor", () => {
+    const r = clickRowSelection(none, 2, { ctrl: false, shift: false }, null);
+    expect(r).toEqual({ selected: new Set([2]), anchor: 2 });
+  });
+
+  it("ctrl-click toggles the row into the selection without moving anchor semantics", () => {
+    const r = clickRowSelection({ selected: new Set([1]), anchor: 1 }, 3, { ctrl: true, shift: false }, null);
+    expect(r.selected).toEqual(new Set([1, 3]));
+    expect(r.anchor).toBe(3);
+  });
+
+  it("ctrl-click on an already-selected row removes it", () => {
+    const r = clickRowSelection({ selected: new Set([1, 3]), anchor: 3 }, 3, { ctrl: true, shift: false }, null);
+    expect(r.selected).toEqual(new Set([1]));
+  });
+
+  it("shift-click with an anchor range-selects between anchor and row", () => {
+    const r = clickRowSelection({ selected: new Set([2]), anchor: 2 }, 5, { ctrl: false, shift: true }, null);
+    expect(r.selected).toEqual(new Set([2, 3, 4, 5]));
+    expect(r.anchor).toBe(2); // anchor unchanged by a shift-range
+  });
+
+  it("shift-click without an anchor falls back to a plain single-select", () => {
+    const r = clickRowSelection(none, 4, { ctrl: false, shift: true }, null);
+    expect(r).toEqual({ selected: new Set([4]), anchor: 4 });
+  });
+
+  it("shift-range is clamped to visible rows when a search filter is active", () => {
+    const r = clickRowSelection({ selected: new Set([1]), anchor: 1 }, 4, { ctrl: false, shift: true }, [1, 4]);
+    expect(r.selected).toEqual(new Set([1, 4])); // 2,3 excluded: filtered out of view
+  });
+});
+
+describe("selectForMenu", () => {
+  it("right-click outside the selection replaces it with just that row", () => {
+    const r = selectForMenu({ selected: new Set([1, 2]), anchor: 1 }, 5);
+    expect(r).toEqual({ selected: new Set([5]), anchor: 5 });
+  });
+
+  it("right-click inside an existing multi-select leaves it untouched", () => {
+    const current = { selected: new Set([1, 2, 3]), anchor: 1 };
+    expect(selectForMenu(current, 2)).toBe(current);
+  });
 });

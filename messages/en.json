@@ -231,6 +231,8 @@
   "result_table_fields_apply": "Apply",
   "result_table_view_grid": "Grid",
   "result_table_view_tree": "Tree",
+  "result_table_search_placeholder": "Search…",
+  "result_table_search_title": "Quick search (regex, case-insensitive) over the loaded rows",
   "wrap_toggle_label": "Wrap",
   "wrap_toggle_title": "Wrap long lines instead of scrolling horizontally",
   "result_table_pager_back_to_paged": "↩ Paged",

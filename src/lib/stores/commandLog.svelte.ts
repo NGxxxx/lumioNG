@@ -9,7 +9,6 @@ export interface LogEntry {
 /** Append-only mongosh command log; retains the N most recent entries. */
 export function createCommandLog(limit = 500) {
   let entries = $state<LogEntry[]>([]);
-  let open = $state(true);
   let counter = 0;
 
   function push(text: string, sessionId: string, tookMs: number) {
@@ -31,21 +30,13 @@ export function createCommandLog(limit = 500) {
     entries = [];
   }
 
-  function toggle() {
-    open = !open;
-  }
-
   return {
     get entries() {
       return entries;
     },
-    get open() {
-      return open;
-    },
     push,
     pushTimed,
     clear,
-    toggle,
   };
 }
 

@@ -22,7 +22,7 @@ describe("createCollectionSchema", () => {
     ]);
     const v = createCollectionSchema("conn:1", "shop", "users");
     await v.init();
-    expect(sampleDocuments).toHaveBeenCalledWith("conn:1", "shop", "users", "{}", 100);
+    expect(sampleDocuments).toHaveBeenCalledWith("conn:1", "shop", "users", "{}", 100, 30000);
     expect(v.fields.map((f) => f.path)).toEqual(["_id", "name", "age"]);
     expect(v.fields.find((f) => f.path === "age")?.presence).toBe(0.5);
     expect(v.actualSampled).toBe(2);
@@ -33,14 +33,14 @@ describe("createCollectionSchema", () => {
     const v = createCollectionSchema("conn:1", "shop", "users");
     v.setSampleSize(25);
     await v.refresh();
-    expect(sampleDocuments).toHaveBeenCalledWith("conn:1", "shop", "users", "{}", 25);
+    expect(sampleDocuments).toHaveBeenCalledWith("conn:1", "shop", "users", "{}", 25, 30000);
   });
 
   it("setSampleSize clamps to a minimum of 1", async () => {
     const v = createCollectionSchema("conn:1", "shop", "users");
     v.setSampleSize(0);
     await v.refresh();
-    expect(sampleDocuments).toHaveBeenCalledWith("conn:1", "shop", "users", "{}", 1);
+    expect(sampleDocuments).toHaveBeenCalledWith("conn:1", "shop", "users", "{}", 1, 30000);
   });
 
   it("api error sets error and does not throw", async () => {

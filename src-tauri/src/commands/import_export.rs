@@ -20,8 +20,7 @@ pub struct ExportProgress {
     pub total: u64,
 }
 
-/// Shared setup for the `export_*` commands: open the sorted (optionally projected)
-/// cursor over the matching documents and return it with the total match count.
+/// Shared setup for the `export_*` commands: open the sorted (optionally projected) cursor over matching documents and return it with the total match count.
 async fn open_export_cursor(
     state: State<'_, AppState>,
     session_id: &str,
@@ -42,14 +41,12 @@ async fn open_export_cursor(
     Ok((q.await?, total))
 }
 
-/// Write one element into a streaming JSON-array body: opening `[` + newline for the
-/// first element, `,` + newline before each subsequent one, then the document JSON.
+/// Write one element into a streaming JSON-array body: opening `[` for the first element, `,` before each subsequent one, then the document JSON.
 fn write_json_array_element<W: Write>(w: &mut W, doc_json: &str, first: bool) -> std::io::Result<()> {
     w.write_all(if first { b"[\n" } else { b",\n" })?;
     w.write_all(doc_json.as_bytes())
 }
-/// Close a streaming JSON-array body. `any` = at least one element was written
-/// (empty array is written as `[]`).
+/// Close a streaming JSON-array body; `any` = at least one element was written (empty array is written as `[]`).
 fn finish_json_array<W: Write>(w: &mut W, any: bool) -> std::io::Result<()> {
     w.write_all(if any { b"\n]" } else { b"[]" })
 }
@@ -61,9 +58,7 @@ pub struct ImportResult {
     pub errors: Vec<String>,
 }
 
-/// Split file content into a list of per-document ExtJSON strings.
-/// Leading non-whitespace is '[' → parse as JSON array, re-serialize each element.
-/// Otherwise → JSONL: each non-empty trimmed line is one document.
+/// Split file content into per-document ExtJSON strings: a leading `[` parses as a JSON array, otherwise JSONL (one document per non-empty line).
 fn split_import(content: &str) -> Result<Vec<String>, AppError> {
     if content.trim_start().starts_with('[') {
         let arr: Vec<serde_json::Value> =
@@ -98,9 +93,7 @@ fn read_bson_docs(mut bytes: &[u8]) -> Result<Vec<Document>, AppError> {
     Ok(out)
 }
 
-/// Insert pre-parsed docs unordered in `PROGRESS_BATCH`-sized chunks, reporting done/total after
-/// each; remaps each chunk's write-errors back to raw file indices. `total` is the raw doc count
-/// (including parse failures), so progress reflects the whole file.
+/// Insert pre-parsed docs unordered in `PROGRESS_BATCH`-sized chunks, remapping write-errors back to raw file indices; `total` includes parse failures so progress reflects the whole file.
 async fn insert_parsed(
     collection: &mongodb::Collection<Document>,
     parsed: Vec<Document>,
@@ -185,6 +178,7 @@ pub async fn import_documents(
     }
 
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     Ok(insert_parsed(&collection, parsed, parsed_raw_idx, errors, total, &on_progress).await)
 }
@@ -310,6 +304,7 @@ pub async fn import_bson(
     let total = parsed.len() as u64;
     let parsed_raw_idx: Vec<usize> = (0..parsed.len()).collect();
     let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
     Ok(insert_parsed(&collection, parsed, parsed_raw_idx, Vec::new(), total, &on_progress).await)
 }

@@ -1,5 +1,6 @@
 // State and DDL actions for the namespace sidebar tree (databases + collections).
-import { listNamespaces, type DbInfo } from "../api/connection";
+import { listNamespaces } from "../api/connection";
+import type { DbInfo } from "../domain/namespaces";
 import * as admin from "../api/admin";
 import { errorMessage } from "../api/errors";
 import { validateCollectionName, validateDatabaseName } from "../domain/namespaces";

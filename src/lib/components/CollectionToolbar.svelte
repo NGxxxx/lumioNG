@@ -1,5 +1,6 @@
 <script lang="ts">
-  import type { createCollectionView } from "../stores/collectionView.svelte";
+  import { tick } from "svelte";
+import type { createCollectionView } from "../stores/collectionView.svelte";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
@@ -9,6 +10,15 @@
   } = $props();
 
   let openDropdown = $state<"sort" | "fields" | null>(null);
+  let searchInputEl = $state<HTMLInputElement | null>(null);
+
+  // Imperative command for the global toolbar's "Find" button, called via bind:this. The search
+  // box only renders in Grid view (it has no effect in Tree view), so switch there first.
+  export async function focusSearch() {
+    if (view !== "grid") view = "grid";
+    await tick();
+    searchInputEl?.focus();
+  }
 
   function toggleDropdown(which: "sort" | "fields") {
     if (which === "fields" && openDropdown !== "fields") v.resetProjectionDraft();
@@ -162,6 +172,17 @@
       {m.result_table_view_tree()}
     </button>
   </div>
+  {#if view === "grid"}
+    <input
+      class="search-input"
+      class:search-invalid={v.searchInvalid}
+      bind:this={searchInputEl}
+      bind:value={v.searchTerm}
+      placeholder={m.result_table_search_placeholder()}
+      title={m.result_table_search_title()}
+      aria-label={m.result_table_search_title()}
+    />
+  {/if}
 </div>
 {#if v.filterError}<div class="error">{msgKey(v.filterError)}</div>{/if}
 
@@ -226,6 +247,21 @@
     box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
     color: var(--tab-active-fg);
   }
+
+  /* ── Quick search (client-side regex filter over the loaded rows) ── */
+  .search-input {
+    width: 9rem;
+    height: 1.3125rem;
+    margin-left: 0.375rem;
+    background: var(--panel);
+    border: 1px solid var(--gray-c4);
+    border-radius: 0.125rem;
+    padding: 0 0.5rem;
+    font-family: Consolas, monospace;
+    font-size: 0.75rem;
+    box-sizing: border-box;
+  }
+  .search-invalid { border-color: var(--error); color: var(--error); }
 
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
 

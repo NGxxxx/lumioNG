@@ -17,7 +17,7 @@ describe("aggregate / aggregateCount wrappers", () => {
     inv.mockResolvedValueOnce(['{"a":1}']);
     const docs = await aggregate("conn:1", "d", "c", "[]", 10, 5);
     expect(inv).toHaveBeenCalledWith("aggregate", {
-      sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]", skip: 10, limit: 5,
+      sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]", skip: 10, limit: 5, timeoutMs: null,
     });
     expect(docs).toEqual([{ a: 1 }]);
   });
@@ -25,7 +25,9 @@ describe("aggregate / aggregateCount wrappers", () => {
   it("aggregateCount calls the aggregate_count command and returns the count", async () => {
     inv.mockResolvedValueOnce(42);
     const n = await aggregateCount("conn:1", "d", "c", "[]");
-    expect(inv).toHaveBeenCalledWith("aggregate_count", { sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]" });
+    expect(inv).toHaveBeenCalledWith("aggregate_count", {
+      sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]", timeoutMs: null,
+    });
     expect(n).toBe(42);
   });
 });
@@ -36,6 +38,7 @@ describe("explainQuery wrapper", () => {
     const s = await explainQuery("conn:1", "find", "d", "c", "{}", null, null, 0, null);
     expect(inv).toHaveBeenCalledWith("explain_find", {
       sessionId: "conn:1", db: "d", coll: "c", filter: "{}", sort: null, projection: null, skip: 0, limit: null,
+      timeoutMs: null,
     });
     expect(s).toBe('{"queryPlanner":{}}');
   });
@@ -44,7 +47,7 @@ describe("explainQuery wrapper", () => {
     inv.mockResolvedValueOnce('{"stages":[]}');
     const s = await explainQuery("conn:1", "agg", "d", "c", "[]", null, null, 0, 5);
     expect(inv).toHaveBeenCalledWith("explain_aggregate", {
-      sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]", skip: 0, limit: 5,
+      sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]", skip: 0, limit: 5, timeoutMs: null,
     });
     expect(s).toBe('{"stages":[]}');
   });

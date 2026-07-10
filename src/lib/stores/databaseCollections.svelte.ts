@@ -24,6 +24,8 @@ export function createDatabaseCollections(sessionId: string, db: string, tree: T
   let loading = $state(false);
   let sortCol = $state<SortCol>("name");
   let sortDir = $state<"asc" | "desc">("asc");
+  /** Bumped on every init() call so a slower, superseded call can't overwrite fresher state. */
+  let generation = 0;
 
   function names(): string[] {
     return tree.databases.find((d) => d.name === db)?.collections ?? [];
@@ -31,14 +33,18 @@ export function createDatabaseCollections(sessionId: string, db: string, tree: T
 
   async function init() {
     loading = true;
+    const gen = ++generation;
     rows = names().map((name) => ({ name, state: "idle", stats: null, error: null }));
     try {
-      summary = parseDbStats(await commandLog.pushTimed(dbStatsCmd(), sessionId, () => dbStats(sessionId, db)));
+      const s = await commandLog.pushTimed(dbStatsCmd(), sessionId, () => dbStats(sessionId, db));
+      if (gen !== generation) return;
+      summary = parseDbStats(s);
       error = null;
     } catch (e) {
+      if (gen !== generation) return;
       error = errorMessage(e);
     } finally {
-      loading = false;
+      if (gen === generation) loading = false;
     }
   }
 

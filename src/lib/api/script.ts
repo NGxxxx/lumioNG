@@ -1,30 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { ConsoleEntry, ResultDisplay, Provenance, ScriptOutcome } from "../domain/scriptOutcome";
 
-export type ConsoleEntry = { level: "log" | "error"; text: string };
-export type ResultDisplay =
-  | { kind: "docs"; rows: string[] }
-  | {
-      kind: "cursorQuery";
-      cursorKind: "find" | "agg";
-      db: string;
-      coll: string;
-      query: string;
-      sort: string | null;
-      projection: string | null;
-      baseSkip: number;
-      fixedLimit: number | null;
-    }
-  | { kind: "value"; json: string }
-  | { kind: "ack"; json: string }
-  | { kind: "none" };
-export type Provenance = { db: string; coll: string };
-export type ScriptOutcome = {
-  console: ConsoleEntry[];
-  result: ResultDisplay;
-  provenance: Provenance | null;
-  capped: boolean;
-  error: string | null;
-};
+export type { ConsoleEntry, ResultDisplay, Provenance, ScriptOutcome };
 
 export async function runScript(
   sessionId: string, db: string, script: string,

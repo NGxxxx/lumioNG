@@ -1,15 +1,20 @@
 /**
  * Bridge to the currently-mounted collection data view so the global toolbar can drive its
- * actions (Edit selected document, Export). The selection/filter state lives inside the
- * per-collection `collectionView` store (created in ResultTable); ResultTable registers a handle
- * here on mount and unregisters on destroy. `canEdit`/`canExport` are getters so the toolbar
- * stays reactive to selection changes.
+ * actions (Edit selected document, Delete selected, Export). The selection/filter state lives
+ * inside the per-collection `collectionView` store (created in ResultTable); ResultTable registers
+ * a handle here on mount and unregisters on destroy. `canEdit`/`canExport`/`canDelete` are getters
+ * so the toolbar stays reactive to selection changes.
  */
 export type DataViewHandle = {
   readonly canEdit: boolean;
   readonly canExport: boolean;
+  readonly canDelete: boolean;
   editSelected: () => void;
   exportCurrent: () => void;
+  deleteSelected: () => void;
+  /** Focuses this view's quick-search input (global toolbar's Find button). Optional since not
+   *  every future registrant is guaranteed to have a search box. */
+  focusSearch?: () => void;
 };
 
 export function createActiveDataView() {

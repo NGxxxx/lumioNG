@@ -1,10 +1,28 @@
 use crate::bson_json::{bson_to_canonical_string, doc_to_canonical_string};
 use crate::error::AppError;
 use crate::json_bson::{canonical_string_to_doc, canonical_string_to_doc_array};
+use crate::script::host::with_interrupt;
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Document};
+use std::time::{Duration, Instant};
 use tauri::State;
+
+/// Default op deadline when the frontend doesn't pass one (matches `run_script`'s default and
+/// `settings.queryTimeoutMs`'s default in the frontend).
+const DEFAULT_TIMEOUT_MS: u64 = 30_000;
+
+fn deadline_from(timeout_ms: Option<u64>) -> Instant {
+    Instant::now() + Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS))
+}
+
+/// Time remaining until `deadline`, or `None` once it's passed. `with_interrupt` only abandons
+/// the *client's* wait on a hung/slow query — without also telling MongoDB itself to give up via
+/// `maxTimeMS`, a "cancelled" query keeps consuming server CPU/IO after the UI has moved on.
+fn remaining_until(deadline: Instant) -> Option<Duration> {
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    if remaining.is_zero() { None } else { Some(remaining) }
+}
 
 /// Parse a Canonical Extended JSON **array** of aggregation stages into Documents.
 fn parse_pipeline(pipeline: &str) -> Result<Vec<Document>, AppError> {
@@ -112,19 +130,30 @@ pub async fn aggregate(
     pipeline: String,
     skip: Option<i64>,
     limit: Option<i64>,
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
 
     let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
 
-    let mut cursor = collection.aggregate(stages).await?;
-    let mut docs = Vec::new();
-    while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(d)?);
-    }
-    Ok(docs)
+    with_interrupt(cancel, deadline, async move {
+        let collection = client.database(&db).collection::<Document>(&coll);
+        let mut agg = collection.aggregate(stages);
+        if let Some(mt) = remaining_until(deadline) {
+            agg = agg.max_time(mt);
+        }
+        let mut cursor = agg.await?;
+        let mut docs = Vec::new();
+        while let Some(d) = cursor.try_next().await? {
+            docs.push(doc_to_canonical_string(d)?);
+        }
+        Ok(docs)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -133,17 +162,28 @@ pub async fn aggregate_count(
     db: String,
     coll: String,
     pipeline: String,
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
     let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
 
     let mut stages = parse_pipeline(&pipeline)?;
     stages.push(doc! { "$count": "n" });
 
-    let mut cursor = collection.aggregate(stages).await?;
-    let doc = cursor.try_next().await?;
-    Ok(parse_count_doc(doc))
+    with_interrupt(cancel, deadline, async move {
+        let collection = client.database(&db).collection::<Document>(&coll);
+        let mut agg = collection.aggregate(stages);
+        if let Some(mt) = remaining_until(deadline) {
+            agg = agg.max_time(mt);
+        }
+        let mut cursor = agg.await?;
+        let doc = cursor.try_next().await?;
+        Ok(parse_count_doc(doc))
+    })
+    .await
 }
 
 #[tauri::command]
@@ -157,29 +197,39 @@ pub async fn query_page(
     filter: Option<String>,
     sort: Option<String>,       // order-preserving ExtJSON doc, e.g. {"age":-1,"_id":1}; empty → {_id:1}
     projection: Option<String>, // ExtJSON exclusion doc, e.g. {"big":0}
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
 
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
 
-    let mut q = collection
-        .find(filter_doc)
-        .sort(sort_doc)
-        .skip(skip.max(0) as u64)
-        .limit(limit);
-    if let Some(p) = proj_doc {
-        q = q.projection(p);
-    }
-    let mut cursor = q.await?;
+    with_interrupt(cancel, deadline, async move {
+        let collection = client.database(&db).collection::<Document>(&coll);
+        let mut q = collection
+            .find(filter_doc)
+            .sort(sort_doc)
+            .skip(skip.max(0) as u64)
+            .limit(limit);
+        if let Some(p) = proj_doc {
+            q = q.projection(p);
+        }
+        if let Some(mt) = remaining_until(deadline) {
+            q = q.max_time(mt);
+        }
+        let mut cursor = q.await?;
 
-    let mut docs = Vec::new();
-    while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(d)?);
-    }
-    Ok(docs)
+        let mut docs = Vec::new();
+        while let Some(d) = cursor.try_next().await? {
+            docs.push(doc_to_canonical_string(d)?);
+        }
+        Ok(docs)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -189,21 +239,31 @@ pub async fn sample_documents(
     coll: String,
     filter: Option<String>,
     size: i64,
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
 
     let user_filter = parse_user_filter(filter.as_deref())?;
-
     let pipeline = build_sample_pipeline(user_filter, size);
 
-    let mut cursor = collection.aggregate(pipeline).await?;
-    let mut docs = Vec::new();
-    while let Some(d) = cursor.try_next().await? {
-        docs.push(doc_to_canonical_string(d)?);
-    }
-    Ok(docs)
+    with_interrupt(cancel, deadline, async move {
+        let collection = client.database(&db).collection::<Document>(&coll);
+        let mut agg = collection.aggregate(pipeline);
+        if let Some(mt) = remaining_until(deadline) {
+            agg = agg.max_time(mt);
+        }
+        let mut cursor = agg.await?;
+        let mut docs = Vec::new();
+        while let Some(d) = cursor.try_next().await? {
+            docs.push(doc_to_canonical_string(d)?);
+        }
+        Ok(docs)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -212,12 +272,25 @@ pub async fn count_documents(
     db: String,
     coll: String,
     filter: Option<String>,
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
     let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
+
     let f = parse_user_filter(filter.as_deref())?;
-    Ok(collection.count_documents(f).await?)
+
+    with_interrupt(cancel, deadline, async move {
+        let collection = client.database(&db).collection::<Document>(&coll);
+        let mut c = collection.count_documents(f);
+        if let Some(mt) = remaining_until(deadline) {
+            c = c.max_time(mt);
+        }
+        Ok(c.await?)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -227,13 +300,26 @@ pub async fn distinct(
     coll: String,
     field: String,
     filter: Option<String>,
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
     let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
+
     let f = parse_user_filter(filter.as_deref())?;
-    let values = collection.distinct(&field, f).await?;
-    values.iter().map(bson_to_canonical_string).collect()
+
+    with_interrupt(cancel, deadline, async move {
+        let collection = client.database(&db).collection::<Document>(&coll);
+        let mut d = collection.distinct(&field, f);
+        if let Some(mt) = remaining_until(deadline) {
+            d = d.max_time(mt);
+        }
+        let values = d.await?;
+        values.iter().map(bson_to_canonical_string).collect()
+    })
+    .await
 }
 
 #[tauri::command]
@@ -247,14 +333,27 @@ pub async fn explain_find(
     projection: Option<String>,
     skip: i64,
     limit: Option<i64>,
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
+
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
     let cmd = build_explain_find_command(&coll, filter_doc, sort_doc, proj_doc, skip, limit);
-    let reply = client.database(&db).run_command(cmd).await?;
-    doc_to_canonical_string(reply)
+
+    with_interrupt(cancel, deadline, async move {
+        let mut cmd = cmd;
+        if let Some(mt) = remaining_until(deadline) {
+            cmd.insert("maxTimeMS", mt.as_millis() as i64);
+        }
+        let reply = client.database(&db).run_command(cmd).await?;
+        doc_to_canonical_string(reply)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -265,19 +364,62 @@ pub async fn explain_aggregate(
     pipeline: String,
     skip: Option<i64>,
     limit: Option<i64>,
+    timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
+    let deadline = deadline_from(timeout_ms);
+
     let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
     let cmd = build_explain_aggregate_command(&coll, stages);
-    let reply = client.database(&db).run_command(cmd).await?;
-    doc_to_canonical_string(reply)
+
+    with_interrupt(cancel, deadline, async move {
+        let mut cmd = cmd;
+        if let Some(mt) = remaining_until(deadline) {
+            cmd.insert("maxTimeMS", mt.as_millis() as i64);
+        }
+        let reply = client.database(&db).run_command(cmd).await?;
+        doc_to_canonical_string(reply)
+    })
+    .await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use mongodb::bson::doc;
+
+    #[test]
+    fn deadline_from_none_uses_the_default_timeout() {
+        let before = Instant::now();
+        let d = deadline_from(None);
+        assert!(d >= before + Duration::from_millis(DEFAULT_TIMEOUT_MS) - Duration::from_millis(5));
+        assert!(d <= before + Duration::from_millis(DEFAULT_TIMEOUT_MS) + Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn deadline_from_some_uses_the_given_timeout() {
+        let before = Instant::now();
+        let d = deadline_from(Some(500));
+        assert!(d >= before + Duration::from_millis(495));
+        assert!(d <= before + Duration::from_millis(1500));
+    }
+
+    #[test]
+    fn remaining_until_future_deadline_is_some_and_roughly_matches() {
+        let deadline = Instant::now() + Duration::from_millis(1000);
+        let r = remaining_until(deadline).expect("deadline is in the future");
+        assert!(r <= Duration::from_millis(1000));
+        assert!(r >= Duration::from_millis(900));
+    }
+
+    #[test]
+    fn remaining_until_past_deadline_is_none() {
+        let deadline = Instant::now() - Duration::from_millis(10);
+        assert_eq!(remaining_until(deadline), None);
+    }
 
     #[test]
     fn sample_pipeline_without_filter_is_sample_only() {

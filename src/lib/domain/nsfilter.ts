@@ -1,4 +1,4 @@
-import type { DbInfo } from "../api/connection";
+import type { DbInfo } from "./namespaces";
 
 export interface NsFilterResult {
   databases: DbInfo[];

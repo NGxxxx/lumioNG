@@ -14,6 +14,7 @@ export async function queryPage(
   filter = "{}",
   sort: string | null = null,
   projection: string | null = null,
+  timeoutMs: number | null = null,
 ): Promise<Doc[]> {
   const rows = await invoke<string[]>("query_page", {
     sessionId,
@@ -24,6 +25,7 @@ export async function queryPage(
     filter,
     sort,
     projection,
+    timeoutMs,
   });
   return rows.map((s) => JSON.parse(s) as Doc);
 }
@@ -68,14 +70,21 @@ export async function sampleDocuments(
   coll: string,
   filter = "{}",
   size = 100,
+  timeoutMs: number | null = null,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("sample_documents", { sessionId, db, coll, filter, size });
+  const rows = await invoke<string[]>("sample_documents", { sessionId, db, coll, filter, size, timeoutMs });
   return rows.map((s) => JSON.parse(s) as Doc);
 }
 
 /** Counts documents matching the filter (Canonical ExtJSON). */
-export async function countDocuments(sessionId: string, db: string, coll: string, filter = "{}"): Promise<number> {
-  return await invoke<number>("count_documents", { sessionId, db, coll, filter });
+export async function countDocuments(
+  sessionId: string,
+  db: string,
+  coll: string,
+  filter = "{}",
+  timeoutMs: number | null = null,
+): Promise<number> {
+  return await invoke<number>("count_documents", { sessionId, db, coll, filter, timeoutMs });
 }
 
 /** Distinct values for a field (Canonical ExtJSON parsed). filter defaults to {}. */
@@ -85,8 +94,9 @@ export async function distinct(
   coll: string,
   field: string,
   filter = "{}",
+  timeoutMs: number | null = null,
 ): Promise<unknown[]> {
-  const rows = await invoke<string[]>("distinct", { sessionId, db, coll, field, filter });
+  const rows = await invoke<string[]>("distinct", { sessionId, db, coll, field, filter, timeoutMs });
   return rows.map((s) => JSON.parse(s) as unknown);
 }
 
@@ -281,8 +291,9 @@ export async function aggregate(
   pipeline: string,
   skip: number | null,
   limit: number | null,
+  timeoutMs: number | null = null,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("aggregate", { sessionId, db, coll, pipeline, skip, limit });
+  const rows = await invoke<string[]>("aggregate", { sessionId, db, coll, pipeline, skip, limit, timeoutMs });
   return rows.map((s) => JSON.parse(s) as Doc);
 }
 
@@ -292,8 +303,9 @@ export async function aggregateCount(
   db: string,
   coll: string,
   pipeline: string,
+  timeoutMs: number | null = null,
 ): Promise<number> {
-  return await invoke<number>("aggregate_count", { sessionId, db, coll, pipeline });
+  return await invoke<number>("aggregate_count", { sessionId, db, coll, pipeline, timeoutMs });
 }
 
 /** Runs `explain` (verbosity "executionStats") for a pure find/aggregate cursor recipe. Returns
@@ -309,8 +321,9 @@ export async function explainQuery(
   projection: string | null,
   skip: number,
   limit: number | null,
+  timeoutMs: number | null = null,
 ): Promise<string> {
   return cursorKind === "agg"
-    ? await invoke<string>("explain_aggregate", { sessionId, db, coll, pipeline: query, skip, limit })
-    : await invoke<string>("explain_find", { sessionId, db, coll, filter: query, sort, projection, skip, limit });
+    ? await invoke<string>("explain_aggregate", { sessionId, db, coll, pipeline: query, skip, limit, timeoutMs })
+    : await invoke<string>("explain_find", { sessionId, db, coll, filter: query, sort, projection, skip, limit, timeoutMs });
 }

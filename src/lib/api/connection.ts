@@ -1,9 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-
-export interface DbInfo {
-  name: string;
-  collections: string[];
-}
+import type { DbInfo } from "../domain/namespaces";
 
 export async function connect(sessionId: string, uri: string, readOnly = false): Promise<void> {
   await invoke("connect", { sessionId, uri, readOnly });

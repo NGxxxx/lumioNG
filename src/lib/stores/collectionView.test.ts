@@ -50,7 +50,48 @@ describe("createCollectionView — paging", () => {
     expect(v.totalCount).toBe(1);
     expect(v.currentPage).toBe(1);
     expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "x"]);
-    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 0, 50, "{}", null, null);
+    expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 0, 50, "{}", null, null, 30000);
+  });
+
+  it("init: loading is true immediately, before the count/schema calls resolve", async () => {
+    let resolveCount!: (n: number) => void;
+    cnt.mockReturnValueOnce(new Promise<number>((res) => { resolveCount = res; }));
+    samp.mockResolvedValueOnce([]);
+    qp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    const initP = v.init();
+    expect(v.loading).toBe(true);
+    resolveCount(0);
+    await initP;
+    expect(v.loading).toBe(false);
+  });
+
+  it("init: activity.busy is true while refreshCount's countDocuments is in flight (Stop button gate)", async () => {
+    let sawBusy = false;
+    cnt.mockImplementationOnce(async () => {
+      sawBusy = activity.busy;
+      return 0;
+    });
+    samp.mockResolvedValueOnce([]);
+    qp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
+  });
+
+  it("init: activity.busy is true while loadSchema's sampleDocuments is in flight (Stop button gate)", async () => {
+    let sawBusy = false;
+    samp.mockImplementationOnce(async () => {
+      sawBusy = activity.busy;
+      return [];
+    });
+    cnt.mockResolvedValueOnce(0);
+    qp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
   });
 
   it("goToPage(3) calls queryPage with the correct skip and replaces docs", async () => {
@@ -63,7 +104,7 @@ describe("createCollectionView — paging", () => {
     await v.goToPage(3);
     expect(v.currentPage).toBe(3);
     expect(v.docs).toEqual([{ _id: { $oid: "p3" } }]);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 100, 50, "{}", null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 100, 50, "{}", null, null, 30000);
   });
 
   it("goToPage past pageCount → clamps to the last page", async () => {
@@ -74,7 +115,7 @@ describe("createCollectionView — paging", () => {
     await v.init();
     await v.goToPage(99);
     expect(v.currentPage).toBe(2);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 50, 50, "{}", null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 50, 50, "{}", null, null, 30000);
   });
 
   it("nextPage/prevPage navigate between pages", async () => {
@@ -118,8 +159,8 @@ describe("createCollectionView — paging", () => {
     expect(v.filterError).toBeNull();
     expect(v.currentPage).toBe(1);
     expect(v.docs.length).toBe(1);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, '{"x":2}', null, null);
-    expect(samp).toHaveBeenLastCalledWith("conn:1", "d", "c", '{"x":2}', 100);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, '{"x":2}', null, null, 30000);
+    expect(samp).toHaveBeenLastCalledWith("conn:1", "d", "c", '{"x":2}', 100, 30000);
   });
 
   it("applyFilter while a page is loading → discards the stale result and uses the new filter", async () => {
@@ -136,7 +177,7 @@ describe("createCollectionView — paging", () => {
     await p1;
     await p2;
     expect(v.docs).toEqual([{ _id: { $oid: "b" }, x: 2 }]);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, '{"x":2}', null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, '{"x":2}', null, null, 30000);
   });
 
   it("goToPage race: stale page result arrives late → discarded, docs reflect the latest page", async () => {
@@ -174,7 +215,7 @@ describe("createCollectionView — paging", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, age: 2 }]);
     await v.toggleSort("age", false);
     expect(v.docs).toEqual([{ _id: { $oid: "b" }, age: 2 }]);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null, 30000);
   });
 
   it("setPageSize changes the limit and resets to page 1", async () => {
@@ -187,7 +228,7 @@ describe("createCollectionView — paging", () => {
     await v.setPageSize(10);
     expect(v.pageSize).toBe(10);
     expect(v.currentPage).toBe(1);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 10, "{}", null, null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 10, "{}", null, null, 30000);
   });
 
   it("confirmDelete calls deleteDocument then reloads (count + queryPage)", async () => {
@@ -327,7 +368,7 @@ describe("createCollectionView — paging", () => {
     samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: "s" }]);
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
-    expect(samp).toHaveBeenCalledWith("conn:1", "d", "c", "{}", 100);
+    expect(samp).toHaveBeenCalledWith("conn:1", "d", "c", "{}", 100, 30000);
     expect(v.columnFields.find((c) => c.path === "x")!.type).toBe("string");
   });
 
@@ -354,7 +395,7 @@ describe("createCollectionView — paging", () => {
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     await v.applyProjection();
     expect(v.hidden.has("secret")).toBe(true);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", null, '{"secret":0}');
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", null, '{"secret":0}', 30000);
   });
 
   it("startEdit with an active projection → re-fetches the full doc before editing", async () => {
@@ -406,7 +447,7 @@ describe("bulk operations", () => {
     const v = createCollectionView("conn:1", "db", "c");
     v.openBulk("delete");
     await v.countBulk();
-    expect(countDocuments).toHaveBeenCalledWith("conn:1", "db", "c", "{}");
+    expect(countDocuments).toHaveBeenCalledWith("conn:1", "db", "c", "{}", 30000);
     expect(v.bulkCount).toBe(7);
   });
 
@@ -815,6 +856,91 @@ describe("delete selected", () => {
   });
 });
 
+describe("createCollectionView — quick search", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValueOnce(2);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alpha" }, { _id: { $oid: "b" }, name: "Beta" }]);
+    samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alpha" }, { _id: { $oid: "b" }, name: "Beta" }]);
+  });
+
+  it("visibleIndices is null (unfiltered) when searchTerm is empty", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    expect(v.visibleIndices).toBeNull();
+  });
+
+  it("visibleIndices narrows to the matching rows for a valid regex", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.searchTerm = "alpha";
+    expect(v.visibleIndices).toEqual([0]);
+    expect(v.searchInvalid).toBe(false);
+  });
+
+  it("searchInvalid is true for an invalid regex, and visibleIndices stays null", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.searchTerm = "[unterminated";
+    expect(v.searchInvalid).toBe(true);
+    expect(v.visibleIndices).toBeNull();
+  });
+
+  it("hiding a column excludes it from the search scope", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    cnt.mockResolvedValueOnce(2);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, name: "Alpha" }, { _id: { $oid: "b" }, name: "Beta" }]);
+    v.toggleHiddenDraft("name");
+    await v.applyProjection();
+    v.searchTerm = "alpha";
+    expect(v.visibleIndices).toEqual([]); // "name" is hidden; _id doesn't contain "alpha"
+  });
+});
+
+describe("createCollectionView — search filter and multi-row selection safety", () => {
+  // 5 docs; a search term below excludes only index 2 (id "2" / name "C"), leaving a gap in
+  // the visible index space — the exact condition that broke naive shift-range/select-all.
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValueOnce(5);
+    qp.mockResolvedValueOnce([
+      { _id: { $oid: "0" }, name: "A" },
+      { _id: { $oid: "1" }, name: "B" },
+      { _id: { $oid: "2" }, name: "C" },
+      { _id: { $oid: "3" }, name: "D" },
+      { _id: { $oid: "4" }, name: "E" },
+    ]);
+    samp.mockResolvedValueOnce([]);
+  });
+
+  it("shift-click range-select never includes a row the active search filter hid", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.searchTerm = "^[^2C]$"; // excludes doc index 2 only
+    expect(v.visibleIndices).toEqual([0, 1, 3, 4]);
+    v.clickRow(0, { ctrl: false, shift: false });
+    v.clickRow(4, { ctrl: false, shift: true });
+    expect([...v.selected].sort((a, b) => a - b)).toEqual([0, 1, 3, 4]);
+  });
+
+  it("selectAll only selects rows the active search filter is showing", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.searchTerm = "^[^2C]$";
+    v.selectAll();
+    expect([...v.selected].sort((a, b) => a - b)).toEqual([0, 1, 3, 4]);
+  });
+
+  it("shift-click range-select is unaffected when no search filter is active", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.clickRow(0, { ctrl: false, shift: false });
+    v.clickRow(4, { ctrl: false, shift: true });
+    expect([...v.selected].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
 describe("createCollectionView — sort dropdown + field show/hide-all", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -831,7 +957,7 @@ describe("createCollectionView — sort dropdown + field show/hide-all", () => {
     await v.addSort("age");
     expect(v.sortKeys).toEqual([{ path: "age", dir: 1 }]);
     expect(v.currentPage).toBe(1);
-    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, "{}", '{"age":1,"_id":1}', null, 30000);
   });
 
   it("toggleSortDirAt → reverses the direction of an existing sort key", async () => {

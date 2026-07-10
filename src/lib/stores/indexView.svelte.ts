@@ -6,27 +6,29 @@ import { activity } from "./activity.svelte";
 import * as m from "$lib/paraglide/messages";
 import { createIndexCmd, dropIndexCmd, listIndexesCmd } from "../domain/mongosh";
 
-/**
- * State and actions for the Indexes tab of a collection.
- * Components only render and invoke actions; parse/build/validate logic lives in domain.
- */
+/** State and actions for the Indexes tab of a collection; parse/build/validate logic lives in domain. */
 export function createIndexView(sessionId: string, db: string, coll: string) {
   let indexes = $state<IndexInfo[]>([]);
   let error = $state<string | null>(null);
   let loading = $state(false);
+  /** Bumped on every refresh() call so a slower, superseded call can't overwrite fresher state. */
+  let generation = 0;
 
   async function refresh() {
     loading = true;
+    const gen = ++generation;
     activity.begin(m.common_running());
     try {
       const raw = await commandLog.pushTimed(listIndexesCmd(coll), sessionId, () =>
         listIndexes(sessionId, db, coll));
+      if (gen !== generation) return;
       indexes = parseIndexList(raw);
       error = null;
     } catch (e) {
+      if (gen !== generation) return;
       error = errorMessage(e);
     } finally {
-      loading = false;
+      if (gen === generation) loading = false;
       activity.end();
     }
   }

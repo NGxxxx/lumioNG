@@ -1,6 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { displayMode, parseRows, nextResultView } from "./scriptOutcome";
-import type { ScriptOutcome } from "../api/script";
+import { displayMode, parseRows, nextResultView, type ScriptOutcome } from "./scriptOutcome";
 
 const base: ScriptOutcome = { console: [], result: { kind: "none" }, provenance: null, capped: false, error: null };
 

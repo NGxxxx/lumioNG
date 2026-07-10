@@ -1,5 +1,30 @@
-import type { ScriptOutcome } from "../api/script";
 import type { Doc } from "./doc";
+
+export type ConsoleEntry = { level: "log" | "error"; text: string };
+export type ResultDisplay =
+  | { kind: "docs"; rows: string[] }
+  | {
+      kind: "cursorQuery";
+      cursorKind: "find" | "agg";
+      db: string;
+      coll: string;
+      query: string;
+      sort: string | null;
+      projection: string | null;
+      baseSkip: number;
+      fixedLimit: number | null;
+    }
+  | { kind: "value"; json: string }
+  | { kind: "ack"; json: string }
+  | { kind: "none" };
+export type Provenance = { db: string; coll: string };
+export type ScriptOutcome = {
+  console: ConsoleEntry[];
+  result: ResultDisplay;
+  provenance: Provenance | null;
+  capped: boolean;
+  error: string | null;
+};
 
 export type DisplayMode = "grid-editable" | "grid-readonly" | "ack" | "value" | "none";
 
@@ -19,9 +44,7 @@ export function parseRows(rows: string[]): Doc[] {
 
 export type ResultViewMode = "grid" | "tree" | "console" | "explain";
 
-/** Decide the result view to show after a run, given what it produced.
- *  Console-only output (no docs/value/ack) always jumps to Console; otherwise leaving
- *  Console lands on Grid, and any existing Grid/Tree choice is left untouched. */
+/** Decide the result view to show after a run: console-only output always jumps to Console; otherwise leaving Console lands on Grid and any existing Grid/Tree choice is left untouched. */
 export function nextResultView(
   current: ResultViewMode,
   mode: DisplayMode,

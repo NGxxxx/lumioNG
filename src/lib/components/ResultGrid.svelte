@@ -27,15 +27,20 @@
   const OVERSCAN = 8;
   let scrollerEl = $state<HTMLDivElement | null>(null);
 
+  /** Number of rows actually rendered — every doc, or only the quick-search matches. */
+  const rowCount = $derived(v.visibleIndices ? v.visibleIndices.length : v.docs.length);
+  /** Maps a display position to the real index into `v.docs` (identity when unfiltered). */
+  const rowAt = (i: number) => (v.visibleIndices ? v.visibleIndices[i] : i);
+
   const rowVirtualizer = createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
-    count: untrack(() => v.docs.length),
+    count: untrack(() => rowCount),
     getScrollElement: () => scrollerEl,
     estimateSize: () => GRID_ROW_H,
     overscan: OVERSCAN,
   });
 
   $effect(() => {
-    const count = v.docs.length;
+    const count = rowCount;
     const el = scrollerEl;
     get(rowVirtualizer).setOptions({
       count, getScrollElement: () => el, estimateSize: () => GRID_ROW_H, overscan: OVERSCAN,
@@ -112,7 +117,7 @@
           <tr aria-hidden="true"><td colspan={gridColCount} style="height:{padTop}px; padding:0; border:0;"></td></tr>
         {/if}
         {#each virtualItems as vi (vi.index)}
-          {@const row = vi.index}
+          {@const row = rowAt(vi.index)}
           {@const d = v.docs[row]}
           <tr
             data-index={vi.index}
@@ -120,6 +125,8 @@
             style="background:{v.selected.has(row) ? 'var(--row-selected)' : (row % 2 === 0 ? 'var(--zebra)' : 'var(--zebra-alt)')}"
             onclick={(e) => v.clickRow(row, { ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey })}
           >
+            <!-- Intentionally the doc's position in the unfiltered page, not a 1..N renumbering
+                 of search matches — row numbers stay stable references as the filter changes. -->
             <td class="td-rownum">{v.allShown ? row + 1 : (v.currentPage - 1) * v.pageSize + row + 1}</td>
             {#each v.columnFields as c}
               {@const k = c.path}

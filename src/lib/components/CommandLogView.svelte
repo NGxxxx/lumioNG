@@ -2,6 +2,11 @@
   import { commandLog } from "../stores/commandLog.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
 
+  const NEAR_BOTTOM_PX = 40;
+
+  let bodyEl: HTMLDivElement | undefined;
+  let wasNearBottom = true;
+
   function dotColor(sessionId: string): string {
     return sessionManager.sessions.find((s) => s.id === sessionId)?.color ?? "var(--muted)";
   }
@@ -9,9 +14,22 @@
   function timeOf(at: number): string {
     return new Date(at).toLocaleTimeString([], { hour12: false });
   }
+
+  function onScroll() {
+    if (!bodyEl) return;
+    wasNearBottom = bodyEl.scrollHeight - bodyEl.scrollTop - bodyEl.clientHeight <= NEAR_BOTTOM_PX;
+  }
+
+  $effect(() => {
+    // Re-run whenever entries change; scroll to bottom only if the user was already there.
+    commandLog.entries;
+    if (bodyEl && wasNearBottom) {
+      bodyEl.scrollTop = bodyEl.scrollHeight;
+    }
+  });
 </script>
 
-<div class="body">
+<div class="body" bind:this={bodyEl} onscroll={onScroll}>
   {#each commandLog.entries as e (e.n)}
     <div class="line">
       <span class="n">{e.n}</span>

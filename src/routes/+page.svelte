@@ -4,10 +4,12 @@
   import { inferSchema } from "$lib/domain/schema";
   import { buildSkeleton } from "$lib/domain/skeleton";
   import { sampleDocuments } from "$lib/api/documents";
+  import { cancelScript } from "$lib/api/script";
   import { sessionManager } from "$lib/stores/sessionManager.svelte";
   import { getQueryRun, disposeQueryRun } from "$lib/stores/queryRuns.svelte";
   import { shell } from "$lib/stores/shell.svelte";
   import { activeDataView } from "$lib/stores/activeDataView.svelte";
+  import { activeDocumentForm } from "$lib/stores/activeDocumentForm.svelte";
   import { activity } from "$lib/stores/activity.svelte";
   import { quit } from "$lib/api/window";
   import type { Doc } from "$lib/domain/doc";
@@ -35,15 +37,13 @@
     collection: "Collection",
     data: "Data",
   };
-  // Note: CONTEXT_LABEL uses English literals intentionally — these are structural keys
-  // passed as tab labels to TabBar. They are not in the i18n scope of this task.
+  // Note: CONTEXT_LABEL uses English literals intentionally — structural keys, not in i18n scope.
 
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
 
   const sm = sessionManager;
-  // The whole UI is driven by the active session; in this task the sidebar still renders a
-  // single tree (the active session's). Multi-root rendering arrives in Task 5.
+  // The whole UI is driven by the active session; sidebar still renders a single tree (multi-root rendering arrives later).
   const session = $derived(sm.active);
   const nav = $derived(session?.nav ?? null);
   const tree = $derived(session?.tree ?? null);
@@ -62,17 +62,17 @@
       ? ((sm.workTabs.find((t) => t.id === active.id && t.kind === "query") ?? null) as QueryTabType | null)
       : null,
   );
-  // Resolve the active query tab's run store (getQueryRun caches, so this is idempotent).
-  // Reading it here keeps the toolbar's Run / Run-selection state reactive to editor changes.
+  // Resolve the active query tab's run store (getQueryRun caches) to keep the toolbar's Run state reactive.
   const activeQueryRun = $derived(
     activeQueryTab ? getQueryRun(activeQueryTab.id, activeQueryTab.sessionId, activeQueryTab.initialStatement) : null,
   );
   // Toolbar Edit/Export act on the collection data view, and only when it's the active context.
   const dataViewActive = $derived(active?.zone === "context" && active.kind === "data");
+  // The activeDataView bridge is also registered by the active Query tab's result grid, so widen the gate to cover both.
+  const canUseDataView = $derived(dataViewActive || queryActive);
 
   async function onConnected(conn: { connId: number | null; label: string; uri: string; readOnly: boolean }): Promise<boolean> {
-    // focusOrOpen is the sole owner of the backend connect call; it returns true on success.
-    // Passing the real connId allows focusOrOpen to dedup saved connections (focus existing session).
+    // focusOrOpen is the sole owner of the backend connect call; passing the real connId lets it dedup saved connections.
     const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly });
     if (ok) shell.setConnection(conn);
     return ok;
@@ -97,7 +97,6 @@
 
   async function doDisconnect() {
     const id = sm.activeId;
-    for (const t of sm.workTabs.filter((t) => t.sessionId === id)) disposeQueryRun(t.id);
     if (id) await sm.closeSession(id);
     if (sm.sessions.length === 0) shell.setConnection(null);
     // Do not auto-open the session modal — the user reopens it manually when needed.
@@ -174,10 +173,23 @@
     onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
     canExplainQuery={activeQueryRun != null}
     onexplainquery={() => activeQueryRun?.explainAfterRun(sel?.db ?? null)}
-    canEditDoc={dataViewActive && (activeDataView.handle?.canEdit ?? false)}
+    canEditDoc={canUseDataView && (activeDataView.handle?.canEdit ?? false)}
     oneditdocument={() => activeDataView.handle?.editSelected()}
-    canExport={dataViewActive ? (activeDataView.handle?.canExport ?? false) : false}
-    onexport={() => (dataViewActive ? activeDataView.handle?.exportCurrent() : undefined)}
+    canExport={canUseDataView ? (activeDataView.handle?.canExport ?? false) : false}
+    onexport={() => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined)}
+    canSave={activeDocumentForm.handle?.canSave ?? false}
+    onsave={() => activeDocumentForm.handle?.save()}
+    canDeleteDoc={canUseDataView && (activeDataView.handle?.canDelete ?? false)}
+    ondeletedocument={() => activeDataView.handle?.deleteSelected()}
+    canAggregate={sel?.coll != null}
+    onaggregate={() => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); }}
+    canIndexes={sel?.coll != null}
+    onindexes={() => { if (sel?.coll) { sm.showContext("collection"); nav?.setCollectionSection("indexes"); } }}
+    canStop={activity.busy}
+    onstop={() => { if (sm.activeId) cancelScript(sm.activeId); }}
+    canFind={canUseDataView}
+    onfind={() => activeDataView.handle?.focusSearch?.()}
+    logOpen={shell.logOpen}
   />
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
@@ -210,8 +222,7 @@
         onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
       />
       <div class="panes">
-        <!-- Mount only the active context pane (lazy), not all four hidden: eager mounting fired
-             every pane's queries at once on each collection switch, wedging the connection. -->
+        <!-- Mount only the active context pane (lazy): eager mounting fired every pane's queries at once on each switch, wedging the connection. -->
         {#if active?.zone === "context" && active.kind === "host"}
           <div class="tabpane">
             <HostTab connection={shell.connection} />
@@ -237,17 +248,19 @@
         {#if active?.zone === "context" && active.kind === "data" && sel?.coll}
           {@const db = sel.db}
           {@const coll = sel.coll}
+          {@const version = nav?.collectionVersion(db, coll) ?? 0}
           <div class="tabpane">
-            {#key `${db}/${coll}#${nav?.collectionVersion(db, coll) ?? 0}`}
-              <ResultTable {db} {coll} onopendocument={(doc, mode) => openDocument(db, coll, doc, mode)} />
+            {#key `${sm.activeId}/${db}/${coll}#${version}`}
+              <ResultTable {db} {coll} {version} onopendocument={(doc, mode) => openDocument(db, coll, doc, mode)} />
             {/key}
           </div>
         {/if}
         {#each sm.workTabs as tab (tab.id)}
-          <div class="tabpane" hidden={!(active?.zone === "work" && active.id === tab.id)}>
+          {@const isActiveTab = active?.zone === "work" && active.id === tab.id}
+          <div class="tabpane" hidden={!isActiveTab}>
             {#if tab.kind === "query"}
               <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement}
-                currentDb={sel?.db ?? null}
+                currentDb={sel?.db ?? null} active={isActiveTab}
                 onopendocument={(doc, db, coll) => openDocument(db, coll, doc, "edit")} />
             {:else}
               <DocumentForm
@@ -255,6 +268,7 @@
                 db={tab.db}
                 coll={tab.coll}
                 initial={tab.initial}
+                active={active?.zone === "work" && active.id === tab.id}
                 onsaved={() => {
                   nav?.bumpCollection(tab.db, tab.coll);
                   sm.closeWork(tab.id);

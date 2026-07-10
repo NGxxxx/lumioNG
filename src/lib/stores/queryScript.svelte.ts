@@ -7,6 +7,7 @@ import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { scanDestructive } from "../domain/scriptScan";
+import { compileSearch, matchingIndices } from "../domain/search";
 import { settings } from "./settings.svelte";
 import { updateOne, deleteMany } from "../api/documents";
 import { createIndex } from "../api/indexes";
@@ -20,22 +21,19 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { updateOneCmd, deleteManyCmd } from "../domain/mongosh";
 import * as m from "$lib/paraglide/messages";
-import { idInFilter, rangeBetween, effectiveRows as effectiveRowsOf } from "../domain/selection";
+import { idInFilter, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import type { ExportWizardInput } from "../domain/exportPlan";
-import type { MenuItem } from "../components/ContextMenu.svelte";
+import type { MenuItem } from "../domain/gridView";
 
 /** Per-tab state for one QuickJS Query tab: run script + client-side paging + column widths. */
 export function createQueryScript(sessionId: string, initialStatement: string) {
-  // Wrap initialStatement with untrack to avoid state_referenced_locally warning
-  // when this store is created inside a reactive context (e.g. Svelte 5 component).
+  // Wrap initialStatement with untrack to avoid the state_referenced_locally warning when this store is created inside a reactive context.
   let statementText = $state(untrack(() => initialStatement));
 
-  // "static" mode (non-pure/mapped/array/value/ack results, unchanged old behavior): the FULL
-  // result already materialized through QuickJS; `docs` is a client-side slice of this.
+  // "static" mode (unchanged old behavior): the FULL result already materialized through QuickJS; `docs` is a client-side slice of this.
   let fullDocs = $state.raw<Doc[]>([]);
-  // "paged" mode (pure find()/aggregate() cursor): non-null `recipe` means every page is fetched
-  // directly from Rust (query_page/aggregate), bypassing QuickJS entirely.
+  // "paged" mode (pure find()/aggregate() cursor): non-null `recipe` means every page is fetched directly from Rust, bypassing QuickJS entirely.
   type PagedRecipe = {
     cursorKind: "find" | "agg";
     db: string; coll: string;
@@ -46,25 +44,30 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     fixedLimit: number | null;
   };
   let recipe = $state<PagedRecipe | null>(null);
+  /** True once the editor is touched after the run that produced `recipe`, so Explain knows to re-run instead of silently reusing a stale plan. */
+  let recipeDirty = $state(false);
 
   let explainSummary = $state<ExplainSummary | null>(null);
   let explainRawJson = $state<string | null>(null);
   let explainPrevSummary = $state<ExplainSummary | null>(null);
   let explainLoading = $state(false);
   let explainError = $state<string | null>(null);
-  // Bumped by `showExplain()` — QueryTab.svelte watches this (its own `resultView` stays local,
-  // real $state) so a trigger outside the tab component (the global Toolbar's Explain button,
-  // which can't reach into QueryTab's local state directly) can still switch its view.
+  // Bumped by `showExplain()` — QueryTab.svelte watches this so a trigger outside the tab component (the global Toolbar's Explain button) can still switch its view.
   let explainRequestSeq = $state(0);
 
-  // `docs` always means "current page," in EITHER mode — reassigned wholesale by every
-  // fetch/page-change/edit ($state.raw: see CLAUDE.md on large document arrays).
+  // `docs` always means "current page," in EITHER mode — reassigned wholesale by every fetch/page-change/edit ($state.raw, per CLAUDE.md).
   let docs = $state.raw<Doc[]>([]);
   let consoleEntries = $state.raw<ConsoleEntry[]>([]);
 
   let columnFields = $state<ColumnField[]>([]);
   let colWidths = $state<Record<string, number>>({});
   let defaultColWidths = $state<Record<string, number>>({});
+
+  // Client-side quick search (HeidiSQL-style): filters the current in-memory result set in place, no server round-trip.
+  let searchTerm = $state("");
+  const searchRegex = $derived(compileSearch(searchTerm));
+  const searchInvalid = $derived(searchTerm !== "" && searchRegex === null);
+  const visibleIndices = $derived(matchingIndices(docs, columnFields, searchRegex));
 
   let displayModeVal = $state<DisplayMode>("none");
   let valueJson = $state<string | null>(null);
@@ -82,8 +85,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let totalCount = $state(0);
   const SHOW_ALL_WARN_THRESHOLD = 5000;
   let showAllPending = $state<number | null>(null);
-  // Guards against overlapping in-flight paged-mode fetches (double-click nextPage, fast
-  // page-jump typing, etc.) — same pattern as collectionView.svelte.ts's `generation`.
+  // Guards against overlapping in-flight paged-mode fetches (double-click nextPage, fast page-jump typing, etc.), same pattern as collectionView.svelte.ts.
   let generation = 0;
 
   let destructiveConfirm = $state<{ ops: string[] } | null>(null);
@@ -120,7 +122,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     if (pending) return pending;
     const p = (async () => {
       try {
-        const sampledDocs = await sampleDocuments(sessionId, db, coll, "{}", 50);
+        const sampledDocs = await sampleDocuments(sessionId, db, coll, "{}", 50, settings.queryTimeoutMs);
         const paths = inferSchema(sampledDocs).fields.map((f) => f.path);
         fieldCache.set(key, paths);
         return paths;
@@ -134,8 +136,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     return p;
   }
 
-  // Editor selection range (chars into statementText), kept in sync by the textarea.
-  // Enables "Run selection": run only the highlighted statement instead of the whole editor.
+  // Editor selection range (chars into statementText), kept in sync by the textarea; enables "Run selection".
   let selStart = $state(0);
   let selEnd = $state(0);
   const hasSelection = $derived(selStart !== selEnd && statementText.slice(selStart, selEnd).trim().length > 0);
@@ -159,25 +160,29 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   /** Fetch one page directly from Rust for a "paged" recipe — bypasses QuickJS entirely. */
   async function fetchPagedPage(r: PagedRecipe, skip: number, limit: number): Promise<Doc[]> {
     return r.cursorKind === "agg"
-      ? await aggregate(sessionId, r.db, r.coll, r.query, skip, limit)
-      : await queryPage(sessionId, r.db, r.coll, skip, limit, r.query, r.sort, r.projection);
+      ? await aggregate(sessionId, r.db, r.coll, r.query, skip, limit, settings.queryTimeoutMs)
+      : await queryPage(sessionId, r.db, r.coll, skip, limit, r.query, r.sort, r.projection, settings.queryTimeoutMs);
   }
 
   /** Total count for a "paged" recipe (the full match, ignoring the recipe's own skip/limit). */
   async function countPaged(r: PagedRecipe): Promise<number> {
-    return r.cursorKind === "agg"
-      ? await aggregateCount(sessionId, r.db, r.coll, r.query)
-      : await countDocuments(sessionId, r.db, r.coll, r.query);
+    activity.begin(m.status_bar_running_query());
+    try {
+      return r.cursorKind === "agg"
+        ? await aggregateCount(sessionId, r.db, r.coll, r.query, settings.queryTimeoutMs)
+        : await countDocuments(sessionId, r.db, r.coll, r.query, settings.queryTimeoutMs);
+    } finally {
+      activity.end();
+    }
   }
 
-  /** Load the current page in "paged" mode; recomputes columns from THIS page only (may shift
-   *  between pages if documents aren't schema-uniform — accepted tradeoff, avoids an extra
-   *  schema-sampling round-trip per run). No-op in "static" mode. */
+  /** Load the current page in "paged" mode; recomputes columns from THIS page only (accepted tradeoff, avoids an extra schema-sampling round-trip). No-op in "static" mode. */
   async function loadPagedCurrentPage() {
     if (!recipe) return;
     const r = recipe;
     const gen = generation;
     loading = true;
+    activity.begin(m.status_bar_running_query());
     try {
       const result = r.fixedLimit !== null
         ? await fetchPagedPage(r, r.baseSkip, r.fixedLimit)
@@ -193,6 +198,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       error = e instanceof Error ? e.message : String(e);
     } finally {
       if (gen === generation) loading = false;
+      activity.end();
     }
   }
 
@@ -202,9 +208,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const gen = generation;
     explainLoading = true;
     explainError = null;
+    activity.begin(m.status_bar_running_query());
     try {
       const json = await explainQuery(
         sessionId, r.cursorKind, r.db, r.coll, r.query, r.sort, r.projection, r.baseSkip, r.fixedLimit,
+        settings.queryTimeoutMs,
       );
       if (gen !== generation) return; // a fresh run superseded this in-flight explain — discard it
       explainRawJson = json;
@@ -214,35 +222,28 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       explainError = e instanceof Error ? e.message : String(e);
     } finally {
       if (gen === generation) explainLoading = false;
+      activity.end();
     }
   }
 
-  /** Fetches Explain only if it hasn't been fetched since the last run — called when the tab
-   *  switches into the Explain view, so repeated toggling doesn't re-run the (potentially slow,
-   *  real-execution) explain command. */
+  function isExplainable(): boolean {
+    return recipe !== null && !recipeDirty;
+  }
+
+  /** Fetches Explain only if it hasn't been fetched since the last run, so repeated toggling doesn't re-run the (potentially slow) explain command. */
   function ensureExplain(): void {
     if (!explainSummary && !explainLoading) void runExplain();
   }
 
-  /** Entry point for the Explain action from OUTSIDE the tab component (global Toolbar button) —
-   *  bumps a signal QueryTab.svelte watches to switch its own local `resultView` to "explain",
-   *  and fetches it (on demand, via ensureExplain's guard). The editor's right-click menu lives
-   *  inside QueryTab.svelte itself, so it sets `resultView` directly and calls `ensureExplain()`
-   *  without going through this signal. */
+  /** Entry point for the Explain action from OUTSIDE the tab component (global Toolbar button) — bumps a signal QueryTab.svelte watches to switch its `resultView` to "explain" and fetch it. */
   function showExplain(): void {
     explainRequestSeq++;
     ensureExplain();
   }
 
-  /** Explain, running the query first if it hasn't been run yet (or its last run wasn't a pure
-   *  find/aggregate cursor) — the recipe Explain needs only exists after a run, since determining
-   *  it requires actually executing the mongosh-syntax script through the QuickJS engine (there's
-   *  no separate static-parse path for arbitrary script text). If a destructive-write confirm is
-   *  pending after `run()` (irrelevant for genuine find/aggregate scripts, but possible in
-   *  principle), or the result still isn't a pure cursor, this quietly does nothing further —
-   *  the user sees their query's normal result, same as clicking Run alone. */
+  /** Explain, running the query first if needed (the recipe it needs only exists after a run); if it still isn't a pure cursor afterward, this quietly does nothing further. */
   async function explainAfterRun(db: string | null): Promise<void> {
-    if (!recipe) {
+    if (!isExplainable()) {
       await run(db);
     }
     if (recipe) {
@@ -313,6 +314,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
           cursorKind: r.cursorKind, db: r.db, coll: r.coll, query: r.query,
           sort: r.sort, projection: r.projection, baseSkip: r.baseSkip, fixedLimit: r.fixedLimit,
         };
+        recipeDirty = false;
         fullDocs = [];
         docs = [];
         columnFields = [];
@@ -551,21 +553,12 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
-    if (mods.shift && anchor !== null) {
-      selected = new Set(rangeBetween(anchor, row));
-      return;
-    }
-    if (mods.ctrl) {
-      const next = new Set(selected);
-      if (next.has(row)) next.delete(row); else next.add(row);
-      selected = next; anchor = row; return;
-    }
-    selected = new Set([row]); anchor = row;
+    ({ selected, anchor } = clickRowSelection({ selected, anchor }, row, mods, visibleIndices));
   }
 
   function openMenu(e: MouseEvent, row: number, key: string) {
     e.preventDefault(); e.stopPropagation();
-    if (!selected.has(row)) { selected = new Set([row]); anchor = row; }
+    ({ selected, anchor } = selectForMenu({ selected, anchor }, row));
     menu = { x: e.clientX, y: e.clientY, row, key };
   }
 
@@ -648,6 +641,29 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     if (c) await deleteSelected(c.picked);
   }
 
+  // ── activeDataView bridge: mirrors ResultTable's DataViewHandle shape, backed by `selected`/`docs` instead of collectionView's selection/paging state. ──
+
+  /** The single selected row's doc, editable only when the result is a live grid-editable
+   *  cursor (has a real db/coll `provenance`) and the doc carries an `_id`. */
+  function getSelectedForEdit(): Doc | null {
+    if (!isEditable() || selected.size !== 1) return null;
+    const d = docs[[...selected][0]];
+    return d && idJson(d) !== null ? d : null;
+  }
+
+  function requestDeleteSelected() {
+    if (!isEditable()) return;
+    const picked = [...selected].map((r) => docs[r]).filter(Boolean) as Doc[];
+    requestDelete(picked);
+  }
+
+  /** Exports the selection if any, else every currently loaded row (matches the "Export" ->
+   *  "All results" context-menu action). */
+  function requestExportCurrent() {
+    const picked = [...selected].map((r) => docs[r]).filter(Boolean) as Doc[];
+    exportRequest = { rows: picked.length > 0 ? picked : docs };
+  }
+
   async function deleteSelected(picked: Doc[]) {
     if (!provenance) return;
     const prov = provenance;
@@ -706,9 +722,13 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   return {
     get statementText() { return statementText; },
-    set statementText(v: string) { statementText = v; },
+    set statementText(v: string) { statementText = v; recipeDirty = true; },
     get docs() { return docs; },
+    get visibleIndices() { return visibleIndices; },
     get columnFields() { return columnFields; },
+    get searchTerm() { return searchTerm; },
+    set searchTerm(v: string) { searchTerm = v; },
+    get searchInvalid() { return searchInvalid; },
     get consoleEntries() { return consoleEntries; },
     get lastElapsedMs() { return lastElapsedMs; },
     clearConsole,
@@ -726,7 +746,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get pageSize() { return pageSize; },
     get allShown() { return showingAll; },
     get colWidths() { return colWidths; },
-    get canExplain() { return recipe !== null; },
+    get canExplain() { return isExplainable(); },
     get explainSummary() { return explainSummary; },
     get explainRawJson() { return explainRawJson; },
     get explainPrevSummary() { return explainPrevSummary; },
@@ -786,5 +806,13 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get exportRequest() { return exportRequest; },
     cancelExport,
     exportInput,
+    get canEditSelected() { return getSelectedForEdit() !== null; },
+    get canDeleteSelected() {
+      return isEditable() && selected.size > 0 &&
+        [...selected].every((r) => { const d = docs[r]; return d ? idJson(d) !== null : false; });
+    },
+    getSelectedForEdit,
+    requestDeleteSelected,
+    requestExportCurrent,
   };
 }

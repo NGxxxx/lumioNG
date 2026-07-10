@@ -69,6 +69,90 @@ describe("Toolbar Run query", () => {
   });
 });
 
+describe("Toolbar Save", () => {
+  it("is disabled when canSave is false (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    expect((getByLabelText("Save") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls onsave when enabled and clicked", async () => {
+    const onsave = vi.fn();
+    const { getByLabelText } = render(Toolbar, { props: { ...base, canSave: true, onsave } });
+    await fireEvent.click(getByLabelText("Save"));
+    expect(onsave).toHaveBeenCalled();
+  });
+});
+
+describe("Toolbar Delete document", () => {
+  it("is disabled when canDeleteDoc is false (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    expect((getByLabelText("Delete document") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls ondeletedocument when enabled and clicked", async () => {
+    const ondeletedocument = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, canDeleteDoc: true, ondeletedocument },
+    });
+    await fireEvent.click(getByLabelText("Delete document"));
+    expect(ondeletedocument).toHaveBeenCalled();
+  });
+});
+
+describe("Toolbar Stop", () => {
+  it("is disabled when canStop is false (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    expect((getByLabelText("Stop") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls onstop when enabled and clicked", async () => {
+    const onstop = vi.fn();
+    const { getByLabelText } = render(Toolbar, { props: { ...base, canStop: true, onstop } });
+    await fireEvent.click(getByLabelText("Stop"));
+    expect(onstop).toHaveBeenCalled();
+  });
+});
+
+describe("Toolbar Find", () => {
+  it("is disabled when canFind is false (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    expect((getByLabelText("Find") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls onfind when enabled and clicked", async () => {
+    const onfind = vi.fn();
+    const { getByLabelText } = render(Toolbar, { props: { ...base, canFind: true, onfind } });
+    await fireEvent.click(getByLabelText("Find"));
+    expect(onfind).toHaveBeenCalled();
+  });
+});
+
+describe("Toolbar Aggregate", () => {
+  it("is disabled when canAggregate is false (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    expect((getByLabelText("Aggregate") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls onaggregate when enabled and clicked", async () => {
+    const onaggregate = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, canAggregate: true, onaggregate },
+    });
+    await fireEvent.click(getByLabelText("Aggregate"));
+    expect(onaggregate).toHaveBeenCalled();
+  });
+});
+
+describe("Toolbar Indexes", () => {
+  it("is disabled when canIndexes is false (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    expect((getByLabelText("Indexes") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls onindexes when enabled and clicked", async () => {
+    const onindexes = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, canIndexes: true, onindexes },
+    });
+    await fireEvent.click(getByLabelText("Indexes"));
+    expect(onindexes).toHaveBeenCalled();
+  });
+});
+
 describe("Toolbar Explain", () => {
   it("is disabled when canExplainQuery is false (default)", () => {
     const { getByTitle } = render(Toolbar, { props: { ...base } });

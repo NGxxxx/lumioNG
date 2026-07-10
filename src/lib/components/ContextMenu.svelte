@@ -1,8 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { registerContextMenu } from "./contextMenuController";
-
-  export type MenuItem = { label: string; action: string; disabled?: boolean; children?: MenuItem[] };
+  import type { MenuItem } from "../domain/gridView";
 
   let { x, y, items, onselect, onclose }: {
     x: number; y: number; items: MenuItem[];
@@ -11,9 +10,7 @@
 
   let openIdx = $state<number | null>(null);
 
-  // Single-menu coordinator: mounting this menu closes any other open menu. This is
-  // propagation-independent, so it works even though openers stopPropagation() to dodge
-  // the self-close race — preventing a sidebar menu + data-table menu being open at once.
+  // Single-menu coordinator: mounting this menu closes any other open menu, preventing two menus being open at once.
   let unregister: (() => void) | null = null;
   onMount(() => { unregister = registerContextMenu(onclose); });
   onDestroy(() => unregister?.());

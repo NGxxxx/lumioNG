@@ -18,6 +18,7 @@ afterAll(() => restoreOffsetHeight?.());
 function baseView(docs: Doc[], overrides: Partial<GridPageView> = {}): GridPageView {
   return {
     docs,
+    visibleIndices: null,
     columnFields: mergeColumns(null, docs),
     colWidths: { _id: 160, name: 120 },
     setColWidth: vi.fn(), resetColWidth: vi.fn(),
@@ -89,5 +90,49 @@ describe("ResultGrid", () => {
     });
     const { container } = render(ResultGrid, { props: { v } });
     expect(container.querySelector(".sortarrow")).toBeTruthy();
+  });
+});
+
+describe("ResultGrid quick-search index mapping", () => {
+  const docs = [
+    { _id: { $oid: "a" }, name: "Alpha" },
+    { _id: { $oid: "b" }, name: "Beta" },
+    { _id: { $oid: "c" }, name: "Gamma" },
+  ];
+
+  it("renders only the visibleIndices rows, skipping filtered-out ones", () => {
+    const v = baseView(docs, { visibleIndices: [0, 2] });
+    const { container } = render(ResultGrid, { props: { v } });
+    const rows = container.querySelectorAll("tbody tr[data-index]");
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain("Alpha");
+    expect(rows[1].textContent).toContain("Gamma");
+  });
+
+  it("clicking a filtered row calls clickRow with the real index into docs, not the display position", async () => {
+    const v = baseView(docs, { visibleIndices: [0, 2] });
+    const { container } = render(ResultGrid, { props: { v } });
+    const rows = container.querySelectorAll("tbody tr[data-index]");
+    await fireEvent.click(rows[1]); // second rendered row is docs[2] ("Gamma")
+    expect(v.clickRow).toHaveBeenCalledWith(2, { ctrl: false, shift: false });
+  });
+
+  it("renders every row when visibleIndices is null", () => {
+    const v = baseView(docs, { visibleIndices: null });
+    const { container } = render(ResultGrid, { props: { v } });
+    expect(container.querySelectorAll("tbody tr[data-index]").length).toBe(3);
+  });
+
+  it("highlights the correct doc's row when a pre-existing selection survives an active filter", () => {
+    // docs[2] ("Gamma") was selected before the search was applied; the filter now hides
+    // docs[1] ("Beta"), but selection is keyed on the real docs index, so it must still
+    // resolve to the row that is actually "Gamma", not whichever row happens to render second.
+    const v = baseView(docs, { visibleIndices: [0, 2], selected: new Set([2]) });
+    const { container } = render(ResultGrid, { props: { v } });
+    const rows = container.querySelectorAll("tbody tr[data-index]");
+    expect(rows.length).toBe(2);
+    expect(rows[0].classList.contains("row-selected")).toBe(false); // "Alpha", index 0
+    expect(rows[1].classList.contains("row-selected")).toBe(true); // "Gamma", index 2
+    expect(rows[1].textContent).toContain("Gamma");
   });
 });

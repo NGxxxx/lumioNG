@@ -6,11 +6,12 @@ import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";
 import { describeValue } from "../domain/extjson";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
-import { rangeBetween, idInFilter, resolveIds, effectiveRows as effectiveRowsOf } from "../domain/selection";
+import { idInFilter, resolveIds, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
 import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, editTextOf, rebuildValue, setByPath, buildSetUpdate } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
+import { compileSearch, matchingIndices } from "../domain/search";
 import {
   cycleSort,
   buildSort,
@@ -23,21 +24,16 @@ import {
 } from "../domain/grid";
 import { buildSkeleton, duplicateForInsert } from "../domain/skeleton";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
-import type { MenuItem } from "../components/ContextMenu.svelte";
+import type { MenuItem } from "../domain/gridView";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
+import { settings } from "./settings.svelte";
 import { findCmd, updateOneCmd, deleteOneCmd, deleteManyCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { createCollectionBulk } from "./collectionBulk.svelte";
 
-/**
- * State and actions for one collection view: data, paging, inline edit,
- * context menu, and delete. Components only render and bind; no logic here.
- */
+/** State and actions for one collection view: data, paging, inline edit, context menu, and delete. */
 export function createCollectionView(sessionId: string, db: string, coll: string) {
-  // $state.raw (not $state): docs are always replaced wholesale (loadPage/showAll/filter
-  // assign a fresh array; inline edits mutate then reassign `[...docs]`). Deep-proxying every
-  // doc here is what made a 25k-row "Show all" balloon to >1GB — each nested field became a
-  // Svelte signal/proxy. Raw keeps them plain objects; reassignment still drives reactivity.
+  // $state.raw (not $state): deep-proxying every doc is what made a 25k-row "Show all" balloon to >1GB; docs are always reassigned wholesale, never mutated in place.
   let docs = $state.raw<Doc[]>([]);
   let schema = $state<CollectionSchema | null>(null);
   let loading = $state(false);
@@ -47,6 +43,11 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let filterError = $state<string | null>(null);
   let appliedFilter = $state("{}");
   let generation = 0;
+
+  // Client-side quick search (HeidiSQL-style): filters the currently loaded page in place, no server round-trip — distinct from the real Mongo query filter above.
+  let searchTerm = $state("");
+  const searchRegex = $derived(compileSearch(searchTerm));
+  const searchInvalid = $derived(searchTerm !== "" && searchRegex === null);
 
   let sortKeys = $state<SortKey[]>([]);
   let hidden = $state<Set<string>>(new Set());
@@ -86,6 +87,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let pendingExportFilter: string | null = "{}";
 
   const columnFields = $derived(mergeColumns(schema, docs));
+  // Search only currently-visible columns (matches what the column chooser hid and what the grid actually renders), not the full unfiltered columnFields.
+  const searchableColumns = $derived(columnFields.filter((c) => !hidden.has(c.path)));
+  const visibleIndices = $derived(matchingIndices(docs, searchableColumns, searchRegex));
 
   /** Compute default widths once per column-set; recompute only when the paths change. */
   function ensureColWidths() {
@@ -108,14 +112,17 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   async function loadSchema() {
     const gen = generation;
     const startedAt = Date.now();
+    activity.begin(m.status_bar_loading());
     try {
-      const sample = await sampleDocuments(sessionId, db, coll, appliedFilter, 100);
+      const sample = await sampleDocuments(sessionId, db, coll, appliedFilter, 100, settings.queryTimeoutMs);
       if (gen !== generation) return;
       schema = inferSchema(sample);
       commandLog.push(sampleCmd(coll, 100), sessionId, Date.now() - startedAt);
     } catch {
       if (gen !== generation) return;
       schema = null; // degrade: columns fall back to row-derived
+    } finally {
+      activity.end();
     }
   }
 
@@ -145,6 +152,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         appliedFilter,
         buildSort(sortKeys),
         buildProjection(hidden),
+        settings.queryTimeoutMs,
       );
       if (gen !== generation) return;
       commandLog.push(
@@ -171,17 +179,21 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     }
   }
 
-  /** Recount documents under the active filter and clamp currentPage to the valid range. */
+  /** Recount documents under the active filter and clamp currentPage; every caller follows this with loadPage(), which owns clearing `loading`. */
   async function refreshCount() {
+    loading = true;
     const gen = generation;
+    activity.begin(m.status_bar_loading());
     try {
-      const n = await countDocuments(sessionId, db, coll, appliedFilter);
+      const n = await countDocuments(sessionId, db, coll, appliedFilter, settings.queryTimeoutMs);
       if (gen !== generation) return;
       totalCount = n;
       currentPage = clampPage(currentPage, pageCount(totalCount, pageSize));
     } catch (e) {
       if (gen !== generation) return;
       error = errorMessage(e);
+    } finally {
+      activity.end();
     }
   }
 
@@ -397,9 +409,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       editError = m.collection_view_no_id_update();
       return;
     }
-    // $set only the touched path — a full replaceDocument would re-send every other field too,
-    // including any huge untouched sibling (e.g. a multi-MB value), which is what made editing
-    // one small cell serialize + transmit the entire document.
+    // $set only the touched path — a full replaceDocument would re-send every other field too, including any huge untouched sibling.
     const filter = `{"_id": ${id}}`;
     const update = buildSetUpdate(key, r.value);
     saving = true;
@@ -420,10 +430,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   function openMenu(e: MouseEvent, row: number, key: string) {
     e.preventDefault();
     e.stopPropagation();
-    if (!selected.has(row)) {
-      selected = new Set([row]);
-      anchor = row;
-    }
+    ({ selected, anchor } = selectForMenu({ selected, anchor }, row));
     menu = { x: e.clientX, y: e.clientY, row, key };
   }
 
@@ -432,24 +439,12 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   }
 
   function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
-    if (mods.shift && anchor !== null) {
-      selected = new Set(rangeBetween(anchor, row));
-      return;
-    }
-    if (mods.ctrl) {
-      const next = new Set(selected);
-      if (next.has(row)) next.delete(row);
-      else next.add(row);
-      selected = next;
-      anchor = row;
-      return;
-    }
-    selected = new Set([row]);
-    anchor = row;
+    ({ selected, anchor } = clickRowSelection({ selected, anchor }, row, mods, visibleIndices));
   }
 
   function selectAll() {
-    selected = new Set(docs.map((_, i) => i));
+    // Same reasoning as clickRow's shift-range: only select rows the search filter is showing.
+    selected = new Set(visibleIndices ?? docs.map((_, i) => i));
     anchor = docs.length > 0 ? 0 : null;
   }
 
@@ -535,17 +530,13 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     }
   }
 
-  /**
-   * Returns the doc to open for "open", or `{ insert }` (with a pre-built doc) for New/Duplicate.
-   * New document → skeleton with all schema fields; Duplicate → copy of the doc without _id.
-   */
+  /** Returns the doc to open for "open", or `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate. */
   function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | null {
     if (!menu) return null;
     const row = menu.row;
     const key = menu.key;
     const doc = docs[row];
-    // NOTE: menu = null is set AFTER the switch so that effectiveRows() (used by
-    // requestExport/copySelectedAs) can still read menu.row for effective-selection logic.
+    // menu = null is set AFTER the switch so effectiveRows() (used by requestExport/copySelectedAs) can still read menu.row.
     switch (action) {
       case "open":
         menu = null;
@@ -723,6 +714,18 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       return filterError;
     },
     applyFilter,
+    get searchTerm() {
+      return searchTerm;
+    },
+    set searchTerm(v: string) {
+      searchTerm = v;
+    },
+    get searchInvalid() {
+      return searchInvalid;
+    },
+    get visibleIndices() {
+      return visibleIndices;
+    },
     get confirmDoc() {
       return confirmDoc;
     },

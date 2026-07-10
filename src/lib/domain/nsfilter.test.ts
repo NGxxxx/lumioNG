@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { filterNamespaces } from "./nsfilter";
-import type { DbInfo } from "../api/connection";
+import type { DbInfo } from "./namespaces";
 
 const dbs: DbInfo[] = [
   { name: "shop", collections: ["users", "orders", "userLogs"] },

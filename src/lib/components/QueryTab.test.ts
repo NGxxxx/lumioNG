@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import { commandLog } from "../stores/commandLog.svelte";
+import { activeDataView } from "../stores/activeDataView.svelte";
 
 vi.mock("../stores/sessionManager.svelte", () => ({
   sessionManager: { active: null, sessions: [] },
@@ -10,7 +11,7 @@ const run = vi.fn();
 const stub = {
   get statementText() { return 'db.getCollection("x").aggregate([])'; },
   set statementText(_v: string) {},
-  get docs() { return []; }, get columnFields() { return []; },
+  get docs() { return []; }, get visibleIndices() { return null; }, get columnFields() { return []; },
   get colWidths() { return {}; }, get error() { return null; }, get running() { return false; },
   get capped() { return false; }, get displayMode() { return "none" as const; },
   get consoleEntries() { return []; }, get ackJson() { return null; }, get valueJson() { return null; },
@@ -32,6 +33,8 @@ const stub = {
   get editing() { return null; },
   get editText() { return ""; }, set editText(_v: string) {},
   get editError() { return null; },
+  get searchTerm() { return ""; }, set searchTerm(_v: string) {},
+  get searchInvalid() { return false; },
   startEdit: vi.fn(), commitEdit: vi.fn(), cancelEdit: vi.fn(),
   get provenance() { return null; },
   get destructiveConfirm() { return null; },
@@ -74,7 +77,7 @@ vi.mock("../stores/queryRuns.svelte", () => ({ getQueryRun: () => activeStub }))
 import QueryTab from "./QueryTab.svelte";
 
 describe("QueryTab", () => {
-  const props = { id: 1, seq: 1, initialStatement: "x", currentDb: "shop" };
+  const props = { id: 1, seq: 1, initialStatement: "x", currentDb: "shop", active: true };
 
   it("has no in-tab Run button", () => {
     const { queryByText } = render(QueryTab, { props });
@@ -306,6 +309,82 @@ describe("QueryTab", () => {
       expect(container.querySelector(".pane-divider")).toBeTruthy();
     } finally {
       activeStub = stub; // restore for subsequent tests
+    }
+  });
+});
+
+describe("QueryTab activeDataView bridge", () => {
+  const props = { id: 1, seq: 1, initialStatement: "x", currentDb: "shop" };
+  const bridgeStub = {
+    ...editableStub,
+    canEditSelected: true,
+    canDeleteSelected: true,
+    getSelectedForEdit: vi.fn(),
+    requestDeleteSelected: vi.fn(),
+    requestExportCurrent: vi.fn(),
+  } as unknown as typeof stub;
+
+  it("registers a handle while active, and unregisters it on destroy", () => {
+    activeStub = bridgeStub;
+    try {
+      const { unmount } = render(QueryTab, { props: { ...props, active: true } });
+      expect(activeDataView.handle).not.toBeNull();
+      expect(activeDataView.handle?.canEdit).toBe(true);
+      expect(activeDataView.handle?.canDelete).toBe(true);
+      unmount();
+      expect(activeDataView.handle).toBeNull();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("does not register a handle while inactive", () => {
+    activeStub = bridgeStub;
+    try {
+      const { unmount } = render(QueryTab, { props: { ...props, active: false } });
+      expect(activeDataView.handle).toBeNull();
+      unmount();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("unregisters then re-registers the same handle as `active` flips on a live-mounted instance", async () => {
+    activeStub = bridgeStub;
+    try {
+      const { rerender, unmount } = render(QueryTab, { props: { ...props, active: true } });
+      const handle = activeDataView.handle;
+      expect(handle).not.toBeNull();
+      await rerender({ ...props, active: false });
+      expect(activeDataView.handle).toBeNull(); // switching away unregisters
+      await rerender({ ...props, active: true });
+      expect(activeDataView.handle).toBe(handle); // switching back re-registers the same handle
+      unmount();
+      expect(activeDataView.handle).toBeNull();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("only the tab that ends up active is registered when two tabs are mounted simultaneously", async () => {
+    activeStub = bridgeStub;
+    try {
+      const a = render(QueryTab, { props: { ...props, id: 1, active: true } });
+      const b = render(QueryTab, { props: { ...props, id: 2, active: false } });
+      expect(activeDataView.handle).not.toBeNull(); // only A registered so far
+
+      // Simulate switching the active work tab from A to B (both flip in the same reactive flush,
+      // as they do in +page.svelte since `active` is one global $state). Final state must have
+      // exactly B registered, regardless of which sibling's $effect runs first.
+      await b.rerender({ ...props, id: 2, active: true });
+      await a.rerender({ ...props, id: 1, active: false });
+      expect(activeDataView.handle).not.toBeNull();
+
+      a.unmount();
+      b.unmount();
+      expect(activeDataView.handle).toBeNull();
+    } finally {
+      activeStub = stub;
     }
   });
 });

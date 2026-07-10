@@ -3,6 +3,7 @@ import { inferSchema, type FieldSchema } from "../domain/schema";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
+import { settings } from "./settings.svelte";
 import * as m from "$lib/paraglide/messages";
 import { sampleCmd } from "../domain/mongosh";
 
@@ -19,7 +20,7 @@ export function createCollectionSchema(sessionId: string, db: string, coll: stri
     activity.begin(m.common_running());
     try {
       const docs = await commandLog.pushTimed(sampleCmd(coll, sampleSize), sessionId, () =>
-        sampleDocuments(sessionId, db, coll, "{}", sampleSize));
+        sampleDocuments(sessionId, db, coll, "{}", sampleSize, settings.queryTimeoutMs));
       const schema = inferSchema(docs);
       fields = schema.fields;
       actualSampled = schema.sampleSize;

@@ -1,5 +1,11 @@
 /** Validate collection and database names against MongoDB naming rules. */
 
+/** One database and the collection names it contains, as returned by listNamespaces. */
+export interface DbInfo {
+  name: string;
+  collections: string[];
+}
+
 /** Returns a message key or null for the given collection name. */
 export function validateCollectionName(name: string): string | null {
   if (name.length === 0) return "err_coll_name_empty";

@@ -4,8 +4,10 @@ import { createActiveDataView, type DataViewHandle } from "./activeDataView.svel
 const stub = (): DataViewHandle => ({
   canEdit: true,
   canExport: true,
+  canDelete: true,
   editSelected() {},
   exportCurrent() {},
+  deleteSelected() {},
 });
 
 describe("activeDataView", () => {

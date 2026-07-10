@@ -8,6 +8,8 @@ import { nextQuerySeq } from "../domain/queryseq";
 import { commandLog } from "./commandLog.svelte";
 import { connectCmd } from "../domain/mongosh";
 import { maskUri } from "../domain/uri";
+import { disposeQueryRun } from "./queryRuns.svelte";
+import { disposeCollectionViews } from "./collectionViews.svelte";
 
 export type SessionStatus = "connecting" | "connected" | "error";
 export type Session = {
@@ -145,6 +147,8 @@ export function createSessionManager() {
 
   async function closeSession(id: string) {
     await disconnect(id).catch(() => {});
+    for (const t of workTabs.filter((t) => t.sessionId === id)) disposeQueryRun(t.id);
+    disposeCollectionViews(id);
     workTabs = workTabs.filter((t) => t.sessionId !== id);
     sessions = sessions.filter((s) => s.id !== id);
     if (activeId === id) {

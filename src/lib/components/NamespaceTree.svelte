@@ -6,7 +6,7 @@
 </script>
 
 <script lang="ts">
-  import type { DbInfo } from "../api/connection";
+  import type { DbInfo } from "../domain/namespaces";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -40,9 +40,7 @@
     onselectdb?.({ db });
     toggle(db);
   }
-  // stopPropagation: Svelte flushes after the handler, mounting ContextMenu (and its
-  // window oncontextmenu={onclose} listener) synchronously; without this, the same
-  // right-click event bubbles to window and immediately closes the just-opened menu.
+  // stopPropagation: without it, the same right-click event bubbles to window and immediately closes the just-opened menu.
   function dbMenu(e: MouseEvent, db: string) {
     e.preventDefault();
     e.stopPropagation();

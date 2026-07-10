@@ -3,6 +3,7 @@
   import { insertDocument, replaceDocument } from "../api/documents";
   import { errorMessage } from "../api/errors";
   import { sessionManager } from "../stores/sessionManager.svelte";
+  import { activeDocumentForm, type DocumentFormHandle } from "../stores/activeDocumentForm.svelte";
   import { idJson } from "../domain/docid";
   import type { Doc } from "../domain/doc";
   import { parseDocumentText } from "../domain/docparse";
@@ -18,6 +19,7 @@
     db,
     coll,
     initial,
+    active = false,
     onsaved,
     oncancel,
   }: {
@@ -25,6 +27,7 @@
     db: string;
     coll: string;
     initial: Doc | null;
+    active?: boolean;
     onsaved: () => void;
     oncancel: () => void;
   } = $props();
@@ -71,7 +74,7 @@
   }
 
   async function save() {
-    if (view === "tree" && !treeValid) return;
+    if (saving || (view === "tree" && !treeValid)) return;
     error = null;
     let payload: Doc;
     if (view === "raw") {
@@ -108,6 +111,20 @@
       saving = false;
     }
   }
+
+  // Bridge for the global toolbar's Save button: only the currently active work tab registers,
+  // so switching tabs (component instances persist, keyed by tab id) hands the handle over cleanly.
+  $effect(() => {
+    if (!active) return;
+    const h: DocumentFormHandle = {
+      get canSave() {
+        return !saving && (view !== "tree" || treeValid);
+      },
+      save,
+    };
+    activeDocumentForm.register(h);
+    return () => activeDocumentForm.unregister(h);
+  });
 </script>
 
 <div class="form">

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, untrack } from "svelte";
-  import { createCollectionView } from "../stores/collectionView.svelte";
+  import { getCollectionView } from "../stores/collectionViews.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import type { Doc } from "../domain/doc";
@@ -16,16 +16,21 @@
   let {
     db,
     coll,
+    version,
     onopendocument,
   }: {
     db: string;
     coll: string;
+    version: number;
     onopendocument: (doc: Doc | null, mode: "edit" | "insert") => void;
   } = $props();
 
-  const v = untrack(() => createCollectionView(sessionManager.active?.id ?? "", db, coll));
+  const { view: v, isNew } = untrack(() =>
+    getCollectionView(sessionManager.active?.id ?? "", db, coll, version),
+  );
 
   let view = $state<"grid" | "tree">("grid");
+  let toolbarRef: CollectionToolbar | undefined;
 
   const visibleColumns = $derived(v.columnFields.filter((c) => !v.hidden.has(c.path)));
 
@@ -38,6 +43,7 @@
    *  writes back into the underlying store. */
   const gridView: GridPageView = {
     get docs() { return v.docs; },
+    get visibleIndices() { return v.visibleIndices; },
     get columnFields() { return visibleColumns; },
     get colWidths() { return v.colWidths; },
     setColWidth: v.setColWidth,
@@ -96,6 +102,9 @@
     get canExport() {
       return true;
     },
+    get canDelete() {
+      return v.selectedCount > 0;
+    },
     async editSelected() {
       if (v.selectedCount !== 1) return;
       const d = v.docs[[...v.selected][0]];
@@ -105,10 +114,16 @@
     exportCurrent() {
       v.requestExport(v.selectedCount > 0 ? "selection" : "filter");
     },
+    deleteSelected() {
+      v.requestDeleteSelected();
+    },
+    focusSearch() {
+      toolbarRef?.focusSearch();
+    },
   };
 
   onMount(() => {
-    v.init();
+    if (isNew) v.init();
     activeDataView.register(dataViewHandle);
   });
   onDestroy(() => activeDataView.unregister(dataViewHandle));
@@ -117,7 +132,7 @@
 <div class="result">
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  <CollectionToolbar {v} bind:view />
+  <CollectionToolbar {v} bind:view bind:this={toolbarRef} />
 
   <div class="content">
     {#if view === "grid"}

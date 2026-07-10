@@ -1,17 +1,16 @@
 import type { Doc } from "./doc";
 import type { ColumnField } from "./schema";
 import type { SortKey } from "./grid";
-import type { MenuItem } from "../components/ContextMenu.svelte";
 
-/**
- * Shared shape both `collectionView.svelte.ts` and `queryScript.svelte.ts` expose for their
- * grid+pager region, so `ResultGrid.svelte`/`ResultPager.svelte` can render either without
- * knowing which store backs them. `sortKeys`/`toggleSort` and `selectAll` are optional: only
- * `collectionView` implements UI-driven column-header sort and Ctrl+A select-all — Query tab's
- * sort is script-defined, and it has no "select all" concept.
- */
+/** A context-menu entry, rendered by `components/ContextMenu.svelte`. */
+export type MenuItem = { label: string; action: string; disabled?: boolean; children?: MenuItem[] };
+
+/** Shared grid+pager shape so `ResultGrid`/`ResultPager` can render either `collectionView` or `queryScript` state without knowing which backs them; `sortKeys`/`toggleSort`/`selectAll` are optional since only `collectionView` supports UI-driven sort and Ctrl+A select-all. */
 export interface GridPageView {
   readonly docs: Doc[];
+  /** Indices into `docs` for rows matching the active quick-search term, in order; `null` means
+   *  no search is active (render every row). See `domain/search.ts`. */
+  readonly visibleIndices: number[] | null;
   readonly columnFields: ColumnField[];
   readonly colWidths: Record<string, number>;
   setColWidth(path: string, px: number): void;

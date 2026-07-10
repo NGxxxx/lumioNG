@@ -5,6 +5,7 @@ import { idInFilter } from "../domain/selection";
 import { parseUpdateDoc, isEmptyFilter } from "../domain/bulk";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
+import { settings } from "./settings.svelte";
 import { countCmd, updateManyCmd, deleteManyCmd } from "../domain/mongosh";
 
 /** Bulk update/delete flow (dialog state, count, run) for one collection view. */
@@ -70,7 +71,7 @@ export function createCollectionBulk(opts: {
     activity.begin(m.common_running());
     try {
       bulkCount = await commandLog.pushTimed(countCmd(coll, bulkFilter), sessionId, () =>
-        countDocuments(sessionId, db, coll, bulkFilter));
+        countDocuments(sessionId, db, coll, bulkFilter, settings.queryTimeoutMs));
     } catch (e) {
       bulkError = errorMessage(e);
     } finally {

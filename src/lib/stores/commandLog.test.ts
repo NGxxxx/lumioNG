@@ -36,13 +36,6 @@ describe("createCommandLog", () => {
     expect(log.entries).toEqual([]);
   });
 
-  it("toggle flips the open state", () => {
-    const log = createCommandLog();
-    expect(log.open).toBe(true);
-    log.toggle();
-    expect(log.open).toBe(false);
-  });
-
   describe("pushTimed", () => {
     it("measures elapsed time and pushes an entry with that duration", async () => {
       const log = createCommandLog();

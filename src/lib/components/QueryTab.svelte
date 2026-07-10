@@ -1,7 +1,8 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { untrack, tick } from "svelte";
   import { getQueryRun } from "../stores/queryRuns.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
+  import { activeDataView } from "../stores/activeDataView.svelte";
   import ResultGrid from "./ResultGrid.svelte";
   import ResultPager from "./ResultPager.svelte";
   import ResultTree from "./ResultTree.svelte";
@@ -24,8 +25,8 @@
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
   import type { Doc } from "../domain/doc";
 
-  let { id, seq, initialStatement, currentDb, onopendocument }:
-    { id: number; seq: number; initialStatement: string; currentDb: string | null;
+  let { id, seq, initialStatement, currentDb, active, onopendocument }:
+    { id: number; seq: number; initialStatement: string; currentDb: string | null; active: boolean;
       onopendocument?: (doc: Doc, db: string, coll: string, mode: "edit") => void } = $props();
 
   const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
@@ -34,6 +35,7 @@
   let menu = $state<{ x: number; y: number } | null>(null);
   let editorRef: CodeEditor | undefined;
   let editorEl = $state<HTMLDivElement | null>(null);
+  let searchInputEl = $state<HTMLInputElement | null>(null);
   let bottomEl = $state<HTMLDivElement | null>(null);
   const paneResize = createPaneResize((px) => settings.setQueryEditorHeightPx(px));
 
@@ -133,6 +135,34 @@
       onopendocument(r.open, v.provenance.db, v.provenance.coll, "edit");
     }
   }
+
+  // Bridge for the global toolbar (Edit document / Export / Delete). Registered only while this
+  // tab is the active one — Query tabs stay mounted (hidden) when inactive, unlike ResultTable's
+  // mount-gated Data pane, so registration can't be tied to onMount/onDestroy alone.
+  const dataViewHandle = {
+    get canEdit() { return v.canEditSelected; },
+    get canExport() { return true; },
+    get canDelete() { return v.canDeleteSelected; },
+    editSelected() {
+      const d = v.getSelectedForEdit();
+      if (d && v.provenance && onopendocument) onopendocument(d, v.provenance.db, v.provenance.coll, "edit");
+    },
+    exportCurrent() { v.requestExportCurrent(); },
+    deleteSelected() { v.requestDeleteSelected(); },
+    // The search box only renders in the "result" tab's Grid view (it has no effect elsewhere),
+    // so switch there first.
+    async focusSearch() {
+      bottomTab = "result";
+      if (resultView !== "grid") resultView = "grid";
+      await tick();
+      searchInputEl?.focus();
+    },
+  };
+  $effect(() => {
+    if (!active) return;
+    activeDataView.register(dataViewHandle);
+    return () => activeDataView.unregister(dataViewHandle);
+  });
 </script>
 
 <div class="query">
@@ -184,6 +214,17 @@
           <button class:active={resultView === "tree"} onclick={() => (resultView = "tree")}>{m.query_tab_view_tree()}</button>
           <button class:active={resultView === "console"} onclick={() => (resultView = "console")}>{m.query_tab_view_console()}</button>
         </div>
+        {#if showDocs && resultView === "grid"}
+          <input
+            class="search-input"
+            class:search-invalid={v.searchInvalid}
+            bind:this={searchInputEl}
+            bind:value={v.searchTerm}
+            placeholder={m.result_table_search_placeholder()}
+            title={m.result_table_search_title()}
+            aria-label={m.result_table_search_title()}
+          />
+        {/if}
       {:else if bottomTab === "log"}
         <button class="log-clear" onclick={() => commandLog.clear()}>{m.command_log_clear()}</button>
       {/if}
@@ -324,6 +365,8 @@
   .view-toggle { margin-left: auto; display: flex; gap: 0.0625rem; }
   .view-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
+  .search-input { margin-left: 0.375rem; width: 8rem; height: 1.25rem; background: var(--panel); border: 1px solid var(--gray-c4); border-radius: 0.125rem; padding: 0 0.5rem; font-family: Consolas, monospace; font-size: 0.6875rem; box-sizing: border-box; }
+  .search-invalid { border-color: var(--error); color: var(--error); }
   .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .log-clear:hover { background: var(--hover); }
   .result-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
