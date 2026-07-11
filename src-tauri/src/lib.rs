@@ -61,6 +61,8 @@ pub fn run() {
             commands::server::server_status,
             commands::server::build_info,
             commands::server::host_info,
+            commands::server::current_ops,
+            commands::server::kill_op,
             commands::script::run_script,
             commands::script::cancel_script,
         ])

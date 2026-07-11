@@ -8,11 +8,13 @@ const cache = new Map<string, Entry>();
 
 const key = (sessionId: string, db: string, coll: string) => `${sessionId}:${db}.${coll}`;
 
-/** Get (creating + caching) the collection view for sessionId/db/coll; reusing the same view across remounts lets the Data pane survive a Query<->Data tab switch without refetching (`isNew` is false unless `version` changed or db/coll differs). */
+/** Get (creating + caching) the collection view for sessionId/db/coll; only the active collection is kept per session, so switching collections evicts the rest instead of piling up in RAM. */
 export function getCollectionView(sessionId: string, db: string, coll: string, version: number) {
   const k = key(sessionId, db, coll);
   const hit = cache.get(k);
   if (hit && hit.version === version) return { view: hit.view, isNew: false };
+  const prefix = `${sessionId}:`;
+  for (const other of cache.keys()) if (other.startsWith(prefix) && other !== k) cache.delete(other);
   const view = createCollectionView(sessionId, db, coll);
   cache.set(k, { version, view });
   return { view, isNew: true };

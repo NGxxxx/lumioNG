@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHostInfo, formatUptime } from "./host";
+import { parseHostInfo, formatUptime, parseCurrentOps } from "./host";
 
 const ss = JSON.stringify({
   version: "7.0.5",
@@ -64,5 +64,34 @@ describe("formatUptime", () => {
 
   it("returns — for negative seconds", () => {
     expect(formatUptime(-5)).toBe("—");
+  });
+});
+
+describe("parseCurrentOps", () => {
+  it("curates inprog entries sorted by longest-running first", () => {
+    const json = JSON.stringify({
+      inprog: [
+        { opid: { $numberInt: "1" }, secs_running: { $numberInt: "2" }, op: "query", ns: "d.c", client: "1.2.3.4:5", appName: "mongosh 2.1.1" },
+        { opid: { $numberInt: "2" }, secs_running: { $numberInt: "40" }, op: "update", ns: "d.c2", client: "1.2.3.4:6", desc: "conn7", appName: "LumioNG" },
+      ],
+    });
+    const ops = parseCurrentOps(json);
+    expect(ops).toHaveLength(2);
+    expect(ops[0].opid).toBe(2);
+    expect(ops[0].secsRunning).toBe(40);
+    expect(ops[0].desc).toBe("conn7");
+    expect(ops[0].appName).toBe("LumioNG");
+    expect(ops[1].opid).toBe(1);
+    expect(ops[1].op).toBe("query");
+    expect(ops[1].appName).toBe("mongosh 2.1.1");
+  });
+
+  it("skips entries with a non-numeric (sharded-cluster) opid", () => {
+    const json = JSON.stringify({ inprog: [{ opid: "shard01:5", op: "query" }] });
+    expect(parseCurrentOps(json)).toEqual([]);
+  });
+
+  it("returns an empty list when inprog is absent", () => {
+    expect(parseCurrentOps(JSON.stringify({}))).toEqual([]);
   });
 });

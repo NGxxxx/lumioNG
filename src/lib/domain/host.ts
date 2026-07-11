@@ -80,6 +80,40 @@ export function parseHostInfo(
   };
 }
 
+/** Must match the driver's default `app_name` in `src-tauri/src/commands/connection.rs::open_client` — used to tell monglumio's own ops apart from other clients (mongosh, Compass…) in the Current Operations panel. */
+export const OWN_APP_NAME = "LumioNG";
+
+export interface OpInfo {
+  opid: number;
+  secsRunning: number | null;
+  op: string | null;
+  ns: string | null;
+  client: string | null;
+  desc: string | null;
+  appName: string | null;
+}
+
+/** Curate a `currentOp` response into a list sorted by longest-running first. */
+export function parseCurrentOps(json: string): OpInfo[] {
+  const parsed = JSON.parse(json) as Record<string, unknown>;
+  const inprog = Array.isArray(parsed.inprog) ? (parsed.inprog as Record<string, unknown>[]) : [];
+  const ops: OpInfo[] = [];
+  for (const o of inprog) {
+    const opid = numFromExt(o.opid);
+    if (opid === null) continue; // sharded-cluster opids ("shard:12345") are strings, not supported in v1
+    ops.push({
+      opid,
+      secsRunning: numFromExt(o.secs_running),
+      op: str(o.op),
+      ns: str(o.ns),
+      client: str(o.client),
+      desc: str(o.desc),
+      appName: str(o.appName),
+    });
+  }
+  return ops.sort((a, b) => (b.secsRunning ?? 0) - (a.secsRunning ?? 0));
+}
+
 /** Format an uptime in seconds as "1d 2h 3m" (drops leading zero units, always shows minutes). */
 export function formatUptime(seconds: number | null): string {
   if (seconds === null || Number.isNaN(seconds)) return "—";

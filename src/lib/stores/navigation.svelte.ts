@@ -2,6 +2,7 @@ import type { Doc } from "../domain/doc";
 
 export type ContextKind = "host" | "database" | "collection" | "data";
 export type CollectionSection = "info" | "indexes" | "schema";
+export type HostSection = "info" | "currentOps";
 
 export type DocumentTab = {
   id: number;
@@ -35,6 +36,7 @@ export function createSessionNav() {
   let selColl = $state<string | null>(null);
   let connected = $state(false);
   let collectionSection = $state<CollectionSection>("info");
+  let hostSection = $state<HostSection>("info");
   let versions = $state<Record<string, number>>({});
 
   const key = (db: string, coll: string) => `${db}.${coll}`;
@@ -63,6 +65,10 @@ export function createSessionNav() {
 
   function setCollectionSection(s: CollectionSection) {
     collectionSection = s;
+  }
+
+  function setHostSection(s: HostSection) {
+    hostSection = s;
   }
 
   function setConnected(v: boolean) {
@@ -103,9 +109,11 @@ export function createSessionNav() {
     get connected() { return connected; },
     get contextTabs() { return contextTabs; },
     get collectionSection() { return collectionSection; },
+    get hostSection() { return hostSection; },
     selectDatabase,
     selectCollection,
     setCollectionSection,
+    setHostSection,
     setConnected,
     clearCollection,
     clearSelection,
