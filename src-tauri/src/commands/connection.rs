@@ -1,45 +1,83 @@
 use crate::error::AppError;
 use crate::registry::{self, ConnectionInput, SavedConnection};
+use crate::ssh_tunnel::{self, SshTunnelConfig, SshTunnelHandle};
 use crate::state::AppState;
 use mongodb::bson::doc;
-use mongodb::options::ClientOptions;
+use mongodb::options::{ClientOptions, ServerAddress};
 use mongodb::Client;
 use serde::Serialize;
 use std::path::PathBuf;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
-#[tauri::command]
-pub async fn connect(
-    session_id: String,
-    uri: String,
-    read_only: bool,
-    state: State<'_, AppState>,
-) -> Result<(), AppError> {
+/// Opens an SSH tunnel (if `ssh` is enabled) and rewrites `opts.hosts` to point at the local
+/// forwarded port before the Mongo client ever sees the real remote host. Shared by `connect`
+/// and `test_connection` so both go through the identical tunnel-then-ping sequence.
+async fn open_client(
+    uri: &str,
+    ssh: Option<SshTunnelConfig>,
+) -> Result<(Client, Option<SshTunnelHandle>), AppError> {
     // Override the driver's 30s server_selection_timeout default so a transient Atlas hiccup doesn't freeze every operation for 30s; also set app_name for Atlas metrics/profiler.
-    let mut opts = ClientOptions::parse(&uri)
+    let mut opts = ClientOptions::parse(uri)
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
     opts.app_name.get_or_insert_with(|| "LumioNG".to_string());
     opts.server_selection_timeout = Some(Duration::from_secs(10));
     opts.connect_timeout.get_or_insert(Duration::from_secs(10));
 
+    let tunnel = match ssh {
+        Some(cfg) if cfg.enabled => {
+            let ServerAddress::Tcp { host: remote_host, port: remote_port } = opts
+                .hosts
+                .first()
+                .cloned()
+                .ok_or_else(|| AppError::Connection("no host in connection URI".into()))?
+            else {
+                return Err(AppError::Connection("SSH tunnel requires a direct host:port URI".into()));
+            };
+            let tunnel = ssh_tunnel::open(&cfg, &remote_host, remote_port.unwrap_or(27017)).await?;
+            opts.hosts = vec![ServerAddress::Tcp { host: "127.0.0.1".into(), port: Some(tunnel.local_port) }];
+            Some(tunnel)
+        }
+        _ => None,
+    };
+
     let client = Client::with_options(opts).map_err(|e| AppError::Connection(e.to_string()))?;
 
-    // Ping to confirm the connection is actually live (TLS/auth/SRV).
+    // Ping to confirm the connection is actually live (TLS/auth/SRV) — through the tunnel, if any.
     client
         .database("admin")
         .run_command(doc! { "ping": 1 })
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
 
-    state.insert_session(session_id, client, read_only).await;
+    Ok((client, tunnel))
+}
+
+#[tauri::command]
+pub async fn connect(
+    session_id: String,
+    uri: String,
+    read_only: bool,
+    ssh: Option<SshTunnelConfig>,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let (client, tunnel) = open_client(&uri, ssh).await?;
+    state.insert_session(session_id, client, read_only, tunnel).await;
+    Ok(())
+}
+
+/// Validates a connection (SSH tunnel + Mongo auth/TLS) without opening a session — the client
+/// and tunnel are simply dropped at the end of this function.
+#[tauri::command]
+pub async fn test_connection(uri: String, ssh: Option<SshTunnelConfig>) -> Result<(), AppError> {
+    open_client(&uri, ssh).await?;
     Ok(())
 }
 
 #[tauri::command]
 pub async fn disconnect(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    state.sessions.lock().await.remove(&session_id);
+    state.remove_session(&session_id).await;
     Ok(())
 }
 

@@ -5,6 +5,7 @@ mod error;
 mod json_bson;
 mod registry;
 mod script;
+mod ssh_tunnel;
 mod state;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -15,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
+            commands::connection::test_connection,
             commands::connection::list_namespaces,
             commands::connection::list_connections,
             commands::connection::save_connection,

@@ -16,7 +16,11 @@ function saved(over: Partial<SavedConnection> = {}): SavedConnection {
   return {
     id: 1, label: "Local", scheme: "mongodb", host: "localhost", port: 27017,
     authMethod: "none", user: "", passwordEnc: "", authSource: "", replicaSet: "",
-    tls: false, extraOptions: "", readOnly: false, ...over,
+    tls: false, extraOptions: "", readOnly: false,
+    tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "",
+    sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
+    sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
+    ...over,
   };
 }
 
@@ -50,5 +54,67 @@ describe("SessionManager", () => {
     (listConnections as ReturnType<typeof vi.fn>).mockResolvedValueOnce([saved({ lastConnectedAt: null })]);
     const { findByText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
     expect(await findByText("Never connected")).toBeTruthy();
+  });
+
+  it("shows the single-host notice only when the SSH tab is enabled", async () => {
+    const { getByLabelText, getByText, queryByText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    await fireEvent.click(getByText("SSH Tunnel"));
+    expect(queryByText(/restricts this connection to a single host/)).toBeNull();
+    await fireEvent.click(getByLabelText("Use SSH Tunnel"));
+    expect(getByText(/restricts this connection to a single host/)).toBeTruthy();
+  });
+
+  it("disables mongodb+srv and replica set once the SSH tunnel is enabled", async () => {
+    const { getByLabelText, getByText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    await fireEvent.click(getByText("SSH Tunnel"));
+    await fireEvent.click(getByLabelText("Use SSH Tunnel"));
+    await fireEvent.click(getByText("General"));
+    const type = getByLabelText("Connection type:") as HTMLSelectElement;
+    expect(Array.from(type.options).some((o) => o.value === "mongodb+srv")).toBe(false);
+    expect((getByLabelText("Replica set:") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("hides user/password and shows a certificate picker for X.509", async () => {
+    const { getByLabelText, queryByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    const auth = getByLabelText("Authentication:") as HTMLSelectElement;
+    await fireEvent.change(auth, { target: { value: "x509" } });
+    expect(queryByLabelText("User:")).toBeNull();
+    expect(getByLabelText("Client certificate (PEM):")).toBeTruthy();
+  });
+
+  it("shows TLS force-checked (though disabled) for X.509 even when the underlying value is off", async () => {
+    const { getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    const auth = getByLabelText("Authentication:") as HTMLSelectElement;
+    const tls = getByLabelText("TLS / SSL:") as HTMLInputElement;
+    expect(tls.checked).toBe(false);
+    await fireEvent.change(auth, { target: { value: "x509" } });
+    expect(tls.checked).toBe(true);
+    expect(tls.disabled).toBe(true);
+  });
+
+  it("shows auth database force-filled with $external (though disabled) for LDAP", async () => {
+    const { getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    const auth = getByLabelText("Authentication:") as HTMLSelectElement;
+    const authSource = getByLabelText("Auth database:") as HTMLInputElement;
+    const tls = getByLabelText("TLS / SSL:") as HTMLInputElement;
+    await fireEvent.change(auth, { target: { value: "ldap" } });
+    expect(authSource.value).toBe("$external");
+    expect(authSource.disabled).toBe(true);
+    expect(tls.checked).toBe(true);
+    expect(tls.disabled).toBe(true);
+  });
+
+  it("keeps TLS freely toggleable for None and Password auth methods", async () => {
+    const { getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    const tls = getByLabelText("TLS / SSL:") as HTMLInputElement;
+    expect(tls.disabled).toBe(false);
+    await fireEvent.click(tls);
+    expect(tls.checked).toBe(true);
+    const auth = getByLabelText("Authentication:") as HTMLSelectElement;
+    await fireEvent.change(auth, { target: { value: "password" } });
+    expect(tls.disabled).toBe(false);
+    expect(tls.checked).toBe(true);
+    await fireEvent.click(tls);
+    expect(tls.checked).toBe(false);
   });
 });

@@ -13,7 +13,7 @@
     type CompletionSource,
   } from "@codemirror/autocomplete";
   import { javascript } from "@codemirror/lang-javascript";
-  import { js as beautifyJs } from "js-beautify";
+  import { js_beautify as beautifyJs } from "js-beautify/js/lib/beautify.js";
   import { appEditorTheme } from "../domain/cmTheme";
 
   let { value, onChange, onSelectionChange, onRun, complete, readonly = false }: {

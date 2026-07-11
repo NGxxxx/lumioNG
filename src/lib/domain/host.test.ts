@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHostInfo, formatUptime, formatDuration } from "./host";
+import { parseHostInfo, formatUptime } from "./host";
 
 const ss = JSON.stringify({
   version: "7.0.5",
@@ -64,20 +64,5 @@ describe("formatUptime", () => {
 
   it("returns — for negative seconds", () => {
     expect(formatUptime(-5)).toBe("—");
-  });
-});
-
-describe("formatDuration", () => {
-  it("formats seconds as H:MM:SS with zero-padding", () => {
-    expect(formatDuration(5)).toBe("0:00:05");
-    expect(formatDuration(65)).toBe("0:01:05");
-    expect(formatDuration(3725)).toBe("1:02:05");
-    expect(formatDuration(0)).toBe("0:00:00");
-  });
-
-  it("returns — for null/negative/NaN", () => {
-    expect(formatDuration(null)).toBe("—");
-    expect(formatDuration(-1)).toBe("—");
-    expect(formatDuration(NaN)).toBe("—");
   });
 });

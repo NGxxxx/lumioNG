@@ -34,24 +34,11 @@ export const updateManyCmd = (coll: string, filterJson: string, updateJson: stri
 export const deleteManyCmd = (coll: string, filterJson: string) =>
   `${c(coll)}.deleteMany(${filterJson})`;
 
-export const insertManyCmd = (coll: string, docsJson: string) => `${c(coll)}.insertMany(${docsJson})`;
-
 export const updateOneCmd = (coll: string, filterJson: string, updateJson: string) =>
   `${c(coll)}.updateOne(${filterJson}, ${updateJson})`;
 
-export const replaceOneFilterCmd = (coll: string, filterJson: string, replJson: string) =>
-  `${c(coll)}.replaceOne(${filterJson}, ${replJson})`;
-
-export const deleteOneFilterCmd = (coll: string, filterJson: string) =>
-  `${c(coll)}.deleteOne(${filterJson})`;
-
 export const countCmd = (coll: string, filterJson: string) =>
   `${c(coll)}.countDocuments(${filterJson})`;
-
-export const distinctCmd = (coll: string, field: string, filterJson: string) =>
-  filterJson && filterJson.trim() !== "{}"
-    ? `${c(coll)}.distinct(${JSON.stringify(field)}, ${filterJson})`
-    : `${c(coll)}.distinct(${JSON.stringify(field)})`;
 
 export const createCollectionCmd = (coll: string) => `db.createCollection("${coll}")`;
 
@@ -93,9 +80,6 @@ export const connectCmd = (uri: string) => `mongosh "${uri}"`;
 
 export const sampleCmd = (coll: string, size: number) =>
   `${c(coll)}.aggregate([{ "$sample": { "size": ${size} } }])`;
-
-export const aggregateCmd = (coll: string, pipeline: string) =>
-  `${c(coll)}.aggregate(${pipeline})`;
 
 export const listIndexesCmd = (coll: string) => `${c(coll)}.getIndexes()`;
 

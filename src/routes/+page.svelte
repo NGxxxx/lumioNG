@@ -13,6 +13,7 @@
   import { activity } from "$lib/stores/activity.svelte";
   import { quit } from "$lib/api/window";
   import type { Doc } from "$lib/domain/doc";
+  import type { SshConnectInput } from "$lib/api/connection";
   import type { ContextKind, QueryTab as QueryTabType } from "$lib/stores/navigation.svelte";
   import SessionManager from "$lib/components/SessionManager.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
@@ -71,9 +72,9 @@
   // The activeDataView bridge is also registered by the active Query tab's result grid, so widen the gate to cover both.
   const canUseDataView = $derived(dataViewActive || queryActive);
 
-  async function onConnected(conn: { connId: number | null; label: string; uri: string; readOnly: boolean }): Promise<boolean> {
+  async function onConnected(conn: { connId: number | null; label: string; uri: string; readOnly: boolean; ssh: SshConnectInput | null }): Promise<boolean> {
     // focusOrOpen is the sole owner of the backend connect call; passing the real connId lets it dedup saved connections.
-    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly });
+    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh });
     if (ok) shell.setConnection(conn);
     return ok;
   }

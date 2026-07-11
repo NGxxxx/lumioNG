@@ -4,6 +4,7 @@ use serde::Serialize;
 #[serde(tag = "kind", content = "message")]
 pub enum AppError {
     Connection(String),
+    SshTunnel(String),
     Query(String),
     Serialize(String),
     Parse(String),
@@ -15,6 +16,7 @@ impl std::fmt::Display for AppError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             AppError::Connection(m) => write!(f, "Connection error: {m}"),
+            AppError::SshTunnel(m) => write!(f, "SSH tunnel error: {m}"),
             AppError::Query(m) => write!(f, "Query error: {m}"),
             AppError::Serialize(m) => write!(f, "Serialize error: {m}"),
             AppError::Parse(m) => write!(f, "Parse error: {m}"),
@@ -38,5 +40,23 @@ pub fn ensure_writable(read_only: bool) -> Result<(), AppError> {
 impl From<mongodb::error::Error> for AppError {
     fn from(e: mongodb::error::Error) -> Self {
         AppError::Query(e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ssh_tunnel_variant_serializes_with_kind_and_message() {
+        let err = AppError::SshTunnel("auth rejected".into());
+        let json = serde_json::to_string(&err).unwrap();
+        assert_eq!(json, r#"{"kind":"SshTunnel","message":"auth rejected"}"#);
+    }
+
+    #[test]
+    fn ssh_tunnel_display_is_prefixed() {
+        let err = AppError::SshTunnel("auth rejected".into());
+        assert_eq!(err.to_string(), "SSH tunnel error: auth rejected");
     }
 }

@@ -18,6 +18,16 @@ pub struct ConnectionInput {
     pub tls: bool,
     pub extra_options: String,
     pub read_only: bool,
+    pub tls_certificate_key_file: String,
+    pub tls_certificate_key_file_password_enc: String,
+    pub ssh_enabled: bool,
+    pub ssh_host: String,
+    pub ssh_port: u16,
+    pub ssh_user: String,
+    pub ssh_auth_method: String,
+    pub ssh_password_enc: String,
+    pub ssh_private_key_path: String,
+    pub ssh_passphrase_enc: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,6 +57,26 @@ pub struct SavedConnection {
     pub extra_options: String,
     #[serde(default)]
     pub read_only: bool,
+    #[serde(default)]
+    pub tls_certificate_key_file: String,
+    #[serde(default)]
+    pub tls_certificate_key_file_password_enc: String,
+    #[serde(default)]
+    pub ssh_enabled: bool,
+    #[serde(default)]
+    pub ssh_host: String,
+    #[serde(default)]
+    pub ssh_port: u16,
+    #[serde(default)]
+    pub ssh_user: String,
+    #[serde(default)]
+    pub ssh_auth_method: String,
+    #[serde(default)]
+    pub ssh_password_enc: String,
+    #[serde(default)]
+    pub ssh_private_key_path: String,
+    #[serde(default)]
+    pub ssh_passphrase_enc: String,
     /// Legacy pre-Phase-E field; present only in un-migrated files. Cleared on next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
@@ -71,6 +101,16 @@ impl SavedConnection {
             tls: input.tls,
             extra_options: input.extra_options,
             read_only: input.read_only,
+            tls_certificate_key_file: input.tls_certificate_key_file,
+            tls_certificate_key_file_password_enc: input.tls_certificate_key_file_password_enc,
+            ssh_enabled: input.ssh_enabled,
+            ssh_host: input.ssh_host,
+            ssh_port: input.ssh_port,
+            ssh_user: input.ssh_user,
+            ssh_auth_method: input.ssh_auth_method,
+            ssh_password_enc: input.ssh_password_enc,
+            ssh_private_key_path: input.ssh_private_key_path,
+            ssh_passphrase_enc: input.ssh_passphrase_enc,
             uri: None,
             last_connected_at: None,
         }
@@ -147,6 +187,16 @@ mod tests {
             tls: false,
             extra_options: String::new(),
             read_only: false,
+            tls_certificate_key_file: String::new(),
+            tls_certificate_key_file_password_enc: String::new(),
+            ssh_enabled: false,
+            ssh_host: String::new(),
+            ssh_port: 22,
+            ssh_user: String::new(),
+            ssh_auth_method: String::new(),
+            ssh_password_enc: String::new(),
+            ssh_private_key_path: String::new(),
+            ssh_passphrase_enc: String::new(),
         }
     }
 
@@ -277,6 +327,45 @@ mod tests {
         std::fs::write(&path, r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
         let list = load(&path).unwrap();
         assert_eq!(list[0].last_connected_at, None);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn ssh_and_x509_fields_round_trip_through_save_and_load() {
+        let dir = std::env::temp_dir().join("monglumio_test_registry_ssh_fields");
+        let path = dir.join("connections.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut i = input("SSH", "internal-host");
+        i.tls_certificate_key_file = "/certs/client.pem".into();
+        i.tls_certificate_key_file_password_enc = "encpw".into();
+        i.ssh_enabled = true;
+        i.ssh_host = "bastion.example.com".into();
+        i.ssh_port = 22;
+        i.ssh_user = "deploy".into();
+        i.ssh_auth_method = "key".into();
+        i.ssh_private_key_path = "/home/me/.ssh/id_ed25519".into();
+        i.ssh_passphrase_enc = "encpass".into();
+        let list = upsert(vec![], None, i);
+        save(&path, &list).unwrap();
+        let loaded = load(&path).unwrap();
+        assert_eq!(loaded[0].ssh_enabled, true);
+        assert_eq!(loaded[0].ssh_host, "bastion.example.com");
+        assert_eq!(loaded[0].ssh_private_key_path, "/home/me/.ssh/id_ed25519");
+        assert_eq!(loaded[0].tls_certificate_key_file, "/certs/client.pem");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_file_without_ssh_fields_defaults_them_empty() {
+        let dir = std::env::temp_dir().join("monglumio_test_registry_ssh_legacy_default");
+        let path = dir.join("connections.json");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(&path, r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
+        let list = load(&path).unwrap();
+        assert_eq!(list[0].ssh_enabled, false);
+        assert_eq!(list[0].ssh_host, "");
+        assert_eq!(list[0].tls_certificate_key_file, "");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

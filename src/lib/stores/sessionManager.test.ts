@@ -83,9 +83,19 @@ describe("sessionManager", () => {
     (connect as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     await sm.reconnect("conn:1");
     expect(sm.active?.status).toBe("connected");
-    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false);
+    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, null);
     expect(sm.sessions.length).toBe(1);
     expect(sm.active?.connectedAt).toBeTruthy();
+  });
+
+  it("reconnect reuses the ssh config from the original focusOrOpen call", async () => {
+    const ssh = {
+      enabled: true, host: "bastion", port: 22, user: "deploy",
+      authMethod: "password" as const, password: "p", privateKeyPath: "", passphrase: "",
+    };
+    await sm.focusOrOpen({ connId: 1, uri: "u", label: "a", ssh });
+    await sm.reconnect("conn:1");
+    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, ssh);
   });
 
   it("cross-session DDL only closes the owning session's tabs", async () => {

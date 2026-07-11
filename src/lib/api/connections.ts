@@ -5,7 +5,7 @@ export interface ConnectionInput {
   scheme: string; // "mongodb" | "mongodb+srv"
   host: string;
   port: number | null;
-  authMethod: string; // "none" | "password"
+  authMethod: string; // "none" | "password" | "x509" | "ldap"
   user: string;
   passwordEnc: string;
   authSource: string;
@@ -13,6 +13,16 @@ export interface ConnectionInput {
   tls: boolean;
   extraOptions: string;
   readOnly: boolean;
+  tlsCertificateKeyFile: string;
+  tlsCertificateKeyFilePasswordEnc: string;
+  sshEnabled: boolean;
+  sshHost: string;
+  sshPort: number;
+  sshUser: string;
+  sshAuthMethod: string; // "password" | "key"
+  sshPasswordEnc: string;
+  sshPrivateKeyPath: string;
+  sshPassphraseEnc: string;
 }
 
 export interface SavedConnection extends ConnectionInput {

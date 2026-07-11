@@ -4,12 +4,13 @@ export type ConnectionProfile = {
   scheme: "mongodb" | "mongodb+srv";
   host: string;
   port: number | null;
-  authMethod: "none" | "password";
+  authMethod: "none" | "password" | "x509" | "ldap";
   user: string;
   authSource: string;
   replicaSet: string;
   tls: boolean;
   extraOptions: string; // raw query fragment, no leading "?"/"&"
+  tlsCertificateKeyFile: string; // path; x509 only
 };
 
 function hostHasPort(host: string): boolean {
@@ -20,9 +21,14 @@ function safeDecode(s: string): string {
   try { return decodeURIComponent(s); } catch { return s; }
 }
 
-export function buildProfileUri(p: ConnectionProfile, password: string): string {
+export function buildProfileUri(p: ConnectionProfile, password: string, certKeyPassword = ""): string {
+  const isLdap = p.authMethod === "ldap";
+  const isX509 = p.authMethod === "x509";
+  const authSource = isLdap ? "$external" : p.authSource;
+  const forcedTls = p.tls || isLdap || isX509;
+
   let uri = p.scheme + "://";
-  if (p.authMethod === "password" && p.user !== "") {
+  if ((p.authMethod === "password" || isLdap) && p.user !== "") {
     uri += encodeURIComponent(p.user);
     if (password !== "") uri += ":" + encodeURIComponent(password);
     uri += "@";
@@ -32,9 +38,20 @@ export function buildProfileUri(p: ConnectionProfile, password: string): string 
     uri += ":" + p.port;
   }
   const params: string[] = [];
-  if (p.authSource !== "") params.push("authSource=" + encodeURIComponent(p.authSource));
+  if (authSource !== "") params.push("authSource=" + encodeURIComponent(authSource));
   if (p.replicaSet !== "") params.push("replicaSet=" + encodeURIComponent(p.replicaSet));
-  if (p.tls) params.push("tls=true");
+  if (forcedTls) params.push("tls=true");
+  if (isX509) {
+    params.push("authMechanism=MONGODB-X509");
+    if (p.tlsCertificateKeyFile !== "") {
+      params.push("tlsCertificateKeyFile=" + encodeURIComponent(p.tlsCertificateKeyFile));
+    }
+    if (certKeyPassword !== "") {
+      params.push("tlsCertificateKeyFilePassword=" + encodeURIComponent(certKeyPassword));
+    }
+  } else if (isLdap) {
+    params.push("authMechanism=PLAIN");
+  }
   const extra = p.extraOptions.trim().replace(/^[?&]+/, "");
   if (extra !== "") params.push(extra);
   uri += "/";
@@ -42,13 +59,14 @@ export function buildProfileUri(p: ConnectionProfile, password: string): string 
   return uri;
 }
 
-export function parseUri(uri: string): { profile: ConnectionProfile; password: string } {
+export function parseUri(uri: string): { profile: ConnectionProfile; password: string; certKeyPassword: string } {
   const blank: ConnectionProfile = {
     scheme: "mongodb", host: "", port: null, authMethod: "none",
     user: "", authSource: "", replicaSet: "", tls: false, extraOptions: "",
+    tlsCertificateKeyFile: "",
   };
   const m = /^(mongodb(?:\+srv)?):\/\/(.*)$/i.exec(uri.trim());
-  if (!m) return { profile: blank, password: "" };
+  if (!m) return { profile: blank, password: "", certKeyPassword: "" };
 
   const scheme: ConnectionProfile["scheme"] =
     m[1].toLowerCase() === "mongodb+srv" ? "mongodb+srv" : "mongodb";
@@ -84,6 +102,8 @@ export function parseUri(uri: string): { profile: ConnectionProfile; password: s
   }
 
   let authSource = "", replicaSet = "", tls = false;
+  let tlsCertificateKeyFile = "", certKeyPassword = "";
+  let authMechanism = "";
   const leftover: string[] = [];
   for (const pair of query.split("&")) {
     if (pair === "") continue;
@@ -93,11 +113,30 @@ export function parseUri(uri: string): { profile: ConnectionProfile; password: s
     if (k === "authSource") authSource = safeDecode(v);
     else if (k === "replicaSet") replicaSet = safeDecode(v);
     else if (k === "tls") tls = v === "true";
+    else if (k === "authMechanism") authMechanism = safeDecode(v);
+    else if (k === "tlsCertificateKeyFile") tlsCertificateKeyFile = safeDecode(v);
+    else if (k === "tlsCertificateKeyFilePassword") certKeyPassword = safeDecode(v);
     else leftover.push(pair);
   }
 
+  if (authMechanism === "MONGODB-X509") authMethod = "x509";
+  else if (authMechanism === "PLAIN") authMethod = "ldap";
+
   return {
-    profile: { scheme, host, port, authMethod, user, authSource, replicaSet, tls, extraOptions: leftover.join("&") },
+    profile: {
+      scheme, host, port, authMethod, user, authSource, replicaSet, tls,
+      extraOptions: leftover.join("&"), tlsCertificateKeyFile,
+    },
     password,
+    certKeyPassword,
   };
+}
+
+/** When an SSH tunnel is enabled, only a single fixed host:port can be forwarded — SRV discovery
+ *  and replica-set member discovery would both try to reach hosts outside the tunnel. Force a
+ *  direct single-host shape so a stale scheme/replicaSet from before the tunnel was enabled can
+ *  never leak into the built URI. */
+export function normalizeForTunnel(p: ConnectionProfile, sshEnabled: boolean): ConnectionProfile {
+  if (!sshEnabled) return p;
+  return { ...p, scheme: "mongodb", replicaSet: "" };
 }

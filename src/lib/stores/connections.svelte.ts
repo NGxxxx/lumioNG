@@ -6,9 +6,10 @@ import {
   type SavedConnection,
   type ConnectionInput,
 } from "../api/connections";
+import { testConnection as apiTestConnection, type SshConnectInput } from "../api/connection";
 import { errorMessage } from "../api/errors";
-import { validateProfile } from "../domain/connections";
-import { buildProfileUri, parseUri, type ConnectionProfile } from "../domain/connuri";
+import { validateProfile, validateSsh } from "../domain/connections";
+import { buildProfileUri, parseUri, normalizeForTunnel, type ConnectionProfile } from "../domain/connuri";
 import { obfuscate, deobfuscate } from "../domain/secret";
 import { sortByRecency } from "../domain/recency";
 
@@ -26,7 +27,7 @@ export function createConnectionRegistry() {
   let scheme = $state<"mongodb" | "mongodb+srv">("mongodb");
   let host = $state("localhost");
   let port = $state<number | null>(27017);
-  let authMethod = $state<"none" | "password">("none");
+  let authMethod = $state<"none" | "password" | "x509" | "ldap">("none");
   let user = $state("");
   let password = $state("");
   let authSource = $state("");
@@ -34,28 +35,60 @@ export function createConnectionRegistry() {
   let tls = $state(false);
   let extraOptions = $state("");
   let readOnly = $state(false);
+  let tlsCertificateKeyFile = $state("");
+  let tlsCertificateKeyFilePassword = $state("");
+
+  // SSH tunnel form fields
+  let sshEnabled = $state(false);
+  let sshHost = $state("");
+  let sshPort = $state<number | null>(22);
+  let sshUser = $state("");
+  let sshAuthMethod = $state<"password" | "key">("password");
+  let sshPassword = $state("");
+  let sshPrivateKeyPath = $state("");
+  let sshPassphrase = $state("");
 
   function profile(): ConnectionProfile {
-    return { scheme, host, port, authMethod, user, authSource, replicaSet, tls, extraOptions };
+    return {
+      scheme, host, port, authMethod, user, authSource, replicaSet, tls, extraOptions,
+      tlsCertificateKeyFile,
+    };
+  }
+
+  function sshConnectInput(): SshConnectInput | null {
+    if (!sshEnabled) return null;
+    return {
+      enabled: true, host: sshHost, port: sshPort ?? 22, user: sshUser, authMethod: sshAuthMethod,
+      password: sshAuthMethod === "password" ? sshPassword : "",
+      privateKeyPath: sshAuthMethod === "key" ? sshPrivateKeyPath : "",
+      passphrase: sshAuthMethod === "key" ? sshPassphrase : "",
+    };
   }
 
   function toInput(): ConnectionInput {
+    const p = normalizeForTunnel(profile(), sshEnabled);
     return {
       label: label.trim(),
-      scheme, host, port, authMethod, user,
-      passwordEnc: authMethod === "password" ? obfuscate(password) : "",
-      authSource, replicaSet, tls, extraOptions, readOnly,
+      scheme: p.scheme, host, port, authMethod, user,
+      passwordEnc: authMethod === "password" || authMethod === "ldap" ? obfuscate(password) : "",
+      authSource, replicaSet: p.replicaSet, tls, extraOptions, readOnly,
+      tlsCertificateKeyFile,
+      tlsCertificateKeyFilePasswordEnc: authMethod === "x509" ? obfuscate(tlsCertificateKeyFilePassword) : "",
+      sshEnabled, sshHost, sshPort: sshPort ?? 22, sshUser, sshAuthMethod,
+      sshPasswordEnc: sshAuthMethod === "password" ? obfuscate(sshPassword) : "",
+      sshPrivateKeyPath: sshAuthMethod === "key" ? sshPrivateKeyPath : "",
+      sshPassphraseEnc: sshAuthMethod === "key" ? obfuscate(sshPassphrase) : "",
     };
   }
 
   function loadProfile(p: ConnectionProfile) {
     scheme = p.scheme; host = p.host; port = p.port; authMethod = p.authMethod;
     user = p.user; authSource = p.authSource; replicaSet = p.replicaSet;
-    tls = p.tls; extraOptions = p.extraOptions;
+    tls = p.tls; extraOptions = p.extraOptions; tlsCertificateKeyFile = p.tlsCertificateKeyFile;
   }
 
   function currentUri(): string {
-    return buildProfileUri(profile(), password);
+    return buildProfileUri(normalizeForTunnel(profile(), sshEnabled), password, tlsCertificateKeyFilePassword);
   }
 
   async function load() {
@@ -66,13 +99,17 @@ export function createConnectionRegistry() {
       let result = fetched;
       for (const c of fetched) {
         if (c.uri && c.host === "") {
-          const { profile: p, password: pw } = parseUri(c.uri);
+          const { profile: p, password: pw, certKeyPassword } = parseUri(c.uri);
           const input: ConnectionInput = {
             label: c.label,
             scheme: p.scheme, host: p.host, port: p.port, authMethod: p.authMethod,
-            user: p.user, passwordEnc: p.authMethod === "password" ? obfuscate(pw) : "",
+            user: p.user, passwordEnc: p.authMethod === "password" || p.authMethod === "ldap" ? obfuscate(pw) : "",
             authSource: p.authSource, replicaSet: p.replicaSet, tls: p.tls, extraOptions: p.extraOptions,
             readOnly: false,
+            tlsCertificateKeyFile: p.tlsCertificateKeyFile,
+            tlsCertificateKeyFilePasswordEnc: obfuscate(certKeyPassword),
+            sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
+            sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
           };
           result = await saveConnection(c.id, input);
         }
@@ -88,12 +125,20 @@ export function createConnectionRegistry() {
     label = ""; scheme = "mongodb"; host = "localhost"; port = 27017;
     authMethod = "none"; user = ""; password = ""; authSource = ""; replicaSet = "";
     tls = false; extraOptions = ""; readOnly = false;
+    tlsCertificateKeyFile = ""; tlsCertificateKeyFilePassword = "";
+    sshEnabled = false; sshHost = ""; sshPort = 22; sshUser = "";
+    sshAuthMethod = "password"; sshPassword = ""; sshPrivateKeyPath = ""; sshPassphrase = "";
     formError = null;
   }
 
   async function save() {
-    const v = validateProfile(label, profile());
-    if (!v.ok) { formError = v.error; return; }
+    const vProfile = validateProfile(label, profile());
+    if (!vProfile.ok) { formError = vProfile.error; return; }
+    const vSsh = validateSsh({
+      enabled: sshEnabled, host: sshHost, port: sshPort, user: sshUser,
+      authMethod: sshAuthMethod, privateKeyPath: sshPrivateKeyPath,
+    });
+    if (!vSsh.ok) { formError = vSsh.error; return; }
     formError = null;
     try {
       list = await saveConnection(editingId, toInput());
@@ -120,28 +165,69 @@ export function createConnectionRegistry() {
       authMethod: (c.authMethod as ConnectionProfile["authMethod"]) || "none",
       user: c.user, authSource: c.authSource, replicaSet: c.replicaSet,
       tls: c.tls, extraOptions: c.extraOptions,
+      tlsCertificateKeyFile: c.tlsCertificateKeyFile ?? "",
     });
     password = c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
+    tlsCertificateKeyFilePassword = c.tlsCertificateKeyFilePasswordEnc ? deobfuscate(c.tlsCertificateKeyFilePasswordEnc) : "";
     readOnly = !!c.readOnly;
+    sshEnabled = !!c.sshEnabled;
+    sshHost = c.sshHost ?? "";
+    sshPort = c.sshPort ?? 22;
+    sshUser = c.sshUser ?? "";
+    sshAuthMethod = (c.sshAuthMethod as "password" | "key") || "password";
+    sshPassword = c.sshPasswordEnc ? deobfuscate(c.sshPasswordEnc) : "";
+    sshPrivateKeyPath = c.sshPrivateKeyPath ?? "";
+    sshPassphrase = c.sshPassphraseEnc ? deobfuscate(c.sshPassphraseEnc) : "";
     formError = null;
   }
 
   function importFromUri(uri: string) {
-    const { profile: p, password: pw } = parseUri(uri);
+    const { profile: p, password: pw, certKeyPassword } = parseUri(uri);
     loadProfile(p);
     password = pw;
+    tlsCertificateKeyFilePassword = certKeyPassword;
   }
 
-  /** Build and validate the URI. Returns `{ ok: true, uri }` or `{ ok: false }` (sets `error`). */
-  function connectTo(): { ok: true; uri: string } | { ok: false } {
+  /** Validates host/port/auth/SSH fields for connecting (not saving) — deliberately skips the
+   *  label-required check `validateProfile` also does, since ad-hoc connections have no label. */
+  function validateConnectFields(): string | null {
+    const vProfile = validateProfile(label.trim() || "untitled", profile());
+    if (!vProfile.ok) return vProfile.error;
+    const vSsh = validateSsh({
+      enabled: sshEnabled, host: sshHost, port: sshPort, user: sshUser,
+      authMethod: sshAuthMethod, privateKeyPath: sshPrivateKeyPath,
+    });
+    if (!vSsh.ok) return vSsh.error;
+    return null;
+  }
+
+  /** Build and validate the URI. Returns `{ ok: true, uri, ssh }` or `{ ok: false }` (sets `error`). */
+  function connectTo(): { ok: true; uri: string; ssh: SshConnectInput | null } | { ok: false } {
     error = null;
-    const uri = currentUri();
-    // Minimal sanity check: scheme and host must be present (buildProfileUri already did this).
-    if (!host.trim()) {
-      error = "Host is required.";
+    const validationError = validateConnectFields();
+    if (validationError) {
+      error = validationError;
       return { ok: false };
     }
-    return { ok: true, uri };
+    return { ok: true, uri: currentUri(), ssh: sshConnectInput() };
+  }
+
+  /** Validates the current form's connection (SSH tunnel + Mongo) without opening a session. */
+  async function testConnection(): Promise<
+    { ok: true } | { ok: false; kind: "ssh" | "mongo" | "validation"; message: string }
+  > {
+    const validationError = validateConnectFields();
+    if (validationError) {
+      return { ok: false, kind: "validation", message: validationError };
+    }
+    try {
+      await apiTestConnection(currentUri(), sshConnectInput());
+      return { ok: true };
+    } catch (e) {
+      const shape = e as { kind?: string; message?: string };
+      const kind = shape.kind === "SshTunnel" ? "ssh" : "mongo";
+      return { ok: false, kind, message: shape.message ?? errorMessage(e) };
+    }
   }
 
   return {
@@ -154,7 +240,7 @@ export function createConnectionRegistry() {
     get scheme() { return scheme; }, set scheme(v: string) { scheme = v as "mongodb" | "mongodb+srv"; },
     get host() { return host; }, set host(v: string) { host = v; },
     get port() { return port; }, set port(v: number | null) { port = v; },
-    get authMethod() { return authMethod; }, set authMethod(v: string) { authMethod = v as "none" | "password"; },
+    get authMethod() { return authMethod; }, set authMethod(v: string) { authMethod = v as ConnectionProfile["authMethod"]; },
     get user() { return user; }, set user(v: string) { user = v; },
     get password() { return password; }, set password(v: string) { password = v; },
     get authSource() { return authSource; }, set authSource(v: string) { authSource = v; },
@@ -162,6 +248,16 @@ export function createConnectionRegistry() {
     get tls() { return tls; }, set tls(v: boolean) { tls = v; },
     get extraOptions() { return extraOptions; }, set extraOptions(v: string) { extraOptions = v; },
     get readOnly() { return readOnly; }, set readOnly(v: boolean) { readOnly = v; },
-    load, save, remove, edit, clearForm, connectTo, importFromUri, currentUri,
+    get tlsCertificateKeyFile() { return tlsCertificateKeyFile; }, set tlsCertificateKeyFile(v: string) { tlsCertificateKeyFile = v; },
+    get tlsCertificateKeyFilePassword() { return tlsCertificateKeyFilePassword; }, set tlsCertificateKeyFilePassword(v: string) { tlsCertificateKeyFilePassword = v; },
+    get sshEnabled() { return sshEnabled; }, set sshEnabled(v: boolean) { sshEnabled = v; },
+    get sshHost() { return sshHost; }, set sshHost(v: string) { sshHost = v; },
+    get sshPort() { return sshPort; }, set sshPort(v: number | null) { sshPort = v; },
+    get sshUser() { return sshUser; }, set sshUser(v: string) { sshUser = v; },
+    get sshAuthMethod() { return sshAuthMethod; }, set sshAuthMethod(v: string) { sshAuthMethod = v as "password" | "key"; },
+    get sshPassword() { return sshPassword; }, set sshPassword(v: string) { sshPassword = v; },
+    get sshPrivateKeyPath() { return sshPrivateKeyPath; }, set sshPrivateKeyPath(v: string) { sshPrivateKeyPath = v; },
+    get sshPassphrase() { return sshPassphrase; }, set sshPassphrase(v: string) { sshPassphrase = v; },
+    load, save, remove, edit, clearForm, connectTo, importFromUri, currentUri, testConnection, toInput,
   };
 }

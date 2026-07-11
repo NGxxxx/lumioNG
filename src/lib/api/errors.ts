@@ -1,5 +1,5 @@
 export interface AppErrorShape {
-  kind: "Connection" | "Query" | "Serialize" | "Parse" | "Io" | "NotConnected";
+  kind: "Connection" | "SshTunnel" | "Query" | "Serialize" | "Parse" | "Io" | "NotConnected";
   message?: string;
 }
 

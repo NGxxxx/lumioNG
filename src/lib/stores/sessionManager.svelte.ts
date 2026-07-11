@@ -1,4 +1,5 @@
 import { connect, disconnect } from "../api/connection";
+import type { SshConnectInput } from "../api/connection";
 import { touchConnection } from "../api/connections";
 import { createNamespaceTree } from "./namespaceTree.svelte";
 import { createHostStatus } from "./hostStatus.svelte";
@@ -20,6 +21,7 @@ export type Session = {
   connId: number | null;
   uri: string;
   readOnly: boolean;
+  ssh: SshConnectInput | null;
   connectedAt: number | null;
   nav: SessionNav;
   tree: ReturnType<typeof createNamespaceTree>;
@@ -85,7 +87,7 @@ export function createSessionManager() {
     if (affected) nav?.bumpCollection(db, newColl);
   }
 
-  function makeSession(id: string, label: string, connId: number | null, uri: string, readOnly: boolean): Session {
+  function makeSession(id: string, label: string, connId: number | null, uri: string, readOnly: boolean, ssh: SshConnectInput | null): Session {
     const color = allocColor(sessions.map((s) => s.color));
     const nav = createSessionNav();
     const tree = createNamespaceTree(id, {
@@ -93,20 +95,20 @@ export function createSessionManager() {
       closeForDatabase: (db) => closeForDatabase(id, db),
       renameCollectionTabs: (db, oldColl, newColl) => renameCollectionTabs(id, db, oldColl, newColl),
     });
-    return { id, label, color, status: "connecting", connId, uri, readOnly, connectedAt: null, nav, tree, host: createHostStatus(id) };
+    return { id, label, color, status: "connecting", connId, uri, readOnly, ssh, connectedAt: null, nav, tree, host: createHostStatus(id) };
   }
 
-  async function focusOrOpen(p: { connId: number | null; uri: string; label: string; readOnly?: boolean }): Promise<boolean> {
+  async function focusOrOpen(p: { connId: number | null; uri: string; label: string; readOnly?: boolean; ssh?: SshConnectInput | null }): Promise<boolean> {
     const id = p.connId != null ? savedSessionId(p.connId) : adhocSessionId(++adhocSeq);
     const existing = sessions.find((s) => s.id === id);
     if (existing) { activeId = id; return true; }
     const label = p.connId != null ? p.label : adhocLabel(adhocSeq);
-    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false);
+    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null);
     sessions = [...sessions, s];
     activeId = id;
     try {
       await commandLog.pushTimed(connectCmd(maskUri(p.uri)), id, () =>
-        connect(id, p.uri, p.readOnly ?? false));
+        connect(id, p.uri, p.readOnly ?? false, p.ssh ?? null));
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });
       if (p.connId != null) touchConnection(p.connId).catch(() => {}); // non-critical metadata; never blocks connect
@@ -125,7 +127,7 @@ export function createSessionManager() {
     patchSession(id, { status: "connecting" });
     try {
       await commandLog.pushTimed(connectCmd(maskUri(s.uri)), id, () =>
-        connect(id, s.uri, s.readOnly));
+        connect(id, s.uri, s.readOnly, s.ssh));
       s.nav.setConnected(true);
       patchSession(id, { status: "connected", connectedAt: Date.now() });
       if (s.connId != null) touchConnection(s.connId).catch(() => {}); // non-critical metadata; never blocks connect

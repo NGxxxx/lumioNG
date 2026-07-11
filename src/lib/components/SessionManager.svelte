@@ -2,7 +2,9 @@
   import { onMount } from "svelte";
   import { createConnectionRegistry } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
+  import { openDialog } from "../api/files";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import TestConnectionDialog from "./TestConnectionDialog.svelte";
   import * as m from "$lib/paraglide/messages";
   import { appLocale } from "../stores/locale.svelte";
   import { relativeParts } from "../domain/recency";
@@ -11,7 +13,7 @@
     onconnected,
     onclose,
   }: {
-    onconnected: (c: { connId: number | null; label: string; uri: string; readOnly: boolean }) => Promise<boolean>;
+    onconnected: (c: { connId: number | null; label: string; uri: string; readOnly: boolean; ssh: import("../api/connection").SshConnectInput | null }) => Promise<boolean>;
     onclose: () => void;
   } = $props();
 
@@ -24,6 +26,28 @@
   // Distinct from r.error, which is validation/CRUD errors.
   let connectError = $state<string | null>(null);
   let confirmDelete = $state<SavedConnection | null>(null);
+
+  let activeTab = $state<"general" | "ssh">("general");
+  let testing = $state(false);
+  let testResult = $state<{ ok: true } | { ok: false; kind: "ssh" | "mongo" | "validation"; message: string } | null>(null);
+
+  async function pickCertFile() {
+    const path = await openDialog([{ name: "PEM", extensions: ["pem", "crt", "cer"] }]);
+    if (path) r.tlsCertificateKeyFile = path;
+  }
+  async function pickSshKeyFile() {
+    const path = await openDialog([{ name: "All files", extensions: ["*"] }]);
+    if (path) r.sshPrivateKeyPath = path;
+  }
+  async function doTest() {
+    testing = true;
+    testResult = null;
+    try {
+      testResult = await r.testConnection();
+    } finally {
+      testing = false;
+    }
+  }
 
   const filteredList = $derived(
     filterText.trim()
@@ -70,7 +94,7 @@
       const connLabel = r.label.trim() || result.uri;
       // Pass the saved connection's numeric id (null for ad-hoc connections with no saved record).
       const connId = selectedId !== null ? selectedId : (r.editingId ?? null);
-      const ok = await onconnected({ connId, label: connLabel, uri: result.uri, readOnly: r.readOnly });
+      const ok = await onconnected({ connId, label: connLabel, uri: result.uri, readOnly: r.readOnly, ssh: result.ssh });
       if (ok) onclose();
       else connectError = "Connection failed. Check your connection settings and try again.";
     } finally {
@@ -160,68 +184,149 @@
 
       <!-- Right column: form -->
       <div class="right-col">
-        <div class="form-grid">
-          <span class="form-label">{m.session_manager_label_session_name()}</span>
-          <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" aria-label={m.session_manager_col_name()} />
-
-          <span class="form-label">{m.session_manager_label_conn_type()}</span>
-          <select class="form-input" bind:value={r.scheme} aria-label={m.session_manager_label_conn_type()}>
-            <option value="mongodb">{m.session_manager_conn_direct()}</option>
-            <option value="mongodb+srv">{m.session_manager_conn_srv()}</option>
-          </select>
-
-          <span class="form-label">{m.session_manager_label_hostname()}</span>
-          <input class="form-input mono" bind:value={r.host} placeholder="localhost" aria-label={m.session_manager_label_hostname()} />
-
-          <span class="form-label">{m.session_manager_label_port()}</span>
-          <input
-            class="form-input mono short"
-            type="number"
-            bind:value={r.port}
-            disabled={r.scheme === "mongodb+srv"}
-            placeholder="27017"
-            aria-label={m.session_manager_label_port()}
-          />
-
-          <span class="form-label">{m.session_manager_label_auth()}</span>
-          <select class="form-input" bind:value={r.authMethod} aria-label={m.session_manager_label_auth()}>
-            <option value="none">{m.session_manager_auth_none()}</option>
-            <option value="password">{m.session_manager_auth_password()}</option>
-          </select>
-
-          <span class="form-label">{m.session_manager_label_user()}</span>
-          <input class="form-input" bind:value={r.user} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_user()} />
-
-          <span class="form-label">{m.session_manager_label_password()}</span>
-          <input class="form-input" type="password" bind:value={r.password} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_password()} />
-
-          <span class="form-label">{m.session_manager_label_auth_db()}</span>
-          <input class="form-input mono" bind:value={r.authSource} placeholder="admin" aria-label={m.session_manager_label_auth_db()} />
-
-          <span class="form-label">{m.session_manager_label_replica_set()}</span>
-          <input class="form-input mono" bind:value={r.replicaSet} placeholder="(optional)" aria-label={m.session_manager_label_replica_set()} />
-
-          <span class="form-label">{m.session_manager_label_tls()}</span>
-          <label class="form-check">
-            <input type="checkbox" bind:checked={r.tls} aria-label={m.session_manager_label_tls()} />
-            <span>{m.session_manager_tls_enable()}</span>
-          </label>
-
-          <span class="form-label">{m.session_manager_label_readonly()}</span>
-          <label class="form-check">
-            <input type="checkbox" bind:checked={r.readOnly} aria-label={m.session_manager_label_readonly()} />
-            <span>{m.session_manager_readonly_enable()}</span>
-          </label>
-
-          <span class="form-label">{m.session_manager_label_extra()}</span>
-          <input class="form-input mono" bind:value={r.extraOptions} placeholder="readPreference=secondary&appName=x" aria-label={m.session_manager_label_extra()} />
-
-          <span class="form-label">{m.session_manager_label_import_uri()}</span>
-          <div class="import-row">
-            <input class="form-input mono" bind:value={importUri} placeholder="paste a mongodb:// URI" aria-label={m.session_manager_label_import_uri()} />
-            <button type="button" class="import-btn" onclick={doImport}>{m.session_manager_import_btn()}</button>
-          </div>
+        <div class="view-toggle">
+          <button type="button" class="toggle-btn" class:toggle-active={activeTab === "general"} onclick={() => (activeTab = "general")}>
+            {m.session_manager_tab_general()}
+          </button>
+          <button type="button" class="toggle-btn" class:toggle-active={activeTab === "ssh"} onclick={() => (activeTab = "ssh")}>
+            {m.session_manager_tab_ssh()}
+          </button>
         </div>
+
+        {#if activeTab === "general"}
+          <div class="form-grid">
+            <span class="form-label">{m.session_manager_label_session_name()}</span>
+            <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" aria-label={m.session_manager_col_name()} />
+
+            <span class="form-label">{m.session_manager_label_conn_type()}</span>
+            <select class="form-input" bind:value={r.scheme} aria-label={m.session_manager_label_conn_type()}>
+              <option value="mongodb">{m.session_manager_conn_direct()}</option>
+              {#if !r.sshEnabled}
+                <option value="mongodb+srv">{m.session_manager_conn_srv()}</option>
+              {/if}
+            </select>
+
+            <span class="form-label">{m.session_manager_label_hostname()}</span>
+            <input class="form-input mono" bind:value={r.host} placeholder="localhost" aria-label={m.session_manager_label_hostname()} />
+
+            <span class="form-label">{m.session_manager_label_port()}</span>
+            <input
+              class="form-input mono short"
+              type="number"
+              bind:value={r.port}
+              disabled={r.scheme === "mongodb+srv"}
+              placeholder="27017"
+              aria-label={m.session_manager_label_port()}
+            />
+
+            <span class="form-label">{m.session_manager_label_auth()}</span>
+            <select class="form-input" bind:value={r.authMethod} aria-label={m.session_manager_label_auth()}>
+              <option value="none">{m.session_manager_auth_none()}</option>
+              <option value="password">{m.session_manager_auth_password()}</option>
+              <option value="x509">{m.session_manager_auth_x509()}</option>
+              <option value="ldap">{m.session_manager_auth_ldap()}</option>
+            </select>
+
+            {#if r.authMethod !== "x509"}
+              <span class="form-label">{m.session_manager_label_user()}</span>
+              <input class="form-input" bind:value={r.user} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_user()} />
+
+              <span class="form-label">{m.session_manager_label_password()}</span>
+              <input class="form-input" type="password" bind:value={r.password} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_password()} />
+            {:else}
+              <span class="form-label">{m.session_manager_label_cert_file()}</span>
+              <div class="import-row">
+                <input class="form-input mono" readonly value={r.tlsCertificateKeyFile} aria-label={m.session_manager_label_cert_file()} />
+                <button type="button" class="import-btn" onclick={pickCertFile}>{m.session_manager_btn_choose_file()}</button>
+              </div>
+
+              <span class="form-label">{m.session_manager_label_cert_passphrase()}</span>
+              <input class="form-input" type="password" bind:value={r.tlsCertificateKeyFilePassword} aria-label={m.session_manager_label_cert_passphrase()} />
+            {/if}
+
+            <span class="form-label">{m.session_manager_label_auth_db()}</span>
+            <input
+              class="form-input mono"
+              value={r.authMethod === "ldap" ? "$external" : r.authSource}
+              oninput={(e) => { r.authSource = e.currentTarget.value; }}
+              disabled={r.authMethod === "x509" || r.authMethod === "ldap"}
+              placeholder="admin"
+              aria-label={m.session_manager_label_auth_db()}
+            />
+
+            <span class="form-label">{m.session_manager_label_replica_set()}</span>
+            <input class="form-input mono" bind:value={r.replicaSet} disabled={r.sshEnabled} title={r.sshEnabled ? m.session_manager_tooltip_ssh_lock() : undefined} placeholder="(optional)" aria-label={m.session_manager_label_replica_set()} />
+
+            <span class="form-label">{m.session_manager_label_tls()}</span>
+            <label class="form-check">
+              <input
+                type="checkbox"
+                checked={r.tls || r.authMethod === "x509" || r.authMethod === "ldap"}
+                onchange={(e) => { r.tls = e.currentTarget.checked; }}
+                disabled={r.authMethod === "x509" || r.authMethod === "ldap"}
+                aria-label={m.session_manager_label_tls()}
+              />
+              <span>{m.session_manager_tls_enable()}</span>
+            </label>
+
+            <span class="form-label">{m.session_manager_label_readonly()}</span>
+            <label class="form-check">
+              <input type="checkbox" bind:checked={r.readOnly} aria-label={m.session_manager_label_readonly()} />
+              <span>{m.session_manager_readonly_enable()}</span>
+            </label>
+
+            <span class="form-label">{m.session_manager_label_extra()}</span>
+            <input class="form-input mono" bind:value={r.extraOptions} placeholder="readPreference=secondary&appName=x" aria-label={m.session_manager_label_extra()} />
+
+            <span class="form-label">{m.session_manager_label_import_uri()}</span>
+            <div class="import-row">
+              <input class="form-input mono" bind:value={importUri} placeholder="paste a mongodb:// URI" aria-label={m.session_manager_label_import_uri()} />
+              <button type="button" class="import-btn" onclick={doImport}>{m.session_manager_import_btn()}</button>
+            </div>
+          </div>
+        {:else}
+          <div class="form-grid">
+            <span class="form-label">{m.session_manager_ssh_enable()}</span>
+            <label class="form-check">
+              <input type="checkbox" bind:checked={r.sshEnabled} aria-label={m.session_manager_ssh_enable()} />
+              <span>{m.session_manager_ssh_enable()}</span>
+            </label>
+
+            {#if r.sshEnabled}
+              <span class="form-label"></span>
+              <div class="form-notice">{m.session_manager_ssh_notice()}</div>
+
+              <span class="form-label">{m.session_manager_label_ssh_host()}</span>
+              <input class="form-input mono" bind:value={r.sshHost} aria-label={m.session_manager_label_ssh_host()} />
+
+              <span class="form-label">{m.session_manager_label_ssh_port()}</span>
+              <input class="form-input mono short" type="number" bind:value={r.sshPort} placeholder="22" aria-label={m.session_manager_label_ssh_port()} />
+
+              <span class="form-label">{m.session_manager_label_ssh_user()}</span>
+              <input class="form-input" bind:value={r.sshUser} aria-label={m.session_manager_label_ssh_user()} />
+
+              <span class="form-label">{m.session_manager_label_ssh_auth()}</span>
+              <select class="form-input" bind:value={r.sshAuthMethod} aria-label={m.session_manager_label_ssh_auth()}>
+                <option value="password">{m.session_manager_ssh_auth_password()}</option>
+                <option value="key">{m.session_manager_ssh_auth_key()}</option>
+              </select>
+
+              {#if r.sshAuthMethod === "password"}
+                <span class="form-label">{m.session_manager_label_ssh_password()}</span>
+                <input class="form-input" type="password" bind:value={r.sshPassword} aria-label={m.session_manager_label_ssh_password()} />
+              {:else}
+                <span class="form-label">{m.session_manager_label_ssh_key_file()}</span>
+                <div class="import-row">
+                  <input class="form-input mono" readonly value={r.sshPrivateKeyPath} aria-label={m.session_manager_label_ssh_key_file()} />
+                  <button type="button" class="import-btn" onclick={pickSshKeyFile}>{m.session_manager_btn_choose_file()}</button>
+                </div>
+
+                <span class="form-label">{m.session_manager_label_ssh_passphrase()}</span>
+                <input class="form-input" type="password" bind:value={r.sshPassphrase} aria-label={m.session_manager_label_ssh_passphrase()} />
+              {/if}
+            {/if}
+          </div>
+        {/if}
 
         {#if r.formError}
           <div class="form-error">{r.formError}</div>
@@ -234,6 +339,10 @@
         {/if}
       </div>
     </div>
+
+    {#if testResult}
+      <TestConnectionDialog result={testResult} onclose={() => (testResult = null)} />
+    {/if}
 
     <!-- Footer -->
     <div class="footer">
@@ -253,6 +362,13 @@
         </button>
       </div>
       <div class="footer-right">
+        <button
+          class="foot-btn"
+          onclick={doTest}
+          disabled={testing || !r.host.trim()}
+        >
+          {testing ? m.session_manager_testing() : m.session_manager_btn_test()}
+        </button>
         <button
           class="foot-btn open-btn"
           onclick={openSession}
@@ -461,6 +577,20 @@
     overflow: auto;
   }
 
+  /* ── General / SSH Tunnel tabs ── */
+  .view-toggle { display: flex; align-items: center; gap: 0.0625rem; margin-bottom: 0.75rem; }
+  .toggle-btn {
+    display: flex; align-items: center; height: 1.375rem; padding: 0 0.75rem;
+    font-size: 0.75rem; border: 1px solid var(--gray-c4); background: var(--bg);
+    cursor: pointer; color: var(--gray-44); border-radius: 0.125rem;
+  }
+  .toggle-btn:hover { background: var(--cell-border); }
+  .toggle-active {
+    background: var(--hover);
+    box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
+    color: var(--tab-active-fg);
+  }
+
   /* ── Form grid & inputs ── */
   .form-grid {
     display: grid;
@@ -508,7 +638,15 @@
     color: var(--error);
     font-size: 0.75rem;
   }
-
+  .form-notice {
+    margin-top: 0.625rem;
+    padding: 0.375rem 0.5rem;
+    background: var(--warn-bg);
+    border: 1px solid var(--warn);
+    border-radius: 0.1875rem;
+    color: var(--fg);
+    font-size: 0.75rem;
+  }
   /* ── Footer ── */
   .footer {
     display: flex;

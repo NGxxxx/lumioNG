@@ -20,7 +20,10 @@ function saved(over: Partial<SavedConnection> = {}): SavedConnection {
   return {
     id: 1, label: "Local", scheme: "mongodb", host: "localhost", port: 27017,
     authMethod: "none", user: "", passwordEnc: "", authSource: "", replicaSet: "",
-    tls: false, extraOptions: "", readOnly: false, ...over,
+    tls: false, extraOptions: "", readOnly: false,
+    tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "",
+    sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
+    sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", ...over,
   };
 }
 
