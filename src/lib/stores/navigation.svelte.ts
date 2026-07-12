@@ -2,7 +2,7 @@ import type { Doc } from "../domain/doc";
 
 export type ContextKind = "host" | "database" | "collection" | "data";
 export type CollectionSection = "info" | "indexes" | "schema";
-export type HostSection = "info" | "currentOps";
+export type HostSection = "info" | "currentOps" | "users";
 
 export type DocumentTab = {
   id: number;

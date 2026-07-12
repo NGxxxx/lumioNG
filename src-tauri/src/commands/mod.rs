@@ -7,3 +7,4 @@ pub mod query;
 pub mod script;
 pub mod server;
 pub mod stats;
+pub mod users;

@@ -5,6 +5,7 @@
   import { maskUri } from "../domain/uri";
   import type { HostSection } from "../stores/navigation.svelte";
   import CurrentOpsPanel from "./CurrentOpsPanel.svelte";
+  import UsersRolesPanel from "./UsersRolesPanel.svelte";
   import * as m from "$lib/paraglide/messages";
 
   let { connection }: { connection: { label: string; uri: string } | null } = $props();
@@ -21,6 +22,7 @@
   <div class="subtabs">
     <button class:active={section === "info"} onclick={() => setSection("info")}>{m.host_tab_info()}</button>
     <button class:active={section === "currentOps"} onclick={() => setSection("currentOps")}>{m.host_tab_current_ops()}</button>
+    <button class:active={section === "users"} onclick={() => setSection("users")}>{m.host_tab_users_roles()}</button>
   </div>
   <div class="subpane">
     {#if section === "info"}
@@ -54,8 +56,10 @@
           </table>
         {/if}
       </div>
-    {:else}
+    {:else if section === "currentOps"}
       <CurrentOpsPanel />
+    {:else}
+      <UsersRolesPanel />
     {/if}
   </div>
 </div>

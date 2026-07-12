@@ -35,6 +35,28 @@ vi.mock("../stores/currentOps.svelte", () => ({
   }),
 }));
 
+vi.mock("../stores/usersRoles.svelte", () => ({
+  createUsersRolesView: () => ({
+    users: [],
+    usersError: null,
+    usersLoading: false,
+    roles: [],
+    rolesError: null,
+    rolesLoading: false,
+    rolesDb: "admin",
+    init: vi.fn(),
+    loadUsers: vi.fn(),
+    loadRoles: vi.fn(),
+    createUser: vi.fn(),
+    updateUserRoles: vi.fn(),
+    changeUserPassword: vi.fn(),
+    dropUser: vi.fn(),
+    createRole: vi.fn(),
+    updateRole: vi.fn(),
+    dropRole: vi.fn(),
+  }),
+}));
+
 import HostTab from "./HostTab.svelte";
 
 describe("HostTab", () => {
@@ -78,5 +100,15 @@ describe("HostTab", () => {
     expect(queryByText("No active operations.")).toBeNull();
     await fireEvent.click(getByText("Current Operations"));
     expect(getByText("No active operations.")).toBeTruthy();
+  });
+
+  it("clicking Users & Roles switches the sub-pane", async () => {
+    mockInfo = null;
+    const { getByText, getByRole } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
+    await fireEvent.click(getByText("Users & Roles"));
+    expect(getByRole("button", { name: "Users" })).toBeTruthy();
+    // Scoped to role="button": UserList's "Roles" table column header is also on
+    // screen once the Users & Roles panel mounts (defaults to its Users sub-tab).
+    expect(getByRole("button", { name: "Roles" })).toBeTruthy();
   });
 });

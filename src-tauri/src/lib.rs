@@ -65,6 +65,15 @@ pub fn run() {
             commands::server::kill_op,
             commands::script::run_script,
             commands::script::cancel_script,
+            commands::users::list_users,
+            commands::users::create_user,
+            commands::users::update_user_roles,
+            commands::users::change_user_password,
+            commands::users::drop_user,
+            commands::users::list_roles,
+            commands::users::create_role,
+            commands::users::update_role,
+            commands::users::drop_role,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

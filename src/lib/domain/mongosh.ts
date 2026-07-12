@@ -87,3 +87,39 @@ export const listDatabasesCmd = () => "show dbs";
 
 export const findOneByIdCmd = (coll: string, idJson: string) =>
   `${c(coll)}.findOne({ "_id": ${idJson} })`;
+
+const sib = (db: string) => `db.getSiblingDB("${db}")`;
+
+export const listUsersCmd = () =>
+  `db.getSiblingDB("admin").runCommand({ usersInfo: 1, forAllDBs: true })`;
+
+export const createUserCmd = (db: string, username: string, rolesJson: string) =>
+  `${sib(db)}.createUser({ user: "${username}", pwd: "***", roles: ${rolesJson} })`;
+
+export const updateUserRolesCmd = (db: string, username: string, rolesJson: string) =>
+  `${sib(db)}.updateUser("${username}", { roles: ${rolesJson} })`;
+
+export const changeUserPasswordCmd = (db: string, username: string) =>
+  `${sib(db)}.updateUser("${username}", { pwd: "***" })`;
+
+export const dropUserCmd = (db: string, username: string) => `${sib(db)}.dropUser("${username}")`;
+
+export const listRolesCmd = (db: string) =>
+  `${sib(db)}.runCommand({ rolesInfo: 1, showPrivileges: true, showBuiltinRoles: true })`;
+
+export const createRoleCmd = (
+  db: string,
+  roleName: string,
+  privilegesJson: string,
+  rolesJson: string,
+) => `${sib(db)}.createRole({ role: "${roleName}", privileges: ${privilegesJson}, roles: ${rolesJson} })`;
+
+export const updateRoleCmd = (
+  db: string,
+  roleName: string,
+  privilegesJson: string,
+  rolesJson: string,
+) => `${sib(db)}.updateRole("${roleName}", { privileges: ${privilegesJson}, roles: ${rolesJson} })`;
+
+export const dropRoleCmd = (db: string, roleName: string) =>
+  `${sib(db)}.dropRole("${roleName}")`;

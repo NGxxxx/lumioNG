@@ -98,3 +98,12 @@ describe("session nav collection versions", () => {
     expect(n.collectionVersion("db", "b")).toBe(0); // independent
   });
 });
+
+describe("host section", () => {
+  it("defaults to info and can switch to users", () => {
+    const n = createSessionNav();
+    expect(n.hostSection).toBe("info");
+    n.setHostSection("users");
+    expect(n.hostSection).toBe("users");
+  });
+});
