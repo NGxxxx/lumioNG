@@ -48,8 +48,7 @@
             <td class="v">{o.ns ?? "—"}</td>
             <td class="v">{o.client ?? "—"}</td>
             <td class="v">
-              {o.appName ?? "—"}
-              {#if own}<span class="you">{m.current_ops_you()}</span>{/if}
+              {#if own}<span class="you">{m.current_ops_you()}</span>{:else}{o.appName ?? "—"}{/if}
             </td>
             <td>
               <button

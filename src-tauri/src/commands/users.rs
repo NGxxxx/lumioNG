@@ -22,11 +22,12 @@ pub async fn list_users(
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
     // usersInfo has no cursor form — the whole response (with its `users` array) comes back as
-    // one document, same shape as `currentOp` in commands/server.rs. `forAllDBs: true` makes
-    // this cluster-wide regardless of which db context we run it on.
+    // one document, same shape as `currentOp` in commands/server.rs. `forAllDBs` must be nested
+    // inside the `usersInfo` argument itself (not a sibling field) — the server rejects
+    // { usersInfo: 1, forAllDBs: true } with "unknown field 'usersInfo.forAllDBs'".
     let resp = client
         .database("admin")
-        .run_command(doc! { "usersInfo": 1, "forAllDBs": true })
+        .run_command(doc! { "usersInfo": { "forAllDBs": true } })
         .await?;
     doc_to_canonical_string(resp)
 }

@@ -226,7 +226,9 @@
         <!-- Mount only the active context pane (lazy): eager mounting fired every pane's queries at once on each switch, wedging the connection. -->
         {#if active?.zone === "context" && active.kind === "host"}
           <div class="tabpane">
-            <HostTab connection={shell.connection} />
+            {#key sm.activeId}
+              <HostTab connection={shell.connection} />
+            {/key}
           </div>
         {/if}
         {#if active?.zone === "context" && active.kind === "database" && sel}

@@ -13,7 +13,6 @@
     type CompletionSource,
   } from "@codemirror/autocomplete";
   import { javascript } from "@codemirror/lang-javascript";
-  import { js_beautify as beautifyJs } from "js-beautify/js/lib/beautify.js";
   import { appEditorTheme } from "../domain/cmTheme";
 
   let { value, onChange, onSelectionChange, onRun, complete, readonly = false }: {
@@ -108,7 +107,10 @@
   }
 
   // Pretty-prints the whole document (js-beautify) so one-liner queries get expanded into readable multi-line code.
-  export function format() {
+  // js-beautify (~150kB) is lazy-loaded here so it doesn't ship in the main bundle for users who never click Format.
+  export async function format() {
+    if (!view) return;
+    const { js_beautify: beautifyJs } = await import("js-beautify/js/lib/beautify.js");
     if (!view) return;
     const current = view.state.doc.toString();
     const formatted = beautifyJs(current, {

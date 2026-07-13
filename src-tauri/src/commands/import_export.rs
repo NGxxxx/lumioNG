@@ -83,62 +83,120 @@ fn summarize_import(inserted: u64, mut errors: Vec<String>) -> ImportResult {
     ImportResult { inserted, failed, errors }
 }
 
-/// Parse concatenated BSON documents (mongodump-style) until EOF.
-fn read_bson_docs(mut bytes: &[u8]) -> Result<Vec<Document>, AppError> {
-    let mut out = Vec::new();
-    while !bytes.is_empty() {
-        let d = Document::from_reader(&mut bytes).map_err(|e| AppError::Parse(e.to_string()))?;
-        out.push(d);
-    }
-    Ok(out)
-}
-
-/// Insert pre-parsed docs unordered in `PROGRESS_BATCH`-sized chunks, remapping write-errors back to raw file indices; `total` includes parse failures so progress reflects the whole file.
-async fn insert_parsed(
+/// Insert one already-parsed batch, remapping write-errors back to each doc's original raw file index (`raw_idx[k]` = file index of `batch[k]`).
+async fn insert_batch(
     collection: &mongodb::Collection<Document>,
-    parsed: Vec<Document>,
-    parsed_raw_idx: Vec<usize>,
-    mut errors: Vec<String>,
-    total: u64,
-    on_progress: &Channel<ExportProgress>,
-) -> ImportResult {
-    let mut inserted: u64 = 0;
-    let mut done: u64 = total - parsed.len() as u64; // docs that already failed to parse
-    let mut start = 0;
-    while start < parsed.len() {
-        let end = (start + PROGRESS_BATCH as usize).min(parsed.len());
-        let chunk: Vec<Document> = parsed[start..end].to_vec();
-        let chunk_raw_idx = &parsed_raw_idx[start..end];
-        let chunk_len = chunk.len() as u64;
-        match collection.insert_many(chunk).ordered(false).await {
-            Ok(res) => inserted += res.inserted_ids.len() as u64,
-            Err(e) => {
-                let write_errors = match &*e.kind {
-                    ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
-                    _ => None,
-                };
-                match write_errors {
-                    Some(we) => {
-                        for w in &we {
-                            let raw = chunk_raw_idx.get(w.index).copied().unwrap_or(w.index);
-                            errors.push(format!("doc#{raw}: {}", w.message));
-                        }
-                        inserted += chunk_len.saturating_sub(we.len() as u64);
+    batch: Vec<Document>,
+    raw_idx: &[usize],
+    inserted: &mut u64,
+    errors: &mut Vec<String>,
+) {
+    let batch_len = batch.len() as u64;
+    match collection.insert_many(batch).ordered(false).await {
+        Ok(res) => *inserted += res.inserted_ids.len() as u64,
+        Err(e) => {
+            let write_errors = match &*e.kind {
+                ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
+                _ => None,
+            };
+            match write_errors {
+                Some(we) => {
+                    for w in &we {
+                        let raw = raw_idx.get(w.index).copied().unwrap_or(w.index);
+                        errors.push(format!("doc#{raw}: {}", w.message));
                     }
-                    None => {
-                        // Plan-mandated: non-write errors are recorded into `errors`, not propagated (keeps the helper infallible and consistent with BSON import).
-                        errors.push(e.to_string());
-                    }
+                    *inserted += batch_len.saturating_sub(we.len() as u64);
+                }
+                None => {
+                    // Plan-mandated: non-write errors are recorded into `errors`, not propagated (keeps the helper infallible and consistent with BSON import).
+                    errors.push(e.to_string());
                 }
             }
         }
-        done += chunk_len;
-        start = end;
+    }
+}
+
+/// Parse and insert already-split ExtJSON doc strings in `PROGRESS_BATCH`-sized chunks, so at most one
+/// batch's worth of parsed BSON is held in memory at a time (a large import file no longer holds every
+/// parsed document simultaneously — same OOM class as the QuickJS unbounded-batch bug, see
+/// bugfix-2026-07-08 memory).
+async fn parse_and_insert(
+    collection: &mongodb::Collection<Document>,
+    raw_docs: &[String],
+    on_progress: &Channel<ExportProgress>,
+) -> ImportResult {
+    let total = raw_docs.len() as u64;
+    let mut inserted: u64 = 0;
+    let mut errors: Vec<String> = Vec::new();
+    let mut done: u64 = 0;
+
+    for chunk in raw_docs.chunks(PROGRESS_BATCH as usize) {
+        let raw_start = done as usize;
+        let mut parsed: Vec<Document> = Vec::with_capacity(chunk.len());
+        let mut raw_idx: Vec<usize> = Vec::with_capacity(chunk.len());
+        for (i, s) in chunk.iter().enumerate() {
+            match canonical_string_to_doc(s) {
+                Ok(d) => {
+                    parsed.push(d);
+                    raw_idx.push(raw_start + i);
+                }
+                Err(e) => errors.push(format!("doc#{}: {e}", raw_start + i)),
+            }
+        }
+        if !parsed.is_empty() {
+            insert_batch(collection, parsed, &raw_idx, &mut inserted, &mut errors).await;
+        }
+        done += chunk.len() as u64;
         let _ = on_progress.send(ExportProgress { done, total });
     }
-    // Final send in case every doc failed to parse (loop above never runs).
-    let _ = on_progress.send(ExportProgress { done, total });
     summarize_import(inserted, errors)
+}
+
+/// Count concatenated BSON documents (mongodump-style) without deserializing them — each document starts
+/// with a little-endian i32 total length, so we can skip over it to find the next boundary.
+fn count_bson_docs(mut bytes: &[u8]) -> Result<u64, AppError> {
+    let mut n = 0u64;
+    while !bytes.is_empty() {
+        if bytes.len() < 4 {
+            return Err(AppError::Parse("truncated BSON document".into()));
+        }
+        let len = i32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+        if len < 4 || len > bytes.len() {
+            return Err(AppError::Parse("invalid BSON document length".into()));
+        }
+        bytes = &bytes[len..];
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// Parse and insert concatenated BSON documents (mongodump-style) in `PROGRESS_BATCH`-sized chunks, so at
+/// most one batch's worth of parsed docs is held in memory at a time.
+async fn parse_and_insert_bson(
+    collection: &mongodb::Collection<Document>,
+    bytes: &[u8],
+    on_progress: &Channel<ExportProgress>,
+) -> Result<ImportResult, AppError> {
+    let total = count_bson_docs(bytes)?;
+    let mut cursor = bytes;
+    let mut inserted: u64 = 0;
+    let mut errors: Vec<String> = Vec::new();
+    let mut done: u64 = 0;
+
+    while !cursor.is_empty() {
+        let batch_start = done as usize;
+        let mut batch: Vec<Document> = Vec::new();
+        while batch.len() < PROGRESS_BATCH as usize && !cursor.is_empty() {
+            let d = Document::from_reader(&mut cursor).map_err(|e| AppError::Parse(e.to_string()))?;
+            batch.push(d);
+        }
+        let batch_len = batch.len();
+        let raw_idx: Vec<usize> = (batch_start..batch_start + batch_len).collect();
+        insert_batch(collection, batch, &raw_idx, &mut inserted, &mut errors).await;
+        done += batch_len as u64;
+        let _ = on_progress.send(ExportProgress { done, total });
+    }
+    Ok(summarize_import(inserted, errors))
 }
 
 #[tauri::command]
@@ -159,28 +217,18 @@ pub async fn import_documents(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
-    let content = std::fs::read_to_string(&path).map_err(|e| AppError::Io(e.to_string()))?;
-    let raw_docs = split_import(&content)?;
-    let total = raw_docs.len() as u64;
-
-    let mut errors: Vec<String> = Vec::new();
-    let mut parsed: Vec<Document> = Vec::new();
-    // Parallel vec: parsed_raw_idx[k] = index in raw_docs of the k-th successfully-parsed doc.
-    let mut parsed_raw_idx: Vec<usize> = Vec::new();
-    for (i, s) in raw_docs.iter().enumerate() {
-        match canonical_string_to_doc(s) {
-            Ok(d) => {
-                parsed.push(d);
-                parsed_raw_idx.push(i);
-            }
-            Err(e) => errors.push(format!("doc#{i}: {e}")),
-        }
-    }
+    // Sync file I/O runs on a blocking thread so it doesn't stall the tokio worker other sessions share.
+    let raw_docs = tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
+        let content = std::fs::read_to_string(&path).map_err(|e| AppError::Io(e.to_string()))?;
+        split_import(&content)
+    })
+    .await
+    .map_err(|e| AppError::Io(e.to_string()))??;
 
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, errors, total, &on_progress).await)
+    Ok(parse_and_insert(&collection, &raw_docs, &on_progress).await)
 }
 
 #[tauri::command]
@@ -299,14 +347,16 @@ pub async fn import_bson(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
-    let bytes = std::fs::read(&path).map_err(|e| AppError::Io(e.to_string()))?;
-    let parsed = read_bson_docs(&bytes)?;
-    let total = parsed.len() as u64;
-    let parsed_raw_idx: Vec<usize> = (0..parsed.len()).collect();
+    let bytes = tokio::task::spawn_blocking(move || {
+        std::fs::read(&path).map_err(|e| AppError::Io(e.to_string()))
+    })
+    .await
+    .map_err(|e| AppError::Io(e.to_string()))??;
+
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    Ok(insert_parsed(&collection, parsed, parsed_raw_idx, Vec::new(), total, &on_progress).await)
+    parse_and_insert_bson(&collection, &bytes, &on_progress).await
 }
 
 #[cfg(test)]
@@ -371,16 +421,36 @@ mod tests {
     }
 
     #[test]
-    fn read_bson_docs_roundtrips_concatenation() {
+    fn count_bson_docs_counts_concatenated_documents() {
         use mongodb::bson::doc;
         let a = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
         let b = mongodb::bson::to_vec(&doc! {"b": 2}).unwrap();
         let mut buf = a.clone();
         buf.extend_from_slice(&b);
-        let docs = read_bson_docs(&buf).unwrap();
-        assert_eq!(docs.len(), 2);
-        assert_eq!(docs[0].get_i32("a").unwrap(), 1);
-        assert_eq!(docs[1].get_i32("b").unwrap(), 2);
+        assert_eq!(count_bson_docs(&buf).unwrap(), 2);
+    }
+
+    #[test]
+    fn count_bson_docs_rejects_truncated_buffer() {
+        use mongodb::bson::doc;
+        let a = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
+        let truncated = &a[..a.len() - 2];
+        assert!(matches!(count_bson_docs(truncated), Err(AppError::Parse(_))));
+    }
+
+    #[test]
+    fn parsed_bson_docs_roundtrip_via_document_from_reader() {
+        use mongodb::bson::doc;
+        let a = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
+        let b = mongodb::bson::to_vec(&doc! {"b": 2}).unwrap();
+        let mut buf = a.clone();
+        buf.extend_from_slice(&b);
+        let mut cursor: &[u8] = &buf;
+        let first = Document::from_reader(&mut cursor).unwrap();
+        let second = Document::from_reader(&mut cursor).unwrap();
+        assert_eq!(first.get_i32("a").unwrap(), 1);
+        assert_eq!(second.get_i32("b").unwrap(), 2);
+        assert!(cursor.is_empty());
     }
 
     #[test]

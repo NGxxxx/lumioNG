@@ -2,6 +2,7 @@ use crate::error::AppError;
 use crate::registry::{self, ConnectionInput, SavedConnection};
 use crate::ssh_tunnel::{self, SshTunnelConfig, SshTunnelHandle};
 use crate::state::AppState;
+use futures::future::try_join_all;
 use mongodb::bson::doc;
 use mongodb::options::{ClientOptions, ServerAddress};
 use mongodb::Client;
@@ -97,15 +98,18 @@ pub async fn list_namespaces(
     let client = state.client(&session_id).await?;
 
     let db_names = client.list_database_names().await?;
-    let mut out = Vec::new();
-    for name in db_names {
-        if SYSTEM_DBS.contains(&name.as_str()) {
-            continue;
-        }
-        let collections = client.database(&name).list_collection_names().await?;
-        out.push(DbInfo { name, collections });
-    }
-    Ok(out)
+    // Fetch each database's collection list concurrently instead of one round trip at a time.
+    let fetches = db_names
+        .into_iter()
+        .filter(|name| !SYSTEM_DBS.contains(&name.as_str()))
+        .map(|name| {
+            let client = client.clone();
+            async move {
+                let collections = client.database(&name).list_collection_names().await?;
+                Ok::<DbInfo, AppError>(DbInfo { name, collections })
+            }
+        });
+    try_join_all(fetches).await
 }
 
 fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {

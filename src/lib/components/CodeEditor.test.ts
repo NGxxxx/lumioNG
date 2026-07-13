@@ -28,23 +28,23 @@ describe("CodeEditor", () => {
     expect(container.querySelector(".cm-editor")).toBeFalsy();
   });
 
-  it("format() pretty-prints a one-liner query into multiple readable lines", () => {
+  it("format() pretty-prints a one-liner query into multiple readable lines", async () => {
     const onChange = vi.fn();
     const { container, component } = render(CodeEditor, {
       props: { value: 'db.users.find({name:"John",age:{$gt:18}})', onChange },
     });
-    component.format();
+    await component.format();
     const lines = Array.from(container.querySelectorAll(".cm-line")).map((l) => l.textContent);
     expect(lines.length).toBeGreaterThan(1);
     expect(onChange).toHaveBeenCalled();
   });
 
-  it("format() reindents already-multiline code without altering its structure", () => {
+  it("format() reindents already-multiline code without altering its structure", async () => {
     const badlyIndented = "function f() {\nconsole.log(1);\n  if (true) {\nconsole.log(2);\n}\n}";
     const { container, component } = render(CodeEditor, {
       props: { value: badlyIndented, onChange: vi.fn() },
     });
-    component.format();
+    await component.format();
     const lines = Array.from(container.querySelectorAll(".cm-line")).map((l) => l.textContent);
     expect(lines).toEqual([
       "function f() {",
