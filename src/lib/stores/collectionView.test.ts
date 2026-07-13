@@ -1029,7 +1029,10 @@ describe("selection-aware context menu", () => {
 
   async function withTwoDocs() {
     cnt.mockResolvedValueOnce(2);
-    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }, { _id: { $oid: "b" }, x: 2 }]);
+    qp.mockResolvedValueOnce([
+      { _id: { $oid: "a" }, x: 1, address: { city: "Hanoi", geo: { lat: 21 } } },
+      { _id: { $oid: "b" }, x: 2 },
+    ]);
     samp.mockResolvedValueOnce([]);
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
@@ -1106,6 +1109,26 @@ describe("selection-aware context menu", () => {
     v.openMenu(ev(), 0, "_id");
     v.onMenuSelect("copyValue");
     expect(writeText).toHaveBeenCalledWith("a"); // not {"$oid":"a"}
+  });
+
+  it("copyValue copies full JSON for container values", async () => {
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    const v = await withTwoDocs();
+    v.openMenu(ev(), 0, "address");
+    v.onMenuSelect("copyValue");
+    expect(writeText).toHaveBeenCalledWith(JSON.stringify({ city: "Hanoi", geo: { lat: 21 } }, null, 2));
+  });
+
+  it("menu offers Field path and copyPath copies the key", async () => {
+    const writeText = vi.fn();
+    Object.assign(navigator, { clipboard: { writeText } });
+    const v = await withTwoDocs();
+    v.openMenu(ev(), 0, "address.city");
+    const copy = v.menuItems().find((i) => i.action === "copy")!;
+    expect(copy.children!.some((c) => c.action === "copyPath")).toBe(true);
+    v.onMenuSelect("copyPath");
+    expect(writeText).toHaveBeenCalledWith("address.city");
   });
 });
 

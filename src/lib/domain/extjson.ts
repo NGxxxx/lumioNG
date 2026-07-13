@@ -74,3 +74,11 @@ export function describeValue(v: unknown): ValueInfo {
 
   return { type: "unknown", display: String(v) };
 }
+
+/** Full clipboard text for a value: containers serialize to complete pretty JSON
+ *  (their `display` is an 80-char preview); leaves copy their display text. */
+export function clipboardTextOf(v: unknown): string {
+  const info = describeValue(v);
+  if (info.type === "object" || info.type === "array") return JSON.stringify(v, null, 2);
+  return info.display;
+}

@@ -4,9 +4,11 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
-  let { v, view = $bindable("grid") }: {
+  let { v, view = $bindable("grid"), onexpandall, oncollapseall }: {
     v: ReturnType<typeof createCollectionView>;
     view?: "grid" | "tree";
+    onexpandall?: () => void;
+    oncollapseall?: () => void;
   } = $props();
 
   let openDropdown = $state<"sort" | "fields" | null>(null);
@@ -181,6 +183,14 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
       <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16"><path d="M6 2.5C4 2.5 4 5 4 6.5S2.5 8 2.5 8 4 8.5 4 10s0 3.5 2 3.5M10 2.5c2 0 2 2.5 2 4s1.5 1.5 1.5 1.5S12 8.5 12 10s0 3.5-2 3.5" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>
       {m.result_table_view_tree()}
     </button>
+    {#if view === "tree"}
+      <button class="toggle-btn" onclick={() => onexpandall?.()} title={m.result_tree_expand_all()}>
+        {m.result_tree_expand_all()}
+      </button>
+      <button class="toggle-btn" onclick={() => oncollapseall?.()} title={m.result_tree_collapse_all()}>
+        {m.result_tree_collapse_all()}
+      </button>
+    {/if}
   </div>
 </div>
 {#if v.filterError}<div class="error">{msgKey(v.filterError)}</div>{/if}

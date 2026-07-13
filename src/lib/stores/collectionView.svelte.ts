@@ -4,7 +4,7 @@ import type { ExportWizardInput } from "../domain/exportPlan";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";
-import { describeValue } from "../domain/extjson";
+import { clipboardTextOf } from "../domain/extjson";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { idInFilter, resolveIds, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
 import { type Doc } from "../domain/doc";
@@ -498,6 +498,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       action: "copy",
       children: [
         { label: "Value", action: "copyValue" },
+        { label: "Field path", action: "copyPath" },
         { label: "_id", action: "copyId", disabled: !hasId },
         { label: `Selected (${n}) as JSON`, action: "copyJson" },
         { label: `Selected (${n}) as CSV`, action: "copyCsv" },
@@ -554,7 +555,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         menu = null;
         return { open: doc };
       case "copyValue":
-        copy(describeValue(getByPath(doc, key)).display);
+        copy(clipboardTextOf(getByPath(doc, key)));
+        break;
+      case "copyPath":
+        copy(key);
         break;
       case "copyId":
         copy(idJson(doc) ?? "");

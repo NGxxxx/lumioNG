@@ -2,18 +2,19 @@
 import { describeValue, type BsonType } from "./extjson";
 import type { Doc } from "./doc";
 
-/** Read a value by pre-split path segments; returns undefined when a scalar, array, or
- * missing key is hit mid-path. Lets hot callers split a reused path once instead of per call. */
+/** Read a value by pre-split path segments; returns undefined when a scalar or missing key is
+ * hit mid-path. Array segments index by string key (e.g. "1" → element 1). Lets hot callers
+ * split a reused path once instead of per call. */
 export function getBySegments(doc: Doc, segments: string[]): unknown {
   let cur: unknown = doc;
   for (const seg of segments) {
-    if (cur === null || typeof cur !== "object" || Array.isArray(cur)) return undefined;
+    if (cur === null || typeof cur !== "object") return undefined;
     cur = (cur as Record<string, unknown>)[seg];
   }
   return cur;
 }
 
-/** Read a value by dot-path; returns undefined when a scalar, array, or missing key is hit mid-path. */
+/** Read a value by dot-path; returns undefined when a scalar or missing key is hit mid-path. */
 export function getByPath(doc: Doc, path: string): unknown {
   return getBySegments(doc, path.split("."));
 }

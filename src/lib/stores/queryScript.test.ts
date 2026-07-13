@@ -514,6 +514,20 @@ describe("selection / delete / menu (editable grid)", () => {
     expect(writeText).toHaveBeenCalledWith("A"); // not "\"A\""
   });
 
+  it("onMenuSelect copyValue resolves an array-index menu key to the element", async () => {
+    const writeText = vi.fn();
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, writable: true });
+    (runScript as any).mockResolvedValue(
+      ok([`{"_id":{"$oid":"1"},"tags":["x","y"]}`], { db: "d", coll: "c" }),
+    );
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    const fakeEvent = { preventDefault() {}, stopPropagation() {}, clientX: 1, clientY: 1 } as unknown as MouseEvent;
+    s.openMenu(fakeEvent, 0, "tags.1");
+    s.onMenuSelect("copyValue");
+    expect(writeText).toHaveBeenCalledWith("y");
+  });
+
   it("deleteSelected removes rows and calls deleteMany with the provenance namespace", async () => {
     const s = await setup({ db: "d", coll: "c" });
     s.clickRow(0, { ctrl: false, shift: false });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN } from "./extjson";
+import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN, clipboardTextOf } from "./extjson";
 
 describe("truncateForDisplay", () => {
   it("leaves short text unchanged", () => {
@@ -92,5 +92,19 @@ describe("describeValue", () => {
     const r = describeValue([1, 2, 3]);
     expect(r.type).toBe("array");
     expect(r.display.startsWith("[")).toBe(true);
+  });
+});
+
+describe("clipboardTextOf", () => {
+  it("serializes containers fully (not the 80-char preview)", () => {
+    const big = { a: "x".repeat(200), b: [1, 2, 3] };
+    const text = clipboardTextOf(big);
+    expect(text).toBe(JSON.stringify(big, null, 2));
+    expect(text).toContain("x".repeat(200)); // preview would have truncated this
+  });
+  it("uses display text for leaves", () => {
+    expect(clipboardTextOf({ $oid: "aabbcc" })).toBe("aabbcc");
+    expect(clipboardTextOf("hi")).toBe("hi");
+    expect(clipboardTextOf(null)).toBe("null");
   });
 });

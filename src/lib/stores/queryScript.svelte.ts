@@ -14,7 +14,7 @@ import { createIndex } from "../api/indexes";
 import { summarizeExplain, type ExplainSummary } from "../domain/explainPlan";
 import { suggestIndex, type IndexSuggestion } from "../domain/indexAdvisor";
 import { idJson } from "../domain/docid";
-import { describeValue } from "../domain/extjson";
+import { clipboardTextOf } from "../domain/extjson";
 import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath } from "../domain/celledit";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
@@ -598,6 +598,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     }
     const copyChildren: MenuItem[] = [
       { label: "Value", action: "copyValue" },
+      { label: "Field path", action: "copyPath" },
       { label: "_id", action: "copyId", disabled: !hasId },
       { label: `Selected (${n}) as JSON`, action: "copyJson" },
       { label: `Selected (${n}) as CSV`, action: "copyCsv" },
@@ -630,7 +631,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     switch (action) {
       case "open": menu = null; return doc ? { open: doc } : null;
       case "editCell": { const r = menu.row; const k = menu.key; menu = null; startEdit(r, k); return null; }
-      case "copyValue": copy(describeValue(getByPath(doc, key)).display); break;
+      case "copyValue": copy(clipboardTextOf(getByPath(doc, key))); break;
+      case "copyPath": copy(key); break;
       case "copyId": copy(idJson(doc) ?? ""); break;
       case "copyJson": copy(toJsonArray(picked)); break;
       case "copyCsv": copy(toCsv(picked)); break;

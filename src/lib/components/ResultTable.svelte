@@ -31,6 +31,7 @@
 
   let view = $state<"grid" | "tree">("grid");
   let toolbarRef: CollectionToolbar | undefined;
+  let treeRef: ResultTree | undefined = $state();
 
   const visibleColumns = $derived(v.columnFields.filter((c) => !v.hidden.has(c.path)));
 
@@ -124,15 +125,16 @@
 <div class="result">
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  <CollectionToolbar {v} bind:view bind:this={toolbarRef} />
+  <CollectionToolbar {v} bind:view bind:this={toolbarRef}
+    onexpandall={() => treeRef?.expandAll()} oncollapseall={() => treeRef?.collapseAll()} />
 
   <div class="content">
     {#if view === "grid"}
       <ResultGrid v={gridView} />
     {:else}
       <div class="tree-wrap">
-        <ResultTree docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
-          onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
+        <ResultTree bind:this={treeRef} docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
+          onRowMenu={(e, i, key) => v.openMenu(e, i, key)} />
         {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
       </div>
     {/if}

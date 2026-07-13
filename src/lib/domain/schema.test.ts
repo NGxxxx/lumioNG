@@ -12,9 +12,13 @@ describe("getByPath", () => {
     expect(getByPath({ address: { city: "HCM" } }, "address.zip")).toBeUndefined();
     expect(getByPath({ x: 1 }, "y")).toBeUndefined();
   });
-  it("scalar/array mid-path → undefined", () => {
+  it("scalar mid-path or missing array index → undefined", () => {
     expect(getByPath({ a: 5 }, "a.b")).toBeUndefined();
     expect(getByPath({ a: [1, 2] }, "a.b")).toBeUndefined();
+  });
+  it("array index segment resolves the element", () => {
+    expect(getByPath({ tags: ["a", "b"] }, "tags.1")).toBe("b");
+    expect(getByPath({ a: [{ b: 1 }] }, "a.0.b")).toBe(1);
   });
 });
 

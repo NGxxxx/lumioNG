@@ -34,6 +34,7 @@
   let resultView = $state<ResultViewMode>("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
   let editorRef: CodeEditor | undefined;
+  let treeRef: ResultTree | undefined = $state();
   let editorEl = $state<HTMLDivElement | null>(null);
   let searchInputEl = $state<HTMLInputElement | null>(null);
   let bottomEl = $state<HTMLDivElement | null>(null);
@@ -214,6 +215,10 @@
               aria-label={m.result_table_search_title()}
             />
           {/if}
+          {#if showDocs && resultView === "tree"}
+            <button class="log-clear" onclick={() => treeRef?.expandAll()}>{m.result_tree_expand_all()}</button>
+            <button class="log-clear" onclick={() => treeRef?.collapseAll()}>{m.result_tree_collapse_all()}</button>
+          {/if}
           <div class="view-toggle">
             <button class:active={resultView === "grid"} onclick={() => (resultView = "grid")}>{m.query_tab_view_grid()}</button>
             <button class:active={resultView === "tree"} onclick={() => (resultView = "tree")}>{m.query_tab_view_tree()}</button>
@@ -255,7 +260,7 @@
     {:else}
       <div class="result-pane">
         {#if showDocs && resultView === "tree"}
-          <ResultTree docs={v.docs} onRowMenu={(e, i) => v.openMenu(e, i, "_id")} />
+          <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key)} />
         {:else if showDocs}
           <ResultGrid {v} />
         {:else if v.displayMode === "ack" && v.ackJson !== null}
