@@ -22,7 +22,8 @@
   <div class="subtabs">
     <button class:active={section === "info"} onclick={() => setSection("info")}>{m.host_tab_info()}</button>
     <button class:active={section === "currentOps"} onclick={() => setSection("currentOps")}>{m.host_tab_current_ops()}</button>
-    <button class:active={section === "users"} onclick={() => setSection("users")}>{m.host_tab_users_roles()}</button>
+    <button class:active={section === "users"} onclick={() => setSection("users")}>{m.users_roles_toggle_users()}</button>
+    <button class:active={section === "roles"} onclick={() => setSection("roles")}>{m.users_roles_toggle_roles()}</button>
   </div>
   <div class="subpane">
     {#if section === "info"}
@@ -59,7 +60,8 @@
     {:else if section === "currentOps"}
       <CurrentOpsPanel />
     {:else}
-      <UsersRolesPanel />
+      <!-- Users and Roles share one mount (same else-branch) so switching doesn't refetch. -->
+      <UsersRolesPanel tab={section === "roles" ? "roles" : "users"} />
     {/if}
   </div>
 </div>

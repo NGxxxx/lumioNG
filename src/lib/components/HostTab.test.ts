@@ -102,13 +102,13 @@ describe("HostTab", () => {
     expect(getByText("No active operations.")).toBeTruthy();
   });
 
-  it("clicking Users & Roles switches the sub-pane", async () => {
+  it("Users and Roles are flat host subtabs switching the sub-pane", async () => {
     mockInfo = null;
     const { getByText, getByRole } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
-    await fireEvent.click(getByText("Users & Roles"));
-    expect(getByRole("button", { name: "Users" })).toBeTruthy();
-    // Scoped to role="button": UserList's "Roles" table column header is also on
-    // screen once the Users & Roles panel mounts (defaults to its Users sub-tab).
-    expect(getByRole("button", { name: "Roles" })).toBeTruthy();
+    await fireEvent.click(getByRole("button", { name: "Users" }));
+    expect(getByText("＋ Create user")).toBeTruthy();
+    // Scoped to role="button": UserList's "Roles" table column header is also on screen.
+    await fireEvent.click(getByRole("button", { name: "Roles" }));
+    expect(getByText("＋ Create role")).toBeTruthy();
   });
 });

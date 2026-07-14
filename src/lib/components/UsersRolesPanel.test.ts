@@ -46,13 +46,9 @@ describe("UsersRolesPanel", () => {
     expect(getByText("alice")).toBeTruthy();
   });
 
-  it("switching to the Roles toggle renders the roles list", async () => {
-    // Scoped to role="button" because UserList's "Roles" table column header
-    // is also on screen at this point, making a plain getByText("Roles") ambiguous.
-    const { getByText, getByRole } = render(UsersRolesPanel);
+  it("tab prop 'roles' renders the roles list", () => {
     mockRoles = [{ role: "read", db: "admin", isBuiltin: true, privileges: [], roles: [] }];
-    const { fireEvent } = await import("@testing-library/svelte");
-    await fireEvent.click(getByRole("button", { name: "Roles" }));
+    const { getByText } = render(UsersRolesPanel, { tab: "roles" });
     expect(getByText("read")).toBeTruthy();
   });
 });
