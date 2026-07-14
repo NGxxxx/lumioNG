@@ -8,7 +8,7 @@ import { clipboardTextOf } from "../domain/extjson";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { idInFilter, resolveIds, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
 import { type Doc } from "../domain/doc";
-import { getByPath, inferSchema, mergeColumns, type CollectionSchema, type ColumnField } from "../domain/schema";
+import { getByPath, inferSchema, mergeColumns, limitColumnsToDepth, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, editTextOf, rebuildValue, setByPath, buildSetUpdate } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import { compileSearch, matchingIndices } from "../domain/search";
@@ -98,7 +98,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let exportRequest = $state<{ kind: "filter" } | { kind: "selection"; count: number } | null>(null);
   let pendingExportFilter: string | null = "{}";
 
-  const columnFields = $derived(mergeColumns(schema, docs));
+  const rawColumnFields = $derived(mergeColumns(schema, docs));
+  const columnFields = $derived(limitColumnsToDepth(rawColumnFields, settings.gridMaxDepth));
   // Search only currently-visible columns (matches what the column chooser hid and what the grid actually renders), not the full unfiltered columnFields.
   const searchableColumns = $derived(columnFields.filter((c) => !hidden.has(c.path)));
   const visibleIndices = $derived(matchingIndices(docs, searchableColumns, appliedSearchRegex));
@@ -589,7 +590,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         break;
       case "newDoc":
         menu = null;
-        return { insert: buildSkeleton(columnFields) };
+        return { insert: buildSkeleton(rawColumnFields) };
       case "duplicate": {
         const dup = doc ? duplicateForInsert(doc) : null;
         menu = null;
@@ -626,7 +627,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   function exportInput(): ExportWizardInput | null {
     const req = exportRequest;
     if (!req || pendingExportFilter === null) return null; // defensive; requestExport guards the real case
-    const columns = columnFields.map((c) => ({ path: c.path, visible: !hidden.has(c.path) }));
+    const columns = rawColumnFields.map((c) => ({
+      path: c.path,
+      visible: !hidden.has(c.path) && ![...hidden].some((h) => c.path.startsWith(h + ".")),
+    }));
     const filter = pendingExportFilter;
     const sort = req.kind === "filter" ? buildSort(sortKeys) : null;
     const summary = req.kind === "selection"

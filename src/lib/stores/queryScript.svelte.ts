@@ -2,7 +2,7 @@ import { untrack } from "svelte";
 import { runScript, cancelScript, type ConsoleEntry, type Provenance } from "../api/script";
 import { sampleDocuments, queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
-import { mergeColumns, inferSchema, getByPath, type ColumnField } from "../domain/schema";
+import { mergeColumns, inferSchema, getByPath, limitColumnsToDepth, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
@@ -59,7 +59,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let docs = $state.raw<Doc[]>([]);
   let consoleEntries = $state.raw<ConsoleEntry[]>([]);
 
-  let columnFields = $state<ColumnField[]>([]);
+  let rawColumnFields = $state<ColumnField[]>([]);
+  const columnFields = $derived(limitColumnsToDepth(rawColumnFields, settings.gridMaxDepth));
   let colWidths = $state<Record<string, number>>({});
   let defaultColWidths = $state<Record<string, number>>({});
 
@@ -202,7 +203,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       if (gen !== generation) return;
       docs = result;
       if (r.fixedLimit !== null) totalCount = docs.length;
-      columnFields = mergeColumns(null, docs);
+      rawColumnFields = mergeColumns(null, docs);
       defaultColWidths = computeColumnWidths(columnFields, docs);
       colWidths = { ...defaultColWidths };
     } catch (e) {
@@ -312,7 +313,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       if (outcome.result.kind === "docs") {
         fullDocs = parseRows(outcome.result.rows);
         docs = fullDocs.slice(0, pageSize);
-        columnFields = mergeColumns(null, fullDocs);
+        rawColumnFields = mergeColumns(null, fullDocs);
         defaultColWidths = computeColumnWidths(columnFields, fullDocs);
         colWidths = { ...defaultColWidths };
         provenance = outcome.provenance;
@@ -329,7 +330,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
         recipeDirty = false;
         fullDocs = [];
         docs = [];
-        columnFields = [];
+        rawColumnFields = [];
         provenance = { db: r.db, coll: r.coll };
         capped = false;
         valueJson = null;
@@ -345,7 +346,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
         valueJson = outcome.result.json;
         docs = [];
         fullDocs = [];
-        columnFields = [];
+        rawColumnFields = [];
         provenance = null;
         capped = false;
         totalCount = 0;
@@ -354,7 +355,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
         ackJson = outcome.result.json;
         docs = [];
         fullDocs = [];
-        columnFields = [];
+        rawColumnFields = [];
         provenance = null;
         capped = false;
         totalCount = 0;
@@ -363,7 +364,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
         // kind === "none"
         docs = [];
         fullDocs = [];
-        columnFields = [];
+        rawColumnFields = [];
         provenance = null;
         capped = false;
         totalCount = 0;
@@ -721,7 +722,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   function exportInput(): ExportWizardInput | null {
     if (!exportRequest) return null;
-    const colPaths = columnFields.map((c) => ({ path: c.path, visible: true }));
+    const colPaths = rawColumnFields.map((c) => ({ path: c.path, visible: true }));
     const n = exportRequest.rows.length;
     return {
       mode: "scopedMemory",

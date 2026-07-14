@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getByPath, getBySegments, flattenPaths, inferSchema, mergeColumns } from "./schema";
+import { getByPath, getBySegments, flattenPaths, inferSchema, mergeColumns, limitColumnsToDepth } from "./schema";
 
 describe("getByPath", () => {
   it("reads a top-level field", () => {
@@ -121,5 +121,40 @@ describe("mergeColumns", () => {
     expect(cols[cols.length - 1].path).toBe("extra");
     expect(extra.type).toBeUndefined();
     expect(cols.find((c) => c.path === "x")!.type).toBeDefined();
+  });
+});
+
+describe("limitColumnsToDepth", () => {
+  it("null maxDepth returns the columns unchanged", () => {
+    const cols = [{ path: "_id" }, { path: "a.b.c" }];
+    expect(limitColumnsToDepth(cols, null)).toEqual(cols);
+  });
+
+  it("keeps shallow columns and collapses deeper ones to their prefix with type object", () => {
+    const cols = [
+      { path: "_id", type: "objectId" as const },
+      { path: "name", type: "string" as const },
+      { path: "address.city", type: "string" as const },
+    ];
+    expect(limitColumnsToDepth(cols, 1)).toEqual([
+      { path: "_id", type: "objectId" },
+      { path: "name", type: "string" },
+      { path: "address", type: "object" },
+    ]);
+  });
+
+  it("dedupes deep paths sharing one prefix, preserving first-seen order", () => {
+    const cols = [{ path: "a.b.c" }, { path: "z" }, { path: "a.b.d" }, { path: "a.x" }];
+    expect(limitColumnsToDepth(cols, 1)).toEqual([{ path: "a", type: "object" }, { path: "z" }]);
+  });
+
+  it("depth 2 truncates to two segments", () => {
+    const cols = [{ path: "a.b.c.d" }, { path: "a.b.e" }, { path: "a.k" }];
+    expect(limitColumnsToDepth(cols, 2)).toEqual([{ path: "a.b", type: "object" }, { path: "a.k" }]);
+  });
+
+  it("mixed shape: the first column seen at a path keeps its metadata", () => {
+    const cols = [{ path: "a", type: "string" as const, mixed: true, presence: 0.5 }, { path: "a.b" }];
+    expect(limitColumnsToDepth(cols, 1)).toEqual([{ path: "a", type: "string", mixed: true, presence: 0.5 }]);
   });
 });

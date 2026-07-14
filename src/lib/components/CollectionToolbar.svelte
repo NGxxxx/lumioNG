@@ -3,6 +3,7 @@
 import type { createCollectionView } from "../stores/collectionView.svelte";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
+  import GridDepthSelect from "./GridDepthSelect.svelte";
 
   let { v, view = $bindable("grid"), onexpandall, oncollapseall }: {
     v: ReturnType<typeof createCollectionView>;
@@ -190,6 +191,9 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
       <button class="toggle-btn" onclick={() => oncollapseall?.()} title={m.result_tree_collapse_all()}>
         {m.result_tree_collapse_all()}
       </button>
+    {/if}
+    {#if view === "grid"}
+      <GridDepthSelect />
     {/if}
   </div>
 </div>

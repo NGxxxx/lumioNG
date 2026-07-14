@@ -129,3 +129,21 @@ export function mergeColumns(schema: CollectionSchema | null, docs: Doc[]): Colu
   const extras = flattenPaths(docs).filter((p) => !known.has(p));
   return [...base, ...extras.map((path) => ({ path }))];
 }
+
+/** Collapse columns deeper than `maxDepth` dot segments into their maxDepth-segment prefix
+ * (synthetic prefix column gets type "object"); null = unlimited. Dedupes preserving
+ * first-seen order — the first column at a path keeps its metadata. */
+export function limitColumnsToDepth(cols: ColumnField[], maxDepth: number | null): ColumnField[] {
+  if (maxDepth === null) return cols;
+  const byPath = new Map<string, ColumnField>();
+  for (const c of cols) {
+    const segs = c.path.split(".");
+    if (segs.length <= maxDepth) {
+      if (!byPath.has(c.path)) byPath.set(c.path, c);
+    } else {
+      const prefix = segs.slice(0, maxDepth).join(".");
+      if (!byPath.has(prefix)) byPath.set(prefix, { path: prefix, type: "object" });
+    }
+  }
+  return [...byPath.values()];
+}

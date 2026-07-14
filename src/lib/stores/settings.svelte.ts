@@ -6,6 +6,7 @@ const CAP_KEY = "query-result-cap";
 const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
 const WRAP_KEY = "wrap-long-lines";
 const EDITOR_H_KEY = "query-editor-height-px";
+const GRID_DEPTH_KEY = "grid-max-depth";
 
 /** Absolute floor (px) for either side of the Query tab's editor/bottom split. */
 export const MIN_PANE_PX = 120;
@@ -13,6 +14,7 @@ export const MIN_PANE_PX = 120;
 // Defaults mirror the Rust script engine fallbacks (commands/script.rs).
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_CAP = 1000;
+const DEFAULT_GRID_DEPTH = 1;
 
 function readBool(key: string): boolean {
   try {
@@ -43,6 +45,18 @@ function readPosIntOrNull(key: string): number | null {
   }
 }
 
+/** Read the grid depth setting: positive int, "all" → null (unlimited), anything else → default 1. */
+function readGridDepth(): number | null {
+  try {
+    const raw = localStorage.getItem(GRID_DEPTH_KEY);
+    if (raw === "all") return null;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_GRID_DEPTH;
+  } catch {
+    return DEFAULT_GRID_DEPTH;
+  }
+}
+
 function writeKey(key: string, value: string) {
   try {
     localStorage.setItem(key, value);
@@ -63,6 +77,9 @@ export function createSettings() {
   let wrapLongLines = $state<boolean>(hasStorage ? untrack(() => readBool(WRAP_KEY)) : false);
   let queryEditorHeightPx = $state<number | null>(
     hasStorage ? untrack(() => readPosIntOrNull(EDITOR_H_KEY)) : null,
+  );
+  let gridMaxDepth = $state<number | null>(
+    hasStorage ? untrack(() => readGridDepth()) : DEFAULT_GRID_DEPTH,
   );
 
   return {
@@ -120,6 +137,15 @@ export function createSettings() {
       } catch {
         /* storage unavailable — keep the in-memory value */
       }
+    },
+    /** Max nesting depth flattened into grid columns; null = unlimited (All). */
+    get gridMaxDepth(): number | null {
+      return gridMaxDepth;
+    },
+    setGridMaxDepth(v: number | null) {
+      if (v !== null && (!Number.isFinite(v) || v <= 0)) return;
+      gridMaxDepth = v === null ? null : Math.floor(v);
+      writeKey(GRID_DEPTH_KEY, gridMaxDepth === null ? "all" : String(gridMaxDepth));
     },
   };
 }

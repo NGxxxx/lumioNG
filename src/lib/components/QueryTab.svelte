@@ -17,6 +17,7 @@
   import * as m from "$lib/paraglide/messages";
   import CodeEditor from "./CodeEditor.svelte";
   import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
+  import GridDepthSelect from "./GridDepthSelect.svelte";
   import { settings } from "../stores/settings.svelte";
   import { createPaneResize } from "./paneResize.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
@@ -214,6 +215,7 @@
               title={m.result_table_search_title()}
               aria-label={m.result_table_search_title()}
             />
+            <GridDepthSelect />
           {/if}
           {#if showDocs && resultView === "tree"}
             <button class="log-clear" onclick={() => treeRef?.expandAll()}>{m.result_tree_expand_all()}</button>

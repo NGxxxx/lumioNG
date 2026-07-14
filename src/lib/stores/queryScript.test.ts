@@ -1191,3 +1191,25 @@ describe("explain", () => {
     await vi.waitFor(() => expect(s.explainSummary?.verdict).toBe("ixscan"));
   });
 });
+
+describe("grid depth limit", () => {
+  beforeEach(() => {
+    (runScript as any).mockClear();
+    settings.setGridMaxDepth(1);
+  });
+  afterEach(() => settings.setGridMaxDepth(1));
+
+  it("collapses nested result columns at depth 1 and reacts to setting changes", async () => {
+    run.mockResolvedValueOnce(
+      ok([JSON.stringify({ _id: { $oid: "1" }, addr: { city: "HCM", geo: { lat: 1 } } })], null),
+    );
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    await s.run("mydb");
+
+    expect(s.columnFields.map((c) => c.path)).toEqual(["_id", "addr"]);
+    expect(s.columnFields.find((c) => c.path === "addr")!.type).toBe("object");
+
+    settings.setGridMaxDepth(null);
+    expect(s.columnFields.map((c) => c.path)).toEqual(["_id", "addr.city", "addr.geo.lat"]);
+  });
+});

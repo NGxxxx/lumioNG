@@ -24,6 +24,7 @@ import { createCollectionView } from "./collectionView.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { findCmd, deleteOneCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
+import { settings } from "./settings.svelte";
 
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
 const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
@@ -1206,6 +1207,56 @@ describe("effective selection + export request", () => {
       expect(input.filter).toContain('"$in"');
       expect(input.db).toBe("d");
       expect(input.coll).toBe("c");
+    }
+  });
+});
+
+describe("createCollectionView — grid depth limit", () => {
+  const nested = { _id: { $oid: "a" }, addr: { city: "HCM", geo: { lat: 1 } } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValue(1);
+    settings.setGridMaxDepth(1);
+  });
+  afterEach(() => settings.setGridMaxDepth(1));
+
+  it("collapses nested paths at depth 1 and reacts to setting changes without reloading", async () => {
+    qp.mockResolvedValueOnce([nested]);
+    samp.mockResolvedValueOnce([nested]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+
+    expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "addr"]);
+    expect(v.columnFields.find((c) => c.path === "addr")!.type).toBe("object");
+
+    settings.setGridMaxDepth(2);
+    expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "addr.city", "addr.geo"]);
+
+    settings.setGridMaxDepth(null);
+    expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "addr.city", "addr.geo.lat"]);
+  });
+
+  it("exportInput marks raw leaf paths under a hidden prefix column as not visible", async () => {
+    qp.mockResolvedValueOnce([nested]);
+    samp.mockResolvedValueOnce([nested]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+
+    expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "addr"]);
+
+    v.toggleHiddenDraft("addr");
+    qp.mockResolvedValueOnce([nested]); // reload after applyProjection
+    await v.applyProjection();
+
+    v.requestExport("filter");
+    const input = v.exportInput();
+    expect(input).not.toBeNull();
+    if (input && input.mode === "scopedCollection") {
+      const byPath = Object.fromEntries(input.columns.map((c) => [c.path, c.visible]));
+      expect(byPath["_id"]).toBe(true);
+      expect(byPath["addr.city"]).toBe(false);
+      expect(byPath["addr.geo.lat"]).toBe(false);
     }
   });
 });

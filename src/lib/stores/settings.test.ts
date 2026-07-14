@@ -77,4 +77,24 @@ describe("settings", () => {
     const b = createSettings();
     expect(b.queryEditorHeightPx).toBeNull();
   });
+
+  it("defaults gridMaxDepth to 1", () => {
+    expect(createSettings().gridMaxDepth).toBe(1);
+  });
+
+  it("persists gridMaxDepth across instances, including All (null)", () => {
+    const a = createSettings();
+    a.setGridMaxDepth(3);
+    expect(createSettings().gridMaxDepth).toBe(3);
+    a.setGridMaxDepth(null);
+    expect(a.gridMaxDepth).toBeNull();
+    expect(createSettings().gridMaxDepth).toBeNull();
+  });
+
+  it("ignores non-positive or non-finite gridMaxDepth values", () => {
+    const a = createSettings();
+    a.setGridMaxDepth(0);
+    a.setGridMaxDepth(NaN);
+    expect(a.gridMaxDepth).toBe(1);
+  });
 });
