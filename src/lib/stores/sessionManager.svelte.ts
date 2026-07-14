@@ -154,11 +154,16 @@ export function createSessionManager() {
     }
   }
 
-  function openQuery(initialStatement: string) {
+  function openQuery(initialStatement: string, savedQueryId: number | null = null) {
     if (!activeId) return;
     const used = workTabs.filter((t) => t.kind === "query").map((t) => t.seq);
-    workTabs = [...workTabs, { id: nextTabId++, kind: "query", seq: nextQuerySeq(used), initialStatement, sessionId: activeId }];
+    workTabs = [...workTabs, { id: nextTabId++, kind: "query", seq: nextQuerySeq(used), initialStatement, sessionId: activeId, savedQueryId }];
     zone = { zone: "work", id: workTabs.at(-1)!.id };
+  }
+
+  /** Bind an open Query tab to a library entry after its first save. */
+  function associateQueryTab(tabId: number, savedQueryId: number) {
+    workTabs = workTabs.map((t) => (t.id === tabId && t.kind === "query" ? { ...t, savedQueryId } : t));
   }
 
   function openDocument(init: DocumentTabInit) {
@@ -209,6 +214,7 @@ export function createSessionManager() {
     reconnect,
     closeSession,
     openQuery,
+    associateQueryTab,
     openDocument,
     activateWork,
     closeWork,

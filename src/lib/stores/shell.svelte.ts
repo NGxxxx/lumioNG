@@ -1,3 +1,24 @@
+import { untrack } from "svelte";
+
+const SQ_OPEN_KEY = "saved-queries-open";
+const SQ_HEIGHT_KEY = "saved-queries-height-px";
+
+function readStored(key: string): string | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+function writeStored(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable — keep the in-memory value */
+  }
+}
+
 /** App chrome state: active connection and sidebar/log dimensions (db/collection counts are derived per-session in the page, not here). */
 export function createShell() {
   let connection = $state<{ label: string; uri: string } | null>(null);
@@ -6,6 +27,14 @@ export function createShell() {
   let sidebarWidth = $state(240);
   let logOpen = $state(true);
   let logHeight = $state(140);
+  // Saved-queries sidebar section: the only shell fields persisted across restarts.
+  let savedQueriesOpen = $state(untrack(() => readStored(SQ_OPEN_KEY)) !== "false");
+  let savedQueriesHeight = $state(
+    untrack(() => {
+      const n = Number(readStored(SQ_HEIGHT_KEY));
+      return Number.isFinite(n) && n > 0 ? Math.min(500, Math.max(80, Math.round(n))) : 180;
+    }),
+  );
 
   function setConnection(c: { label: string; uri: string } | null) {
     connection = c;
@@ -25,6 +54,14 @@ export function createShell() {
   }
   function setLogHeight(h: number) {
     logHeight = Math.max(60, Math.min(500, Math.round(h)));
+  }
+  function toggleSavedQueries() {
+    savedQueriesOpen = !savedQueriesOpen;
+    writeStored(SQ_OPEN_KEY, savedQueriesOpen ? "true" : "false");
+  }
+  function setSavedQueriesHeight(h: number) {
+    savedQueriesHeight = Math.max(80, Math.min(500, Math.round(h)));
+    writeStored(SQ_HEIGHT_KEY, String(savedQueriesHeight));
   }
 
   return {
@@ -46,12 +83,16 @@ export function createShell() {
     get logHeight() {
       return logHeight;
     },
+    get savedQueriesOpen() { return savedQueriesOpen; },
+    get savedQueriesHeight() { return savedQueriesHeight; },
     setConnection,
     toggleSession,
     openSession,
     toggleLog,
     setSidebarWidth,
     setLogHeight,
+    toggleSavedQueries,
+    setSavedQueriesHeight,
   };
 }
 

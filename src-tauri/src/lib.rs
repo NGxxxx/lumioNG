@@ -3,6 +3,7 @@ mod bson_json;
 mod commands;
 mod error;
 mod json_bson;
+mod query_library;
 mod registry;
 mod script;
 mod ssh_tunnel;
@@ -74,6 +75,8 @@ pub fn run() {
             commands::users::create_role,
             commands::users::update_role,
             commands::users::drop_role,
+            commands::query_library::load_query_library,
+            commands::query_library::save_query_library,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

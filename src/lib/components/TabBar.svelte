@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Active, ContextKind, WorkTab } from "../stores/navigation.svelte";
+  import { queryLibrary } from "../stores/queryLibrary.svelte";
   import * as m from "$lib/paraglide/messages";
 
   type SessionInfo = { id: string; label: string; color: string };
@@ -32,7 +33,11 @@
     return s.length > 14 ? s.slice(0, 12) + "…" : s;
   }
   function workTitle(t: WorkTab): string {
-    if (t.kind === "query") return m.tab_bar_query_title({ seq: t.seq });
+    if (t.kind === "query") {
+      // Deleted/never-saved falls back to the seq title (association is kept; Save re-prompts).
+      const name = t.savedQueryId != null ? queryLibrary.queryName(t.savedQueryId) : null;
+      return name ?? m.tab_bar_query_title({ seq: t.seq });
+    }
     if (t.mode === "insert") return m.tab_bar_doc_new({ coll: t.coll });
     return `${t.coll} / ${t.idText ? shorten(t.idText) : "?"}`;
   }

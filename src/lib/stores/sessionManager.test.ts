@@ -106,6 +106,24 @@ describe("sessionManager", () => {
     sm.closeForCollection("conn:1", "d", "c");
     expect(sm.workTabs.map((t) => t.sessionId)).toEqual(["conn:2"]);
   });
+
+  it("openQuery defaults savedQueryId to null and accepts an explicit id", async () => {
+    await sm.focusOrOpen({ connId: 1, uri: "u1", label: "a" });
+    sm.openQuery("db.a.find()");
+    sm.openQuery("db.b.find()", 7);
+    const [t1, t2] = sm.workTabs.slice(-2);
+    expect(t1.kind === "query" && t1.savedQueryId).toBeNull();
+    expect(t2.kind === "query" && t2.savedQueryId).toBe(7);
+  });
+
+  it("associateQueryTab sets savedQueryId on an open query tab", async () => {
+    await sm.focusOrOpen({ connId: 1, uri: "u1", label: "a" });
+    sm.openQuery("db.a.find()");
+    const tab = sm.workTabs.at(-1)!;
+    sm.associateQueryTab(tab.id, 42);
+    const updated = sm.workTabs.find((t) => t.id === tab.id)!;
+    expect(updated.kind === "query" && updated.savedQueryId).toBe(42);
+  });
 });
 
 const insertDoc = (db: string, coll: string) =>

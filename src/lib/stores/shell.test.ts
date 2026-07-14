@@ -33,4 +33,33 @@ describe("createShell", () => {
     s.setLogHeight(9999);
     expect(s.logHeight).toBe(500);
   });
+
+  describe("saved queries section", () => {
+    it("defaults open with height 180", () => {
+      localStorage.removeItem("saved-queries-open");
+      localStorage.removeItem("saved-queries-height-px");
+      const s = createShell();
+      expect(s.savedQueriesOpen).toBe(true);
+      expect(s.savedQueriesHeight).toBe(180);
+    });
+
+    it("toggle flips and persists", () => {
+      const s = createShell();
+      s.toggleSavedQueries();
+      expect(s.savedQueriesOpen).toBe(false);
+      expect(localStorage.getItem("saved-queries-open")).toBe("false");
+      expect(createShell().savedQueriesOpen).toBe(false);
+    });
+
+    it("height clamps to 80..500 and persists", () => {
+      const s = createShell();
+      s.setSavedQueriesHeight(20);
+      expect(s.savedQueriesHeight).toBe(80);
+      s.setSavedQueriesHeight(900);
+      expect(s.savedQueriesHeight).toBe(500);
+      s.setSavedQueriesHeight(240.6);
+      expect(s.savedQueriesHeight).toBe(241);
+      expect(createShell().savedQueriesHeight).toBe(241);
+    });
+  });
 });

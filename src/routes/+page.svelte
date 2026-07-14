@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { idJson } from "$lib/domain/docid";
   import { aggregateTemplate } from "$lib/domain/queryStatement";
   import { inferSchema } from "$lib/domain/schema";
@@ -8,17 +9,21 @@
   import { sessionManager } from "$lib/stores/sessionManager.svelte";
   import { getQueryRun, disposeQueryRun } from "$lib/stores/queryRuns.svelte";
   import { shell } from "$lib/stores/shell.svelte";
+  import { queryLibrary } from "$lib/stores/queryLibrary.svelte";
   import { activeDataView } from "$lib/stores/activeDataView.svelte";
   import { activeDocumentForm } from "$lib/stores/activeDocumentForm.svelte";
   import { activity } from "$lib/stores/activity.svelte";
   import { quit } from "$lib/api/window";
   import type { Doc } from "$lib/domain/doc";
   import type { SshConnectInput } from "$lib/api/connection";
+  import type { SavedQuery } from "$lib/domain/queryTree";
   import type { ContextKind, QueryTab as QueryTabType } from "$lib/stores/navigation.svelte";
   import SessionManager from "$lib/components/SessionManager.svelte";
   import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
   import * as m from "$lib/paraglide/messages";
   import NamespacePanel from "$lib/components/NamespacePanel.svelte";
+  import SavedQueriesPanel from "$lib/components/SavedQueriesPanel.svelte";
+  import SaveQueryDialog from "$lib/components/SaveQueryDialog.svelte";
   import ResultTable from "$lib/components/ResultTable.svelte";
   import DocumentForm from "$lib/components/DocumentForm.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
@@ -42,6 +47,11 @@
 
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
+  let saveQueryDialog = $state<{ tabId: number } | null>(null);
+
+  onMount(() => {
+    queryLibrary.load(); // once at app start; failure shows in the panel and never blocks the app
+  });
 
   const sm = sessionManager;
   // The whole UI is driven by the active session; sidebar still renders a single tree (multi-root rendering arrives later).
@@ -103,6 +113,54 @@
     // Do not auto-open the session modal — the user reopens it manually when needed.
   }
 
+  /** Toolbar Save / Ctrl+S for the active Query tab: overwrite when associated, else save-as dialog. */
+  function saveActiveQuery() {
+    const tab = activeQueryTab;
+    const run = activeQueryRun;
+    if (!tab || !run || queryLibrary.blocked) return;
+    // A deleted library node falls back to save-as (queryName returns null).
+    if (tab.savedQueryId != null && queryLibrary.queryName(tab.savedQueryId) !== null) {
+      queryLibrary.overwrite(tab.savedQueryId, run.statementText, sel?.db ?? null);
+    } else {
+      saveQueryDialog = { tabId: tab.id };
+    }
+  }
+
+  async function submitSaveQuery(name: string, parentId: number | null) {
+    const d = saveQueryDialog;
+    if (!d) return;
+    const tab = sm.workTabs.find((t) => t.id === d.tabId && t.kind === "query") as QueryTabType | undefined;
+    if (tab) {
+      const run = getQueryRun(tab.id, tab.sessionId, tab.initialStatement);
+      const id = await queryLibrary.saveQuery(name, run.statementText, sel?.db ?? null, parentId);
+      if (id !== null) sm.associateQueryTab(tab.id, id);
+    }
+    saveQueryDialog = null;
+  }
+
+  /** Open a saved query: pre-select its remembered db when present, then open an associated tab. */
+  function openSavedQuery(q: SavedQuery) {
+    if (!sm.activeId) return;
+    if (q.db && tree?.databases.some((db) => db.name === q.db)) nav?.selectDatabase(q.db);
+    sm.openQuery(q.statement, q.id);
+  }
+
+  // Vertical splitter above the Saved Queries panel (mirrors startLogDrag).
+  function startSavedQueriesDrag(e: MouseEvent) {
+    e.preventDefault();
+    const startY = e.clientY;
+    const startH = shell.savedQueriesHeight;
+    function move(ev: MouseEvent) {
+      shell.setSavedQueriesHeight(startH + (startY - ev.clientY));
+    }
+    function up() {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+    }
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+  }
+
   async function newDocActive() {
     const s = nav?.selection;
     if (!s?.coll) return;
@@ -148,6 +206,16 @@
   }
 </script>
 
+<svelte:window
+  onkeydown={(e) => {
+    // Ctrl/Cmd+S saves the active Query tab only; document-form save keeps its own toolbar path.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && activeQueryTab) {
+      e.preventDefault();
+      saveActiveQuery();
+    }
+  }}
+/>
+
 <div class="app">
   <TitleBar
     conn={shell.connection?.label ?? null}
@@ -178,8 +246,8 @@
     oneditdocument={() => activeDataView.handle?.editSelected()}
     canExport={canUseDataView ? (activeDataView.handle?.canExport ?? false) : false}
     onexport={() => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined)}
-    canSave={activeDocumentForm.handle?.canSave ?? false}
-    onsave={() => activeDocumentForm.handle?.save()}
+    canSave={activeQueryTab ? !queryLibrary.blocked : (activeDocumentForm.handle?.canSave ?? false)}
+    onsave={() => (activeQueryTab ? saveActiveQuery() : activeDocumentForm.handle?.save())}
     canDeleteDoc={canUseDataView && (activeDataView.handle?.canDelete ?? false)}
     ondeletedocument={() => activeDataView.handle?.deleteSelected()}
     canAggregate={sel?.coll != null}
@@ -194,13 +262,29 @@
   />
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
-      <NamespacePanel
-        onselect={(d) => nav?.selectCollection(d.db, d.coll)}
-        onselectdb={(d) => nav?.selectDatabase(d.db)}
-        onnewquery={(d) => { nav?.selectCollection(d.db, d.coll); sm.openQuery(aggregateTemplate(d.coll)); }}
-        onmanagesessions={() => shell.openSession()}
-        ondisconnect={doDisconnect}
-      />
+      <div class="ns-area">
+        <NamespacePanel
+          onselect={(d) => nav?.selectCollection(d.db, d.coll)}
+          onselectdb={(d) => nav?.selectDatabase(d.db)}
+          onnewquery={(d) => { nav?.selectCollection(d.db, d.coll); sm.openQuery(aggregateTemplate(d.coll)); }}
+          onmanagesessions={() => shell.openSession()}
+          ondisconnect={doDisconnect}
+        />
+      </div>
+      {#if sm.sessions.length > 0}
+        {#if shell.savedQueriesOpen}
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <div
+            class="sq-split"
+            role="separator"
+            aria-orientation="horizontal"
+            tabindex="-1"
+            onmousedown={startSavedQueriesDrag}
+            onkeydown={() => {}}
+          ></div>
+        {/if}
+        <SavedQueriesPanel onopen={openSavedQuery} />
+      {/if}
     </aside>
     <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
     <div
@@ -327,12 +411,18 @@
       oncancel={() => (confirmQuit = false)}
     />
   {/if}
+  {#if saveQueryDialog}
+    <SaveQueryDialog onsubmit={submitSaveQuery} oncancel={() => (saveQueryDialog = null)} />
+  {/if}
 </div>
 
 <style>
   .app { display: flex; flex-direction: column; height: 100vh; font-family: system-ui, sans-serif; }
   .body { display: flex; flex: 1; min-height: 0; background: var(--bg); }
   aside { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow: hidden; }
+  .ns-area { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+  .sq-split { height: 0.3125rem; flex: none; cursor: row-resize; background: var(--bg); }
+  .sq-split:hover { background: var(--hover); }
   .vsplit { width: 0.3125rem; flex: none; cursor: col-resize; background: var(--bg); }
   .vsplit:hover { background: var(--hover); }
   section { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }

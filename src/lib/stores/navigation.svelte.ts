@@ -2,7 +2,7 @@ import type { Doc } from "../domain/doc";
 
 export type ContextKind = "host" | "database" | "collection" | "data";
 export type CollectionSection = "info" | "indexes" | "schema";
-export type HostSection = "info" | "currentOps" | "users";
+export type HostSection = "info" | "currentOps" | "users" | "roles";
 
 export type DocumentTab = {
   id: number;
@@ -20,6 +20,8 @@ export type QueryTab = {
   sessionId: string;
   seq: number;
   initialStatement: string;
+  /** Saved-query library id this tab writes to on Save; null until first saved or when opened ad hoc. */
+  savedQueryId: number | null;
 };
 export type WorkTab = DocumentTab | QueryTab;
 /** Document tab fields supplied by callers; `id` and `sessionId` are assigned by the manager. */
