@@ -77,6 +77,10 @@
   const activeQueryRun = $derived(
     activeQueryTab ? getQueryRun(activeQueryTab.id, activeQueryTab.sessionId, activeQueryTab.initialStatement) : null,
   );
+  // Single source of truth for which query tab's registered handle activeDataView.handle resolves to.
+  $effect(() => {
+    activeDataView.setActiveQueryId(activeQueryTab?.id ?? null);
+  });
   // Toolbar Edit/Export act on the collection data view, and only when it's the active context.
   const dataViewActive = $derived(active?.zone === "context" && active.kind === "data");
   // The activeDataView bridge is also registered by the active Query tab's result grid, so widen the gate to cover both.

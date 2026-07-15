@@ -41,77 +41,119 @@
     if (t.mode === "insert") return m.tab_bar_doc_new({ coll: t.coll });
     return `${t.coll} / ${t.idText ? shorten(t.idText) : "?"}`;
   }
+
+  // Plain vertical wheel also scrolls the tab strip horizontally.
+  function onWheel(e: WheelEvent) {
+    const el = e.currentTarget as HTMLDivElement;
+    if (e.deltaY === 0 || el.scrollWidth <= el.clientWidth) return;
+    el.scrollLeft += e.deltaY;
+    e.preventDefault();
+  }
 </script>
 
 <div class="tabbar">
-  {#each contextTabs as c (c.kind)}
-    <button
-      class="tab context"
-      class:active={active?.zone === "context" && active.kind === c.kind}
-      onclick={() => onShowContext(c.kind)}
-    >
-      {#if c.kind === "host"}
-        <!-- Mongo leaf / green -->
-        <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
-          <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
-          <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
-        </svg>
-      {:else if c.kind === "database"}
-        <!-- Purple cylinder -->
-        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
-          <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
-        </svg>
-      {:else if c.kind === "collection"}
-        <!-- Yellow table -->
-        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="var(--warn)" stroke-width="1.1"/>
-          <path d="M2 6h12" stroke="var(--warn)" stroke-width="0.9"/>
-        </svg>
-      {:else if c.kind === "data"}
-        <!-- Blue grid -->
-        <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="var(--link)" stroke-width="1.1"/>
-          <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="var(--link)" stroke-width="0.8"/>
-        </svg>
-      {/if}
-      {c.label}
-    </button>
-  {/each}
+  <div class="context-tabs">
+    {#each contextTabs as c (c.kind)}
+      <button
+        class="tab context"
+        class:active={active?.zone === "context" && active.kind === c.kind}
+        onclick={() => onShowContext(c.kind)}
+      >
+        {#if c.kind === "host"}
+          <!-- Mongo leaf / green -->
+          <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
+            <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
+            <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
+          </svg>
+        {:else if c.kind === "database"}
+          <!-- Purple cylinder -->
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+            <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
+            <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
+          </svg>
+        {:else if c.kind === "collection"}
+          <!-- Yellow table -->
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="var(--warn)" stroke-width="1.1"/>
+            <path d="M2 6h12" stroke="var(--warn)" stroke-width="0.9"/>
+          </svg>
+        {:else if c.kind === "data"}
+          <!-- Blue grid -->
+          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
+            <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="var(--link)" stroke-width="1.1"/>
+            <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="var(--link)" stroke-width="0.8"/>
+          </svg>
+        {/if}
+        {c.label}
+      </button>
+    {/each}
+  </div>
   {#if contextTabs.length && workTabs.length}
     <div class="divider"></div>
   {/if}
-  {#each workTabs as t (t.id)}
-    {@const sess = sessionOf(t.sessionId)}
-    <div
-      class="tab work"
-      class:active={active?.zone === "work" && active.id === t.id}
-      title={sess?.label}
-    >
-      <span
-        class="session-dot"
-        style="background:{sess?.color ?? 'var(--muted)'}"
-        data-color={sess?.color ?? 'var(--muted)'}
-        aria-hidden="true"
-      ></span>
-      <button class="label" onclick={() => onActivateWork(t.id)} title={workTitle(t)}>{workTitle(t)}</button>
-      <button class="x" onclick={() => onCloseWork(t.id)} aria-label={m.tab_bar_close()}>×</button>
+  <div class="work-tabs" onwheel={onWheel}>
+    <div class="work-tabs-inner">
+      {#each workTabs as t (t.id)}
+        {@const sess = sessionOf(t.sessionId)}
+        <div
+          class="tab work"
+          class:active={active?.zone === "work" && active.id === t.id}
+          title={sess?.label}
+        >
+          <span
+            class="session-dot"
+            style="background:{sess?.color ?? 'var(--muted)'}"
+            data-color={sess?.color ?? 'var(--muted)'}
+            aria-hidden="true"
+          ></span>
+          <button class="label" onclick={() => onActivateWork(t.id)} title={workTitle(t)}>{workTitle(t)}</button>
+          <button class="x" onclick={() => onCloseWork(t.id)} aria-label={m.tab_bar_close()}>×</button>
+        </div>
+      {/each}
+      <button class="tab newq" onclick={onNewQuery} title={m.tab_bar_new_query()}>+</button>
     </div>
-  {/each}
-  <button class="tab newq" onclick={onNewQuery} title={m.tab_bar_new_query()}>+</button>
+  </div>
 </div>
 
 <style>
   .tabbar {
     display: flex;
     align-items: flex-end;
-    height: 1.75rem;
     flex: none;
     padding: 0 0.25rem;
-    gap: 0.125rem;
     border-bottom: 1px solid var(--gray-c4);
     background: var(--bg);
+  }
+  /* Explicit height on both — matching .work-tabs' total (tab row + reserve) exactly, so
+     content-based auto-sizing can't put their bottom borders a pixel or two apart. */
+  .context-tabs {
+    display: flex;
+    align-items: flex-end;
+    flex: none;
+    gap: 0.125rem;
+    height: 2.25rem;
+  }
+  /* Horizontal scrollbars always render at an element's own bottom edge, which collides with the
+     bottom-anchored tabs. Flipping the scroller puts that native-bottom scrollbar visually on
+     top instead; the inner flex row is flipped back so the tabs render normally. */
+  .work-tabs {
+    flex: 1;
+    min-width: 0;
+    height: 2.25rem;
     overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    transform: scaleY(-1);
+  }
+  .work-tabs::-webkit-scrollbar { height: 0.5rem; }
+  .work-tabs::-webkit-scrollbar-track { background: transparent; }
+  .work-tabs::-webkit-scrollbar-thumb { background: var(--gray-c4); border-radius: 0.25rem; }
+  .work-tabs-inner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.125rem;
+    width: max-content;
+    transform: scaleY(-1);
   }
 
   .tab {
@@ -159,9 +201,10 @@
 
   .divider {
     width: 1px;
+    height: 1.25rem;
     background: var(--gray-c4);
-    margin: 0.25rem 0.375rem;
-    align-self: stretch;
+    margin: 0 0.375rem 0.25rem;
+    align-self: flex-end;
   }
 
   .label {
@@ -191,7 +234,7 @@
     color: var(--fg);
   }
 
-  .newq { align-self: flex-end; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; border: none; background: none; }
+  .newq { align-self: flex-start; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; border: none; background: none; }
   .newq:hover { background: var(--panel); }
 
   .session-dot {

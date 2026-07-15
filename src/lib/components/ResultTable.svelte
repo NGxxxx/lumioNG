@@ -126,7 +126,8 @@
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
   <CollectionToolbar {v} bind:view bind:this={toolbarRef}
-    onexpandall={() => treeRef?.expandAll()} oncollapseall={() => treeRef?.collapseAll()} />
+    treeAllExpanded={treeRef?.isAllExpanded() ?? false}
+    ontoggleexpand={() => treeRef?.toggleExpandAll()} />
 
   <div class="content">
     {#if view === "grid"}
@@ -155,7 +156,6 @@
   .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: var(--gray-77); font-size: 0.75rem;
     background: color-mix(in srgb, var(--panel) 80%, transparent); border-radius: 0.1875rem; z-index: 5; }
 
-  /* ── Tree view ── (rendering lives in the shared, virtualized ResultTree.svelte) */
-  .tree-wrap { flex: 1; min-height: 0; position: relative; }
-  .tree-wrap > :global(.tree-scroller) { height: 100%; }
+  /* ── Tree view ── (rendering lives in ResultTree.svelte); shrinks to content instead of always filling. */
+  .tree-wrap { flex: 0 1 auto; min-height: 0; max-height: 100%; position: relative; }
 </style>

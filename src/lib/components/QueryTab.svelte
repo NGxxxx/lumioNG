@@ -134,10 +134,12 @@
     }
   }
 
-  // Bridge for the global toolbar (Edit document / Export / Delete); registered only while this tab is active since Query tabs stay mounted when hidden.
+  // Bridge for the global toolbar (Edit document / Export / Delete). Registered once for this
+  // tab's whole lifetime (Query tabs stay mounted when hidden); activeDataView.setActiveQueryId
+  // (set by the app shell) decides which registered tab the toolbar actually defers to.
   const dataViewHandle = {
     get canEdit() { return v.canEditSelected; },
-    get canExport() { return true; },
+    get canExport() { return v.docs.length > 0; },
     get canDelete() { return v.canDeleteSelected; },
     editSelected() {
       const d = v.getSelectedForEdit();
@@ -154,9 +156,8 @@
     },
   };
   $effect(() => {
-    if (!active) return;
-    activeDataView.register(dataViewHandle);
-    return () => activeDataView.unregister(dataViewHandle);
+    activeDataView.registerQuery(id, dataViewHandle);
+    return () => activeDataView.unregisterQuery(id);
   });
 </script>
 
@@ -218,8 +219,9 @@
             <GridDepthSelect />
           {/if}
           {#if showDocs && resultView === "tree"}
-            <button class="log-clear" onclick={() => treeRef?.expandAll()}>{m.result_tree_expand_all()}</button>
-            <button class="log-clear" onclick={() => treeRef?.collapseAll()}>{m.result_tree_collapse_all()}</button>
+            <button class="log-clear" onclick={() => treeRef?.toggleExpandAll()}>
+              {treeRef?.isAllExpanded() ? m.result_tree_collapse_all() : m.result_tree_expand_all()}
+            </button>
           {/if}
           <div class="view-toggle">
             <button class:active={resultView === "grid"} onclick={() => (resultView = "grid")}>{m.query_tab_view_grid()}</button>

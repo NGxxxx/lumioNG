@@ -27,12 +27,28 @@
     open = next;
   }
 
+  /** Resets scroll so expand/collapse-all isn't stuck showing a now-invalid offset. */
+  function scrollToTop() {
+    if (scrollerEl) scrollerEl.scrollTop = 0;
+    get(rowVirtualizer).scrollToOffset(0);
+  }
+
   /** Open every doc row (depth 1 only — deeper opens are kept). Called by parents via bind:this. */
   export function expandAll() {
     open = new Set([...open, ...docs.map((_, i) => `#${i}`)]);
+    scrollToTop();
   }
   export function collapseAll() {
     open = new Set();
+    scrollToTop();
+  }
+  /** True once every doc row (depth 1) is open — drives the Expand/Collapse toggle button label. */
+  export function isAllExpanded(): boolean {
+    return docs.length > 0 && docs.every((_, i) => open.has(`#${i}`));
+  }
+  export function toggleExpandAll() {
+    if (isAllExpanded()) collapseAll();
+    else expandAll();
   }
 
   // Reset expansion when docs change (paging/sort/filter/new query).
@@ -174,7 +190,9 @@
   .empty { padding: 1rem; color: var(--muted); font-size: 0.75rem; }
   .tree-scroller {
     overflow: auto;
-    height: 100%;
+    /* Size to content, capped by the parent — short results don't force-fill the pane. */
+    height: auto;
+    max-height: 100%;
     position: relative;
     background: var(--panel);
     font-family: Consolas, "Courier New", monospace;

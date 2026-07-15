@@ -73,6 +73,21 @@ describe("DocumentForm — Raw JSON view", () => {
     );
   });
 
+  it("scrolling the textarea keeps the line-number gutter in sync", async () => {
+    const { getByText, container } = render(DocumentForm, {
+      props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved: () => {}, oncancel: () => {} },
+    });
+    await fireEvent.click(getByText("JSON"));
+    const textarea = container.querySelector("textarea")!;
+    const gutter = container.querySelector(".gutter")!;
+    expect(gutter.scrollTop).toBe(0);
+
+    textarea.scrollTop = 42;
+    await fireEvent.scroll(textarea);
+
+    expect(gutter.scrollTop).toBe(42);
+  });
+
   it("invalid raw JSON → switching to Tree is blocked, stays in Raw view and shows error", async () => {
     const { getByText, container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved: () => {}, oncancel: () => {} },

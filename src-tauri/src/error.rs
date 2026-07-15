@@ -39,7 +39,27 @@ pub fn ensure_writable(read_only: bool) -> Result<(), AppError> {
 
 impl From<mongodb::error::Error> for AppError {
     fn from(e: mongodb::error::Error) -> Self {
-        AppError::Query(e.to_string())
+        AppError::Query(friendly_mongo_message(&e))
+    }
+}
+
+/// Short message instead of `Error`'s raw `Kind/labels/source/server response` dump.
+fn friendly_mongo_message(e: &mongodb::error::Error) -> String {
+    match e.kind.as_ref() {
+        mongodb::error::ErrorKind::Command(cmd) => format!(
+            "{} (code {}): {}",
+            cmd.code_name,
+            cmd.code,
+            trim_embedded_command(&cmd.message)
+        ),
+        kind => kind.to_string(),
+    }
+}
+
+fn trim_embedded_command(message: &str) -> &str {
+    match message.find("command {") {
+        Some(idx) => message[..idx + "command".len()].trim_end(),
+        None => message,
     }
 }
 
@@ -58,5 +78,21 @@ mod tests {
     fn ssh_tunnel_display_is_prefixed() {
         let err = AppError::SshTunnel("auth rejected".into());
         assert_eq!(err.to_string(), "SSH tunnel error: auth rejected");
+    }
+
+    #[test]
+    fn trim_embedded_command_strips_command_document() {
+        let msg = "not authorized on admin to execute command { rolesInfo: 1, \
+                    showPrivileges: true, $db: \"admin\", lsid: { id: UUID(\"...\") } }";
+        assert_eq!(
+            trim_embedded_command(msg),
+            "not authorized on admin to execute command"
+        );
+    }
+
+    #[test]
+    fn trim_embedded_command_leaves_plain_message_untouched() {
+        let msg = "index build failed: duplicate key error";
+        assert_eq!(trim_embedded_command(msg), msg);
     }
 }

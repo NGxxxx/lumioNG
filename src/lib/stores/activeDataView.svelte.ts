@@ -1,4 +1,10 @@
-/** Bridge to the currently-mounted collection data view so the global toolbar can drive its actions (Edit/Delete/Export); ResultTable registers/unregisters the handle on mount/destroy. */
+/** Bridge to the currently-active data view (Data context tab, or the active Query tab's result
+ *  grid) so the global toolbar can drive its actions (Edit/Delete/Export).
+ *
+ *  Query tabs stay mounted when hidden (only `active` toggles), so their handle is registered
+ *  once for the tab's whole lifetime, keyed by tab id — not on every activate/deactivate. Which
+ *  one is current is a single value (`setActiveQueryId`, driven by the app shell's active-tab
+ *  state) instead of a register/unregister race between siblings switching in quick succession. */
 export type DataViewHandle = {
   readonly canEdit: boolean;
   readonly canExport: boolean;
@@ -12,18 +18,32 @@ export type DataViewHandle = {
 };
 
 export function createActiveDataView() {
-  // $state.raw: the handle is an opaque reference with getters — proxying would break unregister()'s identity check and double-wrap the getters.
-  let handle = $state.raw<DataViewHandle | null>(null);
+  // $state.raw: opaque references with getters — proxying would break identity checks and double-wrap the getters.
+  let dataHandle = $state.raw<DataViewHandle | null>(null);
+  let activeQueryId = $state.raw<number | null>(null);
+  const queryHandles = new Map<number, DataViewHandle>();
+
   return {
     get handle() {
-      return handle;
+      return activeQueryId !== null ? (queryHandles.get(activeQueryId) ?? null) : dataHandle;
     },
+    /** Data context view (ResultTable) — registers/unregisters on mount/destroy. */
     register(h: DataViewHandle) {
-      handle = h;
+      dataHandle = h;
     },
-    /** Clear only if `h` is still active — a remount's old cleanup must not wipe the new handle. */
     unregister(h: DataViewHandle) {
-      if (handle === h) handle = null;
+      if (dataHandle === h) dataHandle = null;
+    },
+    /** Query tab — register once on mount, unregister once on destroy (never on activate/deactivate). */
+    registerQuery(id: number, h: DataViewHandle) {
+      queryHandles.set(id, h);
+    },
+    unregisterQuery(id: number) {
+      queryHandles.delete(id);
+    },
+    /** Which query tab id (if any) the toolbar should defer to; null falls back to `dataHandle`. */
+    setActiveQueryId(id: number | null) {
+      activeQueryId = id;
     },
   };
 }

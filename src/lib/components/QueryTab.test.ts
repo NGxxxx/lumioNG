@@ -72,7 +72,10 @@ const runningStub = {
 };
 
 let activeStub: typeof stub = stub;
-vi.mock("../stores/queryRuns.svelte", () => ({ getQueryRun: () => activeStub }));
+const stubsById = new Map<number, typeof stub>();
+vi.mock("../stores/queryRuns.svelte", () => ({
+  getQueryRun: (id: number) => stubsById.get(id) ?? activeStub,
+}));
 
 import QueryTab from "./QueryTab.svelte";
 
@@ -324,67 +327,119 @@ describe("QueryTab activeDataView bridge", () => {
     requestExportCurrent: vi.fn(),
   } as unknown as typeof stub;
 
-  it("registers a handle while active, and unregisters it on destroy", () => {
+  it("registers a handle on mount (regardless of active), and unregisters it on destroy", () => {
     activeStub = bridgeStub;
     try {
-      const { unmount } = render(QueryTab, { props: { ...props, active: true } });
+      const { unmount } = render(QueryTab, { props: { ...props, active: false } });
+      activeDataView.setActiveQueryId(props.id);
       expect(activeDataView.handle).not.toBeNull();
       expect(activeDataView.handle?.canEdit).toBe(true);
       expect(activeDataView.handle?.canDelete).toBe(true);
       unmount();
-      expect(activeDataView.handle).toBeNull();
+      expect(activeDataView.handle).toBeNull(); // id still "active", but its entry is gone
     } finally {
       activeStub = stub;
+      activeDataView.setActiveQueryId(null);
     }
   });
 
-  it("does not register a handle while inactive", () => {
-    activeStub = bridgeStub;
-    try {
-      const { unmount } = render(QueryTab, { props: { ...props, active: false } });
-      expect(activeDataView.handle).toBeNull();
-      unmount();
-    } finally {
-      activeStub = stub;
-    }
-  });
-
-  it("unregisters then re-registers the same handle as `active` flips on a live-mounted instance", async () => {
+  it("stays registered across active flips — only setActiveQueryId decides resolution", async () => {
     activeStub = bridgeStub;
     try {
       const { rerender, unmount } = render(QueryTab, { props: { ...props, active: true } });
+      activeDataView.setActiveQueryId(props.id);
       const handle = activeDataView.handle;
       expect(handle).not.toBeNull();
       await rerender({ ...props, active: false });
-      expect(activeDataView.handle).toBeNull(); // switching away unregisters
+      expect(activeDataView.handle).toBe(handle); // deactivating the tab doesn't unregister it
       await rerender({ ...props, active: true });
-      expect(activeDataView.handle).toBe(handle); // switching back re-registers the same handle
+      expect(activeDataView.handle).toBe(handle);
       unmount();
       expect(activeDataView.handle).toBeNull();
     } finally {
       activeStub = stub;
+      activeDataView.setActiveQueryId(null);
     }
   });
 
-  it("only the tab that ends up active is registered when two tabs are mounted simultaneously", async () => {
+  it("both tabs stay registered when mounted simultaneously; resolution follows setActiveQueryId only", async () => {
     activeStub = bridgeStub;
     try {
       const a = render(QueryTab, { props: { ...props, id: 1, active: true } });
       const b = render(QueryTab, { props: { ...props, id: 2, active: false } });
-      expect(activeDataView.handle).not.toBeNull(); // only A registered so far
+      activeDataView.setActiveQueryId(1);
+      const handleA = activeDataView.handle;
+      expect(handleA).not.toBeNull();
 
       // Simulate switching the active work tab from A to B (both flip in the same reactive flush,
-      // as they do in +page.svelte since `active` is one global $state). Final state must have
-      // exactly B registered, regardless of which sibling's $effect runs first.
+      // as they do in +page.svelte). Regardless of which sibling's effect runs first, both stay
+      // registered; the app shell's setActiveQueryId call is the sole source of truth.
       await b.rerender({ ...props, id: 2, active: true });
       await a.rerender({ ...props, id: 1, active: false });
+      activeDataView.setActiveQueryId(2);
+      expect(activeDataView.handle).not.toBe(handleA);
       expect(activeDataView.handle).not.toBeNull();
+
+      activeDataView.setActiveQueryId(1);
+      expect(activeDataView.handle).toBe(handleA); // switching back resolves the same, still-registered handle
 
       a.unmount();
       b.unmount();
       expect(activeDataView.handle).toBeNull();
     } finally {
       activeStub = stub;
+      activeDataView.setActiveQueryId(null);
+    }
+  });
+
+  it("canExport is false when the query hasn't run (no docs), true once it has results", () => {
+    activeStub = { ...stub, docs: [] } as unknown as typeof stub;
+    try {
+      const { unmount } = render(QueryTab, { props: { ...props, active: true } });
+      activeDataView.setActiveQueryId(props.id);
+      expect(activeDataView.handle?.canExport).toBe(false);
+      unmount();
+    } finally {
+      activeStub = stub;
+      activeDataView.setActiveQueryId(null);
+    }
+
+    activeStub = bridgeStub;
+    try {
+      const { unmount } = render(QueryTab, { props: { ...props, active: true } });
+      activeDataView.setActiveQueryId(props.id);
+      expect(activeDataView.handle?.canExport).toBe(true);
+      unmount();
+    } finally {
+      activeStub = stub;
+      activeDataView.setActiveQueryId(null);
+    }
+  });
+
+  it("canExport reflects whichever tab id is set active, regardless of registration/switch order", async () => {
+    stubsById.set(1, bridgeStub); // tab A: has docs
+    stubsById.set(2, { ...stub, docs: [] } as unknown as typeof stub); // tab B: no docs
+    try {
+      const a = render(QueryTab, { props: { ...props, id: 1, active: true } });
+      const b = render(QueryTab, { props: { ...props, id: 2, active: false } });
+      activeDataView.setActiveQueryId(1);
+      expect(activeDataView.handle?.canExport).toBe(true); // A active, has docs
+
+      await b.rerender({ ...props, id: 2, active: true });
+      await a.rerender({ ...props, id: 1, active: false });
+      activeDataView.setActiveQueryId(2);
+      expect(activeDataView.handle?.canExport).toBe(false); // B active, no docs
+
+      await a.rerender({ ...props, id: 1, active: true });
+      await b.rerender({ ...props, id: 2, active: false });
+      activeDataView.setActiveQueryId(1);
+      expect(activeDataView.handle?.canExport).toBe(true); // back to A, still has docs
+
+      a.unmount();
+      b.unmount();
+    } finally {
+      stubsById.clear();
+      activeDataView.setActiveQueryId(null);
     }
   });
 });

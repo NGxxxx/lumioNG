@@ -5,11 +5,11 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   import { msgKey } from "$lib/msgkey";
   import GridDepthSelect from "./GridDepthSelect.svelte";
 
-  let { v, view = $bindable("grid"), onexpandall, oncollapseall }: {
+  let { v, view = $bindable("grid"), treeAllExpanded = false, ontoggleexpand }: {
     v: ReturnType<typeof createCollectionView>;
     view?: "grid" | "tree";
-    onexpandall?: () => void;
-    oncollapseall?: () => void;
+    treeAllExpanded?: boolean;
+    ontoggleexpand?: () => void;
   } = $props();
 
   let openDropdown = $state<"sort" | "fields" | null>(null);
@@ -185,11 +185,12 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
       {m.result_table_view_tree()}
     </button>
     {#if view === "tree"}
-      <button class="toggle-btn" onclick={() => onexpandall?.()} title={m.result_tree_expand_all()}>
-        {m.result_tree_expand_all()}
-      </button>
-      <button class="toggle-btn" onclick={() => oncollapseall?.()} title={m.result_tree_collapse_all()}>
-        {m.result_tree_collapse_all()}
+      <button
+        class="toggle-btn"
+        onclick={() => ontoggleexpand?.()}
+        title={treeAllExpanded ? m.result_tree_collapse_all() : m.result_tree_expand_all()}
+      >
+        {treeAllExpanded ? m.result_tree_collapse_all() : m.result_tree_expand_all()}
       </button>
     {/if}
     {#if view === "grid"}

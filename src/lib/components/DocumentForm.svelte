@@ -52,6 +52,12 @@
       .join("\n"),
   );
 
+  // Gutter is a separate div, so it needs its scroll synced to the textarea's.
+  let gutterEl = $state<HTMLDivElement | null>(null);
+  function syncGutterScroll(e: Event) {
+    if (gutterEl) gutterEl.scrollTop = (e.currentTarget as HTMLTextAreaElement).scrollTop;
+  }
+
   function toRaw() {
     text = JSON.stringify(docValue, null, 2);
     error = null;
@@ -157,8 +163,14 @@
       />
     {:else}
       <div class="json-area">
-        <div class="gutter" aria-hidden="true">{lineNumbers}</div>
-        <textarea bind:value={text} spellcheck="false" class="json-textarea" class:wrap={settings.wrapLongLines}></textarea>
+        <div class="gutter" bind:this={gutterEl} aria-hidden="true">{lineNumbers}</div>
+        <textarea
+          bind:value={text}
+          spellcheck="false"
+          class="json-textarea"
+          class:wrap={settings.wrapLongLines}
+          onscroll={syncGutterScroll}
+        ></textarea>
       </div>
     {/if}
   </div>
@@ -249,17 +261,18 @@
     background: var(--cream);
   }
 
-  /* JSON area with gutter */
+  /* Only the textarea scrolls; the gutter's scrollTop is synced to it (see syncGutterScroll). */
   .json-area {
     flex: 1;
     display: flex;
-    overflow: auto;
+    overflow: hidden;
     min-height: 0;
     font-family: Consolas, "Courier New", ui-monospace, monospace;
     font-size: 0.8125rem;
     line-height: 1.65;
   }
   .gutter {
+    box-sizing: border-box;
     width: 2.5rem;
     flex: none;
     text-align: right;
@@ -275,7 +288,10 @@
     overflow: hidden;
   }
   .json-textarea {
+    /* border-box: else padding adds onto height:100%, overflowing .json-area and clipping the last line. */
+    box-sizing: border-box;
     flex: 1;
+    height: 100%;
     border: none;
     padding: 0.625rem 0.875rem;
     font-family: Consolas, "Courier New", ui-monospace, monospace;
@@ -287,8 +303,7 @@
     color: var(--fg);
     white-space: pre;
     overflow-wrap: normal;
-    overflow-x: auto;
-    min-height: 100%;
+    overflow: auto;
   }
   /* Opt-in wrap mode (Toolbar's Wrap toggle): wraps instead of scrolling horizontally. */
   .json-textarea.wrap {
