@@ -9,6 +9,7 @@ mod script;
 mod sql_import;
 mod ssh_tunnel;
 mod state;
+mod value_infer;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
