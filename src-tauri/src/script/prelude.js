@@ -229,6 +229,9 @@ class Cursor {
   skip(n)       { this._o.skip = n; return this; }
   hint(h)       { this._o.hint = h; return this; }
   maxTimeMS(ms) { this._o.maxTimeMS = ms; return this; }
+  // No-op: mongosh script compatibility only. The Grid/Tree result views are already formatted,
+  // so there is nothing for this to toggle on the display side (Rust stays display-agnostic).
+  pretty()      { return this; }
 
   projection(p) {
     this._o.projection = p;

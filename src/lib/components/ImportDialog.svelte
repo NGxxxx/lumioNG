@@ -1,66 +1,160 @@
 <script lang="ts">
-  import { untrack } from "svelte";
   import { portal } from "../actions/portal";
+  import { openDialog } from "../api/files";
   import { createImportJob } from "../stores/importJob.svelte";
+  import { createSqlImport } from "../stores/sqlImport.svelte";
   import * as m from "$lib/paraglide/messages";
 
-  let { sessionId, db, coll, path, onclose }: {
+  // `coll === null` (or picking a .sql file) switches this dialog into the multi-table SQL flow.
+  let { sessionId, db, coll = null, onclose }: {
     sessionId: string;
     db: string;
-    coll: string;
-    path: string;
+    coll?: string | null;
     onclose: () => void;
   } = $props();
 
-  const job = untrack(() => createImportJob({ sessionId, db, coll, path }));
-  job.run();
+  let path = $state("");
+  let stage = $state<"setup" | "working">("setup");
+  let job = $state<ReturnType<typeof createImportJob> | null>(null);
+  let sql = $state<ReturnType<typeof createSqlImport> | null>(null);
+
+  const isSql = $derived(coll === null || path.toLowerCase().endsWith(".sql"));
+  const fileName = $derived(path.replace(/^.*[\\/]/, ""));
+  const percent = $derived(job && job.total > 0 ? Math.round((job.done / job.total) * 100) : 0);
+  const canClose = $derived(stage === "setup" || (isSql ? sql!.phase !== "running" : !job!.running));
+  const title = $derived(isSql ? m.sql_import_title({ db }) : m.import_dialog_title({ db, coll: coll ?? "" }));
+
+  async function browse() {
+    const filters = coll === null
+      ? [{ name: "SQL", extensions: ["sql"] }]
+      : [{ name: "JSON / JSONL / BSON / SQL", extensions: ["json", "jsonl", "bson", "sql"] }];
+    const p = await openDialog(filters);
+    if (p) path = p;
+  }
+
+  function startRun() {
+    if (!path) return;
+    stage = "working";
+    if (isSql) {
+      sql = createSqlImport(sessionId, db, path);
+      sql.loadPreview();
+    } else {
+      job = createImportJob({ sessionId, db, coll: coll!, path });
+      job.run();
+    }
+  }
 
   let showErrors = $state(false);
-  const fileName = $derived(path.replace(/^.*[\\/]/, ""));
-  const percent = $derived(job.total > 0 ? Math.round((job.done / job.total) * 100) : 0);
 </script>
 
-<svelte:window onkeydown={(e) => { if (e.key === "Escape" && !job.running) onclose(); }} />
+<svelte:window onkeydown={(e) => { if (e.key === "Escape" && canClose) onclose(); }} />
 
 <div
   class="backdrop"
   use:portal
   role="presentation"
-  onclick={(e) => { if (e.target === e.currentTarget && !job.running) onclose(); }}
+  onclick={(e) => { if (e.target === e.currentTarget && canClose) onclose(); }}
 >
-  <div class="modal" role="dialog" aria-modal="true" aria-label={m.import_dialog_title({ db, coll })}>
-    <header>{m.import_dialog_title({ db, coll })}</header>
+  <div class="modal" class:modal-sql={stage === "working" && isSql} role="dialog" aria-modal="true" aria-label={title}>
+    <header>{title}</header>
     <div class="body">
-      <div class="file-row"><span class="label">{m.import_dialog_file_label()}</span><span class="path">{fileName}</span></div>
-
-      {#if job.total > 0}
-        <div class="progress">
-          <div class="bar"><div class="fill" style="width:{percent}%"></div></div>
-          <span>{m.import_dialog_progress({ done: job.done, total: job.total })}</span>
+      {#if stage === "setup"}
+        <div class="file-row">
+          <span class="label">{m.import_dialog_file_label()}</span>
+          <span class="path">{fileName || m.sql_import_no_file_chosen()}</span>
+          <button type="button" onclick={browse}>{m.import_dialog_browse()}</button>
         </div>
-      {:else if job.running}
-        <div class="progress-unknown">{m.import_dialog_progress_unknown()}</div>
-      {/if}
+        {#if coll !== null}
+          <div class="file-row"><span class="label">{m.export_wizard_col_collection()}</span><span class="path">{coll}</span></div>
+        {/if}
+        {#if isSql}<div class="notice">{m.sql_import_scope_notice()}</div>{/if}
+      {:else}
+        <div class="file-row"><span class="label">{m.import_dialog_file_label()}</span><span class="path">{fileName}</span></div>
 
-      {#if job.error}
-        <div class="error">{m.import_dialog_error_title()}: {job.error}</div>
-      {:else if job.result}
-        {@const r = job.result}
-        <div class="io-ok">{m.namespace_panel_import_done({ inserted: r.inserted, failed: r.failed })}</div>
-        {#if r.errors.length > 0}
-          <button type="button" class="link" onclick={() => (showErrors = !showErrors)}>
-            {m.import_dialog_view_errors({ count: r.errors.length })}
-          </button>
-          {#if showErrors}
-            <ul class="errlist">
-              {#each r.errors as e}<li>{e}</li>{/each}
-            </ul>
+        {#if isSql}
+          {@const v = sql!}
+          <div class="notice">{m.sql_import_scope_notice()}</div>
+          {#if v.phase === "loading"}
+            <div class="status">{m.common_loading()}</div>
+          {:else if v.phase === "selecting" || v.phase === "running"}
+            {#if v.tables.length === 0}
+              <div class="status">{m.sql_import_no_tables()}</div>
+            {:else}
+              <div class="table-header">
+                <label class="table-row select-all">
+                  <input type="checkbox" checked={v.selected.size === v.tables.length} onchange={() => v.toggleAll()} disabled={v.phase === "running"} />
+                  <span class="tname">{m.sql_import_select_all()}</span>
+                </label>
+              </div>
+              <ul class="tablelist">
+                {#each v.tables as t (t.table)}
+                  <li>
+                    <label class="table-row">
+                      <input type="checkbox" checked={v.selected.has(t.table)} onchange={() => v.toggle(t.table)} disabled={v.phase === "running"} />
+                      <span class="tname">{t.table}</span>
+                      <span class="tmeta">{m.sql_import_row_count({ count: t.rowCount })} · {t.columns.length} cols</span>
+                    </label>
+                    {#if v.phase === "running" && v.progress?.table === t.table}
+                      <div class="progress">
+                        <div class="bar"><div class="fill" style="width:{t.rowCount > 0 ? Math.round((v.progress.done / t.rowCount) * 100) : 100}%"></div></div>
+                        <span>{v.progress.done}/{v.progress.total}</span>
+                      </div>
+                    {/if}
+                  </li>
+                {/each}
+              </ul>
+            {/if}
+            {#if v.error}<div class="error">{v.error}</div>{/if}
+          {:else if v.phase === "done"}
+            <div class="results">
+              {#each v.results as r (r.table)}
+                <div class="io-ok">{r.table}: {m.namespace_panel_import_done({ inserted: r.inserted, failed: r.failed })}</div>
+                {#if r.errors.length > 0}
+                  <ul class="errlist">{#each r.errors as e}<li>{e}</li>{/each}</ul>
+                {/if}
+              {/each}
+            </div>
+          {/if}
+        {:else}
+          {@const j = job!}
+          {#if j.total > 0}
+            <div class="progress">
+              <div class="bar"><div class="fill" style="width:{percent}%"></div></div>
+              <span>{m.import_dialog_progress({ done: j.done, total: j.total })}</span>
+            </div>
+          {:else if j.running}
+            <div class="progress-unknown">{m.import_dialog_progress_unknown()}</div>
+          {/if}
+
+          {#if j.error}
+            <div class="error">{m.import_dialog_error_title()}: {j.error}</div>
+          {:else if j.result}
+            {@const r = j.result}
+            <div class="io-ok">{m.namespace_panel_import_done({ inserted: r.inserted, failed: r.failed })}</div>
+            {#if r.errors.length > 0}
+              <button type="button" class="link" onclick={() => (showErrors = !showErrors)}>
+                {m.import_dialog_view_errors({ count: r.errors.length })}
+              </button>
+              {#if showErrors}
+                <ul class="errlist">
+                  {#each r.errors as e}<li>{e}</li>{/each}
+                </ul>
+              {/if}
+            {/if}
           {/if}
         {/if}
       {/if}
     </div>
     <footer>
-      <button type="button" class="primary" onclick={onclose} disabled={job.running}>{m.common_close()}</button>
+      {#if stage === "setup"}
+        <button type="button" onclick={onclose}>{m.common_cancel()}</button>
+        <button type="button" class="primary" disabled={!path} onclick={startRun}>{m.import_dialog_run()}</button>
+      {:else if isSql && sql!.phase === "selecting"}
+        <button type="button" onclick={onclose}>{m.common_cancel()}</button>
+        <button type="button" class="primary" disabled={sql!.selected.size === 0} onclick={() => sql!.run()}>{m.sql_import_run({ count: sql!.selected.size })}</button>
+      {:else}
+        <button type="button" class="primary" onclick={onclose} disabled={!canClose}>{m.common_close()}</button>
+      {/if}
     </footer>
   </div>
 </div>
@@ -68,11 +162,16 @@
 <style>
   .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .3); display: flex; align-items: center; justify-content: center; z-index: 1000; }
   .modal { background: var(--panel); width: 30rem; max-width: 94vw; border-radius: 0.375rem; overflow: hidden; box-shadow: 0 10px 40px rgba(0, 0, 0, .25); }
-  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
-  .body { padding: 0.875rem; font-size: 0.8125rem; }
-  .file-row { display: flex; gap: 0.5rem; margin-bottom: 0.625rem; }
-  .label { color: var(--gray-77); }
-  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .modal-sql { width: 32rem; max-height: 85vh; display: flex; flex-direction: column; }
+  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); flex: none; }
+  .body { padding: 0.875rem; font-size: 0.8125rem; overflow: auto; min-height: 0; }
+  .file-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.625rem; }
+  .file-row button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; flex: none; }
+  .file-row button:hover { background: var(--bg); }
+  .label { color: var(--gray-77); flex: none; }
+  .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.75rem; margin-bottom: 0.75rem; }
+  .status { color: var(--gray-77); }
   .progress { display: flex; align-items: center; gap: 0.5rem; }
   .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: 0.25rem; overflow: hidden; }
   .fill { height: 100%; background: var(--progress); transition: width .2s; }
@@ -82,7 +181,17 @@
   .link { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; font-size: 0.75rem; margin-top: 0.5rem; }
   .link:hover { text-decoration: underline; }
   .errlist { margin: 0.375rem 0 0; padding-left: 1.125rem; max-height: 8rem; overflow: auto; font-size: 0.75rem; color: var(--error); }
-  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
+
+  /* ── SQL table picker ── */
+  .table-header { border-bottom: 1px solid var(--border); margin-bottom: 0.25rem; }
+  .tablelist { list-style: none; margin: 0; padding: 0; max-height: 16rem; overflow: auto; }
+  .tablelist li { border-bottom: 1px solid var(--border); padding: 0.25rem 0; }
+  .table-row { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
+  .select-all { padding-bottom: 0.25rem; font-weight: 600; }
+  .tname { font-family: ui-monospace, monospace; }
+  .tmeta { margin-left: auto; color: var(--gray-77); font-size: 0.6875rem; }
+
+  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); flex: none; }
   footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
   footer button:hover:not(:disabled) { background: var(--bg); }
   footer button:disabled { color: var(--gray-b8); cursor: default; }

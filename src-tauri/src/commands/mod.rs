@@ -7,5 +7,6 @@ pub mod query;
 pub mod query_library;
 pub mod script;
 pub mod server;
+pub mod sql;
 pub mod stats;
 pub mod users;

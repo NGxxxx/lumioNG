@@ -7,6 +7,7 @@
   import { statusPill, jsonValueColor, bsonValueKind } from "../domain/theme";
   import { describeValue, truncateForDisplay } from "../domain/extjson";
   import type { GridPageView } from "../domain/gridView";
+  import { portal } from "../actions/portal";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
@@ -130,9 +131,12 @@
             <td class="td-rownum">{v.allShown ? row + 1 : (v.currentPage - 1) * v.pageSize + row + 1}</td>
             {#each v.columnFields as c}
               {@const k = c.path}
-              <td class="data-cell" oncontextmenu={(e) => v.openMenu(e, row, k)} ondblclick={() => v.startEdit(row, k)}>
-                {#if v.editing && v.editing.row === row && v.editing.key === k}
-                  <input class="celledit" bind:value={v.editText} onkeydown={onEditKey} onblur={v.onEditBlur} use:focusSelect />
+              <td class="data-cell"
+                class:cell-editing-modal={v.editing?.kind === "modal" && v.editing.row === row && v.editing.key === k}
+                oncontextmenu={(e) => v.openMenu(e, row, k)} ondblclick={() => v.startEdit(row, k)}>
+                {#if v.editing && v.editing.row === row && v.editing.key === k && v.editing.kind === "inline"}
+                  <input class="celledit" bind:value={v.editText} disabled={v.saving} onkeydown={onEditKey} onblur={v.onEditBlur} use:focusSelect />
+                  {#if v.saving}<span class="cell-spinner" aria-label={m.common_loading()}></span>{/if}
                   {#if v.editError}<div class="cellerror">{msgKey(v.editError)}</div>{/if}
                 {:else}
                   {@const val = getByPath(d, k)}
@@ -166,6 +170,22 @@
     </div>
   {/if}
 </div>
+
+{#if v.editing?.kind === "modal"}
+  <div class="modal-backdrop" use:portal role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !v.saving) v.cancelEdit(); }}>
+    <div class="modal-editor" role="dialog" aria-modal="true" aria-label={m.grid_edit_value_title()}>
+      <header>{m.grid_edit_value_title()}</header>
+      <textarea class="modal-textarea" bind:value={v.editText} disabled={v.saving} spellcheck="false"
+        onkeydown={(e) => { if (e.key === "Escape") { e.preventDefault(); v.cancelEdit(); } }}
+      ></textarea>
+      {#if v.editError}<div class="cellerror modal-error">{msgKey(v.editError)}</div>{/if}
+      <footer>
+        <button onclick={() => v.cancelEdit()} disabled={v.saving}>{m.common_cancel()}</button>
+        <button class="primary" onclick={() => v.commitEdit()} disabled={v.saving}>{v.saving ? m.document_form_saving() : m.common_save()}</button>
+      </footer>
+    </div>
+  </div>
+{/if}
 
 <style>
   /* Copied verbatim from ResultTable.svelte's pre-refactor style block, keeping every class
@@ -244,7 +264,7 @@
   tbody tr[data-index] { height: 24px; }
   .row-selected td { box-shadow: inset 0 -1px 0 var(--row-selected-ring), inset 0 1px 0 var(--row-selected-ring); }
   .scroller:focus { outline: none; }
-  .data-cell { padding: 0; height: 22px; }
+  .data-cell { padding: 0; height: 22px; position: relative; }
   /* Inlined BsonCell (no component per cell): base + per-BSON-type modifiers. Scalar colors come
      from the inline style attr; object/array colors come from the type-class rules below. */
   .data-cell .cell {
@@ -269,7 +289,32 @@
 
   /* ── Edit cell ── */
   .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.125rem 0.25rem; }
+  .celledit:disabled { opacity: 0.6; }
+  .cell-spinner {
+    position: absolute; top: 50%; right: 0.25rem; transform: translateY(-50%);
+    width: 0.75rem; height: 0.75rem; border: 2px solid var(--spinner-track); border-top-color: var(--progress);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
   .cellerror { color: var(--error); font-size: 0.6875rem; margin-top: 0.125rem; }
+  /* Cell being edited via the object/array modal — the input itself lives in the modal, this just marks the source cell. */
+  .cell-editing-modal { box-shadow: inset 0 0 0 2px var(--focus-ring); }
+
+  /* ── Object/array modal editor ── */
+  .modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
+  .modal-editor { background: var(--panel); width: 34rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; display: flex; flex-direction: column; }
+  .modal-editor header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); font-size: 0.8125rem; }
+  .modal-textarea {
+    height: 18rem; margin: 0.875rem; width: calc(100% - 1.75rem); box-sizing: border-box;
+    font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.5rem; resize: vertical;
+  }
+  .modal-textarea:disabled { opacity: 0.6; }
+  .modal-error { margin: 0 0.875rem 0.625rem; }
+  .modal-editor footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
+  .modal-editor footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .modal-editor footer button:hover:not(:disabled) { background: var(--bg); }
+  .modal-editor footer button:disabled { color: var(--gray-b8); cursor: default; }
+  .modal-editor footer .primary { background: var(--run); color: var(--panel); border: none; font-weight: 600; }
+  .modal-editor footer .primary:hover:not(:disabled) { background: var(--run-hover); }
 
   /* ── Column header decorations ── */
   .colname { font-weight: 600; }

@@ -55,6 +55,31 @@ it("csv target: exportQueryProgress then writeTextFile", async () => {
   expect(job.rows[0].status).toBe("done");
 });
 
+it("sql target: exportQueryProgress then writeTextFile with CREATE TABLE + INSERT", async () => {
+  api.exportQueryProgress.mockResolvedValueOnce([{ _id: 1, name: "Ada" }]);
+  const job = createExportJob("conn:1", {
+    format: "sql", filePath: "/out/x.sql",
+    targets: [{ db: "shop", coll: "users", source: qSource }],
+  });
+  await job.run();
+  expect(api.exportQueryProgress).toHaveBeenCalled();
+  const [, content] = files.writeTextFile.mock.calls[0];
+  expect(content).toContain('CREATE TABLE "users"');
+  expect(content).toContain('INSERT INTO "users"');
+  expect(job.rows[0].status).toBe("done");
+});
+
+it("sql + memory source: table name comes from the target's coll", async () => {
+  const job = createExportJob("conn:1", {
+    format: "sql", filePath: "/out/r.sql",
+    targets: [{ db: "", coll: "results", source: { kind: "memory", docs: [{ _id: 1, a: 1 }] } }],
+  });
+  await job.run();
+  const [, content] = files.writeTextFile.mock.calls[0];
+  expect(content).toContain('CREATE TABLE "results"');
+  expect(job.rows[0].status).toBe("done");
+});
+
 it("memory source: serialize provided docs, no backend call", async () => {
   const job = createExportJob("conn:1", {
     format: "json", filePath: "/out/r.json",

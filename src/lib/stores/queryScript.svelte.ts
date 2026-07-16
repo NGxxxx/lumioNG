@@ -15,7 +15,7 @@ import { summarizeExplain, type ExplainSummary } from "../domain/explainPlan";
 import { suggestIndex, type IndexSuggestion } from "../domain/indexAdvisor";
 import { idJson } from "../domain/docid";
 import { clipboardTextOf } from "../domain/extjson";
-import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath } from "../domain/celledit";
+import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, rebuildJsonValue, buildSetUpdate, setByPath } from "../domain/celledit";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -112,7 +112,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let pending: { db: string; script: string } | null = null;
 
   // Inline cell edit (row index is relative to the CURRENT PAGE's `docs`, in both modes).
-  let editing = $state<{ row: number; key: string } | null>(null);
+  let editing = $state<{ row: number; key: string; kind: "inline" | "modal" } | null>(null);
   let editText = $state("");
   let editError = $state<string | null>(null);
   let saving = $state(false);
@@ -120,7 +120,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   // Row selection (indices into the current page's `docs`).
   let selected = $state<Set<number>>(new Set());
   let anchor: number | null = null;
-  let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
+  let menu = $state<{ x: number; y: number; row: number; key: string; source?: "grid" | "tree" } | null>(null);
   let ioError = $state<string | null>(null);
   let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
   let exportRequest = $state<{ rows: Doc[] } | null>(null);
@@ -530,9 +530,15 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const doc = docs[row];
     if (!doc || idJson(doc) === null) return;
     const value = getByPath(doc, key);
-    if (!isInlineEditable(key, value)) return;
-    editing = { row, key };
-    editText = editTextOf(value);
+    if (isInlineEditable(key, value)) {
+      editing = { row, key, kind: "inline" };
+      editText = editTextOf(value);
+    } else if (isModalEditable(key, value)) {
+      editing = { row, key, kind: "modal" };
+      editText = JSON.stringify(value, null, 2);
+    } else {
+      return;
+    }
     editError = null;
   }
 
@@ -567,10 +573,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   async function commitEdit() {
     if (!editing || saving || !provenance) return;
     const prov = provenance;
-    const { row, key } = editing;
+    const { row, key, kind } = editing;
     const doc = docs[row];
     if (!doc) { editing = null; return; }
-    const r = rebuildValue(getByPath(doc, key), editText);
+    const r = kind === "modal" ? rebuildJsonValue(editText) : rebuildValue(getByPath(doc, key), editText);
     if (!r.ok) { editError = r.error; return; }
     const id = idJson(doc);
     if (id === null) { editError = m.query_run_selection_missing_id(); return; }
@@ -596,10 +602,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     ({ selected, anchor } = clickRowSelection({ selected, anchor }, row, mods, visibleIndices));
   }
 
-  function openMenu(e: MouseEvent, row: number, key: string) {
+  function openMenu(e: MouseEvent, row: number, key: string, source: "grid" | "tree" = "grid") {
     e.preventDefault(); e.stopPropagation();
     ({ selected, anchor } = selectForMenu({ selected, anchor }, row));
-    menu = { x: e.clientX, y: e.clientY, row, key };
+    menu = { x: e.clientX, y: e.clientY, row, key, source };
   }
 
   function closeMenu() { menu = null; }
@@ -616,12 +622,13 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const editable = isEditable();
     const allHaveId = effectiveRows().every((r) => { const d = docs[r]; return d ? idJson(d) !== null : false; });
     const items: MenuItem[] = [];
+    if (menu.source === "tree") items.push({ label: "Expand full depth", action: "expandFullDepth" });
     if (editable) {
       items.push({ label: "Open document", action: "open", disabled: !hasId || n !== 1 });
       items.push({
         label: "Edit cell", action: "editCell",
         disabled: !doc || idJson(doc) === null
-          || !isInlineEditable(menu.key, getByPath(doc, menu.key)),
+          || (!isInlineEditable(menu.key, getByPath(doc, menu.key)) && !isModalEditable(menu.key, getByPath(doc, menu.key))),
       });
     }
     const copyChildren: MenuItem[] = [
@@ -650,7 +657,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     try { await navigator.clipboard.writeText(text); } catch { ioError = m.common_clipboard_failed(); }
   }
 
-  function onMenuSelect(action: string): { open: Doc } | null {
+  function onMenuSelect(action: string): { open: Doc } | { expandFullDepth: number } | null {
     if (!menu) return null;
     const doc = docs[menu.row];
     const key = menu.key;
@@ -658,6 +665,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const picked = rows.map((r) => docs[r]).filter(Boolean) as Doc[];
     switch (action) {
       case "open": menu = null; return doc ? { open: doc } : null;
+      case "expandFullDepth": { const r = menu.row; menu = null; return { expandFullDepth: r }; }
       case "editCell": { const r = menu.row; const k = menu.key; menu = null; startEdit(r, k); return null; }
       case "copyValue": copy(clipboardTextOf(getByPath(doc, key))); break;
       case "copyPath": copy(key); break;
@@ -716,6 +724,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       ids.push(id);
     }
     const filter = idInFilter(ids);
+    loading = true;
     try {
       await commandLog.pushTimed(deleteManyCmd(prov.coll, filter), sessionId, () =>
         deleteMany(sessionId, prov.db, prov.coll, filter, false));
@@ -742,6 +751,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       }
     } catch (e) {
       ioError = errorMessage(e);
+    } finally {
+      loading = false;
     }
   }
 
@@ -830,6 +841,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get editText() { return editText; },
     set editText(v: string) { editText = v; },
     get editError() { return editError; },
+    get saving() { return saving; },
     get editBlurPending() { return editBlurPending; },
     onEditBlur,
     confirmBlurEdit,

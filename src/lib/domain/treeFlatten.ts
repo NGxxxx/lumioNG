@@ -54,3 +54,19 @@ export function fieldPath(rowPath: string): string {
   const dot = rowPath.indexOf(".");
   return dot === -1 ? "" : rowPath.slice(dot + 1);
 }
+
+function collectExpandablePaths(value: unknown, path: string, acc: Set<string>): void {
+  const children = childrenOf(value);
+  if (children === null || children.length === 0) return;
+  acc.add(path);
+  for (const [k, v] of children) collectExpandablePaths(v, `${path}.${k}`, acc);
+}
+
+/** Every row path needed in `open` to fully expand one document at every depth ("Expand full depth"). */
+export function fullDepthPaths(doc: Doc, docIndex: number): Set<string> {
+  const path = `#${docIndex}`;
+  const acc = new Set<string>([path]);
+  const fields = Object.entries(doc).filter(([k]) => k !== "_id");
+  for (const [k, v] of fields) collectExpandablePaths(v, `${path}.${k}`, acc);
+  return acc;
+}

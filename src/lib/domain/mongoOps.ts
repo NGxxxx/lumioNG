@@ -100,6 +100,7 @@ export const CURSOR_METHODS: readonly OpEntry[] = Object.freeze([
   { label: "hasNext", detail: "are more documents available?" },
   { label: "next", detail: "advance to the next document" },
   { label: "explain", detail: "show the query plan" },
+  { label: "pretty", detail: "mongosh compatibility (no-op — results are already formatted)" },
 ]);
 
 /** Database-level methods offered after `db.` (alongside collection names). */

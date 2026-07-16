@@ -1,6 +1,6 @@
 import { exportJsonProgress, exportBsonProgress, exportQueryProgress } from "../api/documents";
 import { writeTextFile } from "../api/files";
-import { toCsv, toJsonArray } from "../domain/exporter";
+import { toCsv, toJsonArray, toSql } from "../domain/exporter";
 import { exportFileName, aggregateProgress } from "../domain/exportPlan";
 import { findCmd, exportBsonCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
@@ -9,7 +9,7 @@ import * as m from "$lib/paraglide/messages";
 import { errorMessage } from "../api/errors";
 import type { Doc } from "../domain/doc";
 
-export type ExportFormat = "json" | "csv" | "bson";
+export type ExportFormat = "json" | "csv" | "bson" | "sql";
 
 export type ExportSource =
   | { kind: "query"; filter: string; sort: string | null; projection: string | null }
@@ -70,11 +70,11 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
     update(i, { status: "running" });
     const onProg = (done: number, total: number) => update(i, { done, total });
     try {
+      const toText = (data: Doc[]) => (config.format === "csv" ? toCsv(data) : config.format === "sql" ? toSql(data, t.coll) : toJsonArray(data));
       if (t.source.kind === "memory") {
         const data = t.source.docs;
-        const content = config.format === "csv" ? toCsv(data) : toJsonArray(data);
         await commandLog.pushTimed(findCmd({ coll: t.coll, filter: "{}" }), sessionId, () =>
-          writeTextFile(path, content));
+          writeTextFile(path, toText(data)));
         update(i, { status: "done", done: data.length, total: data.length });
         return;
       }
@@ -90,7 +90,7 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
       } else {
         const data = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
           exportQueryProgress(sessionId, t.db, t.coll, filter, sort, projection, onProg));
-        await writeTextFile(path, toCsv(data));
+        await writeTextFile(path, toText(data));
         update(i, { status: "done", done: data.length, total: data.length });
       }
     } catch (e) {

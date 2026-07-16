@@ -262,6 +262,23 @@ describe("QueryTab", () => {
     expect(getByText(/Edit the statement/)).toBeTruthy();
   });
 
+  it("registers a logOpen/toggleLog bridge on activeDataView so the shared toolbar button can drive this tab's own Command log sub-tab", async () => {
+    const { getByText, queryByText } = render(QueryTab, { props });
+    // Normally set by the app shell (+page.svelte) as the active-tab tracking follows which
+    // query tab is focused; this test stands in for that since QueryTab is rendered standalone.
+    activeDataView.setActiveQueryId(props.id);
+    expect(activeDataView.handle?.logOpen).toBe(false);
+    activeDataView.handle?.toggleLog?.();
+    await Promise.resolve();
+    expect(activeDataView.handle?.logOpen).toBe(true);
+    expect(getByText("Clear")).toBeTruthy(); // Command log sub-tab's own Clear button now showing
+    activeDataView.handle?.toggleLog?.();
+    await Promise.resolve();
+    expect(activeDataView.handle?.logOpen).toBe(false);
+    expect(queryByText("Clear")).toBeNull();
+    activeDataView.setActiveQueryId(null);
+  });
+
   it("auto-switches resultView to console after a run whose result is console-only", async () => {
     const consoleOnlyStub = {
       ...stub,

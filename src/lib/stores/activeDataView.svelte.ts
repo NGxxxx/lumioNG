@@ -15,6 +15,9 @@ export type DataViewHandle = {
   /** Focuses this view's quick-search input (global toolbar's Find button). Optional since not
    *  every future registrant is guaranteed to have a search box. */
   focusSearch?: () => void;
+  /** Whether this view's own embedded Command log sub-tab is showing, if it has one (instead of the app-wide docked panel). */
+  readonly logOpen?: boolean;
+  toggleLog?: () => void;
 };
 
 export function createActiveDataView() {

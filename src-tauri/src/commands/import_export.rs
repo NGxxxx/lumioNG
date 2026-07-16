@@ -84,7 +84,7 @@ fn summarize_import(inserted: u64, mut errors: Vec<String>) -> ImportResult {
 }
 
 /// Insert one already-parsed batch, remapping write-errors back to each doc's original raw file index (`raw_idx[k]` = file index of `batch[k]`).
-async fn insert_batch(
+pub(crate) async fn insert_batch(
     collection: &mongodb::Collection<Document>,
     batch: Vec<Document>,
     raw_idx: &[usize],

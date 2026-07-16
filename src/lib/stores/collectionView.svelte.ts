@@ -9,7 +9,7 @@ import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { idInFilter, resolveIds, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
 import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, limitColumnsToDepth, type CollectionSchema, type ColumnField } from "../domain/schema";
-import { isInlineEditable, editTextOf, rebuildValue, setByPath, buildSetUpdate } from "../domain/celledit";
+import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, rebuildJsonValue, setByPath, buildSetUpdate } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import { compileSearch, matchingIndices } from "../domain/search";
 import {
@@ -79,13 +79,13 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let confirmDoc = $state<Doc | null>(null);
 
   // Inline cell edit
-  let editing = $state<{ row: number; key: string } | null>(null);
+  let editing = $state<{ row: number; key: string; kind: "inline" | "modal" } | null>(null);
   let editText = $state("");
   let editError = $state<string | null>(null);
   let saving = $state(false);
 
   // Context menu
-  let menu = $state<{ x: number; y: number; row: number; key: string } | null>(null);
+  let menu = $state<{ x: number; y: number; row: number; key: string; source?: "grid" | "tree" } | null>(null);
 
   // Row selection (indices into the current page `docs`)
   let selected = $state<Set<number>>(new Set());
@@ -376,9 +376,15 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       }
     }
     const value = getByPath(docs[row], key);
-    if (!isInlineEditable(key, value)) return;
-    editing = { row, key };
-    editText = editTextOf(value);
+    if (isInlineEditable(key, value)) {
+      editing = { row, key, kind: "inline" };
+      editText = editTextOf(value);
+    } else if (isModalEditable(key, value)) {
+      editing = { row, key, kind: "modal" };
+      editText = JSON.stringify(value, null, 2);
+    } else {
+      return;
+    }
     editError = null;
   }
 
@@ -411,8 +417,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   async function commitEdit() {
     if (!editing || saving) return;
-    const { row, key } = editing;
-    const r = rebuildValue(getByPath(docs[row], key), editText);
+    const { row, key, kind } = editing;
+    const r = kind === "modal" ? rebuildJsonValue(editText) : rebuildValue(getByPath(docs[row], key), editText);
     if (!r.ok) {
       editError = r.error;
       return;
@@ -440,11 +446,11 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     }
   }
 
-  function openMenu(e: MouseEvent, row: number, key: string) {
+  function openMenu(e: MouseEvent, row: number, key: string, source: "grid" | "tree" = "grid") {
     e.preventDefault();
     e.stopPropagation();
     ({ selected, anchor } = selectForMenu({ selected, anchor }, row));
-    menu = { x: e.clientX, y: e.clientY, row, key };
+    menu = { x: e.clientX, y: e.clientY, row, key, source };
   }
 
   function closeMenu() {
@@ -489,10 +495,11 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const hasId = idJson(docs[menu.row]) !== null;
     const items: MenuItem[] = [];
     if (n === 1) items.push({ label: "Open document", action: "open" });
+    if (menu.source === "tree") items.push({ label: "Expand full depth", action: "expandFullDepth" });
     items.push({
       label: "Edit cell",
       action: "editCell",
-      disabled: !isInlineEditable(menu.key, value),
+      disabled: !isInlineEditable(menu.key, value) && !isModalEditable(menu.key, value),
     });
     items.push({
       label: "Copy",
@@ -544,8 +551,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     }
   }
 
-  /** Returns the doc to open for "open", or `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate. */
-  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | null {
+  /** Returns the doc to open for "open", `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate,
+   *  or `{ expandFullDepth }` (a tree doc index) for the Tree view's "Expand full depth". */
+  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { expandFullDepth: number } | null {
     if (!menu) return null;
     const row = menu.row;
     const key = menu.key;
@@ -555,6 +563,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       case "open":
         menu = null;
         return { open: doc };
+      case "expandFullDepth":
+        menu = null;
+        return { expandFullDepth: row };
       case "copyValue":
         copy(clipboardTextOf(getByPath(doc, key)));
         break;
@@ -665,12 +676,14 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       return;
     }
     const filter = idInFilter(sel.ids);
+    loading = true;
     try {
       await commandLog.pushTimed(deleteManyCmd(coll, filter), sessionId, () =>
         deleteMany(sessionId, db, coll, filter, false));
-      await reloadDocs(); // reloadDocs → loadPage → clearSelection
+      await reloadDocs(); // reloadDocs → loadPage → clearSelection (owns clearing `loading`)
     } catch (e) {
       error = errorMessage(e);
+      loading = false;
     }
   }
 
@@ -691,12 +704,14 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       error = m.collection_view_no_id_delete();
       return;
     }
+    loading = true;
     try {
       await commandLog.pushTimed(deleteOneCmd(coll, id), sessionId, () =>
         deleteDocument(sessionId, db, coll, id));
-      await reloadDocs();
+      await reloadDocs(); // owns clearing `loading`
     } catch (e) {
       error = errorMessage(e);
+      loading = false;
     }
   }
 

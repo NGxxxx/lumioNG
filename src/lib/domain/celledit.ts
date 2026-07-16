@@ -1,6 +1,7 @@
 /** Inline-cell editing: editability check, raw-text extraction, and typed value rebuild. */
 import { rebuildNumber, type NumericKind } from "./bsonnum";
 import { editTextOf } from "./bsontree";
+import { describeValue } from "./extjson";
 import type { Doc } from "./doc";
 
 export type RebuildResult =
@@ -35,6 +36,22 @@ export function isInlineEditable(key: string, value: unknown): boolean {
   if (typeof value === "string") return value.length <= MAX_INLINE_EDIT_LEN;
   if (typeof value === "boolean" || typeof value === "number") return true;
   return numericKey(value) !== null;
+}
+
+/** Whether a cell holds a plain object/array, edited via the JSON modal (not the inline input). */
+export function isModalEditable(key: string, value: unknown): boolean {
+  if (key === "_id") return false;
+  const t = describeValue(value).type;
+  return t === "object" || t === "array";
+}
+
+/** Parse arbitrary JSON text for the object/array modal editor (the shape itself can change, e.g. object -> array). */
+export function rebuildJsonValue(text: string): RebuildResult {
+  try {
+    return { ok: true, value: JSON.parse(text) };
+  } catch {
+    return { ok: false, error: "err_json_invalid" };
+  }
 }
 
 /** Rebuild a value with the same BSON type as `original` from user-entered text. */

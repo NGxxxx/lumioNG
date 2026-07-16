@@ -33,14 +33,15 @@ export interface GridPageView {
   readonly selected: Set<number>;
   clickRow(row: number, mods: { ctrl: boolean; shift: boolean }): void;
   selectAll?(): void;
-  readonly menu: { x: number; y: number; row: number; key: string } | null;
-  openMenu(e: MouseEvent, row: number, key: string): void;
+  readonly menu: { x: number; y: number; row: number; key: string; source?: "grid" | "tree" } | null;
+  openMenu(e: MouseEvent, row: number, key: string, source?: "grid" | "tree"): void;
   closeMenu(): void;
   menuItems(): MenuItem[];
 
-  readonly editing: { row: number; key: string } | null;
+  readonly editing: { row: number; key: string; kind: "inline" | "modal" } | null;
   editText: string;
   readonly editError: string | null;
+  readonly saving: boolean;
   startEdit(row: number, key: string): void;
   commitEdit(): void | Promise<void>;
   cancelEdit(): void;

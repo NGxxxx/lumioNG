@@ -3,7 +3,7 @@
   import { get } from "svelte/store";
   import { createVirtualizer } from "@tanstack/svelte-virtual";
   import type { Doc } from "../domain/doc";
-  import { flattenDocs, fieldPath, type TreeRow } from "../domain/treeFlatten";
+  import { flattenDocs, fieldPath, fullDepthPaths, type TreeRow } from "../domain/treeFlatten";
   import { describeValue, truncateForDisplay } from "../domain/extjson";
   import { jsonValueColor, bsonValueKind } from "../domain/theme";
   import { settings } from "../stores/settings.svelte";
@@ -49,6 +49,12 @@
   export function toggleExpandAll() {
     if (isAllExpanded()) collapseAll();
     else expandAll();
+  }
+  /** Expand every nested object/array in one document, at every depth (context-menu action). */
+  export function expandFullDepth(docIndex: number) {
+    const doc = docs[docIndex];
+    if (!doc) return;
+    open = new Set([...open, ...fullDepthPaths(doc, docIndex)]);
   }
 
   // Reset expansion when docs change (paging/sort/filter/new query).

@@ -10,7 +10,6 @@
   import ExportWizard from "./ExportWizard.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
-  import { openDialog } from "../api/files";
   import * as m from "$lib/paraglide/messages";
   import type { Session } from "../stores/sessionManager.svelte";
 
@@ -25,7 +24,7 @@
     onselectdb?: (d: { db: string }) => void;
     onnewquery?: (d: { db: string; coll: string }) => void;
     onmanagesessions?: () => void;
-    ondisconnect?: () => void;
+    ondisconnect?: (sessionId: string) => void;
   } = $props();
 
   // Per-session: track which sessions are collapsed in the sidebar
@@ -53,6 +52,7 @@
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
     { label: m.menu_refresh(), action: "refresh" },
     { label: m.export_wizard_menu_export_db(), action: "exportDb" },
+    { label: m.namespace_panel_menu_import_sql(), action: "importSql" },
     { label: m.namespace_panel_menu_drop_db(), action: "dropDb" },
   ]);
   const collItems = $derived([
@@ -77,7 +77,7 @@
 
   let dialog = $state<Dialog | null>(null);
   let exportWizard = $state<ExportWizardInput | null>(null);
-  let importDialog = $state<{ sessionId: string; db: string; coll: string; path: string } | null>(null);
+  let importDialog = $state<{ sessionId: string; db: string; coll: string | null } | null>(null);
   // Confirmation gate shared by the session X button and the right-click Disconnect action.
   let confirmDisconnect = $state<{ label: string; run: () => void } | null>(null);
 
@@ -98,7 +98,7 @@
       else if (action === "refresh") tree?.refresh();
       else if (action === "manageSessions") onmanagesessions?.();
       else if (action === "disconnect") {
-        confirmDisconnect = { label: sess?.label ?? target.sessionId, run: () => ondisconnect?.() };
+        confirmDisconnect = { label: sess?.label ?? target.sessionId, run: () => ondisconnect?.(target.sessionId) };
       }
     } else if (target.kind === "db") {
       if (action === "newColl") dialog = { type: "newColl", db: target.db, sessionId: target.sessionId };
@@ -110,6 +110,7 @@
         const db = databases.find((d) => d.name === target.db);
         exportWizard = { mode: "pick", preChecked: (db?.collections ?? []).map((c) => ({ db: target.db, coll: c })) };
       }
+      else if (action === "importSql") openImportDialog(target.sessionId, target.db, null);
       else if (action === "dropDb") dialog = { type: "dropDb", db: target.db, sessionId: target.sessionId };
     } else {
       if (action === "newQuery") onnewquery?.({ db: target.db, coll: target.coll });
@@ -118,7 +119,7 @@
         sessionManager.focusSession(target.sessionId);
         exportWizard = { mode: "pick", preChecked: [{ db: target.db, coll: target.coll }] };
       }
-      else if (action === "import") runImport(target.sessionId, target.db, target.coll);
+      else if (action === "import") openImportDialog(target.sessionId, target.db, target.coll);
       else if (action === "copyName") navigator.clipboard.writeText(`${target.db}.${target.coll}`);
       else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "duplicate") dialog = { type: "duplicate", db: target.db, coll: target.coll, sessionId: target.sessionId };
@@ -127,10 +128,14 @@
     }
   }
 
-  async function runImport(sessionId: string, db: string, coll: string) {
-    const path = await openDialog([{ name: "JSON / JSONL / BSON", extensions: ["json", "jsonl", "bson"] }]);
-    if (path === null) return;
-    importDialog = { sessionId, db, coll, path };
+  /** `coll === null` is a whole-database SQL import; the dialog itself owns picking the file. */
+  function openImportDialog(sessionId: string, db: string, coll: string | null) {
+    importDialog = { sessionId, db, coll };
+  }
+
+  /** Toolbar entry point (mirrors the tree row's right-click Import) for the currently selected collection. */
+  export function startImport(sessionId: string, db: string, coll: string) {
+    openImportDialog(sessionId, db, coll);
   }
 
   function closeImportDialog() {
@@ -344,7 +349,7 @@
 
 {#if importDialog}
   {@const d = importDialog}
-  <ImportDialog sessionId={d.sessionId} db={d.db} coll={d.coll} path={d.path} onclose={closeImportDialog} />
+  <ImportDialog sessionId={d.sessionId} db={d.db} coll={d.coll} onclose={closeImportDialog} />
 {/if}
 
 <style>

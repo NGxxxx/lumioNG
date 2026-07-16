@@ -413,7 +413,7 @@ describe("createCollectionView — paging", () => {
     await v.startEdit(0, "x");
     expect(full).toHaveBeenCalledWith("conn:1", "d", "c", '{"$oid":"a"}');
     expect(v.docs[0]).toEqual({ _id: { $oid: "a" }, x: "hi", secret: 9 });
-    expect(v.editing).toEqual({ row: 0, key: "x" });
+    expect(v.editing).toEqual({ row: 0, key: "x", kind: "inline" });
   });
 
   it("startEdit with no projection → does not call fetchFullDoc", async () => {
@@ -424,7 +424,33 @@ describe("createCollectionView — paging", () => {
     await v.init();
     await v.startEdit(0, "x");
     expect(full).not.toHaveBeenCalled();
-    expect(v.editing).toEqual({ row: 0, key: "x" });
+    expect(v.editing).toEqual({ row: 0, key: "x", kind: "inline" });
+  });
+
+  it("startEdit on an object/array field opens the modal editor with pretty-printed JSON", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, tags: ["a", "b"] }]);
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "tags");
+    expect(v.editing).toEqual({ row: 0, key: "tags", kind: "modal" });
+    expect(v.editText).toBe(JSON.stringify(["a", "b"], null, 2));
+  });
+
+  it("commitEdit on a modal edit parses the JSON and $sets the field", async () => {
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, tags: ["a"] }]);
+    samp.mockResolvedValueOnce([]);
+    upd.mockResolvedValueOnce({ matched: 1, modified: 1 });
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "tags");
+    v.editText = '["a","b","c"]';
+    await v.commitEdit();
+    expect(upd).toHaveBeenCalledWith("conn:1", "d", "c", '{"_id": {"$oid":"a"}}', '{"$set":{"tags":["a","b","c"]}}', false);
+    expect(v.docs[0]).toEqual({ _id: { $oid: "a" }, tags: ["a", "b", "c"] });
+    expect(v.editing).toBeNull();
   });
 
 });

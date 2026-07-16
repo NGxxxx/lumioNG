@@ -1147,6 +1147,22 @@ globalThis.__DBNAME = "testdb";
     }
 
     #[test]
+    fn pretty_is_chainable_and_does_not_alter_cursor_options() {
+        // mongosh scripts commonly end a find with .pretty() — it must not error and must not
+        // change the cursor's kind/options, since Grid/Tree already format the result.
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let (kind, limit): (String, i32) = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.find({a:1}).limit(5).pretty());"#).unwrap();
+            (ctx.eval("__r.kind").unwrap(), ctx.eval("__r.o.limit").unwrap())
+        });
+        assert_eq!(kind, "find");
+        assert_eq!(limit, 5);
+    }
+
+    #[test]
     fn mapped_cursor_still_materializes_via_to_array() {
         // Note: Cursor.map() (see prelude.js) sets `_pure = false` and returns
         // `this.toArray().map(fn)` — a plain JS array, not `this`. So by the time __finalize

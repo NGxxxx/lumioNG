@@ -397,8 +397,29 @@ describe("inline edit (editable grid)", () => {
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("d");
     s.startEdit(0, "name");
-    expect(s.editing).toEqual({ row: 0, key: "name" });
+    expect(s.editing).toEqual({ row: 0, key: "name", kind: "inline" });
     expect(s.editText).toBe("A");
+  });
+
+  it("startEdit on an object/array field opens the modal editor with pretty-printed JSON", async () => {
+    (runScript as any).mockResolvedValue(ok([`{"_id":1,"tags":["a","b"]}`], { db: "d", coll: "c" }));
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.startEdit(0, "tags");
+    expect(s.editing).toEqual({ row: 0, key: "tags", kind: "modal" });
+    expect(s.editText).toBe(JSON.stringify(["a", "b"], null, 2));
+  });
+
+  it("commitEdit on a modal edit parses the JSON and $sets the field", async () => {
+    (runScript as any).mockResolvedValue(ok([`{"_id":1,"tags":["a"]}`], { db: "d", coll: "c" }));
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.startEdit(0, "tags");
+    s.editText = '["a","b","c"]';
+    await s.commitEdit();
+    expect(updateOne).toHaveBeenCalledWith("sess", "d", "c", `{"_id": 1}`, `{"$set":{"tags":["a","b","c"]}}`, false);
+    expect(s.docs[0].tags).toEqual(["a", "b", "c"]);
+    expect(s.editing).toBeNull();
   });
 
   it("commitEdit calls updateOne with the provenance namespace and patches the row immutably", async () => {
@@ -501,7 +522,7 @@ describe("inline edit (editable grid)", () => {
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("d");
     s.startEdit(0, "name");
-    expect(s.editing).toEqual({ row: 0, key: "name" });
+    expect(s.editing).toEqual({ row: 0, key: "name", kind: "inline" });
 
     // Second run: another editable result (same size — guard `if (!doc)` won't fire)
     (runScript as any).mockResolvedValueOnce(editableDocs());

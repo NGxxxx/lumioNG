@@ -27,7 +27,7 @@ function baseView(docs: Doc[], overrides: Partial<GridPageView> = {}): GridPageV
     setPageSize: vi.fn(), requestShowAll: vi.fn(),
     selected: new Set<number>(), clickRow: vi.fn(), menu: null, openMenu: vi.fn(), closeMenu: vi.fn(),
     menuItems: () => [],
-    editing: null, editText: "", editError: null,
+    editing: null, editText: "", editError: null, saving: false,
     startEdit: vi.fn(), commitEdit: vi.fn(), cancelEdit: vi.fn(), onEditBlur: vi.fn(),
     ...overrides,
   };
@@ -36,7 +36,7 @@ function baseView(docs: Doc[], overrides: Partial<GridPageView> = {}): GridPageV
 describe("ResultGrid inline edit", () => {
   it("renders an input when editing matches a cell", () => {
     const docs = [{ _id: { $oid: "a" }, name: "x" }];
-    const v = baseView(docs, { editing: { row: 0, key: "name" }, editText: "x" });
+    const v = baseView(docs, { editing: { row: 0, key: "name", kind: "inline" }, editText: "x" });
     const { container } = render(ResultGrid, { props: { v } });
     expect(container.querySelector("input.celledit")).toBeTruthy();
   });
@@ -48,6 +48,23 @@ describe("ResultGrid inline edit", () => {
     const cells = container.querySelectorAll("td.data-cell"); // [0]=_id, [1]=name
     await fireEvent.dblClick(cells[1]);
     expect(v.startEdit).toHaveBeenCalledWith(0, "name");
+  });
+
+  it("renders the modal editor (not an inline input) when editing.kind is 'modal'", () => {
+    const docs = [{ _id: { $oid: "a" }, tags: ["x", "y"] }];
+    const v = baseView(docs, { editing: { row: 0, key: "tags", kind: "modal" }, editText: '["x","y"]' });
+    const { container } = render(ResultGrid, { props: { v } });
+    expect(container.querySelector("input.celledit")).toBeNull();
+    // The modal is moved to document.body via the `portal` action, not a descendant of `container`.
+    expect(document.querySelector(".modal-editor textarea.modal-textarea")).toBeTruthy();
+  });
+
+  it("modal editor's Save button calls commitEdit", async () => {
+    const docs = [{ _id: { $oid: "a" }, tags: ["x"] }];
+    const v = baseView(docs, { editing: { row: 0, key: "tags", kind: "modal" }, editText: '["x"]' });
+    const { getByText } = render(ResultGrid, { props: { v } });
+    await fireEvent.click(getByText("Save"));
+    expect(v.commitEdit).toHaveBeenCalled();
   });
 });
 

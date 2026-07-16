@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { flattenDocs, fieldPath, type TreeRow } from "./treeFlatten";
+import { flattenDocs, fieldPath, fullDepthPaths, type TreeRow } from "./treeFlatten";
 
 const docs = [
   {
@@ -71,6 +71,31 @@ describe("flattenDocs", () => {
     const name = rows.find((r) => r.path === "#0.name")!;
     expect(name.expandable).toBe(false);
     expect(name.childCount).toBe(null);
+  });
+});
+
+describe("fullDepthPaths", () => {
+  it("collects the doc row plus every nested container path, at every depth", () => {
+    const paths = fullDepthPaths(docs[0], 0);
+    expect(paths).toEqual(new Set([
+      "#0", "#0.address", "#0.address.geo", "#0.tags",
+      // "#0.empty" is excluded: an empty object has no children, so it isn't expandable.
+    ]));
+  });
+
+  it("flattening with these paths open shows every leaf for that document", () => {
+    const open = fullDepthPaths(docs[0], 0);
+    const rows = flattenDocs(docs, open);
+    expect(rows.map((r) => r.path)).toEqual([
+      "#0", "#0.name",
+      "#0.address", "#0.address.city", "#0.address.geo", "#0.address.geo.lat", "#0.address.geo.lng",
+      "#0.tags", "#0.tags.0", "#0.tags.1",
+      "#0.empty", "#1",
+    ]);
+  });
+
+  it("a document with no expandable fields yields just its own doc-row path", () => {
+    expect(fullDepthPaths(docs[1], 1)).toEqual(new Set(["#1"]));
   });
 });
 

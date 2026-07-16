@@ -127,6 +127,7 @@
     {#if job === null}
       <div class="body">
         {#if input.mode !== "pick"}<p class="summary">{input.summary}</p>{/if}
+        {#if format === "sql"}<p class="notice">{m.sql_export_scope_notice()}</p>{/if}
 
         <div class="cols-2">
           <!-- Left: what to export -->
@@ -178,6 +179,7 @@
               <label><input type="radio" name="fmt" value="json" bind:group={format} /> JSON</label>
               <label><input type="radio" name="fmt" value="csv" bind:group={format} /> CSV</label>
               <label><input type="radio" name="fmt" value="bson" bind:group={format} disabled={isMemory} /> BSON</label>
+              <label><input type="radio" name="fmt" value="sql" bind:group={format} /> SQL</label>
             </fieldset>
 
             {#if input.mode === "pick"}
@@ -264,6 +266,7 @@
   fieldset button[type="button"]:not(.link):hover { background: var(--bg); }
   legend { font-size: 0.75rem; color: var(--gray-77); padding: 0 0.25rem; }
   .options label { display: block; padding: 0.125rem 0; }
+  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.75rem; margin: 0 0 0.625rem; }
   .dir { margin: 0.375rem 0 0; color: var(--th-fg); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }

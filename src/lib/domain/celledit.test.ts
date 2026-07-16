@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath } from "./celledit";
+import {
+  isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath,
+  isModalEditable, rebuildJsonValue,
+} from "./celledit";
 
 describe("isInlineEditable", () => {
   it("false for _id column even when value is a string", () => {
@@ -86,6 +89,43 @@ describe("rebuildValue type errors", () => {
   });
   it("$numberLong out of 64-bit range → ok:false", () => {
     const r = rebuildValue({ $numberLong: "1" }, "99999999999999999999999");
+    expect(r.ok).toBe(false);
+  });
+});
+
+describe("isModalEditable", () => {
+  it("true for plain objects and arrays", () => {
+    expect(isModalEditable("a", { x: 1 })).toBe(true);
+    expect(isModalEditable("a", [1, 2, 3])).toBe(true);
+  });
+  it("false for _id, even when it's an object", () => {
+    expect(isModalEditable("_id", { $oid: "507f1f77bcf86cd799439011" })).toBe(false);
+  });
+  it("false for ExtJSON leaf wrappers (objectId/date/binary/numeric)", () => {
+    expect(isModalEditable("a", { $oid: "507f1f77bcf86cd799439011" })).toBe(false);
+    expect(isModalEditable("a", { $date: "2020-01-01T00:00:00Z" })).toBe(false);
+    expect(isModalEditable("a", { $binary: { base64: "AA==", subType: "00" } })).toBe(false);
+    expect(isModalEditable("a", { $numberDecimal: "1.5" })).toBe(false);
+  });
+  it("false for scalars and null", () => {
+    expect(isModalEditable("a", "hello")).toBe(false);
+    expect(isModalEditable("a", 42)).toBe(false);
+    expect(isModalEditable("a", null)).toBe(false);
+  });
+});
+
+describe("rebuildJsonValue", () => {
+  it("parses a valid object", () => {
+    expect(rebuildJsonValue('{"a":1}')).toEqual({ ok: true, value: { a: 1 } });
+  });
+  it("parses a valid array", () => {
+    expect(rebuildJsonValue("[1,2,3]")).toEqual({ ok: true, value: [1, 2, 3] });
+  });
+  it("allows the shape to change (object -> array)", () => {
+    expect(rebuildJsonValue("[1]")).toEqual({ ok: true, value: [1] });
+  });
+  it("ok:false on malformed JSON", () => {
+    const r = rebuildJsonValue("{bad");
     expect(r.ok).toBe(false);
   });
 });

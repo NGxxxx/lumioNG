@@ -12,7 +12,14 @@
     onsession,
     onrefresh,
     onquit,
-  }: { connected: boolean; onsession: () => void; onrefresh: () => void; onquit: () => void } = $props();
+    onresetdefault,
+  }: {
+    connected: boolean;
+    onsession: () => void;
+    onrefresh: () => void;
+    onquit: () => void;
+    onresetdefault: () => void;
+  } = $props();
 
   // An item is either a leaf (with `run`) or a parent that opens a submenu (`children`).
   type Item = { label: string; run?: () => void; disabled?: boolean; checked?: boolean; children?: Item[] };
@@ -64,6 +71,7 @@
             { label: m.theme_dark(), checked: theme.current === "mocha", run: () => theme.set("mocha") },
           ],
         },
+        { label: m.menu_reset_to_default(), run: onresetdefault },
       ],
     },
     { name: m.menu_query(), items: [{ label: m.menu_run_query(), disabled: true }] },

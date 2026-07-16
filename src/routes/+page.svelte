@@ -48,6 +48,16 @@
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
   let saveQueryDialog = $state<{ tabId: number } | null>(null);
+  let namespacePanelRef: NamespacePanel | undefined = $state();
+
+  // "Reset to default": clears only UI-pref localStorage keys, never saved connections/queries.
+  let confirmReset = $state(false);
+  const requestReset = () => (confirmReset = true);
+  function doReset() {
+    confirmReset = false;
+    localStorage.clear();
+    window.location.reload();
+  }
 
   onMount(() => {
     queryLibrary.load(); // once at app start; failure shows in the panel and never blocks the app
@@ -110,9 +120,8 @@
     if (s?.coll) nav?.bumpCollection(s.db, s.coll);
   }
 
-  async function doDisconnect() {
-    const id = sm.activeId;
-    if (id) await sm.closeSession(id);
+  async function doDisconnect(sessionId: string) {
+    await sm.closeSession(sessionId);
     if (sm.sessions.length === 0) shell.setConnection(null);
     // Do not auto-open the session modal — the user reopens it manually when needed.
   }
@@ -232,6 +241,7 @@
     onsession={() => shell.toggleSession()}
     onrefresh={doRefresh}
     onquit={requestQuit}
+    onresetdefault={requestReset}
   />
   <Toolbar
     connected={shell.connection !== null}
@@ -239,7 +249,7 @@
     onsession={() => shell.toggleSession()}
     onrefresh={doRefresh}
     onnewdocument={newDocActive}
-    onToggleLog={() => shell.toggleLog()}
+    onToggleLog={() => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog())}
     canRun={activeQueryRun != null}
     onrun={() => activeQueryRun?.run(sel?.db ?? null)}
     canRunSelection={activeQueryRun?.hasSelection ?? false}
@@ -250,6 +260,8 @@
     oneditdocument={() => activeDataView.handle?.editSelected()}
     canExport={canUseDataView ? (activeDataView.handle?.canExport ?? false) : false}
     onexport={() => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined)}
+    canImport={sel?.coll != null}
+    onimport={() => { if (sel?.coll && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); }}
     canSave={activeQueryTab ? !queryLibrary.blocked : (activeDocumentForm.handle?.canSave ?? false)}
     onsave={() => (activeQueryTab ? saveActiveQuery() : activeDocumentForm.handle?.save())}
     canDeleteDoc={canUseDataView && (activeDataView.handle?.canDelete ?? false)}
@@ -262,12 +274,15 @@
     onstop={() => { if (sm.activeId) cancelScript(sm.activeId); }}
     canFind={canUseDataView}
     onfind={() => activeDataView.handle?.focusSearch?.()}
-    logOpen={shell.logOpen}
+    logOpen={activeDataView.handle?.toggleLog ? (activeDataView.handle.logOpen ?? false) : shell.logOpen}
+    savedQueriesOpen={shell.savedQueriesOpen}
+    onToggleSavedQueries={() => shell.toggleSavedQueries()}
   />
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
       <div class="ns-area">
         <NamespacePanel
+          bind:this={namespacePanelRef}
           onselect={(d) => nav?.selectCollection(d.db, d.coll)}
           onselectdb={(d) => nav?.selectDatabase(d.db)}
           onnewquery={(d) => { nav?.selectCollection(d.db, d.coll); sm.openQuery(aggregateTemplate(d.coll)); }}
@@ -417,6 +432,16 @@
   {/if}
   {#if saveQueryDialog}
     <SaveQueryDialog onsubmit={submitSaveQuery} oncancel={() => (saveQueryDialog = null)} />
+  {/if}
+  {#if confirmReset}
+    <ConfirmDialog
+      title={m.page_reset_default_title()}
+      message={m.page_reset_default_message()}
+      confirmLabel={m.page_reset_default_confirm()}
+      danger
+      onconfirm={doReset}
+      oncancel={() => (confirmReset = false)}
+    />
   {/if}
 </div>
 

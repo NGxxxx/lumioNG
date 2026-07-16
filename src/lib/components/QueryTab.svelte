@@ -132,6 +132,8 @@
     const r = v.onMenuSelect(action);
     if (r && "open" in r && v.provenance && onopendocument) {
       onopendocument(r.open, v.provenance.db, v.provenance.coll, "edit");
+    } else if (r && "expandFullDepth" in r) {
+      treeRef?.expandFullDepth(r.expandFullDepth);
     }
   }
 
@@ -155,6 +157,8 @@
       await tick();
       searchInputEl?.focus();
     },
+    get logOpen() { return bottomTab === "log"; },
+    toggleLog() { bottomTab = bottomTab === "log" ? "result" : "log"; },
   };
   $effect(() => {
     activeDataView.registerQuery(id, dataViewHandle);
@@ -265,7 +269,7 @@
     {:else}
       <div class="result-pane">
         {#if showDocs && resultView === "tree"}
-          <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key)} />
+          <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
         {:else if showDocs}
           <ResultGrid {v} />
         {:else if v.displayMode === "ack" && v.ackJson !== null}

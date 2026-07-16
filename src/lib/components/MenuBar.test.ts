@@ -6,7 +6,7 @@ import { appLocale } from "../stores/locale.svelte";
 import { uiSize } from "../stores/uiSize.svelte";
 import { theme } from "../stores/theme.svelte";
 
-const base = { connected: true, onsession: vi.fn(), onrefresh: vi.fn(), onquit: vi.fn() };
+const base = { connected: true, onsession: vi.fn(), onrefresh: vi.fn(), onquit: vi.fn(), onresetdefault: vi.fn() };
 
 describe("MenuBar", () => {
   it("File → Session manager calls onsession", async () => {
@@ -84,5 +84,13 @@ describe("MenuBar", () => {
     } finally {
       theme.set("latte"); // restore shared store for later tests
     }
+  });
+
+  it("View → Reset to default calls onresetdefault", async () => {
+    const onresetdefault = vi.fn();
+    render(MenuBar, { props: { ...base, onresetdefault } });
+    await fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
+    expect(onresetdefault).toHaveBeenCalled();
   });
 });

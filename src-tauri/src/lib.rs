@@ -6,6 +6,7 @@ mod json_bson;
 mod query_library;
 mod registry;
 mod script;
+mod sql_import;
 mod ssh_tunnel;
 mod state;
 
@@ -47,12 +48,15 @@ pub fn run() {
             commands::import_export::export_bson_progress,
             commands::import_export::export_query_progress,
             commands::import_export::import_bson,
+            commands::sql::sql_import_preview,
+            commands::sql::sql_import_commit,
             commands::admin::create_collection,
             commands::admin::drop_collection,
             commands::admin::rename_collection,
             commands::admin::duplicate_collection,
             commands::admin::drop_database,
             commands::admin::truncate_collection,
+            commands::admin::set_collection_validator,
             commands::index::list_indexes,
             commands::index::create_index,
             commands::index::drop_index,
@@ -62,6 +66,7 @@ pub fn run() {
             commands::server::server_status,
             commands::server::build_info,
             commands::server::host_info,
+            commands::server::startup_log,
             commands::server::current_ops,
             commands::server::kill_op,
             commands::script::run_script,
