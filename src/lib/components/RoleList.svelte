@@ -200,6 +200,7 @@
   .jsoneditor { height: 6rem; border: 1px solid var(--border); border-radius: 0.25rem; overflow: auto; margin-top: 0.25rem; }
   .dlg-error { color: var(--error); margin-top: 0.5rem; }
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem; }
+  .modal footer { margin-top: 0; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
   footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
   footer button:hover:not(:disabled) { background: var(--bg); }
   footer button:disabled { color: var(--gray-b8); cursor: default; }

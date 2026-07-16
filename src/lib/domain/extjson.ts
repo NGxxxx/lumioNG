@@ -23,13 +23,26 @@ export function numFromExt(v: unknown): number | null {
   return null;
 }
 
-function previewJson(v: unknown, max = 80): string {
+function previewJson(v: unknown, max = 160): string {
   const s = JSON.stringify(v);
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
 /** Above this length, rendering a value's full text into the DOM is what makes the UI lag on multi-MB string fields — truncate for *display only*; callers needing the exact value (Copy, export) must use the original. */
-export const MAX_DISPLAY_LEN = 5000;
+export const MAX_DISPLAY_LEN = 10000;
+
+/** Pretty-prints a string field whose content is itself valid JSON, for read-only display only (never the saved value); null if not JSON-shaped. */
+export function nestedJsonPretty(s: string): string | null {
+  const trimmed = s.trim();
+  if (!trimmed || (trimmed[0] !== "{" && trimmed[0] !== "[")) return null;
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed === null || typeof parsed !== "object") return null;
+    return JSON.stringify(parsed, null, 2);
+  } catch {
+    return null;
+  }
+}
 
 /** Truncate arbitrary display text for rendering; a no-op under the threshold. */
 export function truncateForDisplay(s: string, max = MAX_DISPLAY_LEN): string {

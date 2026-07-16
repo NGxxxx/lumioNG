@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { updateOneCmd, listIndexesCmd, listDatabasesCmd, findOneByIdCmd } from "./mongosh";
+import { updateOneCmd, listIndexesCmd, listDatabasesCmd, findOneByIdCmd, setValidatorCmd, sqlImportCmd } from "./mongosh";
 
 describe("write command-log helpers", () => {
   it("updateOneCmd", () => {
@@ -19,6 +19,16 @@ describe("read command-log helpers", () => {
   it("findOneByIdCmd", () => {
     expect(findOneByIdCmd("orders", '{"$oid":"a"}')).toBe(
       'db.getCollection("orders").findOne({ "_id": {"$oid":"a"} })',
+    );
+  });
+  it("setValidatorCmd", () => {
+    expect(setValidatorCmd("orders", '{"a":1}', "strict", "error")).toBe(
+      'db.runCommand({ "collMod": "orders", "validator": {"a":1}, "validationLevel": "strict", "validationAction": "error" })',
+    );
+  });
+  it("sqlImportCmd", () => {
+    expect(sqlImportCmd("d", "/tmp/dump.sql", ["users", "orders"])).toBe(
+      '-- SQL import into d: users, orders <- "/tmp/dump.sql"',
     );
   });
 });

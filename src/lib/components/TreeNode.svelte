@@ -1,6 +1,6 @@
 <script lang="ts">
   import TreeNode from "./TreeNode.svelte";
-  import { describeValue } from "../domain/extjson";
+  import { describeValue, nestedJsonPretty } from "../domain/extjson";
   import {
     editTextOf,
     rebuildLeaf,
@@ -41,6 +41,10 @@
 
   const info = $derived(describeValue(value));
   const type = $derived(info.type);
+
+  // Offer a read-only pretty preview for a string field that's itself JSON, without touching the editable raw string.
+  const nestedPretty = $derived(type === "string" && typeof value === "string" ? nestedJsonPretty(value) : null);
+  let showNestedPretty = $state(false);
 
   // Below this length a single-line input reads fine; only longer values switch to a textarea.
   const WRAP_TEXTAREA_THRESHOLD = 100;
@@ -202,9 +206,21 @@
     {:else}
       <input class="leaf" bind:value={editText} oninput={onLeafInput} spellcheck="false" />
     {/if}
+    {#if nestedPretty !== null}
+      <button
+        class="preview-toggle"
+        class:active={showNestedPretty}
+        onclick={() => (showNestedPretty = !showNestedPretty)}
+        title={m.tree_node_preview_json_title()}
+        aria-label={m.tree_node_preview_json_title()}
+      >{"{ }"}</button>
+    {/if}
     {#if removable}<button class="x" onclick={onremove} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
     {#if editError}<div class="cellerror">{msgKey(editError)}</div>{/if}
   </div>
+  {#if nestedPretty !== null && showNestedPretty}
+    <pre class="nested-preview">{nestedPretty}</pre>
+  {/if}
 {:else}
   <div class="node">
     <span class="label">{label}</span>
@@ -228,6 +244,17 @@
   .leaf { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
   .leaf-wrap { resize: vertical; white-space: pre-wrap; word-break: break-word; }
   .x { border: none; background: none; color: var(--danger-strong); cursor: pointer; font-size: 0.75rem; }
+  .preview-toggle {
+    flex: none; border: 1px solid var(--gray-b8); background: var(--panel); color: var(--gray-55);
+    border-radius: 0.1875rem; cursor: pointer; font-family: ui-monospace, monospace; font-size: 0.6875rem;
+    line-height: 1; padding: 0.0625rem 0.3125rem;
+  }
+  .preview-toggle:hover, .preview-toggle.active { background: var(--blue-tint5); color: var(--slate); }
+  .nested-preview {
+    margin: 0.125rem 0 0.25rem 1.125rem; padding: 0.375rem 0.5rem; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 0.1875rem; font-family: ui-monospace, monospace;
+    font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; color: var(--gray-33);
+  }
   .lock { font-size: 0.75rem; }
   .cellerror { color: var(--error); font-size: 0.6875rem; margin-left: 0.375rem; }
   .add { display: flex; align-items: center; gap: 0.375rem; padding: 0.125rem 0 0.125rem 1.125rem; }

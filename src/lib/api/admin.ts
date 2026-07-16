@@ -23,3 +23,18 @@ export async function dropDatabase(sessionId: string, db: string): Promise<void>
 export async function truncateCollection(sessionId: string, db: string, coll: string): Promise<number> {
   return await invoke<number>("truncate_collection", { sessionId, db, coll });
 }
+
+/** `validatorJson: "{}"` clears the validator. `validationLevel`/`validationAction` use MongoDB's
+ *  own vocabulary ("off"/"strict"/"moderate", "error"/"warn"). */
+export async function setCollectionValidator(
+  sessionId: string,
+  db: string,
+  coll: string,
+  validatorJson: string,
+  validationLevel: string,
+  validationAction: string,
+): Promise<void> {
+  await invoke("set_collection_validator", {
+    sessionId, db, coll, validatorJson, validationLevel, validationAction,
+  });
+}

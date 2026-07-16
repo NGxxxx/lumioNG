@@ -18,12 +18,29 @@ export type ResultDisplay =
   | { kind: "ack"; json: string }
   | { kind: "none" };
 export type Provenance = { db: string; coll: string };
+/** The originating query of the script's single constructed Cursor, if exactly one was
+ *  constructed during the run — independent of how the completion value was shaped (a pure
+ *  cursor recipe, a `.map()`/`.toArray()`'d array, a `.forEach()`'d `undefined`, etc). Lets
+ *  Explain work on scripts that transform a cursor's rows in JS, not just bare find/aggregate. */
+export type ExplainHint = {
+  cursorKind: "find" | "agg";
+  db: string;
+  coll: string;
+  query: string;
+  sort: string | null;
+  projection: string | null;
+  skip: number;
+  limit: number | null;
+};
 export type ScriptOutcome = {
   console: ConsoleEntry[];
   result: ResultDisplay;
   provenance: Provenance | null;
   capped: boolean;
   error: string | null;
+  // Optional so existing test fixtures don't need updating for a field they don't exercise —
+  // the real backend always sends it (`null` when not applicable).
+  explainHint?: ExplainHint | null;
 };
 
 export type DisplayMode = "grid-editable" | "grid-readonly" | "ack" | "value" | "none";

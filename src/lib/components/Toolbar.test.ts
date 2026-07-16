@@ -58,13 +58,13 @@ describe("Toolbar Wrap toggle", () => {
 
 describe("Toolbar Run query", () => {
   it("is disabled when canRun is false", () => {
-    const { getByTitle } = render(Toolbar, { props: { ...base, canRun: false, onrun: vi.fn() } });
-    expect((getByTitle("Run query") as HTMLButtonElement).disabled).toBe(true);
+    const { getByLabelText } = render(Toolbar, { props: { ...base, canRun: false, onrun: vi.fn() } });
+    expect((getByLabelText("Run query") as HTMLButtonElement).disabled).toBe(true);
   });
   it("calls onrun when enabled and clicked", async () => {
     const onrun = vi.fn();
-    const { getByTitle } = render(Toolbar, { props: { ...base, canRun: true, onrun } });
-    await fireEvent.click(getByTitle("Run query"));
+    const { getByLabelText } = render(Toolbar, { props: { ...base, canRun: true, onrun } });
+    await fireEvent.click(getByLabelText("Run query"));
     expect(onrun).toHaveBeenCalled();
   });
 });
@@ -155,15 +155,15 @@ describe("Toolbar Indexes", () => {
 
 describe("Toolbar Explain", () => {
   it("is disabled when canExplainQuery is false (default)", () => {
-    const { getByTitle } = render(Toolbar, { props: { ...base } });
-    expect((getByTitle("Explain") as HTMLButtonElement).disabled).toBe(true);
+    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    expect((getByLabelText("Explain") as HTMLButtonElement).disabled).toBe(true);
   });
   it("calls onexplainquery when enabled and clicked", async () => {
     const onexplainquery = vi.fn();
-    const { getByTitle } = render(Toolbar, {
+    const { getByLabelText } = render(Toolbar, {
       props: { ...base, canExplainQuery: true, onexplainquery },
     });
-    await fireEvent.click(getByTitle("Explain"));
+    await fireEvent.click(getByLabelText("Explain"));
     expect(onexplainquery).toHaveBeenCalled();
   });
 });

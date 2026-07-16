@@ -1,6 +1,6 @@
 //! QuickJS script engine — load prelude, eval user script, classify result.
 
-use crate::script::outcome::{ConsoleEntry, Provenance, ResultDisplay, ScriptOutcome};
+use crate::script::outcome::{ConsoleEntry, ExplainHint, Provenance, ResultDisplay, ScriptOutcome};
 use mongodb::Client;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -54,6 +54,31 @@ fn input_location(stack: &str) -> Option<String> {
     Some(format!("line {line}, column {col}"))
 }
 
+/// Shared `{kind, db, coll, q, o}` shape used by both the `cursorRef` result tag and the
+/// `explainHint` sibling field — same fields, different reason for existing (see `outcome.rs`
+/// doc comment on `ExplainHint`).
+fn cursor_query_fields(v: &serde_json::Value) -> (String, String, String, String, Option<String>, Option<String>, i64, Option<i64>) {
+    let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("find").to_string();
+    let db = v.get("db").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let coll = v.get("coll").and_then(|x| x.as_str()).unwrap_or("").to_string();
+    let query = v.get("q").map(|q| q.to_string()).unwrap_or_else(|| "{}".into());
+    let o = v.get("o");
+    let sort = o.and_then(|o| o.get("sort")).map(|s| s.to_string());
+    let projection = o.and_then(|o| o.get("projection")).map(|p| p.to_string());
+    let skip = o.and_then(|o| o.get("skip")).and_then(|s| s.as_i64()).unwrap_or(0);
+    let limit = o.and_then(|o| o.get("limit")).and_then(|l| l.as_i64());
+    (kind, db, coll, query, sort, projection, skip, limit)
+}
+
+fn parse_explain_hint(v: &serde_json::Value) -> Option<ExplainHint> {
+    let hint = v.get("explainHint")?;
+    if hint.is_null() {
+        return None;
+    }
+    let (cursor_kind, db, coll, query, sort, projection, skip, limit) = cursor_query_fields(hint);
+    Some(ExplainHint { cursor_kind, db, coll, query, sort, projection, skip, limit })
+}
+
 /// Map the prelude's `__finalize` tagged object (as JSON) + console into a ScriptOutcome; `cap == 0` means unlimited (no truncation), see `HostCtx::cap`.
 pub fn classify(finalized_json: &str, console: Vec<ConsoleEntry>, cap: usize) -> ScriptOutcome {
     let v: serde_json::Value =
@@ -105,15 +130,8 @@ pub fn classify(finalized_json: &str, console: Vec<ConsoleEntry>, cap: usize) ->
             false,
         ),
         "cursorRef" => {
-            let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("find").to_string();
-            let db = v.get("db").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            let coll = v.get("coll").and_then(|x| x.as_str()).unwrap_or("").to_string();
-            let query = v.get("q").map(|q| q.to_string()).unwrap_or_else(|| "{}".into());
-            let o = v.get("o");
-            let sort = o.and_then(|o| o.get("sort")).map(|s| s.to_string());
-            let projection = o.and_then(|o| o.get("projection")).map(|p| p.to_string());
-            let base_skip = o.and_then(|o| o.get("skip")).and_then(|s| s.as_i64()).unwrap_or(0);
-            let fixed_limit = o.and_then(|o| o.get("limit")).and_then(|l| l.as_i64());
+            let (kind, db, coll, query, sort, projection, base_skip, fixed_limit) =
+                cursor_query_fields(&v);
             let provenance = Some(Provenance { db: db.clone(), coll: coll.clone() });
             (
                 ResultDisplay::CursorQuery {
@@ -132,7 +150,8 @@ pub fn classify(finalized_json: &str, console: Vec<ConsoleEntry>, cap: usize) ->
         }
         _ => (ResultDisplay::None, None, false),
     };
-    ScriptOutcome { console, result, provenance, capped, error: None }
+    let explain_hint = parse_explain_hint(&v);
+    ScriptOutcome { console, result, provenance, capped, error: None, explain_hint }
 }
 
 /// Run `script` on a dedicated OS thread with the given MongoDB client and Tokio handle, returning a `ScriptOutcome` regardless of success or failure.
@@ -223,6 +242,7 @@ pub fn run(
                     provenance: None,
                     capped: false,
                     error: Some(error_text(msg)),
+                    explain_hint: None,
                 }),
             }
         })
@@ -238,6 +258,7 @@ pub fn run(
         provenance: None,
         capped: false,
         error: Some(error_text(msg)),
+        explain_hint: None,
     })
 }
 
@@ -345,6 +366,33 @@ mod classify_tests {
     fn scalar_is_value() {
         let o = classify(r#"{"t":"value","json":"42"}"#, vec![], 10);
         assert!(matches!(o.result, ResultDisplay::Value { ref json } if json == "42"));
+    }
+
+    #[test]
+    fn mapped_array_carries_explain_hint_from_the_single_source_cursor() {
+        // find(...).map(fn): materializes to a plain array, but prelude.js still tags the
+        // originating cursor's query onto explainHint since exactly one Cursor was constructed.
+        let j = r#"{"t":"array","rows":[{"a":1}],"explainHint":{"kind":"find","db":"d","coll":"c","q":{"a":1},"o":{"sort":{"a":1}}}}"#;
+        let o = classify(j, vec![], 1000);
+        let hint = o.explain_hint.expect("explain_hint should be present");
+        assert_eq!(hint.cursor_kind, "find");
+        assert_eq!(hint.query, r#"{"a":1}"#);
+        assert_eq!(hint.sort.as_deref(), Some(r#"{"a":1}"#));
+    }
+
+    #[test]
+    fn absent_explain_hint_is_none() {
+        let j = r#"{"t":"array","rows":[{"a":1}]}"#;
+        let o = classify(j, vec![], 1000);
+        assert_eq!(o.explain_hint, None);
+    }
+
+    #[test]
+    fn null_explain_hint_is_none() {
+        // Two (or zero) Cursors constructed in one script: prelude.js reports explainHint: null.
+        let j = r#"{"t":"array","rows":[],"explainHint":null}"#;
+        let o = classify(j, vec![], 1000);
+        assert_eq!(o.explain_hint, None);
     }
 }
 
@@ -460,6 +508,23 @@ mod run_tests {
 
         let err = outcome.error.expect("expected an error in outcome");
         assert_eq!(err, "ReferenceError: undefinedFn is not defined (line 1, column 1)");
+    }
+
+    /// An `async function`'s return value is an unresolved Promise (no microtask draining in
+    /// this engine) — must surface a clear message, not an opaque `[object Promise]`.
+    #[tokio::test]
+    async fn async_function_result_reports_a_clear_promise_error() {
+        let client = Client::with_uri_str("mongodb://localhost:27017").await.unwrap();
+        let handle = Handle::current();
+
+        let outcome = run(
+            client, handle, "test".into(), "(async function(){ return 1; })()".into(),
+            30_000, 1000, false, Arc::new(AtomicBool::new(false)),
+        );
+
+        let err = outcome.error.expect("expected an error in outcome");
+        assert!(err.contains("unresolved Promise"), "got: {err:?}");
+        assert!(err.contains("async/await"), "got: {err:?}");
     }
 
     /// A script that throws a non-Error value (e.g. `throw null`) must not surface rquickjs's

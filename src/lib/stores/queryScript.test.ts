@@ -58,14 +58,14 @@ describe("destructive confirm", () => {
   });
 
   it("destructive script defers run and opens the confirm", async () => {
-    const s = createQueryScript("sess", "db.c.deleteMany({})");
+    const s = createQueryScript("sess", "db.c.deleteMany({status:'old'})");
     await s.run("mydb");
     expect(runScript).not.toHaveBeenCalled();
     expect(s.destructiveConfirm?.ops).toContain("deleteMany");
   });
 
   it("confirmRun executes the deferred run", async () => {
-    const s = createQueryScript("sess", "db.c.deleteMany({})");
+    const s = createQueryScript("sess", "db.c.deleteMany({status:'old'})");
     await s.run("mydb");
     await s.confirmRun();
     expect(runScript).toHaveBeenCalledTimes(1);
@@ -73,7 +73,7 @@ describe("destructive confirm", () => {
   });
 
   it("cancelConfirm clears without running", async () => {
-    const s = createQueryScript("sess", "db.c.drop()");
+    const s = createQueryScript("sess", "db.c.deleteMany({status:'old'})");
     await s.run("mydb");
     s.cancelConfirm();
     expect(runScript).not.toHaveBeenCalled();
@@ -82,7 +82,7 @@ describe("destructive confirm", () => {
 
   it("suppress flag bypasses the confirm", async () => {
     settings.setSuppressDestructiveWarning(true);
-    const s = createQueryScript("sess", "db.c.deleteMany({})");
+    const s = createQueryScript("sess", "db.c.deleteMany({status:'old'})");
     await s.run("mydb");
     expect(runScript).toHaveBeenCalledTimes(1);
     expect(s.destructiveConfirm).toBeNull();
@@ -92,6 +92,52 @@ describe("destructive confirm", () => {
     const s = createQueryScript("sess", "db.c.find({})");
     await s.run("mydb");
     expect(runScript).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("critical confirm", () => {
+  beforeEach(() => {
+    (runScript as any).mockClear();
+    settings.setSuppressDestructiveWarning(false);
+  });
+
+  it("a critical op (drop) defers run and opens the critical confirm, not the warn dialog", async () => {
+    const s = createQueryScript("sess", "db.c.drop()");
+    await s.run("mydb");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.criticalConfirm?.ops).toContain("drop");
+    expect(s.destructiveConfirm).toBeNull();
+  });
+
+  it("an empty-filter deleteMany is critical even though deleteMany is also warn-tier", async () => {
+    const s = createQueryScript("sess", "db.c.deleteMany({})");
+    await s.run("mydb");
+    expect(s.criticalConfirm?.ops).toContain("deleteMany");
+    expect(s.destructiveConfirm).toBeNull();
+  });
+
+  it("confirmCritical executes the deferred run", async () => {
+    const s = createQueryScript("sess", "db.dropDatabase()");
+    await s.run("mydb");
+    await s.confirmCritical();
+    expect(runScript).toHaveBeenCalledTimes(1);
+    expect(s.criticalConfirm).toBeNull();
+  });
+
+  it("cancelCritical clears without running", async () => {
+    const s = createQueryScript("sess", "db.c.drop()");
+    await s.run("mydb");
+    s.cancelCritical();
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.criticalConfirm).toBeNull();
+  });
+
+  it("the suppress-warning setting does NOT bypass a critical confirm", async () => {
+    settings.setSuppressDestructiveWarning(true);
+    const s = createQueryScript("sess", "db.c.drop()");
+    await s.run("mydb");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.criticalConfirm?.ops).toContain("drop");
   });
 });
 
@@ -917,6 +963,12 @@ describe("createQueryScript — pure-cursor paging", () => {
 describe("explain", () => {
   beforeEach(() => vi.clearAllMocks());
 
+  const pendingExplainHint = {
+    cursorKind: "find" as const, db: "d", coll: "c",
+    query: '{"status":"pending"}', sort: null, projection: null,
+    skip: 0, limit: null,
+  };
+
   async function runPureFind() {
     run.mockResolvedValue({
       console: [],
@@ -929,6 +981,7 @@ describe("explain", () => {
       provenance: { db: "d", coll: "c" },
       capped: false,
       error: null,
+      explainHint: pendingExplainHint,
     });
     qp.mockResolvedValue([]);
     cnt.mockResolvedValue(0);
@@ -959,9 +1012,19 @@ describe("explain", () => {
     expect(s.canExplain).toBe(true);
   });
 
-  it("canExplain is false for a non-pure (materialized) result", async () => {
+  it("canExplain is true for a .map()'d result that still carries an explainHint", async () => {
+    run.mockResolvedValue({
+      ...ok([`{"_id":1,"a":2}`], { db: "d", coll: "c" }),
+      explainHint: pendingExplainHint,
+    });
+    const s = createQueryScript("sess", "db.c.find({status:'pending'}).map(x=>x)");
+    await s.run("d");
+    expect(s.canExplain).toBe(true);
+  });
+
+  it("canExplain is false when the outcome carries no explainHint (e.g. multiple queries)", async () => {
     run.mockResolvedValue(ok([`{"_id":1,"a":2}`], { db: "d", coll: "c" }));
-    const s = createQueryScript("sess", "db.c.find().map(x=>x)");
+    const s = createQueryScript("sess", "db.a.find(); db.b.find()");
     await s.run("d");
     expect(s.canExplain).toBe(false);
   });
@@ -1108,6 +1171,7 @@ describe("explain", () => {
       provenance: { db: "d", coll: "c" },
       capped: false,
       error: null,
+      explainHint: pendingExplainHint,
     });
     qp.mockResolvedValue([]);
     cnt.mockResolvedValue(0);
@@ -1152,6 +1216,7 @@ describe("explain", () => {
       provenance: { db: "d", coll: "c" },
       capped: false,
       error: null,
+      explainHint: pendingExplainHint,
     });
     qp.mockResolvedValue([]);
     cnt.mockResolvedValue(0);
@@ -1181,6 +1246,7 @@ describe("explain", () => {
       provenance: { db: "d", coll: "c" },
       capped: false,
       error: null,
+      explainHint: { ...pendingExplainHint, query: '{"status":"done"}' },
     });
     explainQueryMock.mockResolvedValue(ixscanJson);
     run.mockClear();

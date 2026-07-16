@@ -45,18 +45,60 @@
 
   const fieldCount = $derived(Object.keys(docValue).length);
   const jsonValid = $derived(view === "raw" ? parseDocumentText(text).ok : true);
-  const lineNumbers = $derived(
-    text
-      .split("\n")
-      .map((_, i) => i + 1)
-      .join("\n"),
-  );
 
   // Gutter is a separate div, so it needs its scroll synced to the textarea's.
   let gutterEl = $state<HTMLDivElement | null>(null);
   function syncGutterScroll(e: Event) {
     if (gutterEl) gutterEl.scrollTop = (e.currentTarget as HTMLTextAreaElement).scrollTop;
   }
+
+  // Wrap mode makes one logical line span multiple visual rows; the gutter must repeat blank
+  // rows under a wrapped line's number to stay aligned. Measured via a hidden mirror div (one
+  // child per line) rather than a char-count heuristic, since the textarea wraps at word
+  // boundaries, not a fixed column.
+  let textareaEl = $state<HTMLTextAreaElement | null>(null);
+  let mirrorEl = $state<HTMLDivElement | null>(null);
+  let gutterLines = $state("1");
+
+  function recomputeGutterLines() {
+    const rawLines = text.split("\n");
+    if (!settings.wrapLongLines || !mirrorEl || !textareaEl) {
+      gutterLines = rawLines.map((_, i) => `${i + 1}`).join("\n");
+      return;
+    }
+    const cs = getComputedStyle(textareaEl);
+    const contentWidth = textareaEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    mirrorEl.style.width = `${contentWidth}px`;
+    mirrorEl.replaceChildren(
+      ...rawLines.map((line) => {
+        const div = document.createElement("div");
+        div.textContent = line === "" ? " " : line; // empty line still needs measurable height
+        return div;
+      }),
+    );
+    const lineHeightPx = parseFloat(getComputedStyle(mirrorEl).lineHeight) || 1;
+    const rows: string[] = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      rows.push(`${i + 1}`);
+      const visualRows = Math.max(1, Math.round(mirrorEl.children[i].getBoundingClientRect().height / lineHeightPx));
+      for (let r = 1; r < visualRows; r++) rows.push("");
+    }
+    gutterLines = rows.join("\n");
+  }
+
+  $effect(() => {
+    text; settings.wrapLongLines; // re-measure on either changing
+    recomputeGutterLines();
+  });
+
+  $effect(() => {
+    if (!textareaEl) return;
+    // jsdom (unit tests) has no ResizeObserver; wrap-mode alignment there just skips live resize.
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => recomputeGutterLines());
+    ro.observe(textareaEl);
+    return () => ro.disconnect();
+  });
 
   function toRaw() {
     text = JSON.stringify(docValue, null, 2);
@@ -163,14 +205,16 @@
       />
     {:else}
       <div class="json-area">
-        <div class="gutter" bind:this={gutterEl} aria-hidden="true">{lineNumbers}</div>
+        <div class="gutter" bind:this={gutterEl} aria-hidden="true">{gutterLines}</div>
         <textarea
+          bind:this={textareaEl}
           bind:value={text}
           spellcheck="false"
           class="json-textarea"
           class:wrap={settings.wrapLongLines}
           onscroll={syncGutterScroll}
         ></textarea>
+        <div class="gutter-mirror" bind:this={mirrorEl} aria-hidden="true"></div>
       </div>
     {/if}
   </div>
@@ -263,10 +307,24 @@
 
   /* Only the textarea scrolls; the gutter's scrollTop is synced to it (see syncGutterScroll). */
   .json-area {
+    position: relative;
     flex: 1;
     display: flex;
     overflow: hidden;
     min-height: 0;
+    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.65;
+  }
+  /* Off-screen mirror for measuring each line's actual wrapped height (see recomputeGutterLines). */
+  .gutter-mirror {
+    position: absolute;
+    visibility: hidden;
+    left: -9999px;
+    top: 0;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
     font-family: Consolas, "Courier New", ui-monospace, monospace;
     font-size: 0.8125rem;
     line-height: 1.65;

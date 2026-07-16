@@ -46,9 +46,16 @@
 </script>
 
 {#snippet banner(s: ExplainSummary)}
-  <div class="banner" class:warn={s.verdict === "collscan"} class:ok={s.verdict === "ixscan"}>
+  <div
+    class="banner"
+    class:warn={s.verdict === "collscan"}
+    class:caution={s.verdict === "ixscan-inefficient"}
+    class:ok={s.verdict === "ixscan"}
+  >
     {#if s.verdict === "collscan"}
       <span>{m.explain_pane_verdict_collscan()}</span>
+    {:else if s.verdict === "ixscan-inefficient"}
+      <span>{m.explain_pane_verdict_ixscan_inefficient({ name: s.indexName ?? "" })}</span>
     {:else if s.verdict === "ixscan"}
       <span>{m.explain_pane_verdict_ixscan({ name: s.indexName ?? "" })}</span>
     {:else if s.verdict === "other"}
@@ -98,7 +105,7 @@
       </table>
     {/if}
 
-    {#if summary.verdict === "collscan" && suggestion}
+    {#if (summary.verdict === "collscan" || summary.verdict === "ixscan-inefficient") && suggestion}
       <div class="suggestion">
         <div class="suggestion-title">{m.explain_pane_suggested_index_title()}</div>
         <code>{suggestion.snippet}</code>
@@ -155,6 +162,7 @@
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
   .banner { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.8125rem; background: var(--panel); }
   .banner.warn { background: var(--warn-bg2); color: var(--warn-fg); }
+  .banner.caution { background: var(--warn-bg); color: var(--warn-fg); }
   .banner.ok { background: var(--bg); color: var(--fg); }
   .banner .time { font-variant-numeric: tabular-nums; color: var(--muted); }
   table.stages { border-collapse: collapse; font-size: 0.75rem; width: 100%; }

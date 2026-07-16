@@ -10,7 +10,12 @@ export type ExplainStage = {
   executionTimeMs: number | null;
 };
 
-export type ExplainVerdict = "collscan" | "ixscan" | "other" | "unrecognized";
+export type ExplainVerdict = "collscan" | "ixscan" | "ixscan-inefficient" | "other" | "unrecognized";
+
+/** An IXSCAN is flagged inefficient once docsExamined is both this many times nReturned and past
+ *  the absolute floor below — small result sets are noisy at any ratio and not worth flagging. */
+const INEFFICIENT_RATIO = 10;
+const INEFFICIENT_MIN_DOCS_EXAMINED = 100;
 
 export type ExplainSummary = {
   verdict: ExplainVerdict;
@@ -86,10 +91,18 @@ function buildSummary(
   const { stages, indexName } = flattenExecutionStages(execRoot);
   if (stages.length === 0) return emptySummary();
 
+  const totalDocsExamined = numFromExt(executionStats["totalDocsExamined"]);
+  const totalDocsReturned = numFromExt(executionStats["nReturned"]);
+  const isIxscan = !stages.some((s) => s.name === "COLLSCAN") && stages.some((s) => s.name === "IXSCAN");
+  const isInefficient = isIxscan
+    && totalDocsExamined !== null && totalDocsReturned !== null
+    && totalDocsExamined > INEFFICIENT_MIN_DOCS_EXAMINED
+    && totalDocsExamined > totalDocsReturned * INEFFICIENT_RATIO;
+
   const verdict: ExplainVerdict = stages.some((s) => s.name === "COLLSCAN")
     ? "collscan"
-    : stages.some((s) => s.name === "IXSCAN")
-      ? "ixscan"
+    : isIxscan
+      ? (isInefficient ? "ixscan-inefficient" : "ixscan")
       : "other";
 
   const trailingStages: ExplainStage[] = trailingStageNames.map((name) => ({
@@ -98,11 +111,11 @@ function buildSummary(
 
   return {
     verdict,
-    indexName: verdict === "ixscan" ? indexName : null,
+    indexName: verdict === "ixscan" || verdict === "ixscan-inefficient" ? indexName : null,
     stages: [...stages, ...trailingStages],
     totalTimeMs: numFromExt(executionStats["executionTimeMillis"]),
-    totalDocsExamined: numFromExt(executionStats["totalDocsExamined"]),
-    totalDocsReturned: numFromExt(executionStats["nReturned"]),
+    totalDocsExamined,
+    totalDocsReturned,
   };
 }
 

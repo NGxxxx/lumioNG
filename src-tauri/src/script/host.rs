@@ -1166,6 +1166,52 @@ globalThis.__DBNAME = "testdb";
     }
 
     #[test]
+    fn mapped_cursor_still_carries_explain_hint_for_its_source_query() {
+        // .map() loses the Cursor wrapper (see note above) but explainHint is derived from
+        // __cursorsConstructed, independent of what __finalize's `v` argument ended up being.
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let (kind, coll): (String, String) = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.find({a:1}).map(function(d){return d;}));"#).unwrap();
+            (ctx.eval("__r.explainHint.kind").unwrap(), ctx.eval("__r.explainHint.coll").unwrap())
+        });
+        assert_eq!(kind, "find");
+        assert_eq!(coll, "c");
+    }
+
+    #[test]
+    fn foreach_cursor_still_carries_explain_hint_for_its_source_query() {
+        // .forEach()'s completion value is `undefined` ("none" tag) — explainHint must still
+        // survive since exactly one Cursor was constructed.
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let (t, kind): (String, String) = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"globalThis.__r = __finalize(db.c.find({a:1}).forEach(function(d){}));"#).unwrap();
+            (ctx.eval("__r.t").unwrap(), ctx.eval("__r.explainHint.kind").unwrap())
+        });
+        assert_eq!(t, "none");
+        assert_eq!(kind, "find");
+    }
+
+    #[test]
+    fn two_queries_in_one_script_yield_no_explain_hint() {
+        // Ambiguous: more than one Cursor constructed means there's no single query to explain.
+        let rt = Runtime::new().unwrap();
+        let ctx = Context::full(&rt).unwrap();
+        let hint_is_null: bool = ctx.with(|ctx| {
+            ctx.eval::<(), _>(STUBS).unwrap();
+            ctx.eval::<(), _>(PRELUDE).unwrap();
+            ctx.eval::<(), _>(r#"db.c.find({a:1}).toArray(); globalThis.__r = __finalize(db.c.find({b:2}));"#).unwrap();
+            ctx.eval("__r.explainHint === null").unwrap()
+        });
+        assert!(hint_is_null, "two Cursors constructed in one run must yield explainHint: null");
+    }
+
+    #[test]
     fn projection_excluding_id_still_materializes_via_to_array() {
         let rt = Runtime::new().unwrap();
         let ctx = Context::full(&rt).unwrap();

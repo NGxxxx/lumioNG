@@ -38,6 +38,23 @@ pub struct Provenance {
     pub coll: String,
 }
 
+/// The originating query of the script's single constructed `Cursor`, if exactly one was
+/// constructed during the run — independent of how the completion value was finalized (a pure
+/// cursor recipe, a `.map()`/`.toArray()`'d array, a `.forEach()`'d `undefined`, etc). Lets Explain
+/// work on scripts that transform a cursor's rows in JS, not just bare `find()`/`aggregate()`.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ExplainHint {
+    pub cursor_kind: String, // "find" | "agg"
+    pub db: String,
+    pub coll: String,
+    pub query: String,
+    pub sort: Option<String>,
+    pub projection: Option<String>,
+    pub skip: i64,
+    pub limit: Option<i64>,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ScriptOutcome {
@@ -46,6 +63,7 @@ pub struct ScriptOutcome {
     pub provenance: Option<Provenance>,
     pub capped: bool,
     pub error: Option<String>,
+    pub explain_hint: Option<ExplainHint>,
 }
 
 #[cfg(test)]
@@ -60,6 +78,7 @@ mod tests {
             provenance: Some(Provenance { db: "d".into(), coll: "c".into() }),
             capped: true,
             error: None,
+            explain_hint: None,
         };
         let j = serde_json::to_string(&o).unwrap();
         assert!(j.contains(r#""kind":"docs""#));
@@ -84,6 +103,7 @@ mod tests {
             provenance: Some(Provenance { db: "d".into(), coll: "c".into() }),
             capped: false,
             error: None,
+            explain_hint: None,
         };
         let j = serde_json::to_string(&o).unwrap();
         assert!(j.contains(r#""kind":"cursorQuery""#));
@@ -91,5 +111,28 @@ mod tests {
         assert!(j.contains(r#""baseSkip":10"#));
         assert!(j.contains(r#""fixedLimit":5"#));
         assert!(j.contains(r#""projection":null"#));
+    }
+
+    #[test]
+    fn serializes_explain_hint_with_camelcase_fields() {
+        let o = ScriptOutcome {
+            console: vec![],
+            result: ResultDisplay::Docs { rows: vec![] },
+            provenance: None,
+            capped: false,
+            error: None,
+            explain_hint: Some(ExplainHint {
+                cursor_kind: "find".into(),
+                db: "d".into(),
+                coll: "c".into(),
+                query: r#"{"a":1}"#.into(),
+                sort: None,
+                projection: None,
+                skip: 0,
+                limit: None,
+            }),
+        };
+        let j = serde_json::to_string(&o).unwrap();
+        assert!(j.contains(r#""explainHint":{"cursorKind":"find""#));
     }
 }

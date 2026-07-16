@@ -12,6 +12,7 @@
   import { commandLog } from "../stores/commandLog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import DestructiveConfirm from "./DestructiveConfirm.svelte";
+  import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ExportWizard from "./ExportWizard.svelte";
   import * as m from "$lib/paraglide/messages";
@@ -314,6 +315,19 @@
       await v.dontAskAgain();
       applyPostRunView();
     }} />
+{/if}
+
+{#if v.criticalConfirm}
+  <DropConfirmDialog
+    title={m.script_critical_confirm_title()}
+    message={m.script_critical_confirm_message({ op: v.criticalConfirm.ops.join(", ") })}
+    expectedName={v.criticalConfirm.ops[0]}
+    onconfirm={async () => {
+      await v.confirmCritical();
+      applyPostRunView();
+    }}
+    oncancel={() => v.cancelCritical()}
+  />
 {/if}
 
 {#if v.editBlurPending}

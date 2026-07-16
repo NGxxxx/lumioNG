@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN, clipboardTextOf } from "./extjson";
+import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN, clipboardTextOf, nestedJsonPretty } from "./extjson";
 
 describe("truncateForDisplay", () => {
   it("leaves short text unchanged", () => {
@@ -92,6 +92,28 @@ describe("describeValue", () => {
     const r = describeValue([1, 2, 3]);
     expect(r.type).toBe("array");
     expect(r.display.startsWith("[")).toBe(true);
+  });
+});
+
+describe("nestedJsonPretty", () => {
+  it("pretty-prints a string field holding a JSON array", () => {
+    const s = JSON.stringify([{ id: "8185", name: "Samac maintain" }]);
+    expect(nestedJsonPretty(s)).toBe(JSON.stringify(JSON.parse(s), null, 2));
+  });
+  it("pretty-prints a string field holding a JSON object", () => {
+    const s = '{"a":1,"b":[1,2]}';
+    expect(nestedJsonPretty(s)).toBe(JSON.stringify(JSON.parse(s), null, 2));
+  });
+  it("returns null for plain (non-JSON) strings", () => {
+    expect(nestedJsonPretty("hello world")).toBeNull();
+  });
+  it("returns null for JSON primitives (not object/array)", () => {
+    expect(nestedJsonPretty("123")).toBeNull();
+    expect(nestedJsonPretty("true")).toBeNull();
+    expect(nestedJsonPretty('"quoted"')).toBeNull();
+  });
+  it("returns null for malformed JSON-looking text", () => {
+    expect(nestedJsonPretty("[1, 2,")).toBeNull();
   });
 });
 

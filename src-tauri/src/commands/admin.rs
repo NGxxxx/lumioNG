@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::json_bson::canonical_string_to_doc;
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Document};
@@ -91,6 +92,32 @@ pub async fn drop_database(
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
     client.database(&db).drop().await?;
+    Ok(())
+}
+
+/// Sets (or clears, with `validator_json: "{}"`) a collection's JSON-schema validator via `collMod`.
+#[tauri::command]
+pub async fn set_collection_validator(
+    session_id: String,
+    db: String,
+    coll: String,
+    validator_json: String,
+    validation_level: String,
+    validation_action: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let client = state.client(&session_id).await?;
+    state.ensure_writable(&session_id).await?;
+    let validator = canonical_string_to_doc(&validator_json)?;
+    client
+        .database(&db)
+        .run_command(doc! {
+            "collMod": &coll,
+            "validator": validator,
+            "validationLevel": validation_level,
+            "validationAction": validation_action,
+        })
+        .await?;
     Ok(())
 }
 

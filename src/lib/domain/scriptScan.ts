@@ -30,3 +30,40 @@ export function scanDestructive(script: string): string[] {
   }
   return out;
 }
+
+/** Always critical regardless of arguments: no filter/collection scope could make these safe. */
+const ALWAYS_CRITICAL = ["dropDatabase", "drop", "dropIndex", "dropIndexes"];
+
+/** Critical only when a literal empty filter is detected — a whole-collection write in disguise. */
+const CRITICAL_WHEN_EMPTY_FILTER = ["deleteMany", "updateMany", "remove"];
+
+/** True for `.name()` (no args) or `.name({})`/`.name({}, ...)` (a literal empty first-arg object) —
+ *  best-effort like `scanDestructive`; a filter stored in a variable isn't statically resolvable
+ *  and falls through to the warn tier instead. */
+function hasEmptyFilterCall(code: string, name: string): boolean {
+  const zeroArgs = new RegExp(`\\.\\s*${name}\\s*\\(\\s*\\)`);
+  const emptyObjectArg = new RegExp(`\\.\\s*${name}\\s*\\(\\s*\\{\\s*\\}\\s*[,)]`);
+  return zeroArgs.test(code) || emptyObjectArg.test(code);
+}
+
+/** Return the distinct critical-tier method names invoked — these bypass the suppressible warn
+ *  dialog entirely and always require a typed confirmation (see `queryScript.svelte.ts` `run()`). */
+export function scanCritical(script: string): string[] {
+  const code = stripComments(script);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of ALWAYS_CRITICAL) {
+    const re = new RegExp(`\\.\\s*${name}\\s*\\(`);
+    if (re.test(code) && !seen.has(name)) {
+      seen.add(name);
+      out.push(name);
+    }
+  }
+  for (const name of CRITICAL_WHEN_EMPTY_FILTER) {
+    if (hasEmptyFilterCall(code, name) && !seen.has(name)) {
+      seen.add(name);
+      out.push(name);
+    }
+  }
+  return out;
+}

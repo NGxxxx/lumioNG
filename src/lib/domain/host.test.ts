@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseHostInfo, formatUptime, parseCurrentOps } from "./host";
+import { parseHostInfo, formatUptime, parseCurrentOps, parseStartupLog } from "./host";
 
 const ss = JSON.stringify({
   version: "7.0.5",
@@ -93,5 +93,37 @@ describe("parseCurrentOps", () => {
 
   it("returns an empty list when inprog is absent", () => {
     expect(parseCurrentOps(JSON.stringify({}))).toEqual([]);
+  });
+});
+
+describe("parseStartupLog", () => {
+  it("curates hostname/startTime/pid/version/cmdLine from a startup_log doc", () => {
+    const raw = JSON.stringify({
+      hostname: "box1",
+      startTime: { $date: "2026-01-02T03:04:05Z" },
+      pid: { $numberInt: "4242" },
+      buildinfo: { version: "7.0.5", gitVersion: "abc123" },
+      cmdLine: { net: { port: { $numberInt: "27017" } } },
+    });
+    const [entry] = parseStartupLog([raw]);
+    expect(entry.hostname).toBe("box1");
+    expect(entry.startTimeIso).toContain("2026-01-02");
+    expect(entry.pid).toBe(4242);
+    expect(entry.version).toBe("7.0.5");
+    expect(entry.cmdLineText).toContain("27017");
+  });
+
+  it("tolerates missing fields", () => {
+    const [entry] = parseStartupLog(["{}"]);
+    expect(entry.hostname).toBeNull();
+    expect(entry.startTimeIso).toBeNull();
+    expect(entry.pid).toBeNull();
+    expect(entry.version).toBeNull();
+    expect(entry.cmdLineText).toBeNull();
+  });
+
+  it("preserves input order (already newest-first from the backend query)", () => {
+    const docs = ['{"hostname":"a"}', '{"hostname":"b"}'];
+    expect(parseStartupLog(docs).map((e) => e.hostname)).toEqual(["a", "b"]);
   });
 });

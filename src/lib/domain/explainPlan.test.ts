@@ -100,6 +100,71 @@ describe("summarizeExplain", () => {
     expect(summarizeExplain({}).verdict).toBe("unrecognized");
   });
 
+  it("IXSCAN with docsExamined >> nReturned is verdict 'ixscan-inefficient'", () => {
+    const raw = {
+      queryPlanner: { winningPlan: { stage: "FETCH" } },
+      executionStats: {
+        nReturned: { $numberInt: "10" },
+        executionTimeMillis: { $numberInt: "40" },
+        totalDocsExamined: { $numberInt: "5000" },
+        executionStages: {
+          stage: "FETCH",
+          nReturned: { $numberInt: "10" },
+          executionTimeMillisEstimate: { $numberInt: "40" },
+          docsExamined: { $numberInt: "5000" },
+          inputStage: {
+            stage: "IXSCAN",
+            nReturned: { $numberInt: "5000" },
+            executionTimeMillisEstimate: { $numberInt: "35" },
+            keysExamined: { $numberInt: "5000" },
+            indexName: "status_1",
+          },
+        },
+      },
+    };
+    const s = summarizeExplain(raw);
+    expect(s.verdict).toBe("ixscan-inefficient");
+    expect(s.indexName).toBe("status_1");
+  });
+
+  it("IXSCAN ratio above threshold but docsExamined below the absolute floor stays 'ixscan'", () => {
+    const raw = {
+      queryPlanner: { winningPlan: { stage: "FETCH" } },
+      executionStats: {
+        nReturned: { $numberInt: "1" },
+        executionTimeMillis: { $numberInt: "1" },
+        totalDocsExamined: { $numberInt: "50" },
+        executionStages: {
+          stage: "FETCH",
+          nReturned: { $numberInt: "1" },
+          executionTimeMillisEstimate: { $numberInt: "1" },
+          docsExamined: { $numberInt: "50" },
+          inputStage: { stage: "IXSCAN", nReturned: { $numberInt: "50" }, indexName: "a_1" },
+        },
+      },
+    };
+    expect(summarizeExplain(raw).verdict).toBe("ixscan");
+  });
+
+  it("IXSCAN with docsExamined close to nReturned stays 'ixscan'", () => {
+    const raw = {
+      queryPlanner: { winningPlan: { stage: "FETCH" } },
+      executionStats: {
+        nReturned: { $numberInt: "150" },
+        executionTimeMillis: { $numberInt: "5" },
+        totalDocsExamined: { $numberInt: "160" },
+        executionStages: {
+          stage: "FETCH",
+          nReturned: { $numberInt: "150" },
+          executionTimeMillisEstimate: { $numberInt: "5" },
+          docsExamined: { $numberInt: "160" },
+          inputStage: { stage: "IXSCAN", nReturned: { $numberInt: "160" }, indexName: "a_1" },
+        },
+      },
+    };
+    expect(summarizeExplain(raw).verdict).toBe("ixscan");
+  });
+
   it("IDHACK (neither COLLSCAN nor IXSCAN) is verdict 'other'", () => {
     const raw = {
       queryPlanner: { winningPlan: { stage: "IDHACK" } },

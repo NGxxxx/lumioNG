@@ -1,12 +1,12 @@
 import { untrack } from "svelte";
-import { runScript, cancelScript, type ConsoleEntry, type Provenance } from "../api/script";
+import { runScript, cancelScript, type ConsoleEntry, type Provenance, type ExplainHint } from "../api/script";
 import { sampleDocuments, queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
 import { mergeColumns, inferSchema, getByPath, limitColumnsToDepth, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
-import { scanDestructive } from "../domain/scriptScan";
+import { scanDestructive, scanCritical } from "../domain/scriptScan";
 import { compileSearch, matchingIndices } from "../domain/search";
 import { settings } from "./settings.svelte";
 import { updateOne, deleteMany } from "../api/documents";
@@ -44,8 +44,12 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     fixedLimit: number | null;
   };
   let recipe = $state<PagedRecipe | null>(null);
-  /** True once the editor is touched after the run that produced `recipe`, so Explain knows to re-run instead of silently reusing a stale plan. */
+  /** True once the editor is touched after the run that produced `recipe`/`explainHint`, so Explain knows to re-run instead of silently reusing a stale plan. */
   let recipeDirty = $state(false);
+  /** The query of the script's single constructed Cursor, from `outcome.explainHint` — drives
+   *  Explain independently of `recipe` (paged mode), so `.map()`/`.forEach()` scripts stay
+   *  explainable even though they materialize through QuickJS instead of the Rust paging bypass. */
+  let explainHint = $state<ExplainHint | null>(null);
 
   let explainSummary = $state<ExplainSummary | null>(null);
   let explainRawJson = $state<string | null>(null);
@@ -102,6 +106,9 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let generation = 0;
 
   let destructiveConfirm = $state<{ ops: string[] } | null>(null);
+  /** Critical-tier destructive ops (dropDatabase/drop/dropIndex(es), or an empty-filter mass
+   *  write) — always confirmed via typed name, bypassing `settings.suppressDestructiveWarning`. */
+  let criticalConfirm = $state<{ ops: string[] } | null>(null);
   let pending: { db: string; script: string } | null = null;
 
   // Inline cell edit (row index is relative to the CURRENT PAGE's `docs`, in both modes).
@@ -160,8 +167,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   const indexSuggestion = $derived(
-    recipe && explainSummary?.verdict === "collscan"
-      ? suggestIndex(recipe.coll, recipe.query, recipe.sort)
+    explainHint && (explainSummary?.verdict === "collscan" || explainSummary?.verdict === "ixscan-inefficient")
+      ? suggestIndex(explainHint.coll, explainHint.query, explainHint.sort)
       : null,
   );
 
@@ -216,15 +223,15 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   async function runExplain(): Promise<void> {
-    if (!recipe) return;
-    const r = recipe;
+    if (!explainHint) return;
+    const r = explainHint;
     const gen = generation;
     explainLoading = true;
     explainError = null;
     activity.begin(m.status_bar_running_query());
     try {
       const json = await explainQuery(
-        sessionId, r.cursorKind, r.db, r.coll, r.query, r.sort, r.projection, r.baseSkip, r.fixedLimit,
+        sessionId, r.cursorKind, r.db, r.coll, r.query, r.sort, r.projection, r.skip, r.limit,
         settings.queryTimeoutMs,
       );
       if (gen !== generation) return; // a fresh run superseded this in-flight explain — discard it
@@ -240,7 +247,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   function isExplainable(): boolean {
-    return recipe !== null && !recipeDirty;
+    return explainHint !== null && !recipeDirty;
   }
 
   /** Fetches Explain only if it hasn't been fetched since the last run, so repeated toggling doesn't re-run the (potentially slow) explain command. */
@@ -259,14 +266,14 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     if (!isExplainable()) {
       await run(db);
     }
-    if (recipe) {
+    if (explainHint) {
       showExplain();
     }
   }
 
   async function createSuggestedIndex(): Promise<void> {
-    if (!recipe || !indexSuggestion || !explainSummary) return;
-    const r = recipe;
+    if (!explainHint || !indexSuggestion || !explainSummary) return;
+    const r = explainHint;
     const suggestion = indexSuggestion;
     const prev = explainSummary;
     const gen = generation;
@@ -291,6 +298,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     showingAll = false;
     pageReq = 1;
     recipe = null;
+    explainHint = null;
     explainSummary = null;
     explainRawJson = null;
     explainPrevSummary = null;
@@ -308,6 +316,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       commandLog.push(script, sessionId, Date.now() - startedAt);
 
       consoleEntries = outcome.console;
+      explainHint = outcome.explainHint ?? null;
       displayModeVal = computeDisplayMode(outcome);
 
       if (outcome.result.kind === "docs") {
@@ -391,6 +400,12 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       error = "Select a database first.";
       return;
     }
+    const critical = scanCritical(script);
+    if (critical.length) {
+      pending = { db, script };
+      criticalConfirm = { ops: critical };
+      return;
+    }
     const ops = scanDestructive(script);
     if (ops.length && !settings.suppressDestructiveWarning) {
       pending = { db, script };
@@ -409,6 +424,18 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   function cancelConfirm() {
     destructiveConfirm = null;
+    pending = null;
+  }
+
+  async function confirmCritical() {
+    const p = pending;
+    criticalConfirm = null;
+    pending = null;
+    if (p) await execute(p.db, p.script);
+  }
+
+  function cancelCritical() {
+    criticalConfirm = null;
     pending = null;
   }
 
@@ -775,10 +802,13 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     runExplain,
     createSuggestedIndex,
     get destructiveConfirm() { return destructiveConfirm; },
+    get criticalConfirm() { return criticalConfirm; },
     run: (db: string | null) => run(db),
     confirmRun,
     cancelConfirm,
     dontAskAgain,
+    confirmCritical,
+    cancelCritical,
     cancel,
     runSelection,
     setSelection,

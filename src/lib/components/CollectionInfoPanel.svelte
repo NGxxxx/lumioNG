@@ -8,10 +8,29 @@
   let { db, coll }: { db: string; coll: string } = $props();
 
   const v = untrack(() => createCollectionInfo(sessionManager.active?.id ?? "", db, coll));
+  const readOnly = $derived(sessionManager.active?.readOnly ?? false);
 
   onMount(() => {
     v.init();
   });
+
+  let editingValidator = $state(false);
+  let validatorText = $state("{}");
+  let validationLevel = $state("strict");
+  let validationAction = $state("error");
+
+  function openEditValidator() {
+    const o = v.options;
+    validatorText = o?.validatorJson ?? "{}";
+    validationLevel = o?.validationLevel ?? "strict";
+    validationAction = o?.validationAction ?? "error";
+    editingValidator = true;
+  }
+
+  async function submitValidator() {
+    const ok = await v.saveValidator(validatorText, validationLevel, validationAction);
+    if (ok) editingValidator = false;
+  }
 </script>
 
 <div class="infopanel">
@@ -60,10 +79,39 @@
         {/if}
       </tbody>
     </table>
-    {#if o.validatorJson}
-      <pre>{o.validatorJson}</pre>
+    {#if !editingValidator}
+      {#if o.validatorJson}
+        <pre>{o.validatorJson}</pre>
+      {:else}
+        <div class="muted">{m.collection_info_no_validator()}</div>
+      {/if}
+      <button class="edit-validator" disabled={readOnly} onclick={openEditValidator}>{m.collection_info_edit_validator()}</button>
     {:else}
-      <div class="muted">{m.collection_info_no_validator()}</div>
+      <div class="validator-form">
+        <label>{m.collection_info_validator_json_label()}
+          <textarea class="validator-json" bind:value={validatorText} spellcheck="false"></textarea>
+        </label>
+        <div class="validator-row">
+          <label>{m.collection_info_validation_level()}
+            <select bind:value={validationLevel}>
+              <option value="off">off</option>
+              <option value="moderate">moderate</option>
+              <option value="strict">strict</option>
+            </select>
+          </label>
+          <label>{m.collection_info_validation_action()}
+            <select bind:value={validationAction}>
+              <option value="error">error</option>
+              <option value="warn">warn</option>
+            </select>
+          </label>
+        </div>
+        {#if v.validatorError}<div class="error">{v.validatorError}</div>{/if}
+        <div class="validator-actions">
+          <button onclick={() => (editingValidator = false)} disabled={v.validatorSaving}>{m.common_cancel()}</button>
+          <button class="primary" onclick={submitValidator} disabled={v.validatorSaving}>{m.common_save()}</button>
+        </div>
+      </div>
     {/if}
     {#if o.rawJson !== "{}"}
       <h3>{m.collection_info_raw_options_heading()}</h3>
@@ -83,4 +131,18 @@
   .muted { color: var(--muted); }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
   .status { padding: 0.5rem 0; color: var(--gray-77); font-size: 0.75rem; }
+  .edit-validator { margin-top: 0.5rem; height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; font-size: 0.75rem; }
+  .edit-validator:hover:not(:disabled) { background: var(--bg); }
+  .edit-validator:disabled { color: var(--gray-b8); cursor: default; }
+  .validator-form { border: 1px solid var(--border); border-radius: 0.375rem; padding: 0.75rem; background: var(--zebra); }
+  .validator-form label { display: block; font-size: 0.75rem; color: var(--gray-55); }
+  .validator-json { width: 100%; box-sizing: border-box; height: 8rem; margin-top: 0.25rem; padding: 0.375rem; font-family: ui-monospace, monospace; font-size: 0.75rem; resize: vertical; }
+  .validator-row { display: flex; gap: 1.25rem; margin-top: 0.625rem; }
+  .validator-row select { display: block; margin-top: 0.25rem; }
+  .validator-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem; }
+  .validator-actions button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .validator-actions button:hover:not(:disabled) { background: var(--bg); }
+  .validator-actions button:disabled { color: var(--gray-b8); cursor: default; }
+  .validator-actions .primary { background: var(--run); color: var(--panel); border: none; font-weight: 600; }
+  .validator-actions .primary:hover:not(:disabled) { background: var(--run-hover); }
 </style>

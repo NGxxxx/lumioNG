@@ -199,8 +199,13 @@ var console = {
 // Lazy cursor: does not open the host cursor until materialized.
 // kind: "find" | "agg"
 
+// Every Cursor constructed during this run, in construction order — used by __finalize() to
+// derive explainHint independently of how the completion value ends up shaped (see below).
+var __cursorsConstructed = [];
+
 class Cursor {
   constructor(db, coll, kind, query, opts) {
+    __cursorsConstructed.push(this);
     this._db = db;
     this._coll = coll;
     this._kind = kind;
@@ -897,6 +902,11 @@ var sh = {
 //   { t: "none" }                      — undefined, null, function
 //   { t: "value",  json }              — any other value, serialized
 //
+// Every tag above also carries a sibling `explainHint: {kind, db, coll, q, o} | null` —
+// the query of the single Cursor constructed during this run, if exactly one was (regardless of
+// `.map()`/`.forEach()`/`.toArray()`). Zero or multiple Cursors constructed (loops, several
+// queries) yields null: there is no single query left to explain.
+//
 // Note: "ack" (write-result) is reserved for Slice 2 write commands.
 // Note: engine.rs's classify() still re-applies the row cap on `rows` as defense in depth, but
 //       `capped` is the source of truth for whether the result was truncated (row OR byte cap).
@@ -917,7 +927,24 @@ function _hasWriteStage(pipeline) {
   return false;
 }
 
+function __explainHint() {
+  if (__cursorsConstructed.length !== 1) return null;
+  var cur = __cursorsConstructed[0];
+  return { kind: cur._kind, db: cur._db, coll: cur._coll, q: cur._q, o: cur._o };
+}
+
 function __finalize(v) {
+  // async functions parse fine (valid QuickJS syntax) but this engine never drains the
+  // microtask queue, so their return value is always an unresolved Promise — surface that
+  // plainly instead of letting an opaque object reach the grid/console.
+  if (typeof Promise !== "undefined" && v instanceof Promise) {
+    throw new Error(
+      "Script returned an unresolved Promise — this engine runs synchronously (mongosh-style) and does not support async/await.",
+    );
+  }
+
+  var explainHint = __explainHint();
+
   if (v instanceof Cursor) {
     var pipelineUnsafe = v._kind === "agg" && _hasWriteStage(v._q);
     // v._buf === null means the host query was never opened (no hasNext()/next() call yet).
@@ -928,7 +955,7 @@ function __finalize(v) {
       // Pure cursor, no .map(), no {_id:0} projection, no $out/$merge: return the query
       // "recipe" instead of materializing anything. The frontend pages this directly via
       // query_page/aggregate (Rust only) — no rows ever cross into QuickJS's JS heap.
-      return { t: "cursorRef", kind: v._kind, db: v._db, coll: v._coll, q: v._q, o: v._o };
+      return { t: "cursorRef", kind: v._kind, db: v._db, coll: v._coll, q: v._q, o: v._o, explainHint: explainHint };
     }
     const rows = v.toArray();
     return {
@@ -937,16 +964,17 @@ function __finalize(v) {
       src: { db: v._db, coll: v._coll },
       rows: rows,
       capped: v._capped,
+      explainHint: explainHint,
     };
   }
 
   if (Array.isArray(v)) {
-    return { t: "array", rows: v };
+    return { t: "array", rows: v, explainHint: explainHint };
   }
 
   if (v === undefined || v === null || typeof v === "function") {
-    return { t: "none" };
+    return { t: "none", explainHint: explainHint };
   }
 
-  return { t: "value", json: JSON.stringify(v) };
+  return { t: "value", json: JSON.stringify(v), explainHint: explainHint };
 }

@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ConsoleEntry, ResultDisplay, Provenance, ScriptOutcome } from "../domain/scriptOutcome";
+import type { ConsoleEntry, ResultDisplay, Provenance, ScriptOutcome, ExplainHint } from "../domain/scriptOutcome";
 
-export type { ConsoleEntry, ResultDisplay, Provenance, ScriptOutcome };
+export type { ConsoleEntry, ResultDisplay, Provenance, ScriptOutcome, ExplainHint };
 
 export async function runScript(
   sessionId: string, db: string, script: string,

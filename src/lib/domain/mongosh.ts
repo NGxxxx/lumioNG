@@ -54,6 +54,9 @@ export const duplicateCollectionCmd = (source: string, target: string) =>
 
 export const dropDatabaseCmd = () => "db.dropDatabase()";
 
+export const setValidatorCmd = (coll: string, validatorJson: string, level: string, action: string) =>
+  `db.runCommand({ "collMod": "${coll}", "validator": ${validatorJson}, "validationLevel": "${level}", "validationAction": "${action}" })`;
+
 export function createIndexCmd(
   coll: string,
   keys: Record<string, unknown>,
@@ -72,6 +75,9 @@ export const dbStatsCmd = () => "db.stats()";
 
 export const importCmd = (db: string, coll: string, path: string) =>
   `mongoimport --db ${db} --collection ${coll} --file "${path}"`;
+
+export const sqlImportCmd = (db: string, path: string, tables: string[]) =>
+  `-- SQL import into ${db}: ${tables.join(", ")} <- "${path}"`;
 
 export const exportBsonCmd = (db: string, coll: string, path: string) =>
   `mongodump --db ${db} --collection ${coll} --out "${path}"`;
