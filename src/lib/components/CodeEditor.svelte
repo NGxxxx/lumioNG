@@ -15,13 +15,14 @@
   import { javascript } from "@codemirror/lang-javascript";
   import { appEditorTheme } from "../domain/cmTheme";
 
-  let { value, onChange, onSelectionChange, onRun, complete, readonly = false }: {
+  let { value, onChange, onSelectionChange, onRun, complete, readonly = false, wrap = false }: {
     value: string;
     onChange: (text: string) => void;
     onSelectionChange?: (from: number, to: number) => void;
     onRun?: () => void;
     complete?: CompletionSource;
     readonly?: boolean;
+    wrap?: boolean;
   } = $props();
 
   let host: HTMLDivElement;
@@ -43,6 +44,7 @@
         ...historyKeymap,
       ]),
       EditorState.readOnly.of(readonly),
+      ...(wrap ? [EditorView.lineWrapping] : []),
       EditorView.updateListener.of((u) => {
         if (u.docChanged) onChange(u.state.doc.toString());
         if (u.selectionSet && onSelectionChange) {

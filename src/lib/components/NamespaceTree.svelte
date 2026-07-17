@@ -7,6 +7,8 @@
 
 <script lang="ts">
   import type { DbInfo } from "../domain/namespaces";
+  import { sortCollectionNames } from "../domain/namespaces";
+  import { collectionSort } from "../stores/collectionSort.svelte";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -82,7 +84,7 @@
       <span class="db-size">—</span>
     </div>
     {#if isOpen(d.name)}
-      {#each d.collections as c (c)}
+      {#each sortCollectionNames(d.collections, collectionSort.current) as c (c)}
         <button
           class="coll"
           class:active={selected?.db === d.name && selected?.coll === c}

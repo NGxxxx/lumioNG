@@ -6,6 +6,15 @@ export interface DbInfo {
   collections: string[];
 }
 
+export type CollectionSortMode = "default" | "asc" | "desc";
+
+/** Order collection names per the sidebar's sort setting; "default" returns the array unchanged (server order). */
+export function sortCollectionNames(names: string[], mode: CollectionSortMode): string[] {
+  if (mode === "default") return names;
+  const sorted = [...names].sort((a, b) => a.localeCompare(b));
+  return mode === "desc" ? sorted.reverse() : sorted;
+}
+
 /** Returns a message key or null for the given collection name. */
 export function validateCollectionName(name: string): string | null {
   if (name.length === 0) return "err_coll_name_empty";

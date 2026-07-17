@@ -38,9 +38,11 @@ export function isInlineEditable(key: string, value: unknown): boolean {
   return numericKey(value) !== null;
 }
 
-/** Whether a cell holds a plain object/array, edited via the JSON modal (not the inline input). */
+/** Whether a cell holds a plain object/array, or an oversized string, edited via the modal
+ *  (not the inline input, which chokes past MAX_INLINE_EDIT_LEN). */
 export function isModalEditable(key: string, value: unknown): boolean {
   if (key === "_id") return false;
+  if (typeof value === "string") return value.length > MAX_INLINE_EDIT_LEN;
   const t = describeValue(value).type;
   return t === "object" || t === "array";
 }
@@ -52,6 +54,26 @@ export function rebuildJsonValue(text: string): RebuildResult {
   } catch {
     return { ok: false, error: "err_json_invalid" };
   }
+}
+
+/** Above this length, skip pretty-print indentation (roughly doubles output size/CPU) — the modal
+ *  still works fine with compact JSON, it's just not indented. */
+const MODAL_PRETTY_PRINT_CAP = 200_000;
+
+/** Text to seed the modal editor with when starting an edit. A raw string is shown as-is (no
+ *  JSON.stringify — that would wrap it in quotes and escape its content, which is confusing and
+ *  not what the user is editing); object/array values are pretty-printed JSON. */
+export function seedModalEditText(value: unknown): string {
+  if (typeof value === "string") return value;
+  const compact = JSON.stringify(value);
+  return compact.length > MODAL_PRETTY_PRINT_CAP ? compact : JSON.stringify(value, null, 2);
+}
+
+/** Rebuild the modal-edited value: a raw string commits as literal text (no JSON parsing —
+ *  mirrors seedModalEditText), object/array values parse as JSON. */
+export function commitModalValue(original: unknown, text: string): RebuildResult {
+  if (typeof original === "string") return { ok: true, value: text };
+  return rebuildJsonValue(text);
 }
 
 /** Rebuild a value with the same BSON type as `original` from user-entered text. */

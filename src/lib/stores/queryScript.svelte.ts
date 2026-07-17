@@ -15,7 +15,7 @@ import { summarizeExplain, type ExplainSummary } from "../domain/explainPlan";
 import { suggestIndex, type IndexSuggestion } from "../domain/indexAdvisor";
 import { idJson } from "../domain/docid";
 import { clipboardTextOf } from "../domain/extjson";
-import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, rebuildJsonValue, buildSetUpdate, setByPath } from "../domain/celledit";
+import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, seedModalEditText, commitModalValue, buildSetUpdate, setByPath } from "../domain/celledit";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -114,6 +114,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   // Inline cell edit (row index is relative to the CURRENT PAGE's `docs`, in both modes).
   let editing = $state<{ row: number; key: string; kind: "inline" | "modal" } | null>(null);
   let editText = $state("");
+  let editTextLoading = $state(false);
   let editError = $state<string | null>(null);
   let saving = $state(false);
 
@@ -535,7 +536,15 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       editText = editTextOf(value);
     } else if (isModalEditable(key, value)) {
       editing = { row, key, kind: "modal" };
-      editText = JSON.stringify(value, null, 2);
+      // Seeding the modal text (stringify of a big nested value) can be slow; show the modal
+      // shell immediately with a loading state, then compute it on the next tick so it can paint first.
+      editText = "";
+      editTextLoading = true;
+      setTimeout(() => {
+        if (editing?.row !== row || editing.key !== key) return; // cancelled/changed before this ran
+        editText = seedModalEditText(value);
+        editTextLoading = false;
+      }, 0);
     } else {
       return;
     }
@@ -576,7 +585,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const { row, key, kind } = editing;
     const doc = docs[row];
     if (!doc) { editing = null; return; }
-    const r = kind === "modal" ? rebuildJsonValue(editText) : rebuildValue(getByPath(doc, key), editText);
+    const original = getByPath(doc, key);
+    const r = kind === "modal" ? commitModalValue(original, editText) : rebuildValue(original, editText);
     if (!r.ok) { editError = r.error; return; }
     const id = idJson(doc);
     if (id === null) { editError = m.query_run_selection_missing_id(); return; }
@@ -840,6 +850,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get editing() { return editing; },
     get editText() { return editText; },
     set editText(v: string) { editText = v; },
+    get editTextLoading() { return editTextLoading; },
     get editError() { return editError; },
     get saving() { return saving; },
     get editBlurPending() { return editBlurPending; },

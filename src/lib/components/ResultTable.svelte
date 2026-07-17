@@ -69,6 +69,7 @@
     get editing() { return v.editing; },
     get editText() { return v.editText; },
     set editText(t: string) { v.editText = t; },
+    get editTextLoading() { return v.editTextLoading; },
     get editError() { return v.editError; },
     get saving() { return v.saving; },
     startEdit: v.startEdit,

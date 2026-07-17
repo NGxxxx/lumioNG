@@ -114,30 +114,6 @@ export function parseCurrentOps(json: string): OpInfo[] {
   return ops.sort((a, b) => (b.secsRunning ?? 0) - (a.secsRunning ?? 0));
 }
 
-export interface StartupLogEntry {
-  hostname: string | null;
-  startTimeIso: string | null;
-  pid: number | null;
-  version: string | null;
-  cmdLineText: string | null;
-}
-
-/** Curate `local.startup_log` documents (one per mongod restart) into a restart history for the
- *  Host tab — `cmdLine`'s exact shape varies across MongoDB versions, so it's kept as raw JSON text. */
-export function parseStartupLog(rawDocs: string[]): StartupLogEntry[] {
-  return rawDocs.map((raw) => {
-    const d = JSON.parse(raw) as Record<string, unknown>;
-    const bi = obj(d.buildinfo);
-    return {
-      hostname: str(d.hostname),
-      startTimeIso: dateIso(d.startTime),
-      pid: numFromExt(d.pid),
-      version: str(bi.version),
-      cmdLineText: d.cmdLine !== undefined ? JSON.stringify(d.cmdLine) : null,
-    };
-  });
-}
-
 /** Format an uptime in seconds as "1d 2h 3m" (drops leading zero units, always shows minutes). */
 export function formatUptime(seconds: number | null): string {
   if (seconds === null || Number.isNaN(seconds)) return "—";

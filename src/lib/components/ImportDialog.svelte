@@ -36,7 +36,7 @@
     if (!path) return;
     stage = "working";
     if (isSql) {
-      sql = createSqlImport(sessionId, db, path);
+      sql = createSqlImport(sessionId, db, path, coll);
       sql.loadPreview();
     } else {
       job = createImportJob({ sessionId, db, coll: coll!, path });

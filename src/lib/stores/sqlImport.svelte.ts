@@ -6,7 +6,7 @@ import { sqlImportCmd } from "../domain/mongosh";
 export type SqlImportPhase = "loading" | "selecting" | "running" | "done";
 
 /** Drives ImportDialog's SQL flow: preview (list tables) → pick → commit, one collection per table. */
-export function createSqlImport(sessionId: string, db: string, path: string) {
+export function createSqlImport(sessionId: string, db: string, path: string, targetColl: string | null) {
   let phase = $state<SqlImportPhase>("loading");
   let tables = $state<SqlTablePreview[]>([]);
   let selected = $state<Set<string>>(new Set());
@@ -46,7 +46,7 @@ export function createSqlImport(sessionId: string, db: string, path: string) {
     const pickedTables = [...selected];
     try {
       results = await commandLog.pushTimed(sqlImportCmd(db, path, pickedTables), sessionId, () =>
-        sqlImportCommit(sessionId, db, path, pickedTables, (table, done, total) => {
+        sqlImportCommit(sessionId, db, path, pickedTables, targetColl, (table, done, total) => {
           progress = { table, done, total };
         }));
       phase = "done";

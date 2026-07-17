@@ -8,7 +8,7 @@ import { tags as t } from "@lezer/highlight";
 
 const theme = EditorView.theme({
   "&": { backgroundColor: "var(--cream)", color: "var(--fg)", fontSize: "0.8125rem", height: "100%" },
-  ".cm-content": { fontFamily: "var(--mono)", lineHeight: "1.6", padding: "0.5rem 0", caretColor: "var(--fg)" },
+  ".cm-content": { fontFamily: "var(--mono)", lineHeight: "1.6", padding: "0.5rem 0", caretColor: "var(--fg)", cursor: "text" },
   ".cm-gutters": {
     backgroundColor: "var(--cream)",
     color: "var(--gray-99)",

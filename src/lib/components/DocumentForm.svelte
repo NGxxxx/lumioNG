@@ -32,11 +32,16 @@
     oncancel: () => void;
   } = $props();
 
-  // Source of truth: tree object, JSON-deep-cloned from `initial` (edit doc, pre-filled insert, or empty).
-  let docValue = $state<Doc>(
-    untrack(() => (initial ? JSON.parse(JSON.stringify(initial)) : {})),
-  );
-  let text = $state(untrack(() => JSON.stringify(docValue, null, 2)));
+  // Source of truth: tree object, cloned from `initial` (edit doc, pre-filled insert, or empty).
+  // structuredClone (native) instead of the old JSON.parse(JSON.stringify(...)) round-trip — same
+  // deep-clone result, one pass instead of two.
+  let docValue = $state<Doc>(untrack(() => structuredClone(initial ?? ({} as Doc))));
+  // Raw JSON text is derived from docValue lazily (see toRaw/toTree) — never needed at all if the
+  // user stays on the Tree tab, and previously recomputed from scratch on every tab switch even
+  // when nothing had changed since.
+  let text = $state("");
+  let textDirty = $state(true); // text hasn't been derived from docValue yet
+  let treeDirty = $state(false); // docValue hasn't been derived from (edited) text yet
   let view = $state<"tree" | "raw">("tree");
   let treeValid = $state(true);
   let error = $state<string | null>(null);
@@ -44,7 +49,9 @@
   const idText = $derived(mode === "edit" && initial ? idJson(initial) : null);
 
   const fieldCount = $derived(Object.keys(docValue).length);
-  const jsonValid = $derived(view === "raw" ? parseDocumentText(text).ok : true);
+  // Debounced rather than a plain $derived (see scheduleRecompute below) — a full JSON.parse on
+  // every keystroke scales with document size; 500ms of typing pause is a fine trade for a huge doc.
+  let jsonValid = $state(true);
 
   // Gutter is a separate div, so it needs its scroll synced to the textarea's.
   let gutterEl = $state<HTMLDivElement | null>(null);
@@ -60,9 +67,14 @@
   let mirrorEl = $state<HTMLDivElement | null>(null);
   let gutterLines = $state("1");
 
+  // Above this many lines, skip the wrap-aware measurement below (one getBoundingClientRect —
+  // a forced layout reflow — per line): for a huge document that's a hang, not a nicety. Gutter
+  // numbers stay simple/sequential instead of wrap-aligned past this size.
+  const GUTTER_WRAP_LINE_CAP = 3000;
+
   function recomputeGutterLines() {
     const rawLines = text.split("\n");
-    if (!settings.wrapLongLines || !mirrorEl || !textareaEl) {
+    if (!settings.wrapLongLines || rawLines.length > GUTTER_WRAP_LINE_CAP || !mirrorEl || !textareaEl) {
       gutterLines = rawLines.map((_, i) => `${i + 1}`).join("\n");
       return;
     }
@@ -86,36 +98,66 @@
     gutterLines = rows.join("\n");
   }
 
-  $effect(() => {
-    text; settings.wrapLongLines; // re-measure on either changing
+  // Both the gutter's wrap-aware measurement and the plain-JSON validity check below scale with
+  // document size — debounced to settle 500ms after typing stops, rather than racing every
+  // keystroke, so a huge document's per-keystroke cost stays flat instead of growing with its size.
+  const RECOMPUTE_DEBOUNCE_MS = 500;
+  let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function recomputeNow() {
+    if (recomputeTimer !== null) {
+      clearTimeout(recomputeTimer);
+      recomputeTimer = null;
+    }
     recomputeGutterLines();
+    jsonValid = view === "raw" ? parseDocumentText(text).ok : true;
+  }
+
+  function scheduleRecompute() {
+    if (recomputeTimer !== null) clearTimeout(recomputeTimer);
+    recomputeTimer = setTimeout(recomputeNow, RECOMPUTE_DEBOUNCE_MS);
+  }
+
+  // Wrap is a discrete toggle (Toolbar's Wrap button), not a fast-repeating stream like keystrokes
+  // — recompute immediately so the gutter reflows right when the user flips it, not 500ms later.
+  $effect(() => {
+    settings.wrapLongLines;
+    recomputeNow();
   });
 
   $effect(() => {
     if (!textareaEl) return;
     // jsdom (unit tests) has no ResizeObserver; wrap-mode alignment there just skips live resize.
     if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => recomputeGutterLines());
+    const ro = new ResizeObserver(() => scheduleRecompute());
     ro.observe(textareaEl);
     return () => ro.disconnect();
   });
 
   function toRaw() {
-    text = JSON.stringify(docValue, null, 2);
+    if (textDirty) {
+      text = JSON.stringify(docValue, null, 2);
+      textDirty = false;
+    }
     error = null;
     view = "raw";
+    recomputeNow();
   }
 
   function toTree() {
-    const r = parseDocumentText(text);
-    if (!r.ok) {
-      error = r.detail ? `${msgKey(r.error)}: ${r.detail}` : msgKey(r.error);
-      return;
+    if (treeDirty) {
+      const r = parseDocumentText(text);
+      if (!r.ok) {
+        error = r.detail ? `${msgKey(r.error)}: ${r.detail}` : msgKey(r.error);
+        return;
+      }
+      docValue = r.doc;
+      treeDirty = false;
     }
-    docValue = r.doc;
     error = null;
     treeValid = true;
     view = "tree";
+    jsonValid = true;
   }
 
   async function save() {
@@ -130,6 +172,7 @@
       }
       payload = r.doc;
       docValue = payload;
+      treeDirty = false;
     } else {
       payload = docValue;
     }
@@ -200,7 +243,7 @@
     {#if view === "tree"}
       <TreeEditor
         value={docValue}
-        onchange={(v) => (docValue = v)}
+        onchange={(v) => { docValue = v; textDirty = true; }}
         onvalidchange={(valid) => (treeValid = valid)}
       />
     {:else}
@@ -213,6 +256,7 @@
           class="json-textarea"
           class:wrap={settings.wrapLongLines}
           onscroll={syncGutterScroll}
+          oninput={() => { treeDirty = true; scheduleRecompute(); }}
         ></textarea>
         <div class="gutter-mirror" bind:this={mirrorEl} aria-hidden="true"></div>
       </div>

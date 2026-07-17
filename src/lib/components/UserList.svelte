@@ -163,7 +163,7 @@
       <header>{m.user_list_edit_roles()} — {target.user}</header>
       <div class="body">
         <label>{m.user_create_roles_label()}
-          <div class="jsoneditor"><CodeEditor value={editRolesText} onChange={(v) => (editRolesText = v)} /></div>
+          <div class="jsoneditor"><CodeEditor value={editRolesText} onChange={(v) => (editRolesText = v)} wrap /></div>
         </label>
         {#if editError}<div class="dlg-error">{msgKey(editError)}</div>{/if}
       </div>

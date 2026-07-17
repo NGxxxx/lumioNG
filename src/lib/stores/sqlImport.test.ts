@@ -25,7 +25,7 @@ describe("createSqlImport", () => {
 
   it("loadPreview populates tables and selects all by default", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     expect(sqlImportPreview).toHaveBeenCalledWith("/tmp/dump.sql");
     expect(v.phase).toBe("selecting");
@@ -36,7 +36,7 @@ describe("createSqlImport", () => {
 
   it("loadPreview surfaces a parse error without throwing, and leaves \"loading\" so the error actually renders", async () => {
     sqlImportPreview.mockRejectedValueOnce({ kind: "Parse", message: "bad SQL" });
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     expect(v.error).toContain("bad SQL");
     expect(v.phase).toBe("selecting");
@@ -44,7 +44,7 @@ describe("createSqlImport", () => {
 
   it("toggle removes/re-adds a table from the selection", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     v.toggle("orders");
     expect(v.selected).toEqual(new Set(["users"]));
@@ -54,7 +54,7 @@ describe("createSqlImport", () => {
 
   it("toggleAll clears then re-selects everything", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     v.toggleAll();
     expect(v.selected.size).toBe(0);
@@ -67,18 +67,31 @@ describe("createSqlImport", () => {
     sqlImportCommit.mockResolvedValueOnce([
       { table: "users", inserted: 2, failed: 0, errors: [] },
     ]);
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     v.toggle("orders"); // deselect orders — only users should be committed
     await v.run();
-    expect(sqlImportCommit).toHaveBeenCalledWith("conn:1", "d", "/tmp/dump.sql", ["users"], expect.any(Function));
+    expect(sqlImportCommit).toHaveBeenCalledWith(
+      "conn:1", "d", "/tmp/dump.sql", ["users"], null, expect.any(Function),
+    );
     expect(v.phase).toBe("done");
     expect(v.results).toEqual([{ table: "users", inserted: 2, failed: 0, errors: [] }]);
   });
 
+  it("run passes a pre-selected target collection through to the commit call", async () => {
+    sqlImportPreview.mockResolvedValueOnce(preview);
+    sqlImportCommit.mockResolvedValueOnce([]);
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", "movies");
+    await v.loadPreview();
+    await v.run();
+    expect(sqlImportCommit).toHaveBeenCalledWith(
+      "conn:1", "d", "/tmp/dump.sql", ["users", "orders"], "movies", expect.any(Function),
+    );
+  });
+
   it("run does nothing when no table is selected", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     v.toggleAll(); // deselect all
     await v.run();
@@ -89,7 +102,7 @@ describe("createSqlImport", () => {
   it("run surfaces a commit error and returns to selecting", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
     sqlImportCommit.mockRejectedValueOnce({ kind: "Query", message: "not writable" });
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     await v.run();
     expect(v.error).toContain("not writable");
@@ -99,7 +112,7 @@ describe("createSqlImport", () => {
   it("run pushes a command-log entry with a measured duration", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
     sqlImportCommit.mockResolvedValueOnce([]);
-    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql");
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null);
     await v.loadPreview();
     await v.run();
     const entry = commandLog.entries.at(-1)!;

@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   isInlineEditable, editTextOf, rebuildValue, buildSetUpdate, setByPath,
-  isModalEditable, rebuildJsonValue,
+  isModalEditable, rebuildJsonValue, seedModalEditText, commitModalValue,
 } from "./celledit";
 
 describe("isInlineEditable", () => {
@@ -107,10 +107,45 @@ describe("isModalEditable", () => {
     expect(isModalEditable("a", { $binary: { base64: "AA==", subType: "00" } })).toBe(false);
     expect(isModalEditable("a", { $numberDecimal: "1.5" })).toBe(false);
   });
-  it("false for scalars and null", () => {
+  it("false for short scalars and null", () => {
     expect(isModalEditable("a", "hello")).toBe(false);
     expect(isModalEditable("a", 42)).toBe(false);
     expect(isModalEditable("a", null)).toBe(false);
+  });
+  it("true for a string over the inline-edit length cap (falls into the gap otherwise)", () => {
+    expect(isModalEditable("a", "x".repeat(5000))).toBe(false);
+    expect(isModalEditable("a", "x".repeat(5001))).toBe(true);
+  });
+  it("false for _id even when it's a long string", () => {
+    expect(isModalEditable("_id", "x".repeat(5001))).toBe(false);
+  });
+});
+
+describe("seedModalEditText", () => {
+  it("returns a string value as-is (no JSON.stringify quoting/escaping)", () => {
+    expect(seedModalEditText('he said "hi"')).toBe('he said "hi"');
+  });
+  it("pretty-prints an object/array", () => {
+    expect(seedModalEditText({ a: 1 })).toBe(JSON.stringify({ a: 1 }, null, 2));
+  });
+  it("falls back to compact JSON above the pretty-print size cap", () => {
+    const big = { a: "x".repeat(250_000) };
+    expect(seedModalEditText(big)).toBe(JSON.stringify(big));
+  });
+});
+
+describe("commitModalValue", () => {
+  it("commits a string original as literal text, no JSON parsing", () => {
+    expect(commitModalValue("x".repeat(5001), 'raw "text" with quotes')).toEqual({
+      ok: true,
+      value: 'raw "text" with quotes',
+    });
+  });
+  it("parses JSON for an object/array original", () => {
+    expect(commitModalValue({ a: 1 }, '{"a":2}')).toEqual({ ok: true, value: { a: 2 } });
+  });
+  it("ok:false on malformed JSON for an object/array original", () => {
+    expect(commitModalValue({ a: 1 }, "{bad").ok).toBe(false);
   });
 });
 

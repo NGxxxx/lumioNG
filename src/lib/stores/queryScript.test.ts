@@ -407,6 +407,10 @@ describe("inline edit (editable grid)", () => {
     await s.run("d");
     s.startEdit(0, "tags");
     expect(s.editing).toEqual({ row: 0, key: "tags", kind: "modal" });
+    // Text is seeded a tick later (see startEdit) so the modal shell can paint first.
+    expect(s.editTextLoading).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(s.editTextLoading).toBe(false);
     expect(s.editText).toBe(JSON.stringify(["a", "b"], null, 2));
   });
 

@@ -9,7 +9,7 @@ import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { idInFilter, resolveIds, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
 import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, limitColumnsToDepth, type CollectionSchema, type ColumnField } from "../domain/schema";
-import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, rebuildJsonValue, setByPath, buildSetUpdate } from "../domain/celledit";
+import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, seedModalEditText, commitModalValue, setByPath, buildSetUpdate } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import { compileSearch, matchingIndices } from "../domain/search";
 import {
@@ -81,6 +81,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   // Inline cell edit
   let editing = $state<{ row: number; key: string; kind: "inline" | "modal" } | null>(null);
   let editText = $state("");
+  let editTextLoading = $state(false);
   let editError = $state<string | null>(null);
   let saving = $state(false);
 
@@ -381,7 +382,15 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       editText = editTextOf(value);
     } else if (isModalEditable(key, value)) {
       editing = { row, key, kind: "modal" };
-      editText = JSON.stringify(value, null, 2);
+      // Seeding the modal text (stringify of a big nested value) can be slow; show the modal
+      // shell immediately with a loading state, then compute it on the next tick so it can paint first.
+      editText = "";
+      editTextLoading = true;
+      setTimeout(() => {
+        if (editing?.row !== row || editing.key !== key) return; // cancelled/changed before this ran
+        editText = seedModalEditText(value);
+        editTextLoading = false;
+      }, 0);
     } else {
       return;
     }
@@ -418,7 +427,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   async function commitEdit() {
     if (!editing || saving) return;
     const { row, key, kind } = editing;
-    const r = kind === "modal" ? rebuildJsonValue(editText) : rebuildValue(getByPath(docs[row], key), editText);
+    const original = getByPath(docs[row], key);
+    const r = kind === "modal" ? commitModalValue(original, editText) : rebuildValue(original, editText);
     if (!r.ok) {
       editError = r.error;
       return;
@@ -772,6 +782,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     },
     set editText(v: string) {
       editText = v;
+    },
+    get editTextLoading() {
+      return editTextLoading;
     },
     get editError() {
       return editError;

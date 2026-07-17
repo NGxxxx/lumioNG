@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import DocumentForm from "./DocumentForm.svelte";
 import * as documents from "../api/documents";
@@ -13,6 +13,17 @@ vi.mock("../domain/docid", () => ({
 vi.mock("../stores/sessionManager.svelte", () => ({
   sessionManager: { active: null },
 }));
+
+// The Tree tab's virtualizer needs a non-zero container size to mount any rows (jsdom is 0 by default).
+let restoreOffsetHeight: (() => void) | undefined;
+beforeAll(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
+  restoreOffsetHeight = () => {
+    if (descriptor) Object.defineProperty(HTMLElement.prototype, "offsetHeight", descriptor);
+  };
+});
+afterAll(() => restoreOffsetHeight?.());
 
 describe("DocumentForm — Raw JSON view", () => {
   beforeEach(() => vi.clearAllMocks());

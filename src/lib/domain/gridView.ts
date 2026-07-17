@@ -40,6 +40,8 @@ export interface GridPageView {
 
   readonly editing: { row: number; key: string; kind: "inline" | "modal" } | null;
   editText: string;
+  /** True while the modal editor's text is still being computed for a large field (see startEdit). */
+  readonly editTextLoading: boolean;
   readonly editError: string | null;
   readonly saving: boolean;
   startEdit(row: number, key: string): void;

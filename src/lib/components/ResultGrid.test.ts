@@ -27,7 +27,7 @@ function baseView(docs: Doc[], overrides: Partial<GridPageView> = {}): GridPageV
     setPageSize: vi.fn(), requestShowAll: vi.fn(),
     selected: new Set<number>(), clickRow: vi.fn(), menu: null, openMenu: vi.fn(), closeMenu: vi.fn(),
     menuItems: () => [],
-    editing: null, editText: "", editError: null, saving: false,
+    editing: null, editText: "", editTextLoading: false, editError: null, saving: false,
     startEdit: vi.fn(), commitEdit: vi.fn(), cancelEdit: vi.fn(), onEditBlur: vi.fn(),
     ...overrides,
   };

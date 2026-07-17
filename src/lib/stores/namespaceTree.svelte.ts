@@ -3,6 +3,7 @@ import { listNamespaces } from "../api/connection";
 import type { DbInfo } from "../domain/namespaces";
 import * as admin from "../api/admin";
 import { errorMessage } from "../api/errors";
+import { friendlyConnectionError } from "../domain/connectionError";
 import { validateCollectionName, validateDatabaseName } from "../domain/namespaces";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -41,7 +42,7 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
         listNamespaces(sessionId));
       error = null;
     } catch (e) {
-      error = errorMessage(e);
+      error = friendlyConnectionError(errorMessage(e));
     } finally {
       activity.end();
     }

@@ -3,10 +3,15 @@
 //! re-parses (simpler than caching across IPC calls) and inserts the selected ones.
 use crate::commands::import_export::insert_batch;
 use crate::error::AppError;
-use crate::sql_import::parse_sql_dump;
+use crate::sql_import::{
+    insert_values_rows, parse_statements, resolve_insert_columns, resolve_target_collection,
+    row_to_document, table_columns, table_ident, table_schemas,
+};
 use crate::state::AppState;
+use crate::value_infer::InferOptions;
 use mongodb::bson::Document;
-use std::collections::HashSet;
+use sqlparser::ast::Statement;
+use std::collections::HashMap;
 use tauri::{ipc::Channel, State};
 
 fn read_sql_file(path: &str) -> Result<String, AppError> {
@@ -23,20 +28,17 @@ pub struct SqlTablePreview {
 
 #[tauri::command]
 pub async fn sql_import_preview(path: String) -> Result<Vec<SqlTablePreview>, AppError> {
-    let tables = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+    let schemas = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let content = read_sql_file(&path)?;
-        parse_sql_dump(&content, None).map_err(AppError::Parse)
+        let statements = parse_statements(&content).map_err(AppError::Parse)?;
+        Ok(table_schemas(&statements))
     })
     .await
     .map_err(|e| AppError::Io(e.to_string()))??;
 
-    Ok(tables
+    Ok(schemas
         .into_iter()
-        .map(|t| SqlTablePreview {
-            table: t.name,
-            columns: t.columns,
-            row_count: t.rows.len() as u64,
-        })
+        .map(|t| SqlTablePreview { table: t.name, columns: t.columns, row_count: t.row_count })
         .collect())
 }
 
@@ -58,18 +60,19 @@ pub struct SqlImportTableResult {
 const SQL_IMPORT_BATCH: usize = 1000;
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn sql_import_commit(
     session_id: String,
     db: String,
     path: String,
     tables: Vec<String>,
+    target_coll: Option<String>,
     on_progress: Channel<SqlImportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<SqlImportTableResult>, AppError> {
-    let only_tables: HashSet<String> = tables.iter().cloned().collect();
-    let parsed = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+    let statements = tokio::task::spawn_blocking(move || -> Result<Vec<Statement>, AppError> {
         let content = read_sql_file(&path)?;
-        parse_sql_dump(&content, Some(&only_tables)).map_err(AppError::Parse)
+        parse_statements(&content).map_err(AppError::Parse)
     })
     .await
     .map_err(|e| AppError::Io(e.to_string()))??;
@@ -77,28 +80,57 @@ pub async fn sql_import_commit(
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
 
-    let mut results = Vec::new();
-    for t in parsed {
-        if !tables.contains(&t.name) {
+    let schemas = table_schemas(&statements);
+    let is_single_table_dump = schemas.len() == 1;
+    let totals: HashMap<String, u64> = schemas.iter().map(|s| (s.name.clone(), s.row_count)).collect();
+    // Preserve the dump's first-seen table order, restricted to the selected tables — matches the
+    // pre-rewrite output order and keeps a selected-but-empty table in the results (inserted: 0).
+    let order: Vec<String> = schemas.into_iter().map(|s| s.name).filter(|n| tables.contains(n)).collect();
+    let columns_by_table = table_columns(&statements);
+    let infer_opts = InferOptions { parse_json_like: true, infer_scalars: true };
+
+    let mut inserted_by_table: HashMap<String, u64> = HashMap::new();
+    let mut errors_by_table: HashMap<String, Vec<String>> = HashMap::new();
+
+    for stmt in &statements {
+        let Statement::Insert(insert) = stmt else { continue };
+        let table = table_ident(&insert.table_name);
+        if !tables.contains(&table) {
             continue;
         }
-        let collection = client.database(&db).collection::<Document>(&t.name);
-        let total = t.rows.len() as u64;
-        let mut inserted: u64 = 0;
-        let mut errors: Vec<String> = Vec::new();
-
-        for (chunk_idx, chunk) in t.rows.chunks(SQL_IMPORT_BATCH).enumerate() {
-            let batch: Vec<Document> = chunk.to_vec();
-            let start = chunk_idx * SQL_IMPORT_BATCH;
-            let raw_idx: Vec<usize> = (start..start + batch.len()).collect();
-            insert_batch(&collection, batch, &raw_idx, &mut inserted, &mut errors).await;
-            let done = (inserted + errors.len() as u64).min(total);
-            let _ = on_progress.send(SqlImportProgress { table: t.name.clone(), done, total });
+        let cols = resolve_insert_columns(insert, &columns_by_table);
+        if cols.is_empty() {
+            continue;
         }
+        let Some(rows) = insert_values_rows(insert) else { continue };
 
-        let failed = errors.len() as u64;
-        errors.truncate(5);
-        results.push(SqlImportTableResult { table: t.name, inserted, failed, errors });
+        let coll_name = resolve_target_collection(&table, is_single_table_dump, target_coll.as_deref());
+        let collection = client.database(&db).collection::<Document>(&coll_name);
+        let total = *totals.get(&table).unwrap_or(&0);
+
+        for chunk in rows.chunks(SQL_IMPORT_BATCH) {
+            // Converted only for this one chunk, inserted, then dropped — never holds every row of
+            // every table as `Bson` simultaneously, unlike the old parse-everything-then-insert path.
+            let batch: Vec<Document> =
+                chunk.iter().map(|row| row_to_document(&cols, row, &infer_opts)).collect();
+            let inserted_entry = inserted_by_table.entry(table.clone()).or_insert(0);
+            let errors_entry = errors_by_table.entry(table.clone()).or_insert_with(Vec::new);
+            let start = (*inserted_entry + errors_entry.len() as u64) as usize;
+            let raw_idx: Vec<usize> = (start..start + batch.len()).collect();
+            insert_batch(&collection, batch, &raw_idx, inserted_entry, errors_entry).await;
+            let done = (*inserted_entry + errors_entry.len() as u64).min(total);
+            let _ = on_progress.send(SqlImportProgress { table: table.clone(), done, total });
+        }
     }
-    Ok(results)
+
+    Ok(order
+        .into_iter()
+        .map(|table| {
+            let inserted = inserted_by_table.remove(&table).unwrap_or(0);
+            let mut errors = errors_by_table.remove(&table).unwrap_or_default();
+            let failed = errors.len() as u64;
+            errors.truncate(5);
+            SqlImportTableResult { table, inserted, failed, errors }
+        })
+        .collect())
 }

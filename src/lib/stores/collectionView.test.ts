@@ -435,6 +435,10 @@ describe("createCollectionView — paging", () => {
     await v.init();
     await v.startEdit(0, "tags");
     expect(v.editing).toEqual({ row: 0, key: "tags", kind: "modal" });
+    // Text is seeded a tick later (see startEdit) so the modal shell can paint first.
+    expect(v.editTextLoading).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(v.editTextLoading).toBe(false);
     expect(v.editText).toBe(JSON.stringify(["a", "b"], null, 2));
   });
 

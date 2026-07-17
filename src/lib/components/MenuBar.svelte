@@ -5,7 +5,9 @@
   import { appLocale } from "../stores/locale.svelte";
   import { uiSize } from "../stores/uiSize.svelte";
   import { theme } from "../stores/theme.svelte";
+  import { collectionSort } from "../stores/collectionSort.svelte";
   import { UI_SIZES, type UiSizeKey } from "../domain/uiSize";
+  import type { CollectionSortMode } from "../domain/namespaces";
 
   let {
     connected,
@@ -70,6 +72,20 @@
             { label: m.theme_light(), checked: theme.current === "latte", run: () => theme.set("latte") },
             { label: m.theme_dark(), checked: theme.current === "mocha", run: () => theme.set("mocha") },
           ],
+        },
+        {
+          label: m.menu_sort_collections(),
+          children: (
+            [
+              ["default", m.sort_mode_default()],
+              ["asc", m.sort_mode_asc()],
+              ["desc", m.sort_mode_desc()],
+            ] as [CollectionSortMode, string][]
+          ).map(([mode, label]) => ({
+            label,
+            checked: collectionSort.current === mode,
+            run: () => collectionSort.set(mode),
+          })),
         },
         { label: m.menu_reset_to_default(), run: onresetdefault },
       ],

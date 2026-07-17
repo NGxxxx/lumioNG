@@ -1,0 +1,104 @@
+<!-- src/lib/components/TreeLeafInput.svelte -->
+<script lang="ts">
+  import { nestedJsonPretty } from "../domain/extjson";
+  import { editTextOf, rebuildLeaf, type LeafInputType } from "../domain/bsontree";
+  import { settings } from "../stores/settings.svelte";
+  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "$lib/msgkey";
+
+  /** One editable leaf cell in the document tree editor. Kept as its own component (rather than
+   *  rendered inline by the virtualized row list) so each visible row's in-progress edit text is
+   *  independent local state — a row list item alone can't hold that. */
+  let {
+    type,
+    value,
+    onchange,
+    onerror,
+  }: {
+    type: LeafInputType;
+    value: unknown;
+    onchange: (v: unknown) => void;
+    onerror: (hasError: boolean) => void;
+  } = $props();
+
+  // Offer a read-only pretty preview for a string field that's itself JSON, without touching the editable raw string.
+  const nestedPretty = $derived(type === "string" && typeof value === "string" ? nestedJsonPretty(value) : null);
+  let showNestedPretty = $state(false);
+
+  // Below this length a single-line input reads fine; only longer values switch to a textarea.
+  const WRAP_TEXTAREA_THRESHOLD = 100;
+
+  let editText = $state("");
+  let dirty = $state(false);
+  let editError = $state<string | null>(null);
+
+  // Sync edit text from value when value changes externally (e.g. array splice) and not mid-edit.
+  $effect(() => {
+    if (!dirty) editText = editTextOf(value);
+  });
+
+  function onLeafInput() {
+    dirty = true;
+    const r = rebuildLeaf(type, editText);
+    if (r.ok) {
+      editError = null;
+      dirty = false;
+      onerror(false);
+      onchange(r.value);
+    } else {
+      editError = r.error;
+      onerror(true);
+    }
+  }
+
+  // If this leaf is removed from the tree while it has an active error, clear the error flag at the root.
+  $effect(() => {
+    return () => {
+      if (editError) onerror(false);
+    };
+  });
+
+  const wrapped = $derived(type === "string" && settings.wrapLongLines && typeof value === "string" && value.length > WRAP_TEXTAREA_THRESHOLD);
+</script>
+
+{#if type === "bool"}
+  <select bind:value={editText} onchange={onLeafInput}>
+    <option value="true">true</option>
+    <option value="false">false</option>
+  </select>
+{:else if wrapped}
+  <textarea class="leaf leaf-wrap" bind:value={editText} oninput={onLeafInput} spellcheck="false" rows="3"></textarea>
+{:else}
+  <input class="leaf" bind:value={editText} oninput={onLeafInput} spellcheck="false" />
+{/if}
+{#if nestedPretty !== null}
+  <button
+    class="preview-toggle"
+    class:active={showNestedPretty}
+    onclick={() => (showNestedPretty = !showNestedPretty)}
+    title={m.tree_node_preview_json_title()}
+    aria-label={m.tree_node_preview_json_title()}
+  >{"{ }"}</button>
+{/if}
+{#if editError}<div class="cellerror">{msgKey(editError)}</div>{/if}
+{#if nestedPretty !== null && showNestedPretty}
+  <pre class="nested-preview">{nestedPretty}</pre>
+{/if}
+
+<style>
+  /* flex+min-width:0: a bare input/textarea otherwise sizes to its tiny intrinsic default. */
+  .leaf { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
+  .leaf-wrap { resize: vertical; white-space: pre-wrap; word-break: break-word; }
+  .preview-toggle {
+    flex: none; border: 1px solid var(--gray-b8); background: var(--panel); color: var(--gray-55);
+    border-radius: 0.1875rem; cursor: pointer; font-family: ui-monospace, monospace; font-size: 0.6875rem;
+    line-height: 1; padding: 0.0625rem 0.3125rem;
+  }
+  .preview-toggle:hover, .preview-toggle.active { background: var(--blue-tint5); color: var(--slate); }
+  .nested-preview {
+    margin: 0.125rem 0 0.25rem 1.125rem; padding: 0.375rem 0.5rem; background: var(--bg);
+    border: 1px solid var(--border); border-radius: 0.1875rem; font-family: ui-monospace, monospace;
+    font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; color: var(--gray-33);
+  }
+  .cellerror { color: var(--error); font-size: 0.6875rem; margin-left: 0.375rem; }
+</style>

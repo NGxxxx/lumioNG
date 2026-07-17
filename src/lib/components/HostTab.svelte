@@ -1,11 +1,9 @@
 <script lang="ts">
-  import { untrack } from "svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { formatUptime } from "../domain/host";
   import { formatCount } from "../domain/stats";
   import { maskUri } from "../domain/uri";
   import type { HostSection } from "../stores/navigation.svelte";
-  import { createStartupLog } from "../stores/startupLog.svelte";
   import CurrentOpsPanel from "./CurrentOpsPanel.svelte";
   import UsersRolesPanel from "./UsersRolesPanel.svelte";
   import * as m from "$lib/paraglide/messages";
@@ -15,17 +13,10 @@
   const activeHost = $derived(sessionManager.active?.host ?? null);
   const h = $derived(activeHost?.info ?? null);
 
-  const startupLogView = untrack(() => createStartupLog(sessionManager.active?.id ?? ""));
-  let startupLogLoaded = false;
-
   const nav = $derived(sessionManager.active?.nav ?? null);
   const section = $derived<HostSection>(nav?.hostSection ?? "info");
   function setSection(s: HostSection) {
     nav?.setHostSection(s);
-    if (s === "startupLog" && !startupLogLoaded) {
-      startupLogLoaded = true;
-      startupLogView.load();
-    }
   }
 </script>
 
@@ -33,7 +24,6 @@
   <div class="subtabs">
     <button class:active={section === "info"} onclick={() => setSection("info")}>{m.host_tab_info()}</button>
     <button class:active={section === "currentOps"} onclick={() => setSection("currentOps")}>{m.host_tab_current_ops()}</button>
-    <button class:active={section === "startupLog"} onclick={() => setSection("startupLog")}>{m.host_tab_server_info()}</button>
     <button class:active={section === "users"} onclick={() => setSection("users")}>{m.users_roles_toggle_users()}</button>
     <button class:active={section === "roles"} onclick={() => setSection("roles")}>{m.users_roles_toggle_roles()}</button>
   </div>
@@ -71,38 +61,6 @@
       </div>
     {:else if section === "currentOps"}
       <CurrentOpsPanel />
-    {:else if section === "startupLog"}
-      <div class="host">
-        <div class="bar">
-          <button onclick={() => startupLogView.load()}>{m.current_ops_refresh()}</button>
-          {#if startupLogView.loading}<span class="status">{m.common_loading()}</span>{/if}
-        </div>
-        {#if startupLogView.error}<div class="error">{startupLogView.error}</div>{/if}
-        {#if startupLogView.entries.length > 0}
-          <table>
-            <thead>
-              <tr>
-                <th>{m.host_tab_startup_col_time()}</th>
-                <th>{m.host_tab_startup_col_hostname()}</th>
-                <th>{m.host_tab_startup_col_pid()}</th>
-                <th>{m.host_tab_startup_col_version()}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {#each startupLogView.entries as e, i (i)}
-                <tr>
-                  <td class="v">{e.startTimeIso ?? "—"}</td>
-                  <td class="v">{e.hostname ?? "—"}</td>
-                  <td class="v">{e.pid ?? "—"}</td>
-                  <td class="v">{e.version ?? "—"}</td>
-                </tr>
-              {/each}
-            </tbody>
-          </table>
-        {:else if !startupLogView.loading && !startupLogView.error}
-          <div class="status">{m.host_tab_startup_empty()}</div>
-        {/if}
-      </div>
     {:else}
       <!-- Users and Roles share one mount (same else-branch) so switching doesn't refetch. -->
       <UsersRolesPanel tab={section === "roles" ? "roles" : "users"} />
@@ -120,11 +78,7 @@
   .title { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.1875rem; }
   .sub { color: var(--gray-77); margin-bottom: 0.875rem; }
   h4 { margin: 1rem 0 0.375rem; font-size: 0.75rem; color: var(--gray-44); }
-  .bar { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 0.625rem; }
-  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
-  .bar button:hover { background: var(--bg); }
   table { border-collapse: collapse; width: 35rem; font-size: 0.75rem; user-select: none; }
-  th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); }
   .k { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: var(--gray-55); width: 15rem; }
   .v { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: var(--text-strong); font-family: var(--mono); }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; margin-bottom: 0.625rem; }

@@ -175,13 +175,17 @@
   <div class="modal-backdrop" use:portal role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !v.saving) v.cancelEdit(); }}>
     <div class="modal-editor" role="dialog" aria-modal="true" aria-label={m.grid_edit_value_title()}>
       <header>{m.grid_edit_value_title()}</header>
-      <textarea class="modal-textarea" bind:value={v.editText} disabled={v.saving} spellcheck="false"
-        onkeydown={(e) => { if (e.key === "Escape") { e.preventDefault(); v.cancelEdit(); } }}
-      ></textarea>
+      {#if v.editTextLoading}
+        <div class="modal-loading">{m.common_loading()}</div>
+      {:else}
+        <textarea class="modal-textarea" bind:value={v.editText} disabled={v.saving} spellcheck="false"
+          onkeydown={(e) => { if (e.key === "Escape") { e.preventDefault(); v.cancelEdit(); } }}
+        ></textarea>
+      {/if}
       {#if v.editError}<div class="cellerror modal-error">{msgKey(v.editError)}</div>{/if}
       <footer>
         <button onclick={() => v.cancelEdit()} disabled={v.saving}>{m.common_cancel()}</button>
-        <button class="primary" onclick={() => v.commitEdit()} disabled={v.saving}>{v.saving ? m.document_form_saving() : m.common_save()}</button>
+        <button class="primary" onclick={() => v.commitEdit()} disabled={v.saving || v.editTextLoading}>{v.saving ? m.document_form_saving() : m.common_save()}</button>
       </footer>
     </div>
   </div>
@@ -308,6 +312,7 @@
     font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.5rem; resize: vertical;
   }
   .modal-textarea:disabled { opacity: 0.6; }
+  .modal-loading { height: 18rem; margin: 0.875rem; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 0.8125rem; }
   .modal-error { margin: 0 0.875rem 0.625rem; }
   .modal-editor footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
   .modal-editor footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }

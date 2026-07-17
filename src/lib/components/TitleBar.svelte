@@ -1,6 +1,7 @@
 <script lang="ts">
   import { buildBreadcrumb } from "$lib/domain/breadcrumb";
   import { minimize, toggleMaximize } from "$lib/api/window";
+  import { getAppVersion } from "$lib/api/app";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -15,7 +16,9 @@
     onquit: () => void;
   } = $props();
 
-  const APP_VERSION = "LumioNG 0.1.0";
+  let appVersion = $state("");
+  getAppVersion().then((v) => (appVersion = v)).catch(() => {});
+
   const crumb = $derived(buildBreadcrumb({ conn, db, coll }));
 </script>
 
@@ -34,7 +37,7 @@
       <path d="M28 77 46 60V77Z" fill="url(#titlebar-logo-fd)" stroke="url(#titlebar-logo-fd)" stroke-width="2.6"/>
     </g>
   </svg>
-  <span class="crumb">{crumb} — {APP_VERSION}</span>
+  <span class="crumb">{crumb}{appVersion ? ` — v${appVersion}` : ""}</span>
   <div class="wbtns">
     <button class="wbtn" title={m.title_bar_minimize()} onclick={minimize} aria-label={m.title_bar_minimize()}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="var(--fg)" /></svg>

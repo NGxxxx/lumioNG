@@ -149,10 +149,10 @@
       <header>{m.role_list_edit()} — {target.role}</header>
       <div class="body">
         <label>{m.role_create_privileges_label()}
-          <div class="jsoneditor"><CodeEditor value={editPrivilegesText} onChange={(v) => (editPrivilegesText = v)} /></div>
+          <div class="jsoneditor"><CodeEditor value={editPrivilegesText} onChange={(v) => (editPrivilegesText = v)} wrap /></div>
         </label>
         <label>{m.role_create_roles_label()}
-          <div class="jsoneditor"><CodeEditor value={editRolesText} onChange={(v) => (editRolesText = v)} /></div>
+          <div class="jsoneditor"><CodeEditor value={editRolesText} onChange={(v) => (editRolesText = v)} wrap /></div>
         </label>
         {#if editError}<div class="dlg-error">{msgKey(editError)}</div>{/if}
       </div>

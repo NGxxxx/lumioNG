@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateCollectionName, validateDatabaseName } from "./namespaces";
+import { validateCollectionName, validateDatabaseName, sortCollectionNames } from "./namespaces";
 
 describe("validateCollectionName", () => {
   it("valid name → null", () => {
@@ -38,5 +38,24 @@ describe("validateDatabaseName", () => {
   it("counts bytes, not characters (multibyte)", () => {
     // 32 two-byte chars = 64 bytes > 63 → error, even though .length is only 32
     expect(validateDatabaseName("é".repeat(32))).toBe("err_db_name_too_long");
+  });
+});
+
+describe("sortCollectionNames", () => {
+  const names = ["zebra", "Apple", "mango"];
+
+  it("default → returns the array unchanged (server order)", () => {
+    expect(sortCollectionNames(names, "default")).toEqual(names);
+  });
+  it("asc → A-Z (locale-aware)", () => {
+    expect(sortCollectionNames(names, "asc")).toEqual(["Apple", "mango", "zebra"]);
+  });
+  it("desc → Z-A", () => {
+    expect(sortCollectionNames(names, "desc")).toEqual(["zebra", "mango", "Apple"]);
+  });
+  it("does not mutate the input array", () => {
+    const copy = [...names];
+    sortCollectionNames(names, "asc");
+    expect(names).toEqual(copy);
   });
 });
