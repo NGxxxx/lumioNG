@@ -7,6 +7,8 @@ use mongodb::bson::{oid::ObjectId, Bson, DateTime};
 
 /// Two independent toggles surfaced as checkboxes in the import dialog; both
 /// default `true` at every call site that constructs one for a real import.
+#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct InferOptions {
     /// Text shaped like `{...}` or `[...]` is parsed as Canonical Extended
     /// JSON and, on success, used verbatim — this reconstructs nested

@@ -77,7 +77,7 @@ fn split_import(content: &str) -> Result<Vec<String>, AppError> {
 }
 
 /// Build an ImportResult from an inserted count and error messages, capping errors at MAX_IMPORT_ERRORS.
-fn summarize_import(inserted: u64, mut errors: Vec<String>) -> ImportResult {
+pub(crate) fn summarize_import(inserted: u64, mut errors: Vec<String>) -> ImportResult {
     let failed = errors.len() as u64;
     errors.truncate(MAX_IMPORT_ERRORS);
     ImportResult { inserted, failed, errors }

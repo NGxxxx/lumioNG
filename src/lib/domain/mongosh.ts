@@ -79,6 +79,9 @@ export const importCmd = (db: string, coll: string, path: string) =>
 export const sqlImportCmd = (db: string, path: string, tables: string[]) =>
   `-- SQL import into ${db}: ${tables.join(", ")} <- "${path}"`;
 
+export const csvImportCmd = (db: string, coll: string, path: string) =>
+  `-- CSV import into ${db}.${coll} <- "${path}"`;
+
 export const exportBsonCmd = (db: string, coll: string, path: string) =>
   `mongodump --db ${db} --collection ${coll} --out "${path}"`;
 

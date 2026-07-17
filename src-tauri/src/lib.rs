@@ -1,6 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod bson_json;
 mod commands;
+mod csv_import;
 mod error;
 mod json_bson;
 mod query_library;
@@ -51,6 +52,8 @@ pub fn run() {
             commands::import_export::import_bson,
             commands::sql::sql_import_preview,
             commands::sql::sql_import_commit,
+            commands::csv::csv_import_preview,
+            commands::csv::csv_import_commit,
             commands::admin::create_collection,
             commands::admin::drop_collection,
             commands::admin::rename_collection,

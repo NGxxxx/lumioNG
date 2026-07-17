@@ -3,9 +3,13 @@
   import { openDialog } from "../api/files";
   import { createImportJob } from "../stores/importJob.svelte";
   import { createSqlImport } from "../stores/sqlImport.svelte";
+  import { createCsvImport } from "../stores/csvImport.svelte";
+  import type { CsvDelimiter } from "../api/csv";
   import * as m from "$lib/paraglide/messages";
 
-  // `coll === null` (or picking a .sql file) switches this dialog into the multi-table SQL flow.
+  // `coll === null` (or picking a .sql file) switches this dialog into the multi-table SQL flow;
+  // picking a .csv file (only offered when `coll` is set — CSV always targets one collection)
+  // switches it into the single-collection CSV flow.
   let { sessionId, db, coll = null, onclose }: {
     sessionId: string;
     db: string;
@@ -17,17 +21,21 @@
   let stage = $state<"setup" | "working">("setup");
   let job = $state<ReturnType<typeof createImportJob> | null>(null);
   let sql = $state<ReturnType<typeof createSqlImport> | null>(null);
+  let csv = $state<ReturnType<typeof createCsvImport> | null>(null);
 
   const isSql = $derived(coll === null || path.toLowerCase().endsWith(".sql"));
+  const isCsv = $derived(coll !== null && path.toLowerCase().endsWith(".csv"));
   const fileName = $derived(path.replace(/^.*[\\/]/, ""));
   const percent = $derived(job && job.total > 0 ? Math.round((job.done / job.total) * 100) : 0);
-  const canClose = $derived(stage === "setup" || (isSql ? sql!.phase !== "running" : !job!.running));
+  const canClose = $derived(
+    stage === "setup" || (isSql ? sql!.phase !== "running" : isCsv ? csv!.phase !== "running" : !job!.running),
+  );
   const title = $derived(isSql ? m.sql_import_title({ db }) : m.import_dialog_title({ db, coll: coll ?? "" }));
 
   async function browse() {
     const filters = coll === null
       ? [{ name: "SQL", extensions: ["sql"] }]
-      : [{ name: "JSON / JSONL / BSON / SQL", extensions: ["json", "jsonl", "bson", "sql"] }];
+      : [{ name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] }];
     const p = await openDialog(filters);
     if (p) path = p;
   }
@@ -38,6 +46,9 @@
     if (isSql) {
       sql = createSqlImport(sessionId, db, path, coll);
       sql.loadPreview();
+    } else if (isCsv) {
+      csv = createCsvImport(sessionId, db, coll!, path);
+      csv.loadPreview();
     } else {
       job = createImportJob({ sessionId, db, coll: coll!, path });
       job.run();
@@ -115,6 +126,49 @@
               {/each}
             </div>
           {/if}
+        {:else if isCsv}
+          {@const v = csv!}
+          {#if v.phase === "loading"}
+            <div class="status">{m.common_loading()}</div>
+          {:else if v.phase === "config" || v.phase === "running"}
+            <div class="csv-options">
+              <label class="csv-radio-group">
+                <span class="label">{m.csv_import_delimiter_label()}</span>
+                <label><input type="radio" name="csv-delim" checked={v.delimiter === "comma"} onchange={() => v.setDelimiter("comma")} disabled={v.phase === "running"} /> {m.csv_import_delimiter_comma()}</label>
+                <label><input type="radio" name="csv-delim" checked={v.delimiter === "semicolon"} onchange={() => v.setDelimiter("semicolon")} disabled={v.phase === "running"} /> {m.csv_import_delimiter_semicolon()}</label>
+                <label><input type="radio" name="csv-delim" checked={v.delimiter === "tab"} onchange={() => v.setDelimiter("tab")} disabled={v.phase === "running"} /> {m.csv_import_delimiter_tab()}</label>
+              </label>
+              <label class="csv-checkbox"><input type="checkbox" checked={v.parseJsonLike} onchange={() => v.toggleParseJsonLike()} disabled={v.phase === "running"} /> {m.csv_import_parse_json_like()}</label>
+              <label class="csv-checkbox"><input type="checkbox" checked={v.inferScalars} onchange={() => v.toggleInferScalars()} disabled={v.phase === "running"} /> {m.csv_import_infer_scalars()}</label>
+            </div>
+            {#if v.columns.length === 0}
+              <div class="status">{m.csv_import_no_columns()}</div>
+            {:else}
+              <div class="csv-preview-wrap">
+                <table class="csv-preview">
+                  <thead><tr><th>{m.csv_import_preview_column()}</th><th>{m.csv_import_preview_type()}</th><th>{m.csv_import_preview_samples()}</th></tr></thead>
+                  <tbody>
+                    {#each v.columns as c (c.path)}
+                      <tr><td class="tname">{c.path}</td><td>{c.inferredType}</td><td>{c.samples.join(", ")}</td></tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
+            {/if}
+            {#if v.phase === "running"}
+              <div class="progress">
+                <div class="bar"><div class="fill" style="width:{v.progress && v.progress.total > 0 ? Math.round((v.progress.done / v.progress.total) * 100) : 0}%"></div></div>
+                <span>{v.progress ? `${v.progress.done}/${v.progress.total}` : ""}</span>
+              </div>
+            {/if}
+            {#if v.error}<div class="error">{v.error}</div>{/if}
+          {:else if v.phase === "done"}
+            {@const r = v.result!}
+            <div class="io-ok">{m.namespace_panel_import_done({ inserted: r.inserted, failed: r.failed })}</div>
+            {#if r.errors.length > 0}
+              <ul class="errlist">{#each r.errors as e}<li>{e}</li>{/each}</ul>
+            {/if}
+          {/if}
         {:else}
           {@const j = job!}
           {#if j.total > 0}
@@ -152,6 +206,9 @@
       {:else if isSql && sql!.phase === "selecting"}
         <button type="button" onclick={onclose}>{m.common_cancel()}</button>
         <button type="button" class="primary" disabled={sql!.selected.size === 0} onclick={() => sql!.run()}>{m.sql_import_run({ count: sql!.selected.size })}</button>
+      {:else if isCsv && csv!.phase === "config"}
+        <button type="button" onclick={onclose}>{m.common_cancel()}</button>
+        <button type="button" class="primary" disabled={csv!.columns.length === 0} onclick={() => csv!.run()}>{m.import_dialog_run()}</button>
       {:else}
         <button type="button" class="primary" onclick={onclose} disabled={!canClose}>{m.common_close()}</button>
       {/if}
@@ -190,6 +247,14 @@
   .select-all { padding-bottom: 0.25rem; font-weight: 600; }
   .tname { font-family: ui-monospace, monospace; }
   .tmeta { margin-left: auto; color: var(--gray-77); font-size: 0.6875rem; }
+  .csv-options { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem; font-size: 0.75rem; }
+  .csv-radio-group { display: flex; align-items: center; gap: 0.625rem; }
+  .csv-radio-group .label { color: var(--gray-77); }
+  .csv-checkbox { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; }
+  .csv-preview-wrap { max-height: 16rem; overflow: auto; }
+  .csv-preview { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+  .csv-preview th, .csv-preview td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border); }
+  .csv-preview td.tname { font-family: ui-monospace, monospace; }
 
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); flex: none; }
   footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }

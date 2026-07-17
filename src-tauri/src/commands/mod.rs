@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod connection;
+pub mod csv;
 pub mod import_export;
 pub mod index;
 pub mod mutation;
