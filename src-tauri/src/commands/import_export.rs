@@ -6,8 +6,10 @@ use futures::stream::TryStreamExt;
 use mongodb::bson::Document;
 use mongodb::error::ErrorKind;
 use mongodb::Cursor;
+use std::io::Read;
 use std::io::Write;
 use tauri::{ipc::Channel, State};
+use tokio::sync::mpsc;
 
 use super::query::build_find_options;
 
@@ -56,24 +58,6 @@ pub struct ImportResult {
     pub inserted: u64,
     pub failed: u64,
     pub errors: Vec<String>,
-}
-
-/// Split file content into per-document ExtJSON strings: a leading `[` parses as a JSON array, otherwise JSONL (one document per non-empty line).
-fn split_import(content: &str) -> Result<Vec<String>, AppError> {
-    if content.trim_start().starts_with('[') {
-        let arr: Vec<serde_json::Value> =
-            serde_json::from_str(content).map_err(|e| AppError::Parse(e.to_string()))?;
-        arr.into_iter()
-            .map(|v| serde_json::to_string(&v).map_err(|e| AppError::Parse(e.to_string())))
-            .collect()
-    } else {
-        Ok(content
-            .lines()
-            .map(str::trim)
-            .filter(|l| !l.is_empty())
-            .map(str::to_string)
-            .collect())
-    }
 }
 
 /// Build an ImportResult from an inserted count and error messages, capping errors at MAX_IMPORT_ERRORS.
@@ -235,89 +219,97 @@ async fn upsert_by_id(
     }
 }
 
-/// Parse and insert already-split ExtJSON doc strings in `PROGRESS_BATCH`-sized chunks, so at most one
-/// batch's worth of parsed BSON is held in memory at a time (a large import file no longer holds every
-/// parsed document simultaneously — same OOM class as the QuickJS unbounded-batch bug, see
-/// bugfix-2026-07-08 memory).
-async fn parse_and_insert(
+/// One item from any JSON/JSONL/BSON import producer: successfully parsed, or a parse-error
+/// message not yet formatted with a `doc#N:` prefix -- only the consumer (`consume_import_batches`)
+/// knows an item's position in the overall stream, so it adds that prefix.
+type ImportItem = Result<Document, String>;
+
+/// Parses one JSONL line, or `None` if the line is blank (skipped, not counted as a document).
+fn parse_jsonl_line(line: &str) -> Option<ImportItem> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(canonical_string_to_doc(trimmed).map_err(|e| e.to_string()))
+    }
+}
+
+/// Parses one JSON-array element's raw text (see `json_stream::ArrayElementReader`) --
+/// separate name from `parse_jsonl_line` even though both just call `canonical_string_to_doc`,
+/// since the two producers read from different scanners and this keeps each call site's intent
+/// obvious.
+fn parse_array_element(text: &str) -> ImportItem {
+    canonical_string_to_doc(text).map_err(|e| e.to_string())
+}
+
+/// Counts non-blank lines without parsing them -- mirrors `count_array_elements`/`count_csv_rows`
+/// avoiding document conversion during the count pass.
+fn count_jsonl_lines<R: std::io::BufRead>(reader: R) -> Result<u64, AppError> {
+    let mut n = 0u64;
+    for line in reader.lines() {
+        let line = line.map_err(|e| AppError::Io(e.to_string()))?;
+        if !line.trim().is_empty() {
+            n += 1;
+        }
+    }
+    Ok(n)
+}
+
+/// Peeks the file's first non-whitespace byte to choose the JSON-array vs. JSONL producer,
+/// reading only a small bounded prefix (never the whole file). An empty file is treated as
+/// JSONL (zero documents), matching today's `split_import` behavior for an empty input.
+fn detect_json_array(path: &str) -> Result<bool, AppError> {
+    use std::io::BufRead as _;
+    let file = std::fs::File::open(path).map_err(|e| AppError::Io(e.to_string()))?;
+    let mut reader = std::io::BufReader::new(file);
+    loop {
+        let buf = reader.fill_buf().map_err(|e| AppError::Io(e.to_string()))?;
+        let Some(&b) = buf.first() else {
+            return Ok(false);
+        };
+        if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
+            reader.consume(1);
+            continue;
+        }
+        return Ok(b == b'[');
+    }
+}
+
+/// Drains `rx`, inserting each batch and reporting progress against `total`, until the channel
+/// closes or `insert_batch` signals stop (`StopOnFirstError` after a write error). Dropping `rx`
+/// when this function returns is the signal a producer's `tx.blocking_send(..).is_err()` check
+/// picks up to stop reading early -- same contract as `csv_import_commit`'s loop. Shared by the
+/// JSON-array, JSONL (this task), and BSON (Task 4) producers so this loop isn't triplicated.
+async fn consume_import_batches(
+    mut rx: mpsc::Receiver<Result<Vec<ImportItem>, AppError>>,
     collection: &mongodb::Collection<Document>,
-    raw_docs: &[String],
-    mode: InsertMode,
+    insert_mode: InsertMode,
+    total: u64,
     on_progress: &Channel<ExportProgress>,
-) -> ImportResult {
-    let total = raw_docs.len() as u64;
+) -> Result<ImportResult, AppError> {
     let mut inserted: u64 = 0;
     let mut errors: Vec<String> = Vec::new();
     let mut done: u64 = 0;
 
-    for chunk in raw_docs.chunks(PROGRESS_BATCH as usize) {
+    while let Some(chunk) = rx.recv().await {
+        let items = chunk?;
+        let batch_len = items.len();
         let raw_start = done as usize;
-        let mut parsed: Vec<Document> = Vec::with_capacity(chunk.len());
-        let mut raw_idx: Vec<usize> = Vec::with_capacity(chunk.len());
-        for (i, s) in chunk.iter().enumerate() {
-            match canonical_string_to_doc(s) {
+        let mut docs = Vec::with_capacity(batch_len);
+        let mut raw_idx = Vec::with_capacity(batch_len);
+        for (i, item) in items.into_iter().enumerate() {
+            match item {
                 Ok(d) => {
-                    parsed.push(d);
+                    docs.push(d);
                     raw_idx.push(raw_start + i);
                 }
                 Err(e) => errors.push(format!("doc#{}: {e}", raw_start + i)),
             }
         }
         let mut stop = false;
-        if !parsed.is_empty() {
-            stop = insert_batch(collection, parsed, &raw_idx, mode, &mut inserted, &mut errors).await;
+        if !docs.is_empty() {
+            stop = insert_batch(collection, docs, &raw_idx, insert_mode, &mut inserted, &mut errors).await;
         }
-        done += chunk.len() as u64;
-        let _ = on_progress.send(ExportProgress { done, total });
-        if stop {
-            break;
-        }
-    }
-    summarize_import(inserted, errors)
-}
-
-/// Count concatenated BSON documents (mongodump-style) without deserializing them — each document starts
-/// with a little-endian i32 total length, so we can skip over it to find the next boundary.
-fn count_bson_docs(mut bytes: &[u8]) -> Result<u64, AppError> {
-    let mut n = 0u64;
-    while !bytes.is_empty() {
-        if bytes.len() < 4 {
-            return Err(AppError::Parse("truncated BSON document".into()));
-        }
-        let len = i32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
-        if len < 4 || len > bytes.len() {
-            return Err(AppError::Parse("invalid BSON document length".into()));
-        }
-        bytes = &bytes[len..];
-        n += 1;
-    }
-    Ok(n)
-}
-
-/// Parse and insert concatenated BSON documents (mongodump-style) in `PROGRESS_BATCH`-sized chunks, so at
-/// most one batch's worth of parsed docs is held in memory at a time.
-async fn parse_and_insert_bson(
-    collection: &mongodb::Collection<Document>,
-    bytes: &[u8],
-    mode: InsertMode,
-    on_progress: &Channel<ExportProgress>,
-) -> Result<ImportResult, AppError> {
-    let total = count_bson_docs(bytes)?;
-    let mut cursor = bytes;
-    let mut inserted: u64 = 0;
-    let mut errors: Vec<String> = Vec::new();
-    let mut done: u64 = 0;
-
-    while !cursor.is_empty() {
-        let batch_start = done as usize;
-        let mut batch: Vec<Document> = Vec::new();
-        while batch.len() < PROGRESS_BATCH as usize && !cursor.is_empty() {
-            let d = Document::from_reader(&mut cursor).map_err(|e| AppError::Parse(e.to_string()))?;
-            batch.push(d);
-        }
-        let batch_len = batch.len();
-        let raw_idx: Vec<usize> = (batch_start..batch_start + batch_len).collect();
-        let stop = insert_batch(collection, batch, &raw_idx, mode, &mut inserted, &mut errors).await;
         done += batch_len as u64;
         let _ = on_progress.send(ExportProgress { done, total });
         if stop {
@@ -325,6 +317,171 @@ async fn parse_and_insert_bson(
         }
     }
     Ok(summarize_import(inserted, errors))
+}
+
+/// Streams a JSONL file on a blocking thread, sending `PROGRESS_BATCH`-sized batches over a
+/// bounded channel -- same shape as `spawn_csv_producer` in `commands/csv.rs`.
+fn spawn_jsonl_producer(path: String) -> mpsc::Receiver<Result<Vec<ImportItem>, AppError>> {
+    use std::io::BufRead as _;
+    let (tx, rx) = mpsc::channel(2);
+    tokio::task::spawn_blocking(move || {
+        let file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = tx.blocking_send(Err(AppError::Io(e.to_string())));
+                return;
+            }
+        };
+        let reader = std::io::BufReader::new(file);
+        let mut batch: Vec<ImportItem> = Vec::with_capacity(PROGRESS_BATCH as usize);
+        for line in reader.lines() {
+            let line = match line {
+                Ok(l) => l,
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(AppError::Io(e.to_string())));
+                    return;
+                }
+            };
+            if let Some(item) = parse_jsonl_line(&line) {
+                batch.push(item);
+                if batch.len() >= PROGRESS_BATCH as usize
+                    && tx.blocking_send(Ok(std::mem::take(&mut batch))).is_err()
+                {
+                    return; // consumer dropped rx (StopOnFirstError early exit)
+                }
+            }
+        }
+        if !batch.is_empty() {
+            let _ = tx.blocking_send(Ok(batch));
+        }
+    });
+    rx
+}
+
+/// Streams a JSON-array file on a blocking thread via `json_stream::ArrayElementReader`,
+/// sending `PROGRESS_BATCH`-sized batches over a bounded channel.
+fn spawn_json_array_producer(path: String) -> mpsc::Receiver<Result<Vec<ImportItem>, AppError>> {
+    let (tx, rx) = mpsc::channel(2);
+    tokio::task::spawn_blocking(move || {
+        let file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = tx.blocking_send(Err(AppError::Io(e.to_string())));
+                return;
+            }
+        };
+        let reader = std::io::BufReader::new(file);
+        let mut elements = match crate::json_stream::ArrayElementReader::new(reader) {
+            Ok(r) => r,
+            Err(e) => {
+                let _ = tx.blocking_send(Err(AppError::Parse(e)));
+                return;
+            }
+        };
+        let mut batch: Vec<ImportItem> = Vec::with_capacity(PROGRESS_BATCH as usize);
+        loop {
+            match elements.next_element() {
+                Ok(Some(text)) => {
+                    batch.push(parse_array_element(&text));
+                    if batch.len() >= PROGRESS_BATCH as usize
+                        && tx.blocking_send(Ok(std::mem::take(&mut batch))).is_err()
+                    {
+                        return;
+                    }
+                }
+                Ok(None) => break,
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(AppError::Parse(e)));
+                    return;
+                }
+            }
+        }
+        if !batch.is_empty() {
+            let _ = tx.blocking_send(Ok(batch));
+        }
+    });
+    rx
+}
+
+/// Reads a 4-byte length prefix, distinguishing a clean end-of-file (0 bytes read, `Ok(None)`)
+/// from a truncated one (1-3 bytes read before EOF, `Err`) -- `Read::read_exact` alone can't make
+/// this distinction, since it reports `UnexpectedEof` identically in both cases.
+fn read_len_prefix<R: std::io::Read>(reader: &mut R) -> Result<Option<[u8; 4]>, AppError> {
+    let mut buf = [0u8; 4];
+    let mut filled = 0;
+    while filled < 4 {
+        match reader.read(&mut buf[filled..]).map_err(|e| AppError::Io(e.to_string()))? {
+            0 => break,
+            n => filled += n,
+        }
+    }
+    match filled {
+        0 => Ok(None),
+        4 => Ok(Some(buf)),
+        _ => Err(AppError::Parse("truncated BSON document".into())),
+    }
+}
+
+/// Counts concatenated BSON documents (mongodump-style) by reading only each document's
+/// 4-byte little-endian length prefix and discarding the body via `io::copy` into `io::sink`
+/// — never buffers a whole document, only `io::copy`'s small internal transfer buffer.
+fn count_bson_docs_streaming<R: std::io::Read>(mut reader: R) -> Result<u64, AppError> {
+    let mut n = 0u64;
+    loop {
+        let Some(len_buf) = read_len_prefix(&mut reader)? else {
+            break;
+        };
+        let len = i32::from_le_bytes(len_buf);
+        if len < 5 {
+            return Err(AppError::Parse("invalid BSON document length".into()));
+        }
+        let body_len = (len as u64) - 4;
+        let copied = std::io::copy(&mut (&mut reader).take(body_len), &mut std::io::sink())
+            .map_err(|e| AppError::Io(e.to_string()))?;
+        if copied != body_len {
+            return Err(AppError::Parse("truncated BSON document".into()));
+        }
+        n += 1;
+    }
+    Ok(n)
+}
+
+/// Streams concatenated BSON documents (mongodump-style) on a blocking thread, sending
+/// `PROGRESS_BATCH`-sized batches over a bounded channel. Reads exactly `total` documents
+/// (from the count pass already run in `import_bson`) rather than trying to detect EOF itself
+/// -- avoids having to distinguish "clean end of file" from "truncated document" inside the
+/// producer, since the count pass already validated that.
+fn spawn_bson_producer(path: String, total: u64) -> mpsc::Receiver<Result<Vec<ImportItem>, AppError>> {
+    let (tx, rx) = mpsc::channel(2);
+    tokio::task::spawn_blocking(move || {
+        let file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(e) => {
+                let _ = tx.blocking_send(Err(AppError::Io(e.to_string())));
+                return;
+            }
+        };
+        let mut reader = std::io::BufReader::new(file);
+        let mut batch: Vec<ImportItem> = Vec::with_capacity(PROGRESS_BATCH as usize);
+        for _ in 0..total {
+            match Document::from_reader(&mut reader) {
+                Ok(d) => batch.push(Ok(d)),
+                Err(e) => {
+                    let _ = tx.blocking_send(Err(AppError::Parse(e.to_string())));
+                    return;
+                }
+            }
+            if batch.len() >= PROGRESS_BATCH as usize
+                && tx.blocking_send(Ok(std::mem::take(&mut batch))).is_err()
+            {
+                return;
+            }
+        }
+        if !batch.is_empty() {
+            let _ = tx.blocking_send(Ok(batch));
+        }
+    });
+    rx
 }
 
 #[tauri::command]
@@ -356,10 +513,17 @@ pub async fn import_documents(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
-    // Sync file I/O runs on a blocking thread so it doesn't stall the tokio worker other sessions share.
-    let raw_docs = tokio::task::spawn_blocking(move || -> Result<Vec<String>, AppError> {
-        let content = std::fs::read_to_string(&path).map_err(|e| AppError::Io(e.to_string()))?;
-        split_import(&content)
+    let count_path = path.clone();
+    let (is_array, total) = tokio::task::spawn_blocking(move || -> Result<(bool, u64), AppError> {
+        let is_array = detect_json_array(&count_path)?;
+        let file = std::fs::File::open(&count_path).map_err(|e| AppError::Io(e.to_string()))?;
+        let reader = std::io::BufReader::new(file);
+        let total = if is_array {
+            crate::json_stream::count_array_elements(reader).map_err(AppError::Parse)?
+        } else {
+            count_jsonl_lines(reader)?
+        };
+        Ok((is_array, total))
     })
     .await
     .map_err(|e| AppError::Io(e.to_string()))??;
@@ -367,7 +531,13 @@ pub async fn import_documents(
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    Ok(parse_and_insert(&collection, &raw_docs, insert_mode, &on_progress).await)
+
+    let rx = if is_array {
+        spawn_json_array_producer(path)
+    } else {
+        spawn_jsonl_producer(path)
+    };
+    consume_import_batches(rx, &collection, insert_mode, total, &on_progress).await
 }
 
 #[tauri::command]
@@ -487,8 +657,10 @@ pub async fn import_bson(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
-    let bytes = tokio::task::spawn_blocking(move || {
-        std::fs::read(&path).map_err(|e| AppError::Io(e.to_string()))
+    let count_path = path.clone();
+    let total = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
+        let file = std::fs::File::open(&count_path).map_err(|e| AppError::Io(e.to_string()))?;
+        count_bson_docs_streaming(std::io::BufReader::new(file))
     })
     .await
     .map_err(|e| AppError::Io(e.to_string()))??;
@@ -496,7 +668,9 @@ pub async fn import_bson(
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    parse_and_insert_bson(&collection, &bytes, insert_mode, &on_progress).await
+
+    let rx = spawn_bson_producer(path, total);
+    consume_import_batches(rx, &collection, insert_mode, total, &on_progress).await
 }
 
 #[cfg(test)]
@@ -566,31 +740,82 @@ mod tests {
     }
 
     #[test]
-    fn split_import_parses_json_array() {
-        let out = split_import(r#"[{"a":1},{"b":2}]"#).unwrap();
-        assert_eq!(out.len(), 2);
-        // each element is a standalone JSON object string
-        assert!(out[0].contains("\"a\""));
-        assert!(out[1].contains("\"b\""));
+    fn parse_jsonl_line_skips_blank_and_whitespace_only_lines() {
+        assert!(parse_jsonl_line("").is_none());
+        assert!(parse_jsonl_line("   ").is_none());
     }
 
     #[test]
-    fn split_import_accepts_leading_whitespace_array() {
-        let out = split_import("  \n  [ {\"a\":1} ]").unwrap();
-        assert_eq!(out.len(), 1);
+    fn parse_jsonl_line_parses_a_valid_document() {
+        let doc = parse_jsonl_line(r#"{"a":1}"#).unwrap().unwrap();
+        // Plain JSON integers that fit i32 parse to Bson::Int32 (see
+        // `canonical_string_to_bson`/`Bson::try_from`), not Int64 -- matches
+        // `parsed_bson_docs_roundtrip_via_document_from_reader`'s use of `get_i32` for the same
+        // `{"a":1}` shape elsewhere in this file.
+        assert_eq!(doc.get_i32("a").unwrap(), 1);
     }
 
     #[test]
-    fn split_import_parses_jsonl_skipping_blank_lines() {
-        let out = split_import("{\"a\":1}\n\n{\"b\":2}\n").unwrap();
-        assert_eq!(out.len(), 2);
-        assert!(out[0].contains("\"a\""));
-        assert!(out[1].contains("\"b\""));
+    fn parse_jsonl_line_reports_a_parse_error_for_invalid_json() {
+        assert!(parse_jsonl_line("not json").unwrap().is_err());
     }
 
     #[test]
-    fn split_import_rejects_malformed_array() {
-        assert!(matches!(split_import("[{"), Err(AppError::Parse(_))));
+    fn count_jsonl_lines_counts_non_blank_lines_only() {
+        let n = count_jsonl_lines(std::io::Cursor::new(b"{\"a\":1}\n\n{\"b\":2}\n" as &[u8])).unwrap();
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn count_jsonl_lines_is_zero_for_an_empty_file() {
+        let n = count_jsonl_lines(std::io::Cursor::new(b"" as &[u8])).unwrap();
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn detect_json_array_is_true_for_a_leading_bracket_with_whitespace() {
+        let dir = std::env::temp_dir().join("monglumio_test_detect_array");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.json");
+        std::fs::write(&path, "  \n[{\"a\":1}]").unwrap();
+        assert!(detect_json_array(path.to_str().unwrap()).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_json_array_is_false_for_jsonl() {
+        let dir = std::env::temp_dir().join("monglumio_test_detect_jsonl");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.jsonl");
+        std::fs::write(&path, "{\"a\":1}\n{\"b\":2}\n").unwrap();
+        assert!(!detect_json_array(path.to_str().unwrap()).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn detect_json_array_is_false_for_an_empty_file() {
+        let dir = std::env::temp_dir().join("monglumio_test_detect_empty");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.json");
+        std::fs::write(&path, "").unwrap();
+        assert!(!detect_json_array(path.to_str().unwrap()).unwrap());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_syntactically_invalid_but_balanced_array_element_fails_to_parse_while_its_neighbors_do_not() {
+        // Proves the flagged behavior change end-to-end at the pure-function level: the scanner
+        // still yields all three elements (Task 1), and only the malformed one fails to parse here
+        // -- the whole array is not rejected as a unit the way `serde_json::from_str` used to.
+        let json = r#"[{"a":1},{"a": tru},{"b":2}]"#;
+        let mut r = crate::json_stream::ArrayElementReader::new(std::io::Cursor::new(json.as_bytes())).unwrap();
+        let mut results = Vec::new();
+        while let Some(text) = r.next_element().unwrap() {
+            results.push(parse_array_element(&text));
+        }
+        assert!(results[0].is_ok());
+        assert!(results[1].is_err());
+        assert!(results[2].is_ok());
     }
 
     #[test]
@@ -645,21 +870,53 @@ mod tests {
     }
 
     #[test]
-    fn count_bson_docs_counts_concatenated_documents() {
+    fn count_bson_docs_streaming_counts_concatenated_documents() {
         use mongodb::bson::doc;
         let a = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
         let b = mongodb::bson::to_vec(&doc! {"b": 2}).unwrap();
         let mut buf = a.clone();
         buf.extend_from_slice(&b);
-        assert_eq!(count_bson_docs(&buf).unwrap(), 2);
+        assert_eq!(count_bson_docs_streaming(std::io::Cursor::new(buf)).unwrap(), 2);
     }
 
     #[test]
-    fn count_bson_docs_rejects_truncated_buffer() {
+    fn count_bson_docs_streaming_is_zero_for_an_empty_file() {
+        assert_eq!(count_bson_docs_streaming(std::io::Cursor::new(Vec::<u8>::new())).unwrap(), 0);
+    }
+
+    #[test]
+    fn count_bson_docs_streaming_rejects_a_truncated_document() {
         use mongodb::bson::doc;
         let a = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
-        let truncated = &a[..a.len() - 2];
-        assert!(matches!(count_bson_docs(truncated), Err(AppError::Parse(_))));
+        let truncated = a[..a.len() - 2].to_vec();
+        assert!(matches!(
+            count_bson_docs_streaming(std::io::Cursor::new(truncated)),
+            Err(AppError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn count_bson_docs_streaming_rejects_an_invalid_length_prefix() {
+        // Length prefix (4) is smaller than the minimum possible BSON document (5: length + terminator).
+        let bytes: Vec<u8> = vec![4, 0, 0, 0];
+        assert!(matches!(
+            count_bson_docs_streaming(std::io::Cursor::new(bytes)),
+            Err(AppError::Parse(_))
+        ));
+    }
+
+    #[test]
+    fn count_bson_docs_streaming_rejects_a_truncated_trailing_length_prefix() {
+        // One valid document followed by 2 stray bytes (not 0, not a full 4-byte prefix) -- must
+        // error, not be silently treated as "clean end of file" the way a naive `read_exact` loop
+        // would (read_exact's UnexpectedEof looks identical whether 0 or 1-3 bytes were read).
+        use mongodb::bson::doc;
+        let mut buf = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
+        buf.extend_from_slice(&[0xAA, 0xBB]);
+        assert!(matches!(
+            count_bson_docs_streaming(std::io::Cursor::new(buf)),
+            Err(AppError::Parse(_))
+        ));
     }
 
     #[test]

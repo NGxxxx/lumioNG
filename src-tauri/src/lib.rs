@@ -4,6 +4,7 @@ mod commands;
 mod csv_import;
 mod error;
 mod json_bson;
+mod json_stream;
 mod query_library;
 mod registry;
 mod script;
