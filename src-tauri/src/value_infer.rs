@@ -38,6 +38,23 @@ pub fn infer_bson(text: &str, opts: &InferOptions) -> Bson {
     Bson::String(text.to_string())
 }
 
+/// Short type label for one inferred `Bson` value, used by CSV's and SQL's preview commands to
+/// annotate each column (`"int"`, `"double"`, `"bool"`, `"objectId"`, `"date"`, `"object"`,
+/// `"array"`, `"null"`, or the `"string"` fallback).
+pub fn bson_type_name(b: &Bson) -> &'static str {
+    match b {
+        Bson::Document(_) => "object",
+        Bson::Array(_) => "array",
+        Bson::Int32(_) | Bson::Int64(_) => "int",
+        Bson::Double(_) => "double",
+        Bson::Boolean(_) => "bool",
+        Bson::ObjectId(_) => "objectId",
+        Bson::DateTime(_) => "date",
+        Bson::Null => "null",
+        _ => "string",
+    }
+}
+
 /// Tries, in order, int64 → double → bool → ObjectId → ISO-8601 date;
 /// `None` means "leave it as a string" (caller falls back to `Bson::String`).
 fn infer_scalar(s: &str) -> Option<Bson> {
@@ -238,5 +255,15 @@ mod tests {
     fn infer_scalars_off_keeps_numbers_and_bools_as_strings() {
         assert_eq!(infer_bson("42", &opts(true, false)), Bson::String("42".to_string()));
         assert_eq!(infer_bson("true", &opts(true, false)), Bson::String("true".to_string()));
+    }
+
+    #[test]
+    fn bson_type_name_covers_every_inferable_type() {
+        assert_eq!(bson_type_name(&Bson::String("x".into())), "string");
+        assert_eq!(bson_type_name(&Bson::Int64(1)), "int");
+        assert_eq!(bson_type_name(&Bson::Double(1.5)), "double");
+        assert_eq!(bson_type_name(&Bson::Boolean(true)), "bool");
+        assert_eq!(bson_type_name(&Bson::Null), "null");
+        assert!(matches!(bson_type_name(&Bson::Array(vec![])), "array"));
     }
 }

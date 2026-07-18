@@ -13,8 +13,8 @@ const sqlImportPreview = api.sqlImportPreview as ReturnType<typeof vi.fn>;
 const sqlImportCommit = api.sqlImportCommit as ReturnType<typeof vi.fn>;
 
 const preview = [
-  { table: "users", columns: ["id", "name"], rowCount: 2 },
-  { table: "orders", columns: ["id", "total"], rowCount: 5 },
+  { table: "users", columns: [{ name: "id", inferredType: "int" }, { name: "name", inferredType: "string" }], rowCount: 2 },
+  { table: "orders", columns: [{ name: "id", inferredType: "int" }, { name: "total", inferredType: "int" }], rowCount: 5 },
 ];
 
 describe("createSqlImport", () => {

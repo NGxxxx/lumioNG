@@ -5,7 +5,7 @@ use crate::commands::import_export::{insert_batch, InsertMode};
 use crate::error::AppError;
 use crate::sql_import::{
     insert_values_rows, parse_statements, resolve_insert_columns, resolve_target_collection,
-    row_to_document, table_columns, table_ident, table_schemas,
+    row_to_document, table_column_types, table_columns, table_ident, table_schemas,
 };
 use crate::state::AppState;
 use crate::value_infer::InferOptions;
@@ -20,26 +20,42 @@ fn read_sql_file(path: &str) -> Result<String, AppError> {
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct SqlColumnPreview {
+    pub name: String,
+    pub inferred_type: String,
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SqlTablePreview {
     pub table: String,
-    pub columns: Vec<String>,
+    pub columns: Vec<SqlColumnPreview>,
     pub row_count: u64,
 }
 
 #[tauri::command]
 pub async fn sql_import_preview(path: String) -> Result<Vec<SqlTablePreview>, AppError> {
-    let schemas = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+    tokio::task::spawn_blocking(move || -> Result<_, AppError> {
         let content = read_sql_file(&path)?;
         let statements = parse_statements(&content).map_err(AppError::Parse)?;
-        Ok(table_schemas(&statements))
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let previews = table_schemas(&statements)
+            .into_iter()
+            .map(|t| {
+                let types = table_column_types(&statements, &t.name, &t.columns, &opts);
+                let columns = t
+                    .columns
+                    .into_iter()
+                    .zip(types)
+                    .map(|(name, inferred_type)| SqlColumnPreview { name, inferred_type })
+                    .collect();
+                SqlTablePreview { table: t.name, columns, row_count: t.row_count }
+            })
+            .collect();
+        Ok(previews)
     })
     .await
-    .map_err(|e| AppError::Io(e.to_string()))??;
-
-    Ok(schemas
-        .into_iter()
-        .map(|t| SqlTablePreview { table: t.name, columns: t.columns, row_count: t.row_count })
-        .collect())
+    .map_err(|e| AppError::Io(e.to_string()))?
 }
 
 #[derive(serde::Serialize, Clone)]

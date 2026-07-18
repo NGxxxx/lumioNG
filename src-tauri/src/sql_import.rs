@@ -1,12 +1,12 @@
 //! Parse a generic SQL dump (`CREATE TABLE` + `INSERT INTO`) into per-table documents. Value
 //! types come from each literal's own kind, not the declared column type — sidesteps modeling
 //! every SQL dialect's type vocabulary, so any dump (MySQL, Postgres, ...) can be imported.
-use crate::value_infer::{infer_bson, InferOptions};
+use crate::value_infer::{bson_type_name, infer_bson, InferOptions};
 use mongodb::bson::{Bson, Document};
 use sqlparser::ast::{Expr, Insert, ObjectName, SetExpr, Statement, UnaryOperator, Value as SqlValue};
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Parses a SQL dump into its statement list — the one place `sqlparser` runs. The full dump's
 /// AST is held in memory at once (`sqlparser` needs the whole source text up front); this is an
@@ -111,6 +111,60 @@ pub fn table_schemas(statements: &[Statement]) -> Vec<TableSchema> {
             columns: columns_by_table.get(&name).cloned().unwrap_or_default(),
             row_count: *counts.get(&name).unwrap_or(&0),
             name,
+        })
+        .collect()
+}
+
+/// Rows sampled per table when inferring column types for the preview — deliberately small; the
+/// picker's type annotation doesn't need every row, just a representative sample.
+const SQL_COLUMN_TYPE_SAMPLE_ROWS: usize = 10;
+
+/// For one table's column order, infers each column's BSON type from up to
+/// `SQL_COLUMN_TYPE_SAMPLE_ROWS` rows of that table's *first* resolvable `INSERT` only (never a
+/// later `INSERT` targeting the same table, and never the whole table) — same
+/// `expr_to_bson`/`opts` conversion `sql_import_commit` uses, so the preview matches what a real
+/// import would produce. Types are attributed by column **name** (via that `INSERT`'s own
+/// resolved column order), not position — an explicit `INSERT INTO t (b, a) VALUES (...)` lists
+/// columns in a different order than `CREATE TABLE`, and a positional zip against `columns` would
+/// silently swap types between columns in that case. A column with no sampled value (table has no
+/// resolvable `INSERT`, zero rows, or that column was never set in the sampled INSERT) reports
+/// `"empty"`; one type seen reports that type; more than one reports `"mixed"` — identical
+/// reduction to `csv_import::preview_columns`.
+pub fn table_column_types(
+    statements: &[Statement],
+    table: &str,
+    columns: &[String],
+    opts: &InferOptions,
+) -> Vec<String> {
+    let columns_by_table = table_columns(statements);
+    let mut types: HashMap<String, HashSet<&'static str>> = HashMap::new();
+
+    let sample = statements.iter().find_map(|stmt| {
+        let Statement::Insert(insert) = stmt else { return None };
+        if table_ident(&insert.table_name) != table {
+            return None;
+        }
+        let cols = resolve_insert_columns(insert, &columns_by_table);
+        if cols.is_empty() {
+            return None;
+        }
+        insert_values_rows(insert).map(|rows| (cols, rows))
+    });
+
+    if let Some((cols, rows)) = sample {
+        for row in rows.iter().take(SQL_COLUMN_TYPE_SAMPLE_ROWS) {
+            for (col, expr) in cols.iter().zip(row.iter()) {
+                types.entry(col.clone()).or_default().insert(bson_type_name(&expr_to_bson(expr, opts)));
+            }
+        }
+    }
+
+    columns
+        .iter()
+        .map(|c| match types.get(c) {
+            None => "empty".to_string(),
+            Some(set) if set.len() == 1 => set.iter().next().unwrap().to_string(),
+            Some(_) => "mixed".to_string(),
         })
         .collect()
 }
@@ -347,5 +401,67 @@ mod tests {
         assert_eq!(resolve_target_collection("movie", true, Some("films")), "films");
         assert_eq!(resolve_target_collection("movie", false, Some("films")), "movie");
         assert_eq!(resolve_target_collection("movie", true, None), "movie");
+    }
+
+    #[test]
+    fn table_column_types_infers_a_uniform_int_column() {
+        let statements =
+            parse_statements("CREATE TABLE t (a INT, b INT); INSERT INTO t VALUES (1, 2), (3, 4);").unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let types = table_column_types(&statements, "t", &["a".to_string(), "b".to_string()], &opts);
+        assert_eq!(types, vec!["int".to_string(), "int".to_string()]);
+    }
+
+    #[test]
+    fn table_column_types_reports_mixed_when_sampled_rows_disagree() {
+        let statements = parse_statements("CREATE TABLE t (a TEXT); INSERT INTO t VALUES (1), ('hello');").unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let types = table_column_types(&statements, "t", &["a".to_string()], &opts);
+        assert_eq!(types, vec!["mixed".to_string()]);
+    }
+
+    #[test]
+    fn table_column_types_reports_empty_for_a_table_with_no_insert() {
+        let statements = parse_statements("CREATE TABLE t (a INT, b INT);").unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let types = table_column_types(&statements, "t", &["a".to_string(), "b".to_string()], &opts);
+        assert_eq!(types, vec!["empty".to_string(), "empty".to_string()]);
+    }
+
+    #[test]
+    fn table_column_types_only_samples_the_first_matching_insert() {
+        // The second INSERT would flip column "a" to "mixed" if it were sampled — it must not be.
+        let statements = parse_statements(
+            "CREATE TABLE t (a INT); INSERT INTO t VALUES (1), (2); INSERT INTO t VALUES ('not a number');",
+        )
+        .unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let types = table_column_types(&statements, "t", &["a".to_string()], &opts);
+        assert_eq!(types, vec!["int".to_string()]);
+    }
+
+    #[test]
+    fn table_column_types_respects_explicit_out_of_order_insert_columns() {
+        // INSERT explicitly lists (b, a) — types must attribute by column name, not position.
+        let statements = parse_statements(
+            "CREATE TABLE t (a INT, b TEXT); INSERT INTO t (b, a) VALUES ('x', 1);",
+        )
+        .unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let types = table_column_types(&statements, "t", &["a".to_string(), "b".to_string()], &opts);
+        assert_eq!(types, vec!["int".to_string(), "string".to_string()]);
+    }
+
+    #[test]
+    fn table_column_types_stops_sampling_at_the_row_cap() {
+        // 10 int rows then a string row — with the cap at 10, the string row must not be sampled.
+        let mut sql = String::from("CREATE TABLE t (a TEXT); INSERT INTO t VALUES ");
+        let rows: Vec<String> = (0..10).map(|i| format!("({i})")).collect();
+        sql.push_str(&rows.join(", "));
+        sql.push_str(", ('boom');");
+        let statements = parse_statements(&sql).unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let types = table_column_types(&statements, "t", &["a".to_string()], &opts);
+        assert_eq!(types, vec!["int".to_string()]);
     }
 }

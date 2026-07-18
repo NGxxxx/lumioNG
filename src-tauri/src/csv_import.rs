@@ -2,7 +2,7 @@
 //! same convention `domain/exporter.ts::flattenPaths` writes on export) and rebuilds each row into
 //! a nested document, reusing `value_infer` for cell-level type inference — the same module SQL
 //! import uses, so both formats reconstruct nested objects/scalars identically.
-use crate::value_infer::{infer_bson, InferOptions};
+use crate::value_infer::{bson_type_name, infer_bson, InferOptions};
 use mongodb::bson::{Bson, Document};
 use std::collections::HashSet;
 use std::io::Read;
@@ -22,23 +22,6 @@ impl CsvDelimiter {
             CsvDelimiter::Semicolon => b';',
             CsvDelimiter::Tab => b'\t',
         }
-    }
-}
-
-/// Short type label for one inferred `Bson` value, used by the preview command to annotate each
-/// column (`"int"`, `"double"`, `"bool"`, `"objectId"`, `"date"`, `"object"`, `"array"`, `"null"`,
-/// or the `"string"` fallback).
-pub fn bson_type_name(b: &Bson) -> &'static str {
-    match b {
-        Bson::Document(_) => "object",
-        Bson::Array(_) => "array",
-        Bson::Int32(_) | Bson::Int64(_) => "int",
-        Bson::Double(_) => "double",
-        Bson::Boolean(_) => "bool",
-        Bson::ObjectId(_) => "objectId",
-        Bson::DateTime(_) => "date",
-        Bson::Null => "null",
-        _ => "string",
     }
 }
 
@@ -189,7 +172,6 @@ pub fn count_csv_rows<R: Read>(rdr: R, delimiter: CsvDelimiter) -> Result<u64, S
 mod tests {
     use super::*;
     use crate::value_infer::InferOptions;
-    use mongodb::bson::Bson;
 
     fn opts(parse_json_like: bool, infer_scalars: bool) -> InferOptions {
         InferOptions { parse_json_like, infer_scalars }
@@ -200,16 +182,6 @@ mod tests {
         assert_eq!(CsvDelimiter::Comma.as_byte(), b',');
         assert_eq!(CsvDelimiter::Semicolon.as_byte(), b';');
         assert_eq!(CsvDelimiter::Tab.as_byte(), b'\t');
-    }
-
-    #[test]
-    fn bson_type_name_covers_every_inferable_type() {
-        assert_eq!(bson_type_name(&Bson::String("x".into())), "string");
-        assert_eq!(bson_type_name(&Bson::Int64(1)), "int");
-        assert_eq!(bson_type_name(&Bson::Double(1.5)), "double");
-        assert_eq!(bson_type_name(&Bson::Boolean(true)), "bool");
-        assert_eq!(bson_type_name(&Bson::Null), "null");
-        assert!(matches!(bson_type_name(&Bson::Array(vec![])), "array"));
     }
 
     #[test]

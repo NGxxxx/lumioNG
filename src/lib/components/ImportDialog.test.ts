@@ -154,8 +154,8 @@ describe("ImportDialog — SQL multi-table target notice", () => {
   it("multi-table dump lists the new collections it will create", async () => {
     openDialog.mockResolvedValueOnce("/tmp/dump.sql");
     sqlImportPreview.mockResolvedValueOnce([
-      { table: "users", columns: ["id"], rowCount: 2 },
-      { table: "orders", columns: ["id"], rowCount: 3 },
+      { table: "users", columns: [{ name: "id", inferredType: "int" }], rowCount: 2 },
+      { table: "orders", columns: [{ name: "id", inferredType: "int" }], rowCount: 3 },
     ]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
@@ -165,7 +165,7 @@ describe("ImportDialog — SQL multi-table target notice", () => {
 
   it("single-table dump with a pre-selected collection shows the existing-collection message", async () => {
     openDialog.mockResolvedValueOnce("/tmp/dump.sql");
-    sqlImportPreview.mockResolvedValueOnce([{ table: "movie", columns: ["id"], rowCount: 5 }]);
+    sqlImportPreview.mockResolvedValueOnce([{ table: "movie", columns: [{ name: "id", inferredType: "int" }], rowCount: 5 }]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "films", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
     await fireEvent.click(screen.getByText("Import"));
@@ -175,8 +175,8 @@ describe("ImportDialog — SQL multi-table target notice", () => {
   it("deselecting a table updates the new-collections list live", async () => {
     openDialog.mockResolvedValueOnce("/tmp/dump.sql");
     sqlImportPreview.mockResolvedValueOnce([
-      { table: "users", columns: ["id"], rowCount: 2 },
-      { table: "orders", columns: ["id"], rowCount: 3 },
+      { table: "users", columns: [{ name: "id", inferredType: "int" }], rowCount: 2 },
+      { table: "orders", columns: [{ name: "id", inferredType: "int" }], rowCount: 3 },
     ]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
@@ -186,5 +186,23 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     await fireEvent.click(checkboxes[2]);
     expect(await screen.findByText("Will create 1 new collection(s): users.")).toBeTruthy();
+  });
+
+  it("shows each table's per-column inferred types", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/dump.sql");
+    sqlImportPreview.mockResolvedValueOnce([
+      {
+        table: "users",
+        columns: [
+          { name: "id", inferredType: "int" },
+          { name: "name", inferredType: "string" },
+        ],
+        rowCount: 2,
+      },
+    ]);
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Import"));
+    expect(await screen.findByText("id: int, name: string")).toBeTruthy();
   });
 });

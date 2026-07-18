@@ -154,6 +154,9 @@
                       <span class="tname">{t.table}</span>
                       <span class="tmeta">{m.sql_import_row_count({ count: t.rowCount })} · {t.columns.length} cols</span>
                     </label>
+                    {#if t.columns.length > 0}
+                      <div class="tcolumns">{t.columns.map((c) => `${c.name}: ${c.inferredType}`).join(", ")}</div>
+                    {/if}
                     {#if v.phase === "running" && v.progress?.table === t.table}
                       <div class="progress">
                         <div class="bar"><div class="fill" style="width:{t.rowCount > 0 ? Math.round((v.progress.done / t.rowCount) * 100) : 100}%"></div></div>
@@ -304,6 +307,7 @@
   .select-all { padding-bottom: 0.25rem; font-weight: 600; }
   .tname { font-family: ui-monospace, monospace; }
   .tmeta { margin-left: auto; color: var(--gray-77); font-size: 0.6875rem; }
+  .tcolumns { padding-left: 1.5rem; color: var(--gray-77); font-family: ui-monospace, monospace; font-size: 0.6875rem; word-break: break-word; }
   .csv-options { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem; font-size: 0.75rem; }
   .csv-radio-group { display: flex; align-items: center; gap: 0.625rem; }
   .csv-radio-group .label { color: var(--gray-77); }

@@ -1,9 +1,14 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import type { InsertMode } from "./documents";
 
+export interface SqlColumnPreview {
+  name: string;
+  inferredType: string;
+}
+
 export interface SqlTablePreview {
   table: string;
-  columns: string[];
+  columns: SqlColumnPreview[];
   rowCount: number;
 }
 
