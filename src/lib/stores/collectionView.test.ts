@@ -1289,4 +1289,20 @@ describe("createCollectionView — grid depth limit", () => {
       expect(byPath["addr.geo.lat"]).toBe(false);
     }
   });
+
+  it("exportInput threads each column's inferred type through for the export nested-field notice", async () => {
+    qp.mockResolvedValueOnce([nested]);
+    samp.mockResolvedValueOnce([nested]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+
+    v.requestExport("filter");
+    const input = v.exportInput();
+    expect(input).not.toBeNull();
+    if (input && input.mode === "scopedCollection") {
+      const byPath = Object.fromEntries(input.columns.map((c) => [c.path, c.type]));
+      expect(byPath["_id"]).toBe("objectId");
+      expect(byPath["addr.city"]).toBe("string");
+    }
+  });
 });

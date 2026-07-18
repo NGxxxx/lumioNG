@@ -336,6 +336,15 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
     std::fs::write(p, contents).map_err(|e| AppError::Io(e.to_string()))
 }
 
+/// Reads a file's byte length without loading its content — backs the frontend's large-file
+/// confirm gate, checked before any import path starts parsing.
+#[tauri::command]
+pub fn import_file_size(path: String) -> Result<u64, AppError> {
+    std::fs::metadata(&path)
+        .map(|m| m.len())
+        .map_err(|e| AppError::Io(e.to_string()))
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn import_documents(
@@ -610,6 +619,29 @@ mod tests {
         write_text_file(path.to_string_lossy().to_string(), "hello world".into()).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello world");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_file_size_returns_the_files_byte_length() {
+        let dir = std::env::temp_dir().join("monglumio_test_import_file_size");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("data.json");
+        std::fs::write(&path, b"0123456789").unwrap();
+        let size = import_file_size(path.to_string_lossy().to_string()).unwrap();
+        assert_eq!(size, 10);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn import_file_size_reports_io_error_for_a_missing_path() {
+        let dir = std::env::temp_dir().join("monglumio_test_import_file_size_missing");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("nope.json");
+        assert!(matches!(
+            import_file_size(path.to_string_lossy().to_string()),
+            Err(AppError::Io(_))
+        ));
     }
 
     #[test]

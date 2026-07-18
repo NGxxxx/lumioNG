@@ -26,3 +26,8 @@ export async function openDirDialog(): Promise<string | null> {
   const result = await open({ multiple: false, directory: true });
   return typeof result === "string" ? result : null;
 }
+
+/** Reads a file's byte length without loading its content — used to gate the large-file confirm notice. */
+export async function importFileSize(path: string): Promise<number> {
+  return await invoke<number>("import_file_size", { path });
+}

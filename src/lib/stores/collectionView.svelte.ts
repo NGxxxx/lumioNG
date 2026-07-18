@@ -651,6 +651,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const columns = rawColumnFields.map((c) => ({
       path: c.path,
       visible: !hidden.has(c.path) && ![...hidden].some((h) => c.path.startsWith(h + ".")),
+      type: c.type,
     }));
     const filter = pendingExportFilter;
     const sort = req.kind === "filter" ? buildSort(sortKeys) : null;

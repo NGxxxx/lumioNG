@@ -770,7 +770,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   function exportInput(): ExportWizardInput | null {
     if (!exportRequest) return null;
-    const colPaths = rawColumnFields.map((c) => ({ path: c.path, visible: true }));
+    const colPaths = rawColumnFields.map((c) => ({ path: c.path, visible: true, type: c.type }));
     const n = exportRequest.rows.length;
     return {
       mode: "scopedMemory",

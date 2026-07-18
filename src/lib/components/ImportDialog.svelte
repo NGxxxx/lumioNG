@@ -1,6 +1,7 @@
 <script lang="ts">
   import { portal } from "../actions/portal";
-  import { openDialog } from "../api/files";
+  import { openDialog, importFileSize } from "../api/files";
+  import { describeSqlImportTargets, isLargeImportFile, formatFileSize } from "../domain/importPlan";
   import { createImportJob } from "../stores/importJob.svelte";
   import { createSqlImport } from "../stores/sqlImport.svelte";
   import { createCsvImport } from "../stores/csvImport.svelte";
@@ -21,6 +22,9 @@
   let path = $state("");
   let stage = $state<"setup" | "working">("setup");
   let insertMode = $state<InsertMode>("skipDuplicates");
+  let fileSizeChecked = $state(false);
+  let pendingLargeFile = $state(false);
+  let pendingSize = $state(0);
   let job = $state<ReturnType<typeof createImportJob> | null>(null);
   let sql = $state<ReturnType<typeof createSqlImport> | null>(null);
   let csv = $state<ReturnType<typeof createCsvImport> | null>(null);
@@ -39,11 +43,25 @@
       ? [{ name: "SQL", extensions: ["sql"] }]
       : [{ name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] }];
     const p = await openDialog(filters);
-    if (p) path = p;
+    if (p) {
+      path = p;
+      fileSizeChecked = false;
+    }
   }
 
-  function startRun() {
+  async function startRun() {
     if (!path) return;
+    if (!fileSizeChecked) {
+      const checkedPath = path;
+      const size = await importFileSize(checkedPath);
+      if (path !== checkedPath) return; // user picked a different file while the size check was in flight
+      if (isLargeImportFile(size)) {
+        pendingSize = size;
+        pendingLargeFile = true;
+        return;
+      }
+      fileSizeChecked = true;
+    }
     stage = "working";
     if (isSql) {
       sql = createSqlImport(sessionId, db, path, coll, insertMode);
@@ -55,6 +73,16 @@
       job = createImportJob({ sessionId, db, coll: coll!, path, insertMode });
       job.run();
     }
+  }
+
+  function confirmLargeFile() {
+    fileSizeChecked = true;
+    pendingLargeFile = false;
+    startRun();
+  }
+
+  function cancelLargeFile() {
+    pendingLargeFile = false;
   }
 
   let showErrors = $state(false);
@@ -87,6 +115,9 @@
           <label><input type="radio" name="insert-mode" checked={insertMode === "upsertById"} onchange={() => (insertMode = "upsertById")} /> {m.import_dialog_insert_mode_upsert()}</label>
           <label><input type="radio" name="insert-mode" checked={insertMode === "stopOnFirstError"} onchange={() => (insertMode = "stopOnFirstError")} /> {m.import_dialog_insert_mode_stop()}</label>
         </div>
+        {#if pendingLargeFile}
+          <div class="notice">{m.import_dialog_large_file_notice({ size: formatFileSize(pendingSize) })}</div>
+        {/if}
       {:else}
         <div class="file-row"><span class="label">{m.import_dialog_file_label()}</span><span class="path">{fileName}</span></div>
 
@@ -99,6 +130,16 @@
             {#if v.tables.length === 0}
               <div class="status">{m.sql_import_no_tables()}</div>
             {:else}
+              {#if v.selected.size > 0}
+                {@const target = describeSqlImportTargets(v.tables.length, [...v.selected], coll)}
+                <div class="notice">
+                  {#if target.kind === "existing"}
+                    {m.sql_import_target_existing({ coll: target.coll })}
+                  {:else}
+                    {m.sql_import_target_new({ n: target.collections.length, names: target.collections.join(", ") })}
+                  {/if}
+                </div>
+              {/if}
               <div class="table-header">
                 <label class="table-row select-all">
                   <input type="checkbox" checked={v.selected.size === v.tables.length} onchange={() => v.toggleAll()} disabled={v.phase === "running"} />
@@ -209,8 +250,13 @@
     </div>
     <footer>
       {#if stage === "setup"}
-        <button type="button" onclick={onclose}>{m.common_cancel()}</button>
-        <button type="button" class="primary" disabled={!path} onclick={startRun}>{m.import_dialog_run()}</button>
+        {#if pendingLargeFile}
+          <button type="button" onclick={cancelLargeFile}>{m.common_cancel()}</button>
+          <button type="button" class="primary" onclick={confirmLargeFile}>{m.import_dialog_large_file_continue()}</button>
+        {:else}
+          <button type="button" onclick={onclose}>{m.common_cancel()}</button>
+          <button type="button" class="primary" disabled={!path} onclick={startRun}>{m.import_dialog_run()}</button>
+        {/if}
       {:else if isSql && sql!.phase === "selecting"}
         <button type="button" onclick={onclose}>{m.common_cancel()}</button>
         <button type="button" class="primary" disabled={sql!.selected.size === 0} onclick={() => sql!.run()}>{m.sql_import_run({ count: sql!.selected.size })}</button>

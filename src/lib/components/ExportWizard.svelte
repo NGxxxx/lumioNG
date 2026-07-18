@@ -3,7 +3,8 @@
   import { portal } from "../actions/portal";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
-  import { targetKey, buildTargets, buildExportProjection, pickColumns, type ExportWizardInput } from "../domain/exportPlan";
+  import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, type ExportWizardInput } from "../domain/exportPlan";
+  import type { BsonType } from "../domain/extjson";
   import { saveDialog, openDirDialog } from "../api/files";
   import * as m from "$lib/paraglide/messages";
 
@@ -19,11 +20,17 @@
     untrack(() => new Set(input.mode === "pick" ? input.preChecked.map((t) => targetKey(t.db, t.coll)) : [])),
   );
   // Scoped column selection (path -> selected).
-  let cols = $state<{ path: string; sel: boolean }[]>(
-    untrack(() => (input.mode === "pick" ? [] : input.columns.map((c) => ({ path: c.path, sel: c.visible })))),
+  let cols = $state<{ path: string; sel: boolean; type?: BsonType }[]>(
+    untrack(() => (input.mode === "pick" ? [] : input.columns.map((c) => ({ path: c.path, sel: c.visible, type: c.type })))),
   );
 
   const isMemory = $derived(input.mode === "scopedMemory");
+
+  const nestedCount = $derived(
+    input.mode !== "pick" && (format === "csv" || format === "sql")
+      ? countLossyExportFields(cols.filter((c) => c.sel), format)
+      : 0,
+  );
 
   // Tree-driven ("pick") mode exports the ACTIVE session; guard so a null active session shows no DBs.
   const databases = $derived(sessionManager.active?.tree?.databases ?? []);
@@ -128,6 +135,7 @@
       <div class="body">
         {#if input.mode !== "pick"}<p class="summary">{input.summary}</p>{/if}
         {#if format === "sql"}<p class="notice">{m.sql_export_scope_notice()}</p>{/if}
+        {#if nestedCount > 0}<p class="notice">{m.export_wizard_nested_field_notice({ n: nestedCount })}</p>{/if}
 
         <div class="cols-2">
           <!-- Left: what to export -->

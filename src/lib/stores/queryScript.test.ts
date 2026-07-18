@@ -680,6 +680,21 @@ describe("activeDataView bridge (canEditSelected/canDeleteSelected/getSelectedFo
     expect(input?.mode).toBe("scopedMemory");
     expect(input && input.mode === "scopedMemory" ? input.docs.length : null).toBe(3);
   });
+
+  it("exportInput threads each column's inferred type through for the export nested-field notice", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    s.requestExportCurrent();
+    const input = s.exportInput();
+    expect(input?.mode).toBe("scopedMemory");
+    if (input && input.mode === "scopedMemory") {
+      // rawColumnFields here comes from mergeColumns(null, docs) — schema-less, so every column
+      // is a "row-derived extra" with `type` left undefined by design (see ColumnField's own
+      // doc comment in domain/schema.ts). This test exists to pin that current behavior so a
+      // future change to mergeColumns's schema-less path doesn't silently break the export
+      // notice without a failing test calling it out.
+      expect(input.columns.every((c) => c.type === undefined)).toBe(true);
+    }
+  });
 });
 
 describe("quick search (visibleIndices/searchInvalid)", () => {

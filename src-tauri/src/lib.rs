@@ -50,6 +50,7 @@ pub fn run() {
             commands::import_export::export_bson_progress,
             commands::import_export::export_query_progress,
             commands::import_export::import_bson,
+            commands::import_export::import_file_size,
             commands::sql::sql_import_preview,
             commands::sql::sql_import_commit,
             commands::csv::csv_import_preview,
