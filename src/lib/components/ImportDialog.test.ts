@@ -76,7 +76,16 @@ describe("ImportDialog — setup stage", () => {
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
     await fireEvent.click(screen.getByText("Import"));
-    expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/data.json", expect.any(Function));
+    expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/data.json", "skipDuplicates", expect.any(Function));
+  });
+
+  it("choosing Upsert by _id before running forwards the chosen insert mode", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Upsert by _id"));
+    await fireEvent.click(screen.getByText("Import"));
+    expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/data.json", "upsertById", expect.any(Function));
   });
 
   it("clicking Import for a .sql file starts the SQL preview instead", async () => {

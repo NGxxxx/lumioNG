@@ -25,7 +25,7 @@ describe("createCsvImport", () => {
 
   it("loadPreview fetches columns with comma delimiter and both infer flags on by default", async () => {
     csvImportPreview.mockResolvedValueOnce(preview);
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     expect(csvImportPreview).toHaveBeenCalledWith(
       "/tmp/data.csv", "comma", { parseJsonLike: true, inferScalars: true },
@@ -37,7 +37,7 @@ describe("createCsvImport", () => {
 
   it("loadPreview surfaces an error without throwing, and still reaches config", async () => {
     csvImportPreview.mockRejectedValueOnce({ kind: "Parse", message: "bad header" });
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     expect(v.error).toContain("bad header");
     expect(v.phase).toBe("config");
@@ -45,7 +45,7 @@ describe("createCsvImport", () => {
 
   it("setDelimiter updates state and reloads the preview with the new delimiter", async () => {
     csvImportPreview.mockResolvedValue(preview);
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     await v.setDelimiter("semicolon");
     expect(v.delimiter).toBe("semicolon");
@@ -56,7 +56,7 @@ describe("createCsvImport", () => {
 
   it("toggleParseJsonLike flips the flag and reloads the preview", async () => {
     csvImportPreview.mockResolvedValue(preview);
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     await v.toggleParseJsonLike();
     expect(v.parseJsonLike).toBe(false);
@@ -67,7 +67,7 @@ describe("createCsvImport", () => {
 
   it("toggleInferScalars flips the flag and reloads the preview", async () => {
     csvImportPreview.mockResolvedValue(preview);
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     await v.toggleInferScalars();
     expect(v.inferScalars).toBe(false);
@@ -79,12 +79,12 @@ describe("createCsvImport", () => {
   it("run commits with the current delimiter/options and reports the result", async () => {
     csvImportPreview.mockResolvedValueOnce(preview);
     csvImportCommit.mockResolvedValueOnce({ inserted: 2, failed: 0, errors: [] });
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     await v.run();
     expect(csvImportCommit).toHaveBeenCalledWith(
       "conn:1", "d", "users", "/tmp/data.csv", "comma",
-      { parseJsonLike: true, inferScalars: true }, expect.any(Function),
+      { parseJsonLike: true, inferScalars: true }, "skipDuplicates", expect.any(Function),
     );
     expect(v.phase).toBe("done");
     expect(v.result).toEqual({ inserted: 2, failed: 0, errors: [] });
@@ -93,7 +93,7 @@ describe("createCsvImport", () => {
   it("run surfaces a commit error and returns to config", async () => {
     csvImportPreview.mockResolvedValueOnce(preview);
     csvImportCommit.mockRejectedValueOnce({ kind: "Query", message: "not writable" });
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     await v.run();
     expect(v.error).toContain("not writable");
@@ -103,7 +103,7 @@ describe("createCsvImport", () => {
   it("run pushes a command-log entry with a measured duration", async () => {
     csvImportPreview.mockResolvedValueOnce(preview);
     csvImportCommit.mockResolvedValueOnce({ inserted: 0, failed: 0, errors: [] });
-    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv");
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
     await v.loadPreview();
     await v.run();
     const entry = commandLog.entries.at(-1)!;

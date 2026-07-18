@@ -1,7 +1,7 @@
 //! Import a CSV file into one collection. Two-step, mirroring `commands/sql.rs`:
 //! `csv_import_preview` reads only a small bounded prefix of the file to describe its columns;
 //! `csv_import_commit` streams the whole file, batching `CSV_IMPORT_BATCH` documents at a time.
-use crate::commands::import_export::{insert_batch, summarize_import, ExportProgress, ImportResult};
+use crate::commands::import_export::{insert_batch, summarize_import, ExportProgress, ImportResult, InsertMode};
 use crate::csv_import::{convert_record, count_csv_rows, open_reader, preview_columns, CsvColumnPreview, CsvDelimiter, CsvRow};
 use crate::error::AppError;
 use crate::state::AppState;
@@ -79,6 +79,7 @@ pub async fn csv_import_commit(
     path: String,
     delimiter: CsvDelimiter,
     infer_opts: InferOptions,
+    insert_mode: InsertMode,
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
@@ -113,11 +114,15 @@ pub async fn csv_import_commit(
                 CsvRow::ParseError(idx, msg) => errors.push(format!("doc#{idx}: {msg}")),
             }
         }
+        let mut stop = false;
         if !docs.is_empty() {
-            insert_batch(&collection, docs, &raw_idx, &mut inserted, &mut errors).await;
+            stop = insert_batch(&collection, docs, &raw_idx, insert_mode, &mut inserted, &mut errors).await;
         }
         done += batch_len as u64;
         let _ = on_progress.send(ExportProgress { done: done.min(total), total });
+        if stop {
+            break; // dropping rx here signals the producer thread to stop (see spawn_csv_producer)
+        }
     }
 
     Ok(summarize_import(inserted, errors))

@@ -83,8 +83,86 @@ pub(crate) fn summarize_import(inserted: u64, mut errors: Vec<String>) -> Import
     ImportResult { inserted, failed, errors }
 }
 
-/// Insert one already-parsed batch, remapping write-errors back to each doc's original raw file index (`raw_idx[k]` = file index of `batch[k]`).
+/// Shared by every import path (`import_documents`, `import_bson`, `sql_import_commit`,
+/// `csv_import_commit`) so the user picks one behavior regardless of file format. Default is
+/// `SkipDuplicates` — no behavior change for a caller that doesn't surface the other two.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum InsertMode {
+    /// Today's only behavior: `insert_many(..).ordered(false)` — every document in the batch is
+    /// attempted regardless of an earlier one failing (e.g. a duplicate `_id`).
+    SkipDuplicates,
+    /// `replace_one` with `upsert: true`, keyed on `_id`, looped one document at a time within the
+    /// batch (still bounded to one batch's documents in flight).
+    UpsertById,
+    /// `insert_many(..).ordered(true)` — stops at the first write error; documents after the
+    /// failing one (in this batch and in any later batch) are never attempted.
+    StopOnFirstError,
+}
+
+/// Folds an **unordered** `insert_many`'s write errors into `inserted`/`errors`: every document in
+/// the batch was attempted regardless of another one failing, so `inserted` grows by
+/// `batch_len - write_errors.len()`. Each error's batch-local index is remapped back to its
+/// original file/row index via `raw_idx[index]`.
+pub(crate) fn apply_unordered_write_errors(
+    write_errors: &[mongodb::error::IndexedWriteError],
+    raw_idx: &[usize],
+    batch_len: u64,
+    inserted: &mut u64,
+    errors: &mut Vec<String>,
+) {
+    for w in write_errors {
+        let raw = raw_idx.get(w.index).copied().unwrap_or(w.index);
+        errors.push(format!("doc#{raw}: {}", w.message));
+    }
+    *inserted += batch_len.saturating_sub(write_errors.len() as u64);
+}
+
+/// Folds an **ordered** `insert_many`'s single write error into `inserted`/`errors`: the server
+/// stops at the first failure, so only the documents strictly before `write_error.index` actually
+/// landed — unlike the unordered case, `batch_len - 1` would overcount (documents after the
+/// failure were never attempted, not merely rejected).
+pub(crate) fn apply_ordered_write_error(
+    write_error: &mongodb::error::IndexedWriteError,
+    raw_idx: &[usize],
+    inserted: &mut u64,
+    errors: &mut Vec<String>,
+) {
+    *inserted += write_error.index as u64;
+    let raw = raw_idx.get(write_error.index).copied().unwrap_or(write_error.index);
+    errors.push(format!("doc#{raw}: {}", write_error.message));
+}
+
+/// Insert one already-parsed batch under the chosen `mode`, remapping write-errors back to each
+/// doc's original raw file/row index (`raw_idx[k]` = original index of `batch[k]`). Returns
+/// `true` when the caller should stop pulling further batches — only possible for
+/// `StopOnFirstError` after it hits a write error; the other two modes always return `false` and
+/// let the caller keep going (a `SkipDuplicates`/`UpsertById` per-doc failure is recorded but never
+/// halts the rest of the import).
 pub(crate) async fn insert_batch(
+    collection: &mongodb::Collection<Document>,
+    batch: Vec<Document>,
+    raw_idx: &[usize],
+    mode: InsertMode,
+    inserted: &mut u64,
+    errors: &mut Vec<String>,
+) -> bool {
+    match mode {
+        InsertMode::SkipDuplicates => {
+            insert_many_unordered(collection, batch, raw_idx, inserted, errors).await;
+            false
+        }
+        InsertMode::StopOnFirstError => {
+            insert_many_ordered(collection, batch, raw_idx, inserted, errors).await
+        }
+        InsertMode::UpsertById => {
+            upsert_by_id(collection, batch, raw_idx, inserted, errors).await;
+            false
+        }
+    }
+}
+
+async fn insert_many_unordered(
     collection: &mongodb::Collection<Document>,
     batch: Vec<Document>,
     raw_idx: &[usize],
@@ -94,24 +172,65 @@ pub(crate) async fn insert_batch(
     let batch_len = batch.len() as u64;
     match collection.insert_many(batch).ordered(false).await {
         Ok(res) => *inserted += res.inserted_ids.len() as u64,
-        Err(e) => {
-            let write_errors = match &*e.kind {
-                ErrorKind::InsertMany(ime) => ime.write_errors.clone(),
-                _ => None,
-            };
-            match write_errors {
-                Some(we) => {
-                    for w in &we {
-                        let raw = raw_idx.get(w.index).copied().unwrap_or(w.index);
-                        errors.push(format!("doc#{raw}: {}", w.message));
-                    }
-                    *inserted += batch_len.saturating_sub(we.len() as u64);
+        Err(e) => match &*e.kind {
+            ErrorKind::InsertMany(ime) => match &ime.write_errors {
+                Some(we) => apply_unordered_write_errors(we, raw_idx, batch_len, inserted, errors),
+                None => errors.push(e.to_string()),
+            },
+            // Plan-mandated: non-write errors are recorded into `errors`, not propagated (keeps the helper infallible and consistent with BSON import).
+            _ => errors.push(e.to_string()),
+        },
+    }
+}
+
+/// Returns `true` if a write error occurred (the caller should stop pulling further batches).
+async fn insert_many_ordered(
+    collection: &mongodb::Collection<Document>,
+    batch: Vec<Document>,
+    raw_idx: &[usize],
+    inserted: &mut u64,
+    errors: &mut Vec<String>,
+) -> bool {
+    match collection.insert_many(batch).ordered(true).await {
+        Ok(res) => {
+            *inserted += res.inserted_ids.len() as u64;
+            false
+        }
+        Err(e) => match &*e.kind {
+            ErrorKind::InsertMany(ime) => match ime.write_errors.as_deref() {
+                Some([first, ..]) => {
+                    apply_ordered_write_error(first, raw_idx, inserted, errors);
+                    true
                 }
-                None => {
-                    // Plan-mandated: non-write errors are recorded into `errors`, not propagated (keeps the helper infallible and consistent with BSON import).
+                _ => {
                     errors.push(e.to_string());
+                    true
                 }
+            },
+            _ => {
+                errors.push(e.to_string());
+                true
             }
+        },
+    }
+}
+
+async fn upsert_by_id(
+    collection: &mongodb::Collection<Document>,
+    batch: Vec<Document>,
+    raw_idx: &[usize],
+    inserted: &mut u64,
+    errors: &mut Vec<String>,
+) {
+    for (doc, &raw) in batch.iter().zip(raw_idx.iter()) {
+        let Some(id) = doc.get("_id") else {
+            errors.push(format!("doc#{raw}: upsert requires an _id field"));
+            continue;
+        };
+        let filter = mongodb::bson::doc! { "_id": id.clone() };
+        match collection.replace_one(filter, doc.clone()).upsert(true).await {
+            Ok(_) => *inserted += 1,
+            Err(e) => errors.push(format!("doc#{raw}: {e}")),
         }
     }
 }
@@ -123,6 +242,7 @@ pub(crate) async fn insert_batch(
 async fn parse_and_insert(
     collection: &mongodb::Collection<Document>,
     raw_docs: &[String],
+    mode: InsertMode,
     on_progress: &Channel<ExportProgress>,
 ) -> ImportResult {
     let total = raw_docs.len() as u64;
@@ -143,11 +263,15 @@ async fn parse_and_insert(
                 Err(e) => errors.push(format!("doc#{}: {e}", raw_start + i)),
             }
         }
+        let mut stop = false;
         if !parsed.is_empty() {
-            insert_batch(collection, parsed, &raw_idx, &mut inserted, &mut errors).await;
+            stop = insert_batch(collection, parsed, &raw_idx, mode, &mut inserted, &mut errors).await;
         }
         done += chunk.len() as u64;
         let _ = on_progress.send(ExportProgress { done, total });
+        if stop {
+            break;
+        }
     }
     summarize_import(inserted, errors)
 }
@@ -175,6 +299,7 @@ fn count_bson_docs(mut bytes: &[u8]) -> Result<u64, AppError> {
 async fn parse_and_insert_bson(
     collection: &mongodb::Collection<Document>,
     bytes: &[u8],
+    mode: InsertMode,
     on_progress: &Channel<ExportProgress>,
 ) -> Result<ImportResult, AppError> {
     let total = count_bson_docs(bytes)?;
@@ -192,9 +317,12 @@ async fn parse_and_insert_bson(
         }
         let batch_len = batch.len();
         let raw_idx: Vec<usize> = (batch_start..batch_start + batch_len).collect();
-        insert_batch(collection, batch, &raw_idx, &mut inserted, &mut errors).await;
+        let stop = insert_batch(collection, batch, &raw_idx, mode, &mut inserted, &mut errors).await;
         done += batch_len as u64;
         let _ = on_progress.send(ExportProgress { done, total });
+        if stop {
+            break;
+        }
     }
     Ok(summarize_import(inserted, errors))
 }
@@ -209,11 +337,13 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn import_documents(
     session_id: String,
     db: String,
     coll: String,
     path: String,
+    insert_mode: InsertMode,
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
@@ -228,7 +358,7 @@ pub async fn import_documents(
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    Ok(parse_and_insert(&collection, &raw_docs, &on_progress).await)
+    Ok(parse_and_insert(&collection, &raw_docs, insert_mode, &on_progress).await)
 }
 
 #[tauri::command]
@@ -344,6 +474,7 @@ pub async fn import_bson(
     db: String,
     coll: String,
     path: String,
+    insert_mode: InsertMode,
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
@@ -356,13 +487,74 @@ pub async fn import_bson(
     let client = state.client(&session_id).await?;
     state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    parse_and_insert_bson(&collection, &bytes, &on_progress).await
+    parse_and_insert_bson(&collection, &bytes, insert_mode, &on_progress).await
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::error::AppError;
+
+    use mongodb::error::IndexedWriteError;
+
+    fn write_error(index: usize, message: &str) -> IndexedWriteError {
+        serde_json::from_str(&format!(r#"{{"index":{index},"code":11000,"errmsg":"{message}"}}"#)).unwrap()
+    }
+
+    #[test]
+    fn insert_mode_deserializes_from_camel_case_wire_values() {
+        assert_eq!(serde_json::from_str::<InsertMode>("\"skipDuplicates\"").unwrap(), InsertMode::SkipDuplicates);
+        assert_eq!(serde_json::from_str::<InsertMode>("\"upsertById\"").unwrap(), InsertMode::UpsertById);
+        assert_eq!(serde_json::from_str::<InsertMode>("\"stopOnFirstError\"").unwrap(), InsertMode::StopOnFirstError);
+    }
+
+    #[test]
+    fn apply_unordered_write_errors_remaps_batch_index_to_the_original_raw_index() {
+        // Unordered writes: the server attempts every document in the batch regardless of an
+        // earlier one failing, so "inserted" = batch_len - error_count holds.
+        let we = vec![write_error(1, "E11000 duplicate key")];
+        let raw_idx = vec![10, 11, 12]; // this batch's 3 docs came from file rows 10, 11, 12
+        let mut inserted = 0u64;
+        let mut errors = Vec::new();
+        apply_unordered_write_errors(&we, &raw_idx, 3, &mut inserted, &mut errors);
+        assert_eq!(inserted, 2);
+        assert_eq!(errors, vec!["doc#11: E11000 duplicate key".to_string()]);
+    }
+
+    #[test]
+    fn apply_unordered_write_errors_handles_multiple_failures_in_one_batch() {
+        let we = vec![write_error(0, "dup a"), write_error(2, "dup c")];
+        let raw_idx = vec![5, 6, 7];
+        let mut inserted = 0u64;
+        let mut errors = Vec::new();
+        apply_unordered_write_errors(&we, &raw_idx, 3, &mut inserted, &mut errors);
+        assert_eq!(inserted, 1);
+        assert_eq!(errors, vec!["doc#5: dup a".to_string(), "doc#7: dup c".to_string()]);
+    }
+
+    #[test]
+    fn apply_ordered_write_error_only_counts_documents_strictly_before_the_failing_index() {
+        // Ordered write: the server stops at the first failure, so index 2 failing means exactly
+        // 2 documents (index 0, 1) actually landed — not batch_len - 1.
+        let we = write_error(2, "E11000 duplicate key");
+        let raw_idx = vec![100, 101, 102, 103]; // batch had 4 docs; only 3 were attempted before the stop
+        let mut inserted = 0u64;
+        let mut errors = Vec::new();
+        apply_ordered_write_error(&we, &raw_idx, &mut inserted, &mut errors);
+        assert_eq!(inserted, 2);
+        assert_eq!(errors, vec!["doc#102: E11000 duplicate key".to_string()]);
+    }
+
+    #[test]
+    fn apply_ordered_write_error_handles_the_first_document_failing_immediately() {
+        let we = write_error(0, "bad doc");
+        let raw_idx = vec![7, 8, 9];
+        let mut inserted = 0u64;
+        let mut errors = Vec::new();
+        apply_ordered_write_error(&we, &raw_idx, &mut inserted, &mut errors);
+        assert_eq!(inserted, 0);
+        assert_eq!(errors, vec!["doc#7: bad doc".to_string()]);
+    }
 
     #[test]
     fn split_import_parses_json_array() {

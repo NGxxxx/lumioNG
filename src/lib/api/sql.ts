@@ -1,4 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
+import type { InsertMode } from "./documents";
 
 export interface SqlTablePreview {
   table: string;
@@ -30,11 +31,12 @@ export async function sqlImportCommit(
   path: string,
   tables: string[],
   targetColl: string | null,
+  insertMode: InsertMode,
   onProgress: (table: string, done: number, total: number) => void,
 ): Promise<SqlImportTableResult[]> {
   const ch = new Channel<{ table: string; done: number; total: number }>();
   ch.onmessage = (m) => onProgress(m.table, m.done, m.total);
   return await invoke<SqlImportTableResult[]>("sql_import_commit", {
-    sessionId, db, path, tables, targetColl, onProgress: ch,
+    sessionId, db, path, tables, targetColl, insertMode, onProgress: ch,
   });
 }

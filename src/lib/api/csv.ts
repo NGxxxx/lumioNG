@@ -1,5 +1,5 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
-import type { ImportResult } from "./documents";
+import type { ImportResult, InsertMode } from "./documents";
 
 export type CsvDelimiter = "comma" | "semicolon" | "tab";
 
@@ -31,11 +31,12 @@ export async function csvImportCommit(
   path: string,
   delimiter: CsvDelimiter,
   inferOpts: CsvInferOptions,
+  insertMode: InsertMode,
   onProgress: (done: number, total: number) => void,
 ): Promise<ImportResult> {
   const ch = new Channel<{ done: number; total: number }>();
   ch.onmessage = (m) => onProgress(m.done, m.total);
   return await invoke<ImportResult>("csv_import_commit", {
-    sessionId, db, coll, path, delimiter, inferOpts, onProgress: ch,
+    sessionId, db, coll, path, delimiter, inferOpts, insertMode, onProgress: ch,
   });
 }

@@ -1,5 +1,5 @@
 import { csvImportPreview, csvImportCommit, type CsvDelimiter, type CsvColumnPreview } from "../api/csv";
-import type { ImportResult } from "../api/documents";
+import type { ImportResult, InsertMode } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { csvImportCmd } from "../domain/mongosh";
@@ -7,7 +7,13 @@ import { csvImportCmd } from "../domain/mongosh";
 export type CsvImportPhase = "loading" | "config" | "running" | "done";
 
 /** Drives ImportDialog's CSV flow: preview (columns/types/samples, delimiter + infer toggles) → run. */
-export function createCsvImport(sessionId: string, db: string, coll: string, path: string) {
+export function createCsvImport(
+  sessionId: string,
+  db: string,
+  coll: string,
+  path: string,
+  insertMode: InsertMode,
+) {
   let phase = $state<CsvImportPhase>("loading");
   let delimiter = $state<CsvDelimiter>("comma");
   let parseJsonLike = $state(true);
@@ -51,7 +57,7 @@ export function createCsvImport(sessionId: string, db: string, coll: string, pat
     error = null;
     try {
       result = await commandLog.pushTimed(csvImportCmd(db, coll, path), sessionId, () =>
-        csvImportCommit(sessionId, db, coll, path, delimiter, { parseJsonLike, inferScalars }, (done, total) => {
+        csvImportCommit(sessionId, db, coll, path, delimiter, { parseJsonLike, inferScalars }, insertMode, (done, total) => {
           progress = { done, total };
         }));
       phase = "done";

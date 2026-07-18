@@ -1,7 +1,7 @@
 //! Import a generic SQL dump (`CREATE TABLE` + `INSERT INTO` only) into one MongoDB collection
 //! per table. Two-step: `sql_import_preview` lists tables to pick from; `sql_import_commit`
 //! re-parses (simpler than caching across IPC calls) and inserts the selected ones.
-use crate::commands::import_export::insert_batch;
+use crate::commands::import_export::{insert_batch, InsertMode};
 use crate::error::AppError;
 use crate::sql_import::{
     insert_values_rows, parse_statements, resolve_insert_columns, resolve_target_collection,
@@ -67,6 +67,7 @@ pub async fn sql_import_commit(
     path: String,
     tables: Vec<String>,
     target_coll: Option<String>,
+    insert_mode: InsertMode,
     on_progress: Channel<SqlImportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<SqlImportTableResult>, AppError> {
@@ -92,7 +93,7 @@ pub async fn sql_import_commit(
     let mut inserted_by_table: HashMap<String, u64> = HashMap::new();
     let mut errors_by_table: HashMap<String, Vec<String>> = HashMap::new();
 
-    for stmt in &statements {
+    'tables: for stmt in &statements {
         let Statement::Insert(insert) = stmt else { continue };
         let table = table_ident(&insert.table_name);
         if !tables.contains(&table) {
@@ -117,9 +118,12 @@ pub async fn sql_import_commit(
             let errors_entry = errors_by_table.entry(table.clone()).or_insert_with(Vec::new);
             let start = (*inserted_entry + errors_entry.len() as u64) as usize;
             let raw_idx: Vec<usize> = (start..start + batch.len()).collect();
-            insert_batch(&collection, batch, &raw_idx, inserted_entry, errors_entry).await;
+            let stop = insert_batch(&collection, batch, &raw_idx, insert_mode, inserted_entry, errors_entry).await;
             let done = (*inserted_entry + errors_entry.len() as u64).min(total);
             let _ = on_progress.send(SqlImportProgress { table: table.clone(), done, total });
+            if stop {
+                break 'tables;
+            }
         }
     }
 

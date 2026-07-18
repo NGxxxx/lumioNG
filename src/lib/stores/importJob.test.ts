@@ -26,10 +26,10 @@ beforeEach(() => {
 
 describe("createImportJob", () => {
   it("routes .json/.jsonl files to importDocuments", async () => {
-    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json" });
+    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json", insertMode: "skipDuplicates" });
     await job.run();
     expect(api.importDocuments).toHaveBeenCalledWith(
-      "conn:1", "shop", "users", "/in/users.json", expect.any(Function));
+      "conn:1", "shop", "users", "/in/users.json", "skipDuplicates", expect.any(Function));
     expect(api.importBson).not.toHaveBeenCalled();
     expect(job.result).toEqual({ inserted: 3, failed: 0, errors: [] });
     expect(job.finished).toBe(true);
@@ -37,23 +37,23 @@ describe("createImportJob", () => {
   });
 
   it("routes .bson files to importBson (case-insensitive extension)", async () => {
-    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/dump.BSON" });
+    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/dump.BSON", insertMode: "skipDuplicates" });
     await job.run();
     expect(api.importBson).toHaveBeenCalledWith(
-      "conn:1", "shop", "users", "/in/dump.BSON", expect.any(Function));
+      "conn:1", "shop", "users", "/in/dump.BSON", "skipDuplicates", expect.any(Function));
     expect(api.importDocuments).not.toHaveBeenCalled();
     expect(job.result).toEqual({ inserted: 2, failed: 0, errors: [] });
   });
 
   it("live progress: onProgress callback updates done/total as it streams", async () => {
     api.importDocuments.mockImplementationOnce(
-      async (sessionId: string, db: string, coll: string, path: string, onProgress: (done: number, total: number) => void) => {
+      async (sessionId: string, db: string, coll: string, path: string, insertMode: string, onProgress: (done: number, total: number) => void) => {
         onProgress(500, 2000);
         onProgress(2000, 2000);
         return { inserted: 2000, failed: 0, errors: [] };
       },
     );
-    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/big.json" });
+    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/big.json", insertMode: "skipDuplicates" });
     const runPromise = job.run();
     await runPromise;
     expect(job.total).toBe(2000);
@@ -62,7 +62,7 @@ describe("createImportJob", () => {
 
   it("a rejected import surfaces the error instead of a result", async () => {
     api.importDocuments.mockRejectedValueOnce(new Error("boom"));
-    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json" });
+    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json", insertMode: "skipDuplicates" });
     await job.run();
     expect(job.error).toBe("Error: boom");
     expect(job.result).toBeNull();
@@ -75,14 +75,14 @@ describe("createImportJob", () => {
       sawBusy = activity.busy;
       return { inserted: 1, failed: 0, errors: [] };
     });
-    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json" });
+    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json", insertMode: "skipDuplicates" });
     await job.run();
     expect(sawBusy).toBe(true);
     expect(activity.busy).toBe(false);
   });
 
   it("run() is a no-op once already running or finished", async () => {
-    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json" });
+    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json", insertMode: "skipDuplicates" });
     await job.run();
     await job.run();
     expect(api.importDocuments).toHaveBeenCalledTimes(1);

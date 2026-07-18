@@ -254,29 +254,38 @@ export interface ImportResult {
   errors: string[];
 }
 
-/** Reads a file (JSON array or JSONL) and inserts via insert_many(ordered=false); reports progress. */
+/**
+ * Shared by every import path. `skipDuplicates` (default): insert_many(ordered=false), a bad
+ * document doesn't block the rest. `upsertById`: replace_one(upsert=true) per document, keyed on
+ * `_id`. `stopOnFirstError`: insert_many(ordered=true), stops at the first failure.
+ */
+export type InsertMode = "skipDuplicates" | "upsertById" | "stopOnFirstError";
+
+/** Reads a file (JSON array or JSONL) and inserts under `insertMode`; reports progress. */
 export async function importDocuments(
   sessionId: string,
   db: string,
   coll: string,
   path: string,
+  insertMode: InsertMode,
   onProgress: ProgressCb,
 ): Promise<ImportResult> {
   return await invoke<ImportResult>("import_documents", {
-    sessionId, db, coll, path, onProgress: progressChannel(onProgress),
+    sessionId, db, coll, path, insertMode, onProgress: progressChannel(onProgress),
   });
 }
 
-/** Import a concatenated-BSON (.bson) file via insert_many(ordered=false); reports progress. */
+/** Import a concatenated-BSON (.bson) file under `insertMode`; reports progress. */
 export async function importBson(
   sessionId: string,
   db: string,
   coll: string,
   path: string,
+  insertMode: InsertMode,
   onProgress: ProgressCb,
 ): Promise<ImportResult> {
   return await invoke<ImportResult>("import_bson", {
-    sessionId, db, coll, path, onProgress: progressChannel(onProgress),
+    sessionId, db, coll, path, insertMode, onProgress: progressChannel(onProgress),
   });
 }
 

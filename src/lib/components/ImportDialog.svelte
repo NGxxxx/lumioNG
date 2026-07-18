@@ -5,6 +5,7 @@
   import { createSqlImport } from "../stores/sqlImport.svelte";
   import { createCsvImport } from "../stores/csvImport.svelte";
   import type { CsvDelimiter } from "../api/csv";
+  import type { InsertMode } from "../api/documents";
   import * as m from "$lib/paraglide/messages";
 
   // `coll === null` (or picking a .sql file) switches this dialog into the multi-table SQL flow;
@@ -19,6 +20,7 @@
 
   let path = $state("");
   let stage = $state<"setup" | "working">("setup");
+  let insertMode = $state<InsertMode>("skipDuplicates");
   let job = $state<ReturnType<typeof createImportJob> | null>(null);
   let sql = $state<ReturnType<typeof createSqlImport> | null>(null);
   let csv = $state<ReturnType<typeof createCsvImport> | null>(null);
@@ -44,13 +46,13 @@
     if (!path) return;
     stage = "working";
     if (isSql) {
-      sql = createSqlImport(sessionId, db, path, coll);
+      sql = createSqlImport(sessionId, db, path, coll, insertMode);
       sql.loadPreview();
     } else if (isCsv) {
-      csv = createCsvImport(sessionId, db, coll!, path);
+      csv = createCsvImport(sessionId, db, coll!, path, insertMode);
       csv.loadPreview();
     } else {
-      job = createImportJob({ sessionId, db, coll: coll!, path });
+      job = createImportJob({ sessionId, db, coll: coll!, path, insertMode });
       job.run();
     }
   }
@@ -79,6 +81,12 @@
           <div class="file-row"><span class="label">{m.export_wizard_col_collection()}</span><span class="path">{coll}</span></div>
         {/if}
         {#if isSql}<div class="notice">{m.sql_import_scope_notice()}</div>{/if}
+        <div class="insert-mode-group">
+          <span class="label">{m.import_dialog_insert_mode_label()}</span>
+          <label><input type="radio" name="insert-mode" checked={insertMode === "skipDuplicates"} onchange={() => (insertMode = "skipDuplicates")} /> {m.import_dialog_insert_mode_skip()}</label>
+          <label><input type="radio" name="insert-mode" checked={insertMode === "upsertById"} onchange={() => (insertMode = "upsertById")} /> {m.import_dialog_insert_mode_upsert()}</label>
+          <label><input type="radio" name="insert-mode" checked={insertMode === "stopOnFirstError"} onchange={() => (insertMode = "stopOnFirstError")} /> {m.import_dialog_insert_mode_stop()}</label>
+        </div>
       {:else}
         <div class="file-row"><span class="label">{m.import_dialog_file_label()}</span><span class="path">{fileName}</span></div>
 
@@ -228,6 +236,9 @@
   .label { color: var(--gray-77); flex: none; }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
   .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.75rem; margin-bottom: 0.75rem; }
+  .insert-mode-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: 0.75rem; margin-bottom: 0.75rem; }
+  .insert-mode-group .label { color: var(--gray-77); }
+  .insert-mode-group label { display: flex; align-items: center; gap: 0.25rem; cursor: pointer; }
   .status { color: var(--gray-77); }
   .progress { display: flex; align-items: center; gap: 0.5rem; }
   .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: 0.25rem; overflow: hidden; }

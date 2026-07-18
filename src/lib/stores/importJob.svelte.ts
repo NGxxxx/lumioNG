@@ -1,4 +1,4 @@
-import { importDocuments, importBson, type ImportResult } from "../api/documents";
+import { importDocuments, importBson, type ImportResult, type InsertMode } from "../api/documents";
 import { importCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -10,6 +10,7 @@ export interface ImportJobConfig {
   db: string;
   coll: string;
   path: string;
+  insertMode: InsertMode;
 }
 
 /** Drives a single import (JSON/JSONL or BSON) with live done/total progress, for ImportDialog. */
@@ -36,8 +37,8 @@ export function createImportJob(config: ImportJobConfig) {
         config.sessionId,
         () =>
           isBson
-            ? importBson(config.sessionId, config.db, config.coll, config.path, onProgress)
-            : importDocuments(config.sessionId, config.db, config.coll, config.path, onProgress),
+            ? importBson(config.sessionId, config.db, config.coll, config.path, config.insertMode, onProgress)
+            : importDocuments(config.sessionId, config.db, config.coll, config.path, config.insertMode, onProgress),
       );
     } catch (e) {
       error = errorMessage(e);
