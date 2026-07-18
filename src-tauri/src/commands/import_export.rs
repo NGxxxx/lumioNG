@@ -620,6 +620,126 @@ pub async fn export_bson_progress(
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn export_csv_progress(
+    session_id: String,
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    sort: Option<String>,
+    projection: Option<String>,
+    path: String,
+    on_progress: Channel<ExportProgress>,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let (mut scan_cursor, total) = open_export_cursor(
+        state.clone(), &session_id, &db, &coll,
+        filter.as_deref(), sort.as_deref(), projection.as_deref(),
+    )
+    .await?;
+    let report_total = total * 2;
+
+    let mut columns_acc = crate::csv_export::ColumnAccumulator::new();
+    let mut scanned: u64 = 0;
+    while let Some(d) = scan_cursor.try_next().await? {
+        columns_acc.observe(&d);
+        scanned += 1;
+        if scanned % PROGRESS_BATCH == 0 {
+            let _ = on_progress.send(ExportProgress { done: scanned, total: report_total });
+        }
+    }
+    let columns = columns_acc.into_columns();
+
+    let (mut write_cursor, _) = open_export_cursor(
+        state, &session_id, &db, &coll,
+        filter.as_deref(), sort.as_deref(), projection.as_deref(),
+    )
+    .await?;
+
+    let p = std::path::Path::new(&path);
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
+    let mut w = std::io::BufWriter::new(file);
+    let mut count: u64 = 0;
+    if total > 0 {
+        crate::csv_export::write_header(&mut w, &columns).map_err(|e| AppError::Io(e.to_string()))?;
+        while let Some(d) = write_cursor.try_next().await? {
+            crate::csv_export::write_row(&mut w, &columns, &d).map_err(|e| AppError::Io(e.to_string()))?;
+            count += 1;
+            if count % PROGRESS_BATCH == 0 {
+                let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+            }
+        }
+    }
+    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+    let _ = on_progress.send(ExportProgress { done: report_total, total: report_total });
+    Ok(count)
+}
+
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+pub async fn export_sql_progress(
+    session_id: String,
+    db: String,
+    coll: String,
+    filter: Option<String>,
+    sort: Option<String>,
+    projection: Option<String>,
+    path: String,
+    on_progress: Channel<ExportProgress>,
+    state: State<'_, AppState>,
+) -> Result<u64, AppError> {
+    let (mut scan_cursor, total) = open_export_cursor(
+        state.clone(), &session_id, &db, &coll,
+        filter.as_deref(), sort.as_deref(), projection.as_deref(),
+    )
+    .await?;
+    let report_total = total * 2;
+
+    let mut schema = crate::sql_export::SqlSchemaAccumulator::new();
+    let mut scanned: u64 = 0;
+    while let Some(d) = scan_cursor.try_next().await? {
+        schema.observe(&d);
+        scanned += 1;
+        if scanned % PROGRESS_BATCH == 0 {
+            let _ = on_progress.send(ExportProgress { done: scanned, total: report_total });
+        }
+    }
+    let (columns, types) = schema.finish();
+
+    let (mut write_cursor, _) = open_export_cursor(
+        state, &session_id, &db, &coll,
+        filter.as_deref(), sort.as_deref(), projection.as_deref(),
+    )
+    .await?;
+
+    let p = std::path::Path::new(&path);
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
+    let mut w = std::io::BufWriter::new(file);
+    let mut count: u64 = 0;
+    if total > 0 {
+        crate::sql_export::write_create_table(&mut w, &coll, &columns, &types)
+            .map_err(|e| AppError::Io(e.to_string()))?;
+        while let Some(d) = write_cursor.try_next().await? {
+            crate::sql_export::write_insert(&mut w, &coll, &columns, &d, count == 0)
+                .map_err(|e| AppError::Io(e.to_string()))?;
+            count += 1;
+            if count % PROGRESS_BATCH == 0 {
+                let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+            }
+        }
+    }
+    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+    let _ = on_progress.send(ExportProgress { done: report_total, total: report_total });
+    Ok(count)
+}
+
+#[tauri::command]
 pub async fn export_query_progress(
     session_id: String,
     db: String,

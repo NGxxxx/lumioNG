@@ -1,4 +1,4 @@
-import { exportJsonProgress, exportBsonProgress, exportQueryProgress } from "../api/documents";
+import { exportJsonProgress, exportBsonProgress, exportCsvProgress, exportSqlProgress } from "../api/documents";
 import { writeTextFile } from "../api/files";
 import { toCsv, toJsonArray, toSql } from "../domain/exporter";
 import { exportFileName, aggregateProgress } from "../domain/exportPlan";
@@ -87,11 +87,14 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
         const n = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
           exportJsonProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg));
         update(i, { status: "done", done: n, total: n });
+      } else if (config.format === "csv") {
+        const n = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
+          exportCsvProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg));
+        update(i, { status: "done", done: n, total: n });
       } else {
-        const data = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
-          exportQueryProgress(sessionId, t.db, t.coll, filter, sort, projection, onProg));
-        await writeTextFile(path, toText(data));
-        update(i, { status: "done", done: data.length, total: data.length });
+        const n = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
+          exportSqlProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg));
+        update(i, { status: "done", done: n, total: n });
       }
     } catch (e) {
       update(i, { status: "error", error: errorMessage(e) });

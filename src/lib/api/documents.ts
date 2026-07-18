@@ -232,6 +232,38 @@ export async function exportBsonProgress(
   });
 }
 
+/** Stream a collection to a CSV file in the backend (2-pass: schema scan then write). Returns the document count. */
+export async function exportCsvProgress(
+  sessionId: string,
+  db: string,
+  coll: string,
+  filter: string | null,
+  sort: string | null,
+  projection: string | null,
+  path: string,
+  onProgress: ProgressCb,
+): Promise<number> {
+  return await invoke<number>("export_csv_progress", {
+    sessionId, db, coll, filter, sort, projection, path, onProgress: progressChannel(onProgress),
+  });
+}
+
+/** Stream a collection to a SQL dump file in the backend (2-pass: schema scan then write). Returns the document count. */
+export async function exportSqlProgress(
+  sessionId: string,
+  db: string,
+  coll: string,
+  filter: string | null,
+  sort: string | null,
+  projection: string | null,
+  path: string,
+  onProgress: ProgressCb,
+): Promise<number> {
+  return await invoke<number>("export_sql_progress", {
+    sessionId, db, coll, filter, sort, projection, path, onProgress: progressChannel(onProgress),
+  });
+}
+
 /** Fetch all matching docs as parsed ExtJSON (CSV path); reports progress while reading. */
 export async function exportQueryProgress(
   sessionId: string,

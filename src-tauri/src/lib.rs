@@ -1,6 +1,7 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 mod bson_json;
 mod commands;
+mod csv_export;
 mod csv_import;
 mod error;
 mod json_bson;
@@ -8,6 +9,7 @@ mod json_stream;
 mod query_library;
 mod registry;
 mod script;
+mod sql_export;
 mod sql_import;
 mod ssh_tunnel;
 mod state;
@@ -49,6 +51,8 @@ pub fn run() {
             commands::import_export::import_documents,
             commands::import_export::export_json_progress,
             commands::import_export::export_bson_progress,
+            commands::import_export::export_csv_progress,
+            commands::import_export::export_sql_progress,
             commands::import_export::export_query_progress,
             commands::import_export::import_bson,
             commands::import_export::import_file_size,

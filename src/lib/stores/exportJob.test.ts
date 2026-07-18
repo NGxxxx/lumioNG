@@ -3,7 +3,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const api = vi.hoisted(() => ({
   exportJsonProgress: vi.fn(),
   exportBsonProgress: vi.fn(),
-  exportQueryProgress: vi.fn(),
+  exportCsvProgress: vi.fn(),
+  exportSqlProgress: vi.fn(),
 }));
 const files = vi.hoisted(() => ({ writeTextFile: vi.fn() }));
 const cmdlog = vi.hoisted(() => ({
@@ -24,7 +25,8 @@ import { activity } from "./activity.svelte";
 beforeEach(() => {
   api.exportJsonProgress.mockReset().mockResolvedValue(3);
   api.exportBsonProgress.mockReset().mockResolvedValue(2);
-  api.exportQueryProgress.mockReset().mockResolvedValue([{ _id: 1 }, { _id: 2 }]);
+  api.exportCsvProgress.mockReset().mockResolvedValue(2);
+  api.exportSqlProgress.mockReset().mockResolvedValue(1);
   files.writeTextFile.mockReset().mockResolvedValue(undefined);
   cmdlog.push.mockReset();
 });
@@ -44,29 +46,30 @@ it("json target: backend writes file, row done with count", async () => {
   expect(job.done).toBe(true);
 });
 
-it("csv target: exportQueryProgress then writeTextFile", async () => {
+it("csv target: query source calls exportCsvProgress with the output path directly", async () => {
   const job = createExportJob("conn:1", {
     format: "csv", filePath: "/out/x.csv",
     targets: [{ db: "shop", coll: "users", source: qSource }],
   });
   await job.run();
-  expect(api.exportQueryProgress).toHaveBeenCalled();
-  expect(files.writeTextFile).toHaveBeenCalledWith("/out/x.csv", expect.any(String));
+  expect(api.exportCsvProgress).toHaveBeenCalledWith(
+    "conn:1", "shop", "users", "{}", null, null, "/out/x.csv", expect.any(Function));
+  expect(files.writeTextFile).not.toHaveBeenCalled();
   expect(job.rows[0].status).toBe("done");
+  expect(job.rows[0].done).toBe(2);
 });
 
-it("sql target: exportQueryProgress then writeTextFile with CREATE TABLE + INSERT", async () => {
-  api.exportQueryProgress.mockResolvedValueOnce([{ _id: 1, name: "Ada" }]);
+it("sql target: query source calls exportSqlProgress with the output path directly", async () => {
   const job = createExportJob("conn:1", {
     format: "sql", filePath: "/out/x.sql",
     targets: [{ db: "shop", coll: "users", source: qSource }],
   });
   await job.run();
-  expect(api.exportQueryProgress).toHaveBeenCalled();
-  const [, content] = files.writeTextFile.mock.calls[0];
-  expect(content).toContain('CREATE TABLE "users"');
-  expect(content).toContain('INSERT INTO "users"');
+  expect(api.exportSqlProgress).toHaveBeenCalledWith(
+    "conn:1", "shop", "users", "{}", null, null, "/out/x.sql", expect.any(Function));
+  expect(files.writeTextFile).not.toHaveBeenCalled();
   expect(job.rows[0].status).toBe("done");
+  expect(job.rows[0].done).toBe(1);
 });
 
 it("sql + memory source: table name comes from the target's coll", async () => {
