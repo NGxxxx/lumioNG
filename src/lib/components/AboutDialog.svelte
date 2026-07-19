@@ -1,16 +1,18 @@
 <!-- src/lib/components/AboutDialog.svelte -->
 <script lang="ts">
+  import { onMount } from "svelte";
   import { portal } from "../actions/portal";
   import { getAppVersion } from "$lib/api/app";
+  import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
 
   let { onclose }: { onclose: () => void } = $props();
 
   let version = $state("");
   getAppVersion().then((v) => (version = v)).catch(() => {});
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
+  onMount(() => pushModal({ onEscape: onclose, onEnter: onclose }));
+</script>
 
 <div
   class="backdrop"

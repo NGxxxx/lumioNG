@@ -1,6 +1,7 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { portal } from "../actions/portal";
+  import { pushModal } from "$lib/stores/modalStack";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
   import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, type ExportWizardInput } from "../domain/exportPlan";
@@ -123,9 +124,22 @@
       : s === "done" ? m.export_wizard_status_done()
       : m.export_wizard_status_error();
   }
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && !job?.running && onclose()} />
+  function primaryEnter() {
+    if (job === null) { start(); return; }
+    if (!job.running) onclose();
+  }
+
+  function primaryEnterDisabled(): boolean {
+    return job !== null && job.running;
+  }
+
+  onMount(() => pushModal({
+    onEscape: () => { if (!job?.running) onclose(); },
+    onEnter: primaryEnter,
+    enterDisabled: primaryEnterDisabled,
+  }));
+</script>
 
 <div class="backdrop" use:portal role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !job?.running) onclose(); }}>
   <div class="modal" class:running={job !== null} role="dialog" aria-modal="true" aria-label={m.export_wizard_title()}>

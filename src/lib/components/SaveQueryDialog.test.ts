@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
+import { handleModalKeydown } from "$lib/stores/modalStack";
+
+function key(k: string): KeyboardEvent {
+  return { key: k, target: null } as unknown as KeyboardEvent;
+}
 
 vi.mock("../api/queryLibrary", () => ({
   loadQueryLibrary: vi.fn().mockResolvedValue([]),
@@ -25,5 +30,20 @@ describe("SaveQueryDialog", () => {
     const { getByText } = render(SaveQueryDialog, { onsubmit: async () => {}, oncancel });
     await fireEvent.click(getByText("Cancel"));
     expect(oncancel).toHaveBeenCalled();
+  });
+
+  it("Enter submits once a name is typed", async () => {
+    const onsubmit = vi.fn().mockResolvedValue(undefined);
+    const { getByLabelText } = render(SaveQueryDialog, { onsubmit, oncancel: () => {} });
+    await fireEvent.input(getByLabelText("name-input"), { target: { value: "My query" } });
+    handleModalKeydown(key("Enter"));
+    expect(onsubmit).toHaveBeenCalledWith("My query", null);
+  });
+
+  it("Enter does nothing before a name is typed", () => {
+    const onsubmit = vi.fn();
+    render(SaveQueryDialog, { onsubmit, oncancel: () => {} });
+    handleModalKeydown(key("Enter"));
+    expect(onsubmit).not.toHaveBeenCalled();
   });
 });

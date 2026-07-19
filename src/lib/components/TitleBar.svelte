@@ -1,7 +1,6 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
   import { buildBreadcrumb } from "$lib/domain/breadcrumb";
-  import { minimize, toggleMaximize, isMaximized, onMaximizedChange } from "$lib/api/window";
+  import { minimize, toggleMaximize } from "$lib/api/window";
   import { getAppVersion } from "$lib/api/app";
   import * as m from "$lib/paraglide/messages";
 
@@ -19,14 +18,6 @@
 
   let appVersion = $state("");
   getAppVersion().then((v) => (appVersion = v)).catch(() => {});
-
-  let maximized = $state(false);
-  let unlisten: (() => void) | undefined;
-  onMount(async () => {
-    maximized = await isMaximized();
-    unlisten = await onMaximizedChange((v) => (maximized = v));
-  });
-  onDestroy(() => unlisten?.());
 
   const crumb = $derived(buildBreadcrumb({ conn, db, coll }));
 </script>
@@ -51,20 +42,8 @@
     <button class="wbtn" title={m.title_bar_minimize()} onclick={minimize} aria-label={m.title_bar_minimize()}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="var(--fg)" /></svg>
     </button>
-    <button
-      class="wbtn"
-      title={maximized ? m.title_bar_restore() : m.title_bar_maximize()}
-      onclick={toggleMaximize}
-      aria-label={maximized ? m.title_bar_restore() : m.title_bar_maximize()}
-    >
-      {#if maximized}
-        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11">
-          <rect x="1" y="3" width="7" height="7" fill="none" stroke="var(--fg)" stroke-width="1" />
-          <path d="M3 3 V1 H10 V8 H8" fill="none" stroke="var(--fg)" stroke-width="1" />
-        </svg>
-      {:else}
-        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="var(--fg)" stroke-width="1" /></svg>
-      {/if}
+    <button class="wbtn" title={m.title_bar_maximize()} onclick={toggleMaximize} aria-label={m.title_bar_maximize()}>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="var(--fg)" stroke-width="1" /></svg>
     </button>
     <button class="wbtn close" title={m.title_bar_close()} onclick={onquit} aria-label={m.title_bar_close()}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="var(--fg)" stroke-width="1.1" /></svg>

@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { portal } from "../actions/portal";
   import { errorMessage } from "../api/errors";
   import { queryLibrary } from "../stores/queryLibrary.svelte";
   import { folderOptions } from "../domain/queryTree";
+  import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
@@ -31,9 +33,13 @@
       busy = false;
     }
   }
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && !busy && oncancel()} />
+  onMount(() => pushModal({
+    onEscape: () => { if (!busy) oncancel(); },
+    onEnter: submit,
+    enterDisabled: () => busy || !valid,
+  }));
+</script>
 
 <div
   class="backdrop"
@@ -48,8 +54,7 @@
     <div class="body">
       <label>{m.saved_queries_save_name_label()}
         <!-- svelte-ignore a11y_autofocus -->
-        <input bind:value={name} disabled={busy} aria-label="name-input" autofocus
-          onkeydown={(e) => e.key === "Enter" && submit()} />
+        <input bind:value={name} disabled={busy} aria-label="name-input" autofocus />
       </label>
       <label>{m.saved_queries_save_folder_label()}
         <select bind:value={parentId} disabled={busy} aria-label="folder-select">

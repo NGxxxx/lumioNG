@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -24,9 +26,9 @@
 
   const resolvedConfirmLabel = $derived(confirmLabel ?? m.common_ok());
   const resolvedCancelLabel = $derived(cancelLabel ?? m.common_cancel());
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+  onMount(() => pushModal({ onEscape: oncancel, onEnter: onconfirm }));
+</script>
 
 <div
   class="backdrop"

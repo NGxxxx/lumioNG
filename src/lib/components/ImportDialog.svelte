@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { pushModal } from "$lib/stores/modalStack";
   import { openDialog, importFileSize } from "../api/files";
   import { describeSqlImportTargets, isLargeImportFile, formatFileSize } from "../domain/importPlan";
   import { createImportJob } from "../stores/importJob.svelte";
@@ -84,10 +86,34 @@
     pendingLargeFile = false;
   }
 
+  function primaryEnter() {
+    if (stage === "setup") {
+      if (pendingLargeFile) confirmLargeFile();
+      else if (path) startRun();
+      return;
+    }
+    if (isSql && sql!.phase === "selecting") { sql!.run(); return; }
+    if (isSql && sql!.phase === "running") return; // Cancel-only stage, no Enter action
+    if (isCsv && csv!.phase === "config") { csv!.run(); return; }
+    if (canClose) onclose();
+  }
+
+  function primaryEnterDisabled(): boolean {
+    if (stage === "setup") return pendingLargeFile ? false : !path;
+    if (isSql && sql!.phase === "selecting") return sql!.selected.size === 0;
+    if (isSql && sql!.phase === "running") return true;
+    if (isCsv && csv!.phase === "config") return csv!.columns.length === 0;
+    return !canClose;
+  }
+
+  onMount(() => pushModal({
+    onEscape: () => { if (canClose) onclose(); },
+    onEnter: primaryEnter,
+    enterDisabled: primaryEnterDisabled,
+  }));
+
   let showErrors = $state(false);
 </script>
-
-<svelte:window onkeydown={(e) => { if (e.key === "Escape" && canClose) onclose(); }} />
 
 <div
   class="backdrop"

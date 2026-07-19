@@ -1,6 +1,8 @@
 <!-- src/lib/components/TestConnectionDialog.svelte -->
 <script lang="ts">
+  import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -10,9 +12,9 @@
     result: { ok: true } | { ok: false; kind: "ssh" | "mongo" | "validation"; message: string };
     onclose: () => void;
   } = $props();
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
+  onMount(() => pushModal({ onEscape: onclose, onEnter: onclose }));
+</script>
 
 <div
   class="backdrop"

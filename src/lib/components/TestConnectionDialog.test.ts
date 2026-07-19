@@ -1,6 +1,11 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import TestConnectionDialog from "./TestConnectionDialog.svelte";
+import { handleModalKeydown } from "$lib/stores/modalStack";
+
+function key(k: string): KeyboardEvent {
+  return { key: k, target: null } as unknown as KeyboardEvent;
+}
 
 describe("TestConnectionDialog", () => {
   it("shows the success message and closes on OK", async () => {
@@ -34,10 +39,17 @@ describe("TestConnectionDialog", () => {
     getByText("SSH port must be between 1 and 65535.");
   });
 
-  it("closes on Escape", async () => {
+  it("closes on Escape", () => {
     const onclose = vi.fn();
     render(TestConnectionDialog, { props: { result: { ok: true }, onclose } });
-    await fireEvent.keyDown(window, { key: "Escape" });
+    handleModalKeydown(key("Escape"));
+    expect(onclose).toHaveBeenCalled();
+  });
+
+  it("closes on Enter", () => {
+    const onclose = vi.fn();
+    render(TestConnectionDialog, { props: { result: { ok: true }, onclose } });
+    handleModalKeydown(key("Enter"));
     expect(onclose).toHaveBeenCalled();
   });
 });

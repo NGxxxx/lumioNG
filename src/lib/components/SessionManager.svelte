@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import { pushModal } from "$lib/stores/modalStack";
   import { createConnectionRegistry } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
   import { openDialog } from "../api/files";
@@ -121,14 +122,14 @@
 
   onMount(() => {
     r.load();
+    return pushModal({ onEscape: onclose });
   });
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="overlay"
+  role="presentation"
   onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}
-  onkeydown={(e) => { if (e.key === "Escape") onclose(); }}
 >
   <div class="panel">
     <!-- Header -->
@@ -173,7 +174,7 @@
         <!-- Session list -->
         <div class="session-list">
           {#each filteredList as c (c.id)}
-            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <div
               class="session-row"
               class:selected={selectedId === c.id}

@@ -1,6 +1,7 @@
 <!-- src/routes/+layout.svelte -->
 <script lang="ts">
   import "../app.css";
+  import { handleModalKeydown } from "$lib/stores/modalStack";
   let { children } = $props();
 
   // Ctrl/Cmd+A must not "select all" the whole desktop UI; allow it only when an editable field has focus.
@@ -12,6 +13,7 @@
         tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable === true;
       if (!editable) e.preventDefault();
     }
+    handleModalKeydown(e);
   }
 </script>
 

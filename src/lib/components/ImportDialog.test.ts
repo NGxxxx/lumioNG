@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/svelte";
+import { handleModalKeydown } from "$lib/stores/modalStack";
 
 vi.mock("../api/files", () => ({ openDialog: vi.fn(), importFileSize: vi.fn() }));
 vi.mock("../api/documents", () => ({ importDocuments: vi.fn(), importBson: vi.fn() }));
@@ -204,5 +205,30 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     await fireEvent.click(screen.getByText("Browse…"));
     await fireEvent.click(screen.getByText("Import"));
     expect(await screen.findByText("id: int, name: string")).toBeTruthy();
+  });
+});
+
+describe("ImportDialog — keyboard", () => {
+  it("Enter starts the import once a file is chosen", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    handleModalKeydown({ key: "Enter", target: null } as unknown as KeyboardEvent);
+    await vi.waitFor(() =>
+      expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/data.json", "skipDuplicates", expect.any(Function)),
+    );
+  });
+
+  it("Enter does nothing before a file is chosen", () => {
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    handleModalKeydown({ key: "Enter", target: null } as unknown as KeyboardEvent);
+    expect(importDocuments).not.toHaveBeenCalled();
+  });
+
+  it("Escape closes the dialog in the setup stage", () => {
+    const onclose = vi.fn();
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose } });
+    handleModalKeydown({ key: "Escape", target: null } as unknown as KeyboardEvent);
+    expect(onclose).toHaveBeenCalled();
   });
 });

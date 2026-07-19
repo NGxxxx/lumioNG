@@ -3,6 +3,7 @@
   import { createIndexView } from "../stores/indexView.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { describeKeys, type IndexInfo } from "../domain/indexes";
+  import { pushModal } from "$lib/stores/modalStack";
   import IndexCreateForm from "./IndexCreateForm.svelte";
   import * as m from "$lib/paraglide/messages";
 
@@ -22,6 +23,15 @@
 
   onMount(() => {
     v.init();
+  });
+
+  $effect(() => {
+    const target = confirmDrop;
+    if (!target) return;
+    return pushModal({
+      onEscape: () => (confirmDrop = null),
+      onEnter: async () => { await v.drop(target); confirmDrop = null; },
+    });
   });
 </script>
 
@@ -60,8 +70,6 @@
     {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
   </div>
 </div>
-
-<svelte:window onkeydown={(e) => confirmDrop && e.key === "Escape" && (confirmDrop = null)} />
 
 {#if confirmDrop}
   {@const target = confirmDrop}

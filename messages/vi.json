@@ -472,7 +472,6 @@
   "tab_bar_doc_new": "{coll} / mới",
   "title_bar_minimize": "Thu nhỏ",
   "title_bar_maximize": "Phóng to",
-  "title_bar_restore": "Thu nhỏ về kích thước cũ",
   "title_bar_close": "Đóng",
   "command_log_title": "Nhật ký lệnh",
   "command_log_subtitle": "mongosh",

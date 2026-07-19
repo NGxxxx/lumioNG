@@ -1,5 +1,7 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
@@ -48,9 +50,9 @@
         ? "Update many"
         : "Delete many",
   );
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
+  onMount(() => pushModal({ onEscape: onclose, onEnter: onrun, enterDisabled: () => !canRun }));
+</script>
 
 <div
   class="backdrop"

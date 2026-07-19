@@ -24,6 +24,7 @@ export default defineConfig({
       ["src/lib/stores/settings.test.ts", "jsdom"], // localStorage
       ["src/lib/stores/theme.test.ts", "jsdom"], // document.documentElement
       ["src/lib/stores/uiSize.test.ts", "jsdom"], // document.documentElement
+      ["src/lib/stores/platform.test.ts", "jsdom"], // Object.defineProperty(navigator, "platform", ...)
       ["src/lib/stores/**", "node"],
       ["src/lib/domain/**", "node"], // pure logic per CLAUDE.md — no Tauri, no Svelte, no DOM
       ["src/lib/api/**", "node"], // thin invoke() wrappers — no DOM

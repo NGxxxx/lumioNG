@@ -472,7 +472,6 @@
   "tab_bar_doc_new": "{coll} / new",
   "title_bar_minimize": "Minimize",
   "title_bar_maximize": "Maximize",
-  "title_bar_restore": "Restore Down",
   "title_bar_close": "Close",
   "command_log_title": "Command log",
   "command_log_subtitle": "mongosh",

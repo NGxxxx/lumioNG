@@ -3,6 +3,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import SessionManager from "./SessionManager.svelte";
 import { listConnections, type SavedConnection } from "../api/connections";
+import { handleModalKeydown } from "$lib/stores/modalStack";
+
+function key(k: string): KeyboardEvent {
+  return { key: k, target: null } as unknown as KeyboardEvent;
+}
 
 vi.mock("../api/connections", () => ({
   listConnections: vi.fn().mockResolvedValue([]),
@@ -116,5 +121,19 @@ describe("SessionManager", () => {
     expect(tls.checked).toBe(true);
     await fireEvent.click(tls);
     expect(tls.checked).toBe(false);
+  });
+
+  it("Escape calls onclose", () => {
+    const onclose = vi.fn();
+    render(SessionManager, { onconnected: vi.fn(), onclose });
+    handleModalKeydown(key("Escape"));
+    expect(onclose).toHaveBeenCalled();
+  });
+
+  it("Enter does nothing — no single unambiguous primary action in this multi-field form", () => {
+    const onconnected = vi.fn();
+    render(SessionManager, { onconnected, onclose: vi.fn() });
+    handleModalKeydown(key("Enter"));
+    expect(onconnected).not.toHaveBeenCalled();
   });
 });

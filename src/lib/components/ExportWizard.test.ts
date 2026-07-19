@@ -2,6 +2,13 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import ExportWizard from "./ExportWizard.svelte";
 import { buildTargets, targetKey } from "../domain/exportPlan";
+import { handleModalKeydown } from "$lib/stores/modalStack";
+import { saveDialog } from "../api/files";
+
+vi.mock("../api/files", () => ({
+  saveDialog: vi.fn().mockResolvedValue(null), // resolving null short-circuits start() before any real export runs
+  openDirDialog: vi.fn().mockResolvedValue(null),
+}));
 
 // Pick mode must read the ACTIVE session's tree, not the dead module-level
 // namespaceTree singleton (which is empty/stale under multi-session).
@@ -123,5 +130,28 @@ describe("ExportWizard — nested-field notice", () => {
     expect(getByText(/nested field/)).toBeTruthy();
     await fireEvent.click(getByText("tags"));
     expect(queryByText(/nested field/)).toBeNull();
+  });
+});
+
+describe("ExportWizard — keyboard", () => {
+  it("Enter triggers the same export start as clicking the primary button", () => {
+    render(ExportWizard, {
+      props: {
+        input: {
+          mode: "scopedCollection", db: "shop", coll: "users", filter: "{}", sort: null,
+          columns: [{ path: "_id", visible: true }], summary: "Filtered rows",
+        },
+        onclose: vi.fn(),
+      },
+    });
+    handleModalKeydown({ key: "Enter", target: null } as unknown as KeyboardEvent);
+    expect(saveDialog).toHaveBeenCalled();
+  });
+
+  it("Escape closes when nothing is running", () => {
+    const onclose = vi.fn();
+    render(ExportWizard, { props: { input: { mode: "pick", preChecked: [] }, onclose } });
+    handleModalKeydown({ key: "Escape", target: null } as unknown as KeyboardEvent);
+    expect(onclose).toHaveBeenCalled();
   });
 });

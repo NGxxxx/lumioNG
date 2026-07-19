@@ -1,12 +1,14 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
 
   let { ops, onrun, oncancel, ondontask }:
     { ops: string[]; onrun: () => void; oncancel: () => void; ondontask: () => void } = $props();
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && oncancel()} />
+  onMount(() => pushModal({ onEscape: oncancel, onEnter: onrun }));
+</script>
 
 <div
   class="backdrop"

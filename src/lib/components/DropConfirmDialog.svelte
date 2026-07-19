@@ -1,6 +1,8 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { errorMessage } from "../api/errors";
   import { portal } from "../actions/portal";
+  import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -35,9 +37,13 @@
       busy = false;
     }
   }
-</script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && !busy && oncancel()} />
+  onMount(() => pushModal({
+    onEscape: () => { if (!busy) oncancel(); },
+    onEnter: confirm,
+    enterDisabled: () => !matches || busy,
+  }));
+</script>
 
 <div
   class="backdrop"
