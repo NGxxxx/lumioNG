@@ -1,8 +1,10 @@
 import { sqlImportPreview, sqlImportCommit, type SqlTablePreview, type SqlImportTableResult } from "../api/sql";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
 import { sqlImportCmd } from "../domain/mongosh";
 import type { InsertMode } from "../api/documents";
+import * as m from "$lib/paraglide/messages";
 
 export type SqlImportPhase = "loading" | "selecting" | "running" | "done";
 
@@ -51,6 +53,7 @@ export function createSqlImport(
     phase = "running";
     error = null;
     const pickedTables = [...selected];
+    activity.begin(m.common_running());
     try {
       results = await commandLog.pushTimed(sqlImportCmd(db, path, pickedTables), sessionId, () =>
         sqlImportCommit(sessionId, db, path, pickedTables, targetColl, insertMode, (table, done, total) => {
@@ -60,6 +63,8 @@ export function createSqlImport(
     } catch (e) {
       error = errorMessage(e);
       phase = "selecting";
+    } finally {
+      activity.end();
     }
   }
 

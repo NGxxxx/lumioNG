@@ -87,6 +87,8 @@ pub async fn sql_import_commit(
     on_progress: Channel<SqlImportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<SqlImportTableResult>, AppError> {
+    state.ensure_writable(&session_id).await?;
+
     let statements = tokio::task::spawn_blocking(move || -> Result<Vec<Statement>, AppError> {
         let content = read_sql_file(&path)?;
         parse_statements(&content).map_err(AppError::Parse)
@@ -95,7 +97,6 @@ pub async fn sql_import_commit(
     .map_err(|e| AppError::Io(e.to_string()))??;
 
     let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
 
     let schemas = table_schemas(&statements);
     let is_single_table_dump = schemas.len() == 1;

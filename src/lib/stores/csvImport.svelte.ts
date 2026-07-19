@@ -2,7 +2,9 @@ import { csvImportPreview, csvImportCommit, type CsvDelimiter, type CsvColumnPre
 import type { ImportResult, InsertMode } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
+import { activity } from "./activity.svelte";
 import { csvImportCmd } from "../domain/mongosh";
+import * as m from "$lib/paraglide/messages";
 
 export type CsvImportPhase = "loading" | "config" | "running" | "done";
 
@@ -55,6 +57,7 @@ export function createCsvImport(
     if (phase === "running") return;
     phase = "running";
     error = null;
+    activity.begin(m.common_running());
     try {
       result = await commandLog.pushTimed(csvImportCmd(db, coll, path), sessionId, () =>
         csvImportCommit(sessionId, db, coll, path, delimiter, { parseJsonLike, inferScalars }, insertMode, (done, total) => {
@@ -64,6 +67,8 @@ export function createCsvImport(
     } catch (e) {
       error = errorMessage(e);
       phase = "config";
+    } finally {
+      activity.end();
     }
   }
 

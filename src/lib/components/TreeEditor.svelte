@@ -92,7 +92,7 @@
 
 <div class="tree-scroller" bind:this={scrollerEl} role="tree">
   <div class="tree-sizer" style="height:{totalSize}px">
-    {#each virtualItems as vi (vi.index)}
+    {#each virtualItems as vi (rows[vi.index].path)}
       {@const row = rows[vi.index]}
       <div
         class="tree-row"
@@ -110,19 +110,22 @@
             existingKeys={row.isArray ? [] : existingKeysAt(value, row.segments)}
             onadd={(name, v) => handleAdd(row.segments, name, v)}
           />
+        {:else if row.expandable}
+          <!-- No describeValue() here on purpose: it would JSON.stringify the whole container just
+               to get `.display`, which this branch never uses (badge shows childCount instead) --
+               that's exactly the O(n)-per-row cost the virtualized rewrite was meant to avoid. -->
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" class="tree-caret" onclick={() => toggle(row.path)}>
+            <path d={open.has(row.path) ? "M1.5 3l3 3 3-3" : "M3 1.5l3 3-3 3"} fill="var(--muted)" stroke="var(--muted)" stroke-width="0.8" fill-rule="evenodd"/>
+          </svg>
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+          <span class="label clickable" onclick={() => toggle(row.path)}>{row.key}</span>
+          <span class="badge">{Array.isArray(row.value) ? `array[${row.childCount}]` : "object"}</span>
+          {#if row.removable}<button class="x" onclick={() => handleRemove(row)} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
         {:else}
           {@const info = describeValue(row.value)}
           {@const type = info.type}
-          {#if row.expandable}
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <svg aria-hidden="true" width="9" height="9" viewBox="0 0 9 9" class="tree-caret" onclick={() => toggle(row.path)}>
-              <path d={open.has(row.path) ? "M1.5 3l3 3 3-3" : "M3 1.5l3 3-3 3"} fill="var(--muted)" stroke="var(--muted)" stroke-width="0.8" fill-rule="evenodd"/>
-            </svg>
-            <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-            <span class="label clickable" onclick={() => toggle(row.path)}>{row.key}</span>
-            <span class="badge">{type === "array" ? `array[${row.childCount}]` : "object"}</span>
-            {#if row.removable}<button class="x" onclick={() => handleRemove(row)} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
-          {:else if hasInput(type) && !row.locked}
+          {#if hasInput(type) && !row.locked}
             <span class="tree-caret-pad"></span>
             <span class="label">{row.key}</span>
             <span class="badge">{type}</span>

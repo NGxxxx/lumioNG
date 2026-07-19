@@ -19,7 +19,6 @@ mod value_infer;
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::default())
-        .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
@@ -54,6 +53,7 @@ pub fn run() {
             commands::import_export::export_csv_progress,
             commands::import_export::export_sql_progress,
             commands::import_export::export_query_progress,
+            commands::import_export::cancel_export,
             commands::import_export::import_bson,
             commands::import_export::import_file_size,
             commands::sql::sql_import_preview,

@@ -2,12 +2,13 @@ use crate::bson_json::doc_to_canonical_string;
 use crate::error::AppError;
 use crate::json_bson::canonical_string_to_doc;
 use crate::state::AppState;
-use futures::stream::TryStreamExt;
+use futures::stream::{self, StreamExt, TryStreamExt};
 use mongodb::bson::Document;
 use mongodb::error::ErrorKind;
 use mongodb::Cursor;
 use std::io::Read;
 use std::io::Write;
+use std::sync::atomic::Ordering;
 use tauri::{ipc::Channel, State};
 use tokio::sync::mpsc;
 
@@ -41,6 +42,43 @@ async fn open_export_cursor(
         q = q.projection(p);
     }
     Ok((q.await?, total))
+}
+
+/// Same as `open_export_cursor` but skips `count_documents` -- for a second pass over the same
+/// filter where the caller already has `total` from an earlier `open_export_cursor` call (CSV/SQL
+/// export's write pass, after the schema-scan pass already counted).
+async fn open_write_cursor(
+    state: State<'_, AppState>,
+    session_id: &str,
+    db: &str,
+    coll: &str,
+    filter: Option<&str>,
+    sort: Option<&str>,
+    projection: Option<&str>,
+) -> Result<Cursor<Document>, AppError> {
+    let client = state.client(session_id).await?;
+    let collection = client.database(db).collection::<Document>(coll);
+    let (filter_doc, sort_doc, proj_doc) = build_find_options(filter, sort, projection)?;
+    let mut q = collection.find(filter_doc).sort(sort_doc);
+    if let Some(p) = proj_doc {
+        q = q.projection(p);
+    }
+    Ok(q.await?)
+}
+
+/// Runs `fut`; on error, best-effort deletes the (already-created) partial output file at `path`
+/// before propagating, so a mid-export I/O failure or cancellation doesn't leave a truncated file.
+async fn cleanup_on_err<T>(
+    path: &std::path::Path,
+    fut: impl std::future::Future<Output = Result<T, AppError>>,
+) -> Result<T, AppError> {
+    match fut.await {
+        Ok(v) => Ok(v),
+        Err(e) => {
+            let _ = std::fs::remove_file(path);
+            Err(e)
+        }
+    }
 }
 
 /// Write one element into a streaming JSON-array body: opening `[` for the first element, `,` before each subsequent one, then the document JSON.
@@ -199,6 +237,12 @@ async fn insert_many_ordered(
     }
 }
 
+/// Bounded fan-out for per-document `replace_one`: MongoDB Rust driver 3.x only exposes bulk
+/// writes via `Client::bulk_write` (server 8.0+ only), so a collection-scoped upsert-by-id can't
+/// use it without breaking older servers -- this runs up to `UPSERT_CONCURRENCY` replaces at once
+/// instead of one round-trip at a time, staying compatible with any server version.
+const UPSERT_CONCURRENCY: usize = 16;
+
 async fn upsert_by_id(
     collection: &mongodb::Collection<Document>,
     batch: Vec<Document>,
@@ -206,14 +250,27 @@ async fn upsert_by_id(
     inserted: &mut u64,
     errors: &mut Vec<String>,
 ) {
-    for (doc, &raw) in batch.iter().zip(raw_idx.iter()) {
-        let Some(id) = doc.get("_id") else {
-            errors.push(format!("doc#{raw}: upsert requires an _id field"));
-            continue;
-        };
-        let filter = mongodb::bson::doc! { "_id": id.clone() };
-        match collection.replace_one(filter, doc.clone()).upsert(true).await {
-            Ok(_) => *inserted += 1,
+    let mut results: Vec<(usize, Result<(), String>)> = stream::iter(batch.into_iter().zip(raw_idx.iter().copied()))
+        .map(|(doc, raw)| {
+            let collection = collection.clone();
+            async move {
+                let Some(id) = doc.get("_id").cloned() else {
+                    return (raw, Err("upsert requires an _id field".to_string()));
+                };
+                let filter = mongodb::bson::doc! { "_id": id };
+                match collection.replace_one(filter, doc).upsert(true).await {
+                    Ok(_) => (raw, Ok(())),
+                    Err(e) => (raw, Err(e.to_string())),
+                }
+            }
+        })
+        .buffer_unordered(UPSERT_CONCURRENCY)
+        .collect()
+        .await;
+    results.sort_by_key(|(raw, _)| *raw);
+    for (raw, r) in results {
+        match r {
+            Ok(()) => *inserted += 1,
             Err(e) => errors.push(format!("doc#{raw}: {e}")),
         }
     }
@@ -513,6 +570,8 @@ pub async fn import_documents(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
+    state.ensure_writable(&session_id).await?;
+
     let count_path = path.clone();
     let (is_array, total) = tokio::task::spawn_blocking(move || -> Result<(bool, u64), AppError> {
         let is_array = detect_json_array(&count_path)?;
@@ -529,7 +588,6 @@ pub async fn import_documents(
     .map_err(|e| AppError::Io(e.to_string()))??;
 
     let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
     let rx = if is_array {
@@ -553,6 +611,8 @@ pub async fn export_json_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -565,17 +625,26 @@ pub async fn export_json_progress(
     }
     let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
     let mut w = std::io::BufWriter::new(file);
-    let mut count: u64 = 0;
-    while let Some(d) = cursor.try_next().await? {
-        let s = doc_to_canonical_string(d)?;
-        write_json_array_element(&mut w, &s, count == 0).map_err(|e| AppError::Io(e.to_string()))?;
-        count += 1;
-        if count % PROGRESS_BATCH == 0 {
-            let _ = on_progress.send(ExportProgress { done: count, total });
+
+    let count = cleanup_on_err(p, async {
+        let mut count: u64 = 0;
+        while let Some(d) = cursor.try_next().await? {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(AppError::Query("Export cancelled".into()));
+            }
+            let s = doc_to_canonical_string(d)?;
+            write_json_array_element(&mut w, &s, count == 0).map_err(|e| AppError::Io(e.to_string()))?;
+            count += 1;
+            if count % PROGRESS_BATCH == 0 {
+                let _ = on_progress.send(ExportProgress { done: count, total });
+            }
         }
-    }
-    finish_json_array(&mut w, count > 0).map_err(|e| AppError::Io(e.to_string()))?;
-    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        finish_json_array(&mut w, count > 0).map_err(|e| AppError::Io(e.to_string()))?;
+        w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        Ok(count)
+    })
+    .await?;
+
     let _ = on_progress.send(ExportProgress { done: count, total });
     Ok(count)
 }
@@ -593,6 +662,8 @@ pub async fn export_bson_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -605,16 +676,25 @@ pub async fn export_bson_progress(
     }
     let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
     let mut w = std::io::BufWriter::new(file);
-    let mut count: u64 = 0;
-    while let Some(d) = cursor.try_next().await? {
-        let bytes = mongodb::bson::to_vec(&d).map_err(|e| AppError::Parse(e.to_string()))?;
-        w.write_all(&bytes).map_err(|e| AppError::Io(e.to_string()))?;
-        count += 1;
-        if count % PROGRESS_BATCH == 0 {
-            let _ = on_progress.send(ExportProgress { done: count, total });
+
+    let count = cleanup_on_err(p, async {
+        let mut count: u64 = 0;
+        while let Some(d) = cursor.try_next().await? {
+            if cancel.load(Ordering::Relaxed) {
+                return Err(AppError::Query("Export cancelled".into()));
+            }
+            let bytes = mongodb::bson::to_vec(&d).map_err(|e| AppError::Parse(e.to_string()))?;
+            w.write_all(&bytes).map_err(|e| AppError::Io(e.to_string()))?;
+            count += 1;
+            if count % PROGRESS_BATCH == 0 {
+                let _ = on_progress.send(ExportProgress { done: count, total });
+            }
         }
-    }
-    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        Ok(count)
+    })
+    .await?;
+
     let _ = on_progress.send(ExportProgress { done: count, total });
     Ok(count)
 }
@@ -632,6 +712,8 @@ pub async fn export_csv_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
     let (mut scan_cursor, total) = open_export_cursor(
         state.clone(), &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -642,6 +724,9 @@ pub async fn export_csv_progress(
     let mut columns_acc = crate::csv_export::ColumnAccumulator::new();
     let mut scanned: u64 = 0;
     while let Some(d) = scan_cursor.try_next().await? {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(AppError::Query("Export cancelled".into()));
+        }
         columns_acc.observe(&d);
         scanned += 1;
         if scanned % PROGRESS_BATCH == 0 {
@@ -650,7 +735,7 @@ pub async fn export_csv_progress(
     }
     let columns = columns_acc.into_columns();
 
-    let (mut write_cursor, _) = open_export_cursor(
+    let mut write_cursor = open_write_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
     )
@@ -662,18 +747,27 @@ pub async fn export_csv_progress(
     }
     let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
     let mut w = std::io::BufWriter::new(file);
-    let mut count: u64 = 0;
-    if total > 0 {
-        crate::csv_export::write_header(&mut w, &columns).map_err(|e| AppError::Io(e.to_string()))?;
-        while let Some(d) = write_cursor.try_next().await? {
-            crate::csv_export::write_row(&mut w, &columns, &d).map_err(|e| AppError::Io(e.to_string()))?;
-            count += 1;
-            if count % PROGRESS_BATCH == 0 {
-                let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+
+    let count = cleanup_on_err(p, async {
+        let mut count: u64 = 0;
+        if total > 0 {
+            crate::csv_export::write_header(&mut w, &columns).map_err(|e| AppError::Io(e.to_string()))?;
+            while let Some(d) = write_cursor.try_next().await? {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(AppError::Query("Export cancelled".into()));
+                }
+                crate::csv_export::write_row(&mut w, &columns, &d).map_err(|e| AppError::Io(e.to_string()))?;
+                count += 1;
+                if count % PROGRESS_BATCH == 0 {
+                    let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+                }
             }
         }
-    }
-    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        Ok(count)
+    })
+    .await?;
+
     let _ = on_progress.send(ExportProgress { done: report_total, total: report_total });
     Ok(count)
 }
@@ -691,6 +785,8 @@ pub async fn export_sql_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
     let (mut scan_cursor, total) = open_export_cursor(
         state.clone(), &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -701,6 +797,9 @@ pub async fn export_sql_progress(
     let mut schema = crate::sql_export::SqlSchemaAccumulator::new();
     let mut scanned: u64 = 0;
     while let Some(d) = scan_cursor.try_next().await? {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(AppError::Query("Export cancelled".into()));
+        }
         schema.observe(&d);
         scanned += 1;
         if scanned % PROGRESS_BATCH == 0 {
@@ -709,7 +808,7 @@ pub async fn export_sql_progress(
     }
     let (columns, types) = schema.finish();
 
-    let (mut write_cursor, _) = open_export_cursor(
+    let mut write_cursor = open_write_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
     )
@@ -721,20 +820,29 @@ pub async fn export_sql_progress(
     }
     let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
     let mut w = std::io::BufWriter::new(file);
-    let mut count: u64 = 0;
-    if total > 0 {
-        crate::sql_export::write_create_table(&mut w, &coll, &columns, &types)
-            .map_err(|e| AppError::Io(e.to_string()))?;
-        while let Some(d) = write_cursor.try_next().await? {
-            crate::sql_export::write_insert(&mut w, &coll, &columns, &d, count == 0)
+
+    let count = cleanup_on_err(p, async {
+        let mut count: u64 = 0;
+        if total > 0 {
+            crate::sql_export::write_create_table(&mut w, &coll, &columns, &types)
                 .map_err(|e| AppError::Io(e.to_string()))?;
-            count += 1;
-            if count % PROGRESS_BATCH == 0 {
-                let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+            while let Some(d) = write_cursor.try_next().await? {
+                if cancel.load(Ordering::Relaxed) {
+                    return Err(AppError::Query("Export cancelled".into()));
+                }
+                crate::sql_export::write_insert(&mut w, &coll, &columns, &d, count == 0)
+                    .map_err(|e| AppError::Io(e.to_string()))?;
+                count += 1;
+                if count % PROGRESS_BATCH == 0 {
+                    let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+                }
             }
         }
-    }
-    w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        w.flush().map_err(|e| AppError::Io(e.to_string()))?;
+        Ok(count)
+    })
+    .await?;
+
     let _ = on_progress.send(ExportProgress { done: report_total, total: report_total });
     Ok(count)
 }
@@ -750,6 +858,8 @@ pub async fn export_query_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
+    let cancel = state.cancel_flag(&session_id).await;
+    state.clear_cancel(&session_id).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -758,6 +868,9 @@ pub async fn export_query_progress(
 
     let mut docs = Vec::new();
     while let Some(d) = cursor.try_next().await? {
+        if cancel.load(Ordering::Relaxed) {
+            return Err(AppError::Query("Export cancelled".into()));
+        }
         docs.push(doc_to_canonical_string(d)?);
         if docs.len() as u64 % PROGRESS_BATCH == 0 {
             let _ = on_progress.send(ExportProgress { done: docs.len() as u64, total });
@@ -765,6 +878,14 @@ pub async fn export_query_progress(
     }
     let _ = on_progress.send(ExportProgress { done: docs.len() as u64, total });
     Ok(docs)
+}
+
+/// Requests cancellation of any in-flight cancellable op (export progress commands, scripts) on
+/// this session -- shares the same per-session cooperative flag as `cancel_script`.
+#[tauri::command]
+pub async fn cancel_export(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
+    state.request_cancel(&session_id).await;
+    Ok(())
 }
 
 #[tauri::command]
@@ -777,6 +898,8 @@ pub async fn import_bson(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
+    state.ensure_writable(&session_id).await?;
+
     let count_path = path.clone();
     let total = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
         let file = std::fs::File::open(&count_path).map_err(|e| AppError::Io(e.to_string()))?;
@@ -786,7 +909,6 @@ pub async fn import_bson(
     .map_err(|e| AppError::Io(e.to_string()))??;
 
     let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
     let rx = spawn_bson_producer(path, total);

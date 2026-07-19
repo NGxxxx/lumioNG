@@ -5,6 +5,7 @@ const api = vi.hoisted(() => ({
   exportBsonProgress: vi.fn(),
   exportCsvProgress: vi.fn(),
   exportSqlProgress: vi.fn(),
+  cancelExportProgress: vi.fn(),
 }));
 const files = vi.hoisted(() => ({ writeTextFile: vi.fn() }));
 const cmdlog = vi.hoisted(() => ({
@@ -27,6 +28,7 @@ beforeEach(() => {
   api.exportBsonProgress.mockReset().mockResolvedValue(2);
   api.exportCsvProgress.mockReset().mockResolvedValue(2);
   api.exportSqlProgress.mockReset().mockResolvedValue(1);
+  api.cancelExportProgress.mockReset().mockResolvedValue(undefined);
   files.writeTextFile.mockReset().mockResolvedValue(undefined);
   cmdlog.push.mockReset();
 });
@@ -122,6 +124,25 @@ it("cancel stops before the next target", async () => {
   await job.run();
   expect(job.rows[0].status).toBe("done");
   expect(job.rows[1].status).toBe("pending");
+});
+
+it("cancel while a target is running also asks the backend to interrupt it", async () => {
+  const job = createExportJob("conn:1", {
+    format: "json", dir: "/out",
+    targets: [{ db: "a", coll: "x", source: qSource }],
+  });
+  api.exportJsonProgress.mockImplementationOnce(async () => { job.cancel(); return 3; });
+  await job.run();
+  expect(api.cancelExportProgress).toHaveBeenCalledWith("conn:1");
+});
+
+it("cancel before any target starts does not call the backend", () => {
+  const job = createExportJob("conn:1", {
+    format: "json", dir: "/out",
+    targets: [{ db: "a", coll: "x", source: qSource }],
+  });
+  job.cancel();
+  expect(api.cancelExportProgress).not.toHaveBeenCalled();
 });
 
 it("bson target: exportBsonProgress called, row done with count", async () => {

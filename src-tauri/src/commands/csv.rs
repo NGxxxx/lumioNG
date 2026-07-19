@@ -83,6 +83,8 @@ pub async fn csv_import_commit(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<ImportResult, AppError> {
+    state.ensure_writable(&session_id).await?;
+
     let count_path = path.clone();
     let total = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
         let reader = open_file(&count_path)?;
@@ -92,7 +94,6 @@ pub async fn csv_import_commit(
     .map_err(|e| AppError::Io(e.to_string()))??;
 
     let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
     let collection = client.database(&db).collection::<Document>(&coll);
 
     let mut rx = spawn_csv_producer(path, delimiter, infer_opts);

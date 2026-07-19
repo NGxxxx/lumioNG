@@ -1,4 +1,4 @@
-import { exportJsonProgress, exportBsonProgress, exportCsvProgress, exportSqlProgress } from "../api/documents";
+import { exportJsonProgress, exportBsonProgress, exportCsvProgress, exportSqlProgress, cancelExportProgress } from "../api/documents";
 import { writeTextFile } from "../api/files";
 import { toCsv, toJsonArray, toSql } from "../domain/exporter";
 import { exportFileName, aggregateProgress } from "../domain/exportPlan";
@@ -119,6 +119,9 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
 
   function cancel() {
     cancelled = true;
+    // Between-target guard above stops any target not yet started; this additionally interrupts
+    // whichever export_*_progress command is currently mid-stream (checked cooperatively there).
+    if (running) void cancelExportProgress(sessionId);
   }
 
   return {

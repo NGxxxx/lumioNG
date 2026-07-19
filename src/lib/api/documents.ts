@@ -280,6 +280,12 @@ export async function exportQueryProgress(
   return rows.map((s) => JSON.parse(s) as Doc);
 }
 
+/** Requests cancellation of the export currently in flight on this session (cooperative -- the
+ *  running export_*_progress command checks it and stops at its next progress step). */
+export async function cancelExportProgress(sessionId: string): Promise<void> {
+  await invoke("cancel_export", { sessionId });
+}
+
 export interface ImportResult {
   inserted: number;
   failed: number;

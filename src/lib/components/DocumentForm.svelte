@@ -118,6 +118,14 @@
     recomputeTimer = setTimeout(recomputeNow, RECOMPUTE_DEBOUNCE_MS);
   }
 
+  // Cancel a pending debounced recompute if the form is closed (Cancel/Save) mid-debounce —
+  // otherwise it fires ~500ms later against a form that's already gone.
+  $effect(() => {
+    return () => {
+      if (recomputeTimer !== null) clearTimeout(recomputeTimer);
+    };
+  });
+
   // Wrap is a discrete toggle (Toolbar's Wrap button), not a fast-repeating stream like keystrokes
   // — recompute immediately so the gutter reflows right when the user flips it, not 500ms later.
   $effect(() => {

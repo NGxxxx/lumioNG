@@ -5,7 +5,6 @@
   import { createImportJob } from "../stores/importJob.svelte";
   import { createSqlImport } from "../stores/sqlImport.svelte";
   import { createCsvImport } from "../stores/csvImport.svelte";
-  import type { CsvDelimiter } from "../api/csv";
   import type { InsertMode } from "../api/documents";
   import * as m from "$lib/paraglide/messages";
 

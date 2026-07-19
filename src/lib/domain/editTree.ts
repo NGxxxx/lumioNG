@@ -6,7 +6,7 @@
  *  is needed. Containers default closed; only `open` paths get their children flattened in, which
  *  is what keeps opening a huge/deeply-nested document cheap (see DocumentForm.svelte). */
 import type { Doc } from "./doc";
-import { describeValue } from "./extjson";
+import { containerKind } from "./extjson";
 
 /** Path segment: an object key (string) or array index (number). */
 export type PathSegment = string | number;
@@ -43,11 +43,23 @@ interface ChildEntry {
   value: unknown;
 }
 
-/** Children as ordered [key,value] entries for plain containers; null for leaves. */
+/** Count of a container's children plus whether it's an array, without materializing entries --
+ *  cheap even for a huge array/object, unlike `childrenOf`. Used for every row so a collapsed
+ *  container's size doesn't cost more than counting (no per-child allocation, no display text). */
+function childCountOf(value: unknown): { count: number; isArray: boolean } | null {
+  const kind = containerKind(value);
+  if (kind === "array") return { count: (value as unknown[]).length, isArray: true };
+  if (kind === "object") return { count: Object.keys(value as Record<string, unknown>).length, isArray: false };
+  return null;
+}
+
+/** Children as ordered [key,value] entries for plain containers; null for leaves. Only called once
+ *  a container is actually open (see `walk`) -- avoids allocating entries for a collapsed
+ *  container's children, which the row list never needs unless the user expands it. */
 function childrenOf(value: unknown): ChildEntry[] | null {
-  const type = describeValue(value).type;
-  if (type === "array") return (value as unknown[]).map((v, i) => ({ key: String(i), value: v }));
-  if (type === "object") return Object.entries(value as Record<string, unknown>).map(([key, value]) => ({ key, value }));
+  const kind = containerKind(value);
+  if (kind === "array") return (value as unknown[]).map((v, i) => ({ key: String(i), value: v }));
+  if (kind === "object") return Object.entries(value as Record<string, unknown>).map(([key, value]) => ({ key, value }));
   return null;
 }
 
@@ -55,21 +67,21 @@ function walk(
   rows: EditRow[], open: ReadonlySet<string>,
   value: unknown, segments: PathSegment[], path: string, depth: number, key: string, locked: boolean,
 ): void {
-  const children = childrenOf(value);
-  const expandable = children !== null && children.length > 0;
+  const info = childCountOf(value);
+  const expandable = info !== null && info.count > 0;
   rows.push({
     kind: "field", path, segments, key, value, depth,
     locked, removable: !locked,
-    expandable, childCount: children === null ? null : children.length,
+    expandable, childCount: info === null ? null : info.count,
   });
-  if (children === null || !open.has(path)) return;
-  const isArray = Array.isArray(value);
+  if (info === null || !open.has(path)) return;
+  const children = childrenOf(value)!;
   for (const child of children) {
-    const seg: PathSegment = isArray ? Number(child.key) : child.key;
+    const seg: PathSegment = info.isArray ? Number(child.key) : child.key;
     walk(rows, open, child.value, [...segments, seg], `${path}.${child.key}`, depth + 1, child.key, false);
   }
   if (!locked) {
-    rows.push({ kind: "adder", path: `${path}.__add`, segments, depth: depth + 1, isArray });
+    rows.push({ kind: "adder", path: `${path}.__add`, segments, depth: depth + 1, isArray: info.isArray });
   }
 }
 
