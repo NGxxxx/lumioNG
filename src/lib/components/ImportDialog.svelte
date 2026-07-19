@@ -168,6 +168,7 @@
             {/if}
             {#if v.error}<div class="error">{v.error}</div>{/if}
           {:else if v.phase === "done"}
+            {#if v.cancelled}<div class="notice notice-cancelled">{m.sql_import_cancelled_notice()}</div>{/if}
             <div class="results">
               {#each v.results as r (r.table)}
                 <div class="io-ok">{r.table}: {m.namespace_panel_import_done({ inserted: r.inserted, failed: r.failed })}</div>
@@ -262,6 +263,8 @@
       {:else if isSql && sql!.phase === "selecting"}
         <button type="button" onclick={onclose}>{m.common_cancel()}</button>
         <button type="button" class="primary" disabled={sql!.selected.size === 0} onclick={() => sql!.run()}>{m.sql_import_run({ count: sql!.selected.size })}</button>
+      {:else if isSql && sql!.phase === "running"}
+        <button type="button" onclick={() => sql!.cancel()}>{m.common_cancel()}</button>
       {:else if isCsv && csv!.phase === "config"}
         <button type="button" onclick={onclose}>{m.common_cancel()}</button>
         <button type="button" class="primary" disabled={csv!.columns.length === 0} onclick={() => csv!.run()}>{m.import_dialog_run()}</button>
@@ -284,6 +287,7 @@
   .label { color: var(--gray-77); flex: none; }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
   .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.75rem; margin-bottom: 0.75rem; }
+  .notice-cancelled { background: var(--warn-bg); color: var(--warn-fg); }
   .insert-mode-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: 0.75rem; margin-bottom: 0.75rem; }
   .insert-mode-group .label { color: var(--gray-77); }
   .insert-mode-group label { display: flex; align-items: center; gap: 0.25rem; cursor: pointer; }

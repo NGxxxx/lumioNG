@@ -70,6 +70,8 @@
   const tree = $derived(session?.tree ?? null);
   const host = $derived(session?.host ?? null);
 
+  const readOnly = $derived(session?.readOnly ?? false);
+
   const active = $derived(sm.activeZone);
   const sel = $derived(nav?.selection ?? null);
   const navContextTabs = $derived(nav?.contextTabs ?? []);
@@ -221,10 +223,11 @@
 
 <svelte:window
   onkeydown={(e) => {
-    // Ctrl/Cmd+S saves the active Query tab only; document-form save keeps its own toolbar path.
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && activeQueryTab) {
+    // Ctrl/Cmd+S: active Query tab overwrites/save-as; active document form saves via its bridged handle.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && (activeQueryTab || activeDocumentForm.handle)) {
       e.preventDefault();
-      saveActiveQuery();
+      if (activeQueryTab) saveActiveQuery();
+      else activeDocumentForm.handle?.save();
     }
   }}
 />
@@ -245,7 +248,7 @@
   />
   <Toolbar
     connected={shell.connection !== null}
-    canNewDoc={sel?.coll != null}
+    canNewDoc={sel?.coll != null && !readOnly}
     onsession={() => shell.toggleSession()}
     onrefresh={doRefresh}
     onnewdocument={newDocActive}
@@ -256,21 +259,21 @@
     onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
     canExplainQuery={activeQueryRun != null}
     onexplainquery={() => activeQueryRun?.explainAfterRun(sel?.db ?? null)}
-    canEditDoc={canUseDataView && (activeDataView.handle?.canEdit ?? false)}
+    canEditDoc={canUseDataView && !readOnly && (activeDataView.handle?.canEdit ?? false)}
     oneditdocument={() => activeDataView.handle?.editSelected()}
     canExport={canUseDataView ? (activeDataView.handle?.canExport ?? false) : false}
     onexport={() => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined)}
-    canImport={sel?.coll != null}
+    canImport={sel?.coll != null && !readOnly}
     onimport={() => { if (sel?.coll && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); }}
     canSave={activeQueryTab ? !queryLibrary.blocked : (activeDocumentForm.handle?.canSave ?? false)}
     onsave={() => (activeQueryTab ? saveActiveQuery() : activeDocumentForm.handle?.save())}
-    canDeleteDoc={canUseDataView && (activeDataView.handle?.canDelete ?? false)}
+    canDeleteDoc={canUseDataView && !readOnly && (activeDataView.handle?.canDelete ?? false)}
     ondeletedocument={() => activeDataView.handle?.deleteSelected()}
     canAggregate={sel?.coll != null}
     onaggregate={() => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); }}
     canIndexes={sel?.coll != null}
     onindexes={() => { if (sel?.coll) { sm.showContext("collection"); nav?.setCollectionSection("indexes"); } }}
-    canStop={activity.busy}
+    canStop={activeQueryRun?.running ?? false}
     onstop={() => { if (sm.activeId) cancelScript(sm.activeId); }}
     canFind={canUseDataView}
     onfind={() => activeDataView.handle?.focusSearch?.()}

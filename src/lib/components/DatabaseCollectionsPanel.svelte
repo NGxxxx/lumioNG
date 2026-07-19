@@ -66,7 +66,7 @@
 </div>
 
 <style>
-  .dbpanel { overflow: auto; height: 100%; padding: 0.75rem 1rem; font-size: 0.8125rem; }
+  .dbpanel { overflow: auto; height: 100%; box-sizing: border-box; padding: 0.75rem 1rem; font-size: 0.8125rem; }
   .summary { color: var(--th-fg); margin-bottom: 0.625rem; }
   .bar { margin-bottom: 0.5rem; }
   table.grid { border-collapse: collapse; width: 100%; user-select: none; }

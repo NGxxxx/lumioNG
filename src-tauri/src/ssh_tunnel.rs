@@ -1,8 +1,10 @@
 use crate::error::AppError;
+use crate::known_hosts::{self, Verdict};
 use async_trait::async_trait;
 use russh::client::{self, Handle};
 use russh_keys::key::PublicKey;
 use serde::Deserialize;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -23,21 +25,65 @@ pub struct SshTunnelConfig {
     pub passphrase: String,
 }
 
-struct ClientHandler;
+/// Details of a rejected host key, stashed by `check_server_key` for `open()` to turn into a
+/// user-facing `AppError` — `check_server_key`'s own return type (`russh::Error`) can't carry them.
+#[derive(Debug, Clone)]
+struct HostKeyMismatch {
+    previous_key_type: String,
+    previous_fingerprint: String,
+    presented_key_type: String,
+    presented_fingerprint: String,
+}
+
+/// TOFU (trust-on-first-use) host key check, OpenSSH `known_hosts`-style: the first key seen for a
+/// `(host, port)` is trusted and recorded in `known_hosts_path`; every later connect must match it
+/// exactly, or the handshake is rejected and `mismatch` is filled in for `open()` to report.
+struct ClientHandler {
+    host: String,
+    port: u16,
+    known_hosts_path: PathBuf,
+    mismatch: Arc<Mutex<Option<HostKeyMismatch>>>,
+}
 
 #[async_trait]
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
-    // TODO(security): accepts any host key — no MITM protection. A rogue/spoofed SSH server on
-    // the network path would see plaintext SSH creds (password auth) and all tunneled Mongo
-    // traffic. Deliberately deferred at v1 (no host-key pinning UI); fix is OpenSSH-style TOFU —
-    // store each host's key fingerprint on first connect (in the registry, alongside the SSH
-    // fields), compare on every subsequent connect, and surface a clear warning/blocking dialog
-    // if it ever changes. Needs its own brainstorm (where to store, UX for first-trust + changed-
-    // key prompts) before implementing.
-    async fn check_server_key(&mut self, _server_public_key: &PublicKey) -> Result<bool, Self::Error> {
-        Ok(true)
+    async fn check_server_key(&mut self, server_public_key: &PublicKey) -> Result<bool, Self::Error> {
+        let key_type = server_public_key.name().to_string();
+        let fingerprint = server_public_key.fingerprint();
+
+        // A corrupt/unreadable store must fail closed (reject), not silently fall back to trusting
+        // everything — that would defeat the whole point of pinning.
+        let Ok(list) = known_hosts::load(&self.known_hosts_path) else {
+            *self.mismatch.lock().unwrap() = Some(HostKeyMismatch {
+                previous_key_type: "?".into(),
+                previous_fingerprint: "(could not read known_hosts store)".into(),
+                presented_key_type: key_type,
+                presented_fingerprint: fingerprint,
+            });
+            return Ok(false);
+        };
+
+        match known_hosts::verify(&list, &self.host, self.port, &key_type, &fingerprint) {
+            Verdict::Match => Ok(true),
+            Verdict::FirstUse => {
+                let updated = known_hosts::upsert(list, &self.host, self.port, &key_type, &fingerprint);
+                if let Err(e) = known_hosts::save(&self.known_hosts_path, &updated) {
+                    eprintln!("ssh tunnel: failed to persist trusted host key for {}:{}: {e}", self.host, self.port);
+                }
+                Ok(true)
+            }
+            Verdict::Mismatch { previous_key_type, previous_fingerprint } => {
+                *self.mismatch.lock().unwrap() = Some(HostKeyMismatch {
+                    previous_key_type,
+                    previous_fingerprint,
+                    presented_key_type: key_type,
+                    presented_fingerprint: fingerprint,
+                });
+                Ok(false)
+            }
+        }
     }
 }
 
@@ -64,11 +110,25 @@ pub async fn open(
     cfg: &SshTunnelConfig,
     remote_host: &str,
     remote_port: u16,
+    known_hosts_path: &Path,
 ) -> Result<SshTunnelHandle, AppError> {
     let config = Arc::new(client::Config::default());
-    let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), ClientHandler)
+    let mismatch: Arc<Mutex<Option<HostKeyMismatch>>> = Arc::new(Mutex::new(None));
+    let handler = ClientHandler {
+        host: cfg.host.clone(),
+        port: cfg.port,
+        known_hosts_path: known_hosts_path.to_path_buf(),
+        mismatch: mismatch.clone(),
+    };
+    let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), handler)
         .await
-        .map_err(|e| AppError::SshTunnel(e.to_string()))?;
+        .map_err(|e| match mismatch.lock().unwrap().take() {
+            Some(m) => AppError::SshTunnel(format!(
+                "SSH host key for {}:{} does not match the previously trusted key (expected {} fingerprint {}, got {} fingerprint {}). This could mean the server was reinstalled, or that the connection is being intercepted. If you trust this host, use \"Forget host key\" in the connection settings and reconnect.",
+                cfg.host, cfg.port, m.previous_key_type, m.previous_fingerprint, m.presented_key_type, m.presented_fingerprint
+            )),
+            None => AppError::SshTunnel(e.to_string()),
+        })?;
 
     let authenticated = match cfg.auth_method.as_str() {
         "key" => {
@@ -211,16 +271,18 @@ mod tests {
         }
     }
 
-    /// Spins up the mock SSH server on 127.0.0.1:0; returns its port.
-    async fn spawn_mock_ssh_server() -> u16 {
-        let key = KeyPair::generate_ed25519().unwrap();
+    /// Spins up the mock SSH server presenting `key`, optionally on a fixed `port` — used to
+    /// simulate the *same* host later presenting a *different* key (host-key-changed scenario).
+    /// Returns the bound port and the accept loop's task handle, which the caller can `.abort()`
+    /// to free the port for a follow-up server.
+    async fn spawn_mock_ssh_server_with_key(port: Option<u16>, key: KeyPair) -> (u16, tokio::task::JoinHandle<()>) {
         let config = Arc::new(server::Config {
             keys: vec![key],
             ..Default::default()
         });
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        tokio::spawn(async move {
+        let listener = TcpListener::bind(("127.0.0.1", port.unwrap_or(0))).await.unwrap();
+        let bound_port = listener.local_addr().unwrap().port();
+        let handle = tokio::spawn(async move {
             let mut server = MockHandler;
             loop {
                 let Ok((stream, addr)) = listener.accept().await else {
@@ -233,7 +295,12 @@ mod tests {
                 });
             }
         });
-        port
+        (bound_port, handle)
+    }
+
+    /// Spins up the mock SSH server on 127.0.0.1:0 with a fresh random key; returns its port.
+    async fn spawn_mock_ssh_server() -> u16 {
+        spawn_mock_ssh_server_with_key(None, KeyPair::generate_ed25519().unwrap()).await.0
     }
 
     /// A local TCP echo listener standing in for "the remote Mongo host"; returns its port.
@@ -263,10 +330,19 @@ mod tests {
         port
     }
 
+    /// Fresh, non-colliding `known_hosts.json` path for a test — cleared up front so a leftover
+    /// file from a previous run can't leak a stale trust entry into this one.
+    fn temp_known_hosts_path(name: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("monglumio_test_known_hosts_{name}.json"));
+        let _ = std::fs::remove_file(&path);
+        path
+    }
+
     #[tokio::test]
     async fn correct_password_opens_tunnel_and_relays_bytes() {
         let ssh_port = spawn_mock_ssh_server().await;
         let echo_port = spawn_echo_server().await;
+        let known_hosts_path = temp_known_hosts_path("correct_password");
         let cfg = SshTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
@@ -277,7 +353,7 @@ mod tests {
             private_key_path: String::new(),
             passphrase: String::new(),
         };
-        let tunnel = open(&cfg, "127.0.0.1", echo_port).await.unwrap();
+        let tunnel = open(&cfg, "127.0.0.1", echo_port, &known_hosts_path).await.unwrap();
 
         let mut conn = tokio::net::TcpStream::connect(("127.0.0.1", tunnel.local_port))
             .await
@@ -300,6 +376,7 @@ mod tests {
         russh_keys::encode_pkcs8_pem(&key, &mut pem).unwrap();
         let key_path = std::env::temp_dir().join("monglumio_test_ssh_key_ok.pem");
         std::fs::write(&key_path, &pem).unwrap();
+        let known_hosts_path = temp_known_hosts_path("correct_private_key");
 
         let cfg = SshTunnelConfig {
             enabled: true,
@@ -311,7 +388,7 @@ mod tests {
             private_key_path: key_path.to_string_lossy().into_owned(),
             passphrase: String::new(),
         };
-        let tunnel = open(&cfg, "127.0.0.1", echo_port).await.unwrap();
+        let tunnel = open(&cfg, "127.0.0.1", echo_port, &known_hosts_path).await.unwrap();
 
         let mut conn = tokio::net::TcpStream::connect(("127.0.0.1", tunnel.local_port))
             .await
@@ -335,6 +412,7 @@ mod tests {
         russh_keys::encode_pkcs8_pem_encrypted(&key, b"correct-passphrase", 4, &mut pem).unwrap();
         let key_path = std::env::temp_dir().join("monglumio_test_ssh_key_encrypted.pem");
         std::fs::write(&key_path, &pem).unwrap();
+        let known_hosts_path = temp_known_hosts_path("wrong_passphrase");
 
         let cfg = SshTunnelConfig {
             enabled: true,
@@ -346,7 +424,7 @@ mod tests {
             private_key_path: key_path.to_string_lossy().into_owned(),
             passphrase: "wrong-passphrase".into(),
         };
-        let err = open(&cfg, "127.0.0.1", 1).await.unwrap_err();
+        let err = open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap_err();
         assert!(matches!(err, AppError::SshTunnel(_)));
 
         let _ = std::fs::remove_file(&key_path);
@@ -355,6 +433,7 @@ mod tests {
     #[tokio::test]
     async fn wrong_password_fails_with_ssh_tunnel_error() {
         let ssh_port = spawn_mock_ssh_server().await;
+        let known_hosts_path = temp_known_hosts_path("wrong_password");
         let cfg = SshTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
@@ -365,13 +444,14 @@ mod tests {
             private_key_path: String::new(),
             passphrase: String::new(),
         };
-        let err = open(&cfg, "127.0.0.1", 1).await.unwrap_err();
+        let err = open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap_err();
         assert!(matches!(err, AppError::SshTunnel(_)));
     }
 
     #[tokio::test]
     async fn unknown_auth_method_fails_instead_of_silently_trying_password() {
         let ssh_port = spawn_mock_ssh_server().await;
+        let known_hosts_path = temp_known_hosts_path("unknown_auth_method");
         let cfg = SshTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
@@ -382,7 +462,7 @@ mod tests {
             private_key_path: String::new(),
             passphrase: String::new(),
         };
-        let err = open(&cfg, "127.0.0.1", 1).await.unwrap_err();
+        let err = open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap_err();
         match err {
             AppError::SshTunnel(msg) => assert!(msg.contains("auth_method"), "got: {msg}"),
             other => panic!("expected AppError::SshTunnel, got {other:?}"),
@@ -391,6 +471,7 @@ mod tests {
 
     #[tokio::test]
     async fn unreachable_ssh_host_fails_with_ssh_tunnel_error() {
+        let known_hosts_path = temp_known_hosts_path("unreachable_host");
         let cfg = SshTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
@@ -401,7 +482,7 @@ mod tests {
             private_key_path: String::new(),
             passphrase: String::new(),
         };
-        let err = open(&cfg, "127.0.0.1", 1).await.unwrap_err();
+        let err = open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap_err();
         assert!(matches!(err, AppError::SshTunnel(_)));
     }
 
@@ -409,6 +490,7 @@ mod tests {
     async fn forwards_vec_reaps_finished_handles_instead_of_growing_unbounded() {
         let ssh_port = spawn_mock_ssh_server().await;
         let echo_port = spawn_echo_server().await;
+        let known_hosts_path = temp_known_hosts_path("forwards_reap");
         let cfg = SshTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
@@ -419,7 +501,7 @@ mod tests {
             private_key_path: String::new(),
             passphrase: String::new(),
         };
-        let tunnel = open(&cfg, "127.0.0.1", echo_port).await.unwrap();
+        let tunnel = open(&cfg, "127.0.0.1", echo_port, &known_hosts_path).await.unwrap();
 
         // Open and fully close 5 short-lived connections through the tunnel; each spawns and then
         // finishes its own forward task well before the next one starts.
@@ -452,6 +534,7 @@ mod tests {
     async fn drop_aborts_in_flight_forward_tasks_not_just_the_accept_loop() {
         let ssh_port = spawn_mock_ssh_server().await;
         let echo_port = spawn_echo_server().await;
+        let known_hosts_path = temp_known_hosts_path("drop_aborts");
         let cfg = SshTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
@@ -462,7 +545,7 @@ mod tests {
             private_key_path: String::new(),
             passphrase: String::new(),
         };
-        let tunnel = open(&cfg, "127.0.0.1", echo_port).await.unwrap();
+        let tunnel = open(&cfg, "127.0.0.1", echo_port, &known_hosts_path).await.unwrap();
 
         let mut conn = tokio::net::TcpStream::connect(("127.0.0.1", tunnel.local_port))
             .await
@@ -488,5 +571,93 @@ mod tests {
             Ok(Err(_)) => {} // connection reset — also evidence of closure.
             other => panic!("expected the connection to close after dropping the tunnel, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn first_connect_trusts_and_persists_the_host_key() {
+        let ssh_port = spawn_mock_ssh_server().await;
+        let known_hosts_path = temp_known_hosts_path("first_use");
+        let cfg = SshTunnelConfig {
+            enabled: true,
+            host: "127.0.0.1".into(),
+            port: ssh_port,
+            user: "tester".into(),
+            auth_method: "password".into(),
+            password: "testpass".into(),
+            private_key_path: String::new(),
+            passphrase: String::new(),
+        };
+        open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap();
+
+        let stored = known_hosts::load(&known_hosts_path).unwrap();
+        assert_eq!(stored.len(), 1);
+        assert_eq!(stored[0].host, "127.0.0.1");
+        assert_eq!(stored[0].port, ssh_port);
+        assert_eq!(stored[0].key_type, "ssh-ed25519");
+    }
+
+    #[tokio::test]
+    async fn reconnecting_with_the_same_key_succeeds_and_does_not_duplicate_the_entry() {
+        let ssh_port = spawn_mock_ssh_server().await;
+        let known_hosts_path = temp_known_hosts_path("match");
+        let cfg = SshTunnelConfig {
+            enabled: true,
+            host: "127.0.0.1".into(),
+            port: ssh_port,
+            user: "tester".into(),
+            auth_method: "password".into(),
+            password: "testpass".into(),
+            private_key_path: String::new(),
+            passphrase: String::new(),
+        };
+        open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap(); // first use
+        open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap(); // match
+
+        let stored = known_hosts::load(&known_hosts_path).unwrap();
+        assert_eq!(stored.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn host_key_change_is_rejected_until_the_stale_entry_is_forgotten() {
+        let known_hosts_path = temp_known_hosts_path("mismatch_then_forget");
+        let (ssh_port, server_a) =
+            spawn_mock_ssh_server_with_key(None, KeyPair::generate_ed25519().unwrap()).await;
+        let cfg = SshTunnelConfig {
+            enabled: true,
+            host: "127.0.0.1".into(),
+            port: ssh_port,
+            user: "tester".into(),
+            auth_method: "password".into(),
+            password: "testpass".into(),
+            private_key_path: String::new(),
+            passphrase: String::new(),
+        };
+        open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap(); // trusts server A's key
+
+        // Swap the server behind the same host:port for one presenting a different key —
+        // simulates either a legitimate reinstall or a MITM.
+        server_a.abort();
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        let (_, server_b) =
+            spawn_mock_ssh_server_with_key(Some(ssh_port), KeyPair::generate_ed25519().unwrap()).await;
+
+        let err = open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap_err();
+        match err {
+            AppError::SshTunnel(msg) => {
+                assert!(msg.contains("does not match"), "got: {msg}");
+                assert!(msg.contains("Forget host key"), "got: {msg}");
+            }
+            other => panic!("expected AppError::SshTunnel, got {other:?}"),
+        }
+
+        // Forgetting the stale entry lets the new key be trusted as first use.
+        let list = known_hosts::forget(known_hosts::load(&known_hosts_path).unwrap(), "127.0.0.1", ssh_port);
+        known_hosts::save(&known_hosts_path, &list).unwrap();
+
+        open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap();
+        let stored = known_hosts::load(&known_hosts_path).unwrap();
+        assert_eq!(stored.len(), 1);
+
+        server_b.abort();
     }
 }

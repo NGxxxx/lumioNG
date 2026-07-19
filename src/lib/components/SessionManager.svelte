@@ -3,6 +3,7 @@
   import { createConnectionRegistry } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
   import { openDialog } from "../api/files";
+  import { forgetSshHostKey } from "../api/connection";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import TestConnectionDialog from "./TestConnectionDialog.svelte";
   import * as m from "$lib/paraglide/messages";
@@ -30,6 +31,8 @@
   let activeTab = $state<"general" | "ssh">("general");
   let testing = $state(false);
   let testResult = $state<{ ok: true } | { ok: false; kind: "ssh" | "mongo" | "validation"; message: string } | null>(null);
+  let forgettingHostKey = $state(false);
+  let forgotHostKey = $state(false);
 
   async function pickCertFile() {
     const path = await openDialog([{ name: "PEM", extensions: ["pem", "crt", "cer"] }]);
@@ -46,6 +49,16 @@
       testResult = await r.testConnection();
     } finally {
       testing = false;
+    }
+  }
+  async function doForgetSshHostKey() {
+    forgettingHostKey = true;
+    forgotHostKey = false;
+    try {
+      await forgetSshHostKey(r.sshHost, r.sshPort ?? 22);
+      forgotHostKey = true;
+    } finally {
+      forgettingHostKey = false;
     }
   }
 
@@ -301,6 +314,14 @@
 
               <span class="form-label">{m.session_manager_label_ssh_port()}</span>
               <input class="form-input mono short" type="number" bind:value={r.sshPort} placeholder="22" aria-label={m.session_manager_label_ssh_port()} />
+
+              <span class="form-label"></span>
+              <div class="import-row">
+                <button type="button" class="import-btn" disabled={!r.sshHost || forgettingHostKey} onclick={doForgetSshHostKey}>
+                  {m.session_manager_ssh_forget_host_key()}
+                </button>
+                {#if forgotHostKey}<span class="ssh-forget-done">{m.session_manager_ssh_forget_host_key_done()}</span>{/if}
+              </div>
 
               <span class="form-label">{m.session_manager_label_ssh_user()}</span>
               <input class="form-input" bind:value={r.sshUser} aria-label={m.session_manager_label_ssh_user()} />
@@ -632,6 +653,8 @@
     background: var(--panel); cursor: pointer; font-size: 0.75rem; color: var(--fg); flex: none;
   }
   .import-btn:hover { background: var(--bg); }
+  .import-btn:disabled { color: var(--gray-99); cursor: default; }
+  .ssh-forget-done { font-size: 0.75rem; color: var(--fg); align-self: center; }
 
   .form-error {
     margin-top: 0.625rem;

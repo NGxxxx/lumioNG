@@ -327,6 +327,7 @@
   <DropConfirmDialog title={m.namespace_panel_truncate_title()}
     message={m.namespace_panel_truncate_message({ coll: d.coll })}
     expectedName={d.coll}
+    confirmLabel={m.drop_dialog_truncate()}
     onconfirm={async () => { await sessionById(d.sessionId)?.tree?.truncate(d.db, d.coll); dialog = null; }}
     oncancel={() => (dialog = null)} />
 {/if}

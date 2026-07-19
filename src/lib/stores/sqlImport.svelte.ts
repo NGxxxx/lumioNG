@@ -1,4 +1,4 @@
-import { sqlImportPreview, sqlImportCommit, type SqlTablePreview, type SqlImportTableResult } from "../api/sql";
+import { sqlImportPreview, sqlImportCommit, cancelSqlImport, type SqlTablePreview, type SqlImportTableResult } from "../api/sql";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -22,6 +22,7 @@ export function createSqlImport(
   let error = $state<string | null>(null);
   let progress = $state<{ table: string; done: number; total: number } | null>(null);
   let results = $state<SqlImportTableResult[]>([]);
+  let cancelled = $state(false);
 
   async function loadPreview() {
     phase = "loading";
@@ -55,10 +56,12 @@ export function createSqlImport(
     const pickedTables = [...selected];
     activity.begin(m.common_running());
     try {
-      results = await commandLog.pushTimed(sqlImportCmd(db, path, pickedTables), sessionId, () =>
+      const result = await commandLog.pushTimed(sqlImportCmd(db, path, pickedTables), sessionId, () =>
         sqlImportCommit(sessionId, db, path, pickedTables, targetColl, insertMode, (table, done, total) => {
           progress = { table, done, total };
         }));
+      results = result.tables;
+      cancelled = result.cancelled;
       phase = "done";
     } catch (e) {
       error = errorMessage(e);
@@ -68,6 +71,10 @@ export function createSqlImport(
     }
   }
 
+  function cancel() {
+    if (phase === "running") void cancelSqlImport(sessionId);
+  }
+
   return {
     get phase() { return phase; },
     get tables() { return tables; },
@@ -75,9 +82,11 @@ export function createSqlImport(
     get error() { return error; },
     get progress() { return progress; },
     get results() { return results; },
+    get cancelled() { return cancelled; },
     loadPreview,
     toggle,
     toggleAll,
     run,
+    cancel,
   };
 }

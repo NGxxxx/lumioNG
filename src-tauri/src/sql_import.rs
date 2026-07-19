@@ -8,12 +8,17 @@ use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
 use std::collections::{HashMap, HashSet};
 
-/// Parses a SQL dump into its statement list — the one place `sqlparser` runs. The full dump's
-/// AST is held in memory at once (`sqlparser` needs the whole source text up front); this is an
-/// accepted limit for SQL dumps, which are not typically multi-GB unlike arbitrary file imports.
-pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
+/// Parses one statement's raw text (as yielded by `sql_stream::SqlStatementReader::next_statement`)
+/// into a single `Statement` — the one place `sqlparser` runs in production. Errors if the text
+/// doesn't parse, or parses to zero statements (shouldn't happen given the scanner only ever
+/// yields one statement's text at a time, but handled defensively).
+pub fn parse_one_statement(text: &str) -> Result<Statement, String> {
     let dialect = GenericDialect {};
-    Parser::parse_sql(&dialect, sql).map_err(|e| e.to_string())
+    let mut statements = Parser::parse_sql(&dialect, text).map_err(|e| e.to_string())?;
+    if statements.is_empty() {
+        return Err("statement text produced no parsed statement".to_string());
+    }
+    Ok(statements.remove(0))
 }
 
 /// The table segment of a possibly schema-qualified identifier (`public.movie` -> `movie`) — Mongo
@@ -22,21 +27,6 @@ pub fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
 /// otherwise round-trip to a collection literally named `"movie"`, quotes included).
 pub fn table_ident(name: &ObjectName) -> String {
     name.0.last().map(|ident| ident.value.clone()).unwrap_or_default()
-}
-
-/// Only the `CREATE TABLE`-declared column lists, keyed by table name. Doesn't look at any
-/// `INSERT` — a table introduced only by an `INSERT` with an explicit column list has no entry
-/// here (see `resolve_insert_columns`, which handles that case using the `INSERT`'s own columns).
-pub fn table_columns(statements: &[Statement]) -> HashMap<String, Vec<String>> {
-    let mut m = HashMap::new();
-    for stmt in statements {
-        if let Statement::CreateTable(ct) = stmt {
-            let name = table_ident(&ct.name);
-            let cols: Vec<String> = ct.columns.iter().map(|c| c.name.value.clone()).collect();
-            m.insert(name, cols);
-        }
-    }
-    m
 }
 
 /// The column order to use for one `INSERT`'s rows: its own explicit `(col, col, ...)` list if
@@ -69,104 +59,123 @@ pub struct TableSchema {
     pub name: String,
     pub columns: Vec<String>,
     pub row_count: u64,
-}
-
-/// Structural pass over a parsed dump: each table's column list and row count, without converting
-/// a single literal to `Bson` — used by the preview command (report a huge dump's row counts
-/// instantly) and by the commit command (resolve `is_single_table_dump` and progress totals before
-/// any row conversion runs). A table with no resolvable column order (see `resolve_insert_columns`)
-/// contributes no rows and, if it also has no `CREATE TABLE`, doesn't appear at all.
-pub fn table_schemas(statements: &[Statement]) -> Vec<TableSchema> {
-    let columns_by_table = table_columns(statements);
-    let mut order: Vec<String> = Vec::new();
-    let mut counts: HashMap<String, u64> = HashMap::new();
-
-    for stmt in statements {
-        match stmt {
-            Statement::CreateTable(ct) => {
-                let name = table_ident(&ct.name);
-                if !order.contains(&name) {
-                    order.push(name);
-                }
-            }
-            Statement::Insert(insert) => {
-                let table = table_ident(&insert.table_name);
-                if resolve_insert_columns(insert, &columns_by_table).is_empty() {
-                    continue;
-                }
-                if !order.contains(&table) {
-                    order.push(table.clone());
-                }
-                if let Some(rows) = insert_values_rows(insert) {
-                    *counts.entry(table).or_insert(0) += rows.len() as u64;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    order
-        .into_iter()
-        .map(|name| TableSchema {
-            columns: columns_by_table.get(&name).cloned().unwrap_or_default(),
-            row_count: *counts.get(&name).unwrap_or(&0),
-            name,
-        })
-        .collect()
+    /// Per-column inferred type label, aligned index-for-index with `columns` (same reduction
+    /// the old `table_column_types` used to produce). Empty when the accumulator that produced
+    /// this was built with `sample_types: false` (the commit path's cheap totals-only pass never
+    /// needs it).
+    pub column_types: Vec<String>,
 }
 
 /// Rows sampled per table when inferring column types for the preview — deliberately small; the
 /// picker's type annotation doesn't need every row, just a representative sample.
 const SQL_COLUMN_TYPE_SAMPLE_ROWS: usize = 10;
 
-/// For one table's column order, infers each column's BSON type from up to
-/// `SQL_COLUMN_TYPE_SAMPLE_ROWS` rows of that table's *first* resolvable `INSERT` only (never a
-/// later `INSERT` targeting the same table, and never the whole table) — same
-/// `expr_to_bson`/`opts` conversion `sql_import_commit` uses, so the preview matches what a real
-/// import would produce. Types are attributed by column **name** (via that `INSERT`'s own
-/// resolved column order), not position — an explicit `INSERT INTO t (b, a) VALUES (...)` lists
-/// columns in a different order than `CREATE TABLE`, and a positional zip against `columns` would
-/// silently swap types between columns in that case. A column with no sampled value (table has no
-/// resolvable `INSERT`, zero rows, or that column was never set in the sampled INSERT) reports
-/// `"empty"`; one type seen reports that type; more than one reports `"mixed"` — identical
-/// reduction to `csv_import::preview_columns`.
-pub fn table_column_types(
-    statements: &[Statement],
-    table: &str,
-    columns: &[String],
-    opts: &InferOptions,
-) -> Vec<String> {
-    let columns_by_table = table_columns(statements);
-    let mut types: HashMap<String, HashSet<&'static str>> = HashMap::new();
+/// Folds one dump's statements into per-table schema (and, optionally, column-type samples) one
+/// statement at a time — the streaming replacement for the old slice-based `table_columns` +
+/// `table_schemas` + `table_column_types` (each of which needed the whole parsed `Vec<Statement>`
+/// resident to do its own full pass). Because this only ever sees one statement at a time, in file
+/// order, an implicit-column `INSERT` can only resolve its columns if that table's `CREATE TABLE`
+/// was already folded in — true for every real dump tool (`mysqldump`/`pg_dump` always emit schema
+/// before data). An out-of-order dump's implicit-column `INSERT` is treated like an `INSERT` into
+/// a wholly undeclared table: `resolve_insert_columns` returns empty and the row is skipped, same
+/// fallback already used today for that case.
+pub struct SqlSchemaAccumulator {
+    sample_types: bool,
+    opts: InferOptions,
+    columns_by_table: HashMap<String, Vec<String>>,
+    order: Vec<String>,
+    counts: HashMap<String, u64>,
+    sampled_tables: HashSet<String>,
+    types_by_table: HashMap<String, HashMap<String, HashSet<&'static str>>>,
+}
 
-    let sample = statements.iter().find_map(|stmt| {
-        let Statement::Insert(insert) = stmt else { return None };
-        if table_ident(&insert.table_name) != table {
-            return None;
-        }
-        let cols = resolve_insert_columns(insert, &columns_by_table);
-        if cols.is_empty() {
-            return None;
-        }
-        insert_values_rows(insert).map(|rows| (cols, rows))
-    });
-
-    if let Some((cols, rows)) = sample {
-        for row in rows.iter().take(SQL_COLUMN_TYPE_SAMPLE_ROWS) {
-            for (col, expr) in cols.iter().zip(row.iter()) {
-                types.entry(col.clone()).or_default().insert(bson_type_name(&expr_to_bson(expr, opts)));
-            }
+impl SqlSchemaAccumulator {
+    /// `sample_types` controls whether column-type inference runs at all — the preview command
+    /// needs it (`true`); the commit command's cheap totals-only first pass doesn't and turns it
+    /// off (`false`) to preserve the old `table_schemas`'s perf property of never converting a
+    /// literal to `Bson` just to count rows.
+    pub fn new(sample_types: bool, opts: InferOptions) -> Self {
+        Self {
+            sample_types,
+            opts,
+            columns_by_table: HashMap::new(),
+            order: Vec::new(),
+            counts: HashMap::new(),
+            sampled_tables: HashSet::new(),
+            types_by_table: HashMap::new(),
         }
     }
 
-    columns
-        .iter()
-        .map(|c| match types.get(c) {
-            None => "empty".to_string(),
-            Some(set) if set.len() == 1 => set.iter().next().unwrap().to_string(),
-            Some(_) => "mixed".to_string(),
-        })
-        .collect()
+    pub fn add_statement(&mut self, stmt: &Statement) {
+        match stmt {
+            Statement::CreateTable(ct) => {
+                let name = table_ident(&ct.name);
+                if !self.order.contains(&name) {
+                    self.order.push(name.clone());
+                }
+                let cols: Vec<String> = ct.columns.iter().map(|c| c.name.value.clone()).collect();
+                self.columns_by_table.insert(name, cols);
+            }
+            Statement::Insert(insert) => {
+                let table = table_ident(&insert.table_name);
+                let cols = resolve_insert_columns(insert, &self.columns_by_table);
+                if cols.is_empty() {
+                    return;
+                }
+                if !self.order.contains(&table) {
+                    self.order.push(table.clone());
+                }
+                let Some(rows) = insert_values_rows(insert) else { return };
+                *self.counts.entry(table.clone()).or_insert(0) += rows.len() as u64;
+
+                if self.sample_types && self.sampled_tables.insert(table.clone()) {
+                    let type_map = self.types_by_table.entry(table).or_default();
+                    for row in rows.iter().take(SQL_COLUMN_TYPE_SAMPLE_ROWS) {
+                        for (col, expr) in cols.iter().zip(row.iter()) {
+                            type_map
+                                .entry(col.clone())
+                                .or_default()
+                                .insert(bson_type_name(&expr_to_bson(expr, &self.opts)));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Consumes the accumulator, returning each table's schema in first-seen order plus the full
+    /// `columns_by_table` map — the latter is what `sql_import_commit`'s second pass needs to
+    /// resolve `INSERT` columns without re-deriving it from a second `CREATE TABLE` scan.
+    pub fn finish(self) -> (Vec<TableSchema>, HashMap<String, Vec<String>>) {
+        let schemas = self
+            .order
+            .iter()
+            .map(|name| {
+                let columns = self.columns_by_table.get(name).cloned().unwrap_or_default();
+                let column_types = if self.sample_types {
+                    let types = self.types_by_table.get(name);
+                    columns
+                        .iter()
+                        .map(|c| match types.and_then(|t| t.get(c)) {
+                            None => "empty".to_string(),
+                            Some(set) if set.len() == 1 => set.iter().next().unwrap().to_string(),
+                            Some(_) => "mixed".to_string(),
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                TableSchema {
+                    name: name.clone(),
+                    row_count: *self.counts.get(name).unwrap_or(&0),
+                    columns,
+                    column_types,
+                }
+            })
+            .collect();
+        (schemas, self.columns_by_table)
+    }
 }
 
 fn value_to_bson(v: &SqlValue, opts: &InferOptions) -> Bson {
@@ -229,6 +238,16 @@ pub fn resolve_target_collection(table_name: &str, is_single_table_dump: bool, t
 mod tests {
     use super::*;
 
+    /// Multi-statement fixture builder for tests — `sqlparser::Parser::parse_sql` run directly
+    /// over a whole string, the same way production code did before the streaming rewrite. Kept
+    /// test-only (not `pub`, not reachable from a real build) so it doesn't reintroduce the
+    /// whole-file-in-memory parse as production dead code: real dumps go through
+    /// `sql_stream::SqlStatementReader` + `parse_one_statement` one statement at a time instead.
+    fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
+        let dialect = GenericDialect {};
+        Parser::parse_sql(&dialect, sql).map_err(|e| e.to_string())
+    }
+
     #[test]
     fn table_ident_strips_the_quote_character_from_a_quoted_table_name() {
         let statements = parse_statements(r#"CREATE TABLE "movie" (id INT);"#).unwrap();
@@ -259,12 +278,33 @@ mod tests {
     }
 
     #[test]
-    fn parse_statements_rejects_malformed_sql_as_an_error_not_a_panic() {
-        assert!(parse_statements("CREATE TABLE (((").is_err());
+    fn parse_one_statement_parses_a_single_create_table_statement() {
+        let stmt = parse_one_statement("CREATE TABLE t (a INT)").unwrap();
+        assert!(matches!(stmt, Statement::CreateTable(_)));
     }
 
     #[test]
-    fn table_schemas_lists_columns_and_row_counts_per_table_in_first_seen_order() {
+    fn parse_one_statement_parses_a_single_insert_statement() {
+        let stmt = parse_one_statement("INSERT INTO t VALUES (1)").unwrap();
+        assert!(matches!(stmt, Statement::Insert(_)));
+    }
+
+    #[test]
+    fn parse_one_statement_rejects_malformed_sql_as_an_error_not_a_panic() {
+        assert!(parse_one_statement("CREATE TABLE (((").is_err());
+    }
+
+    fn accumulate(sql: &str, sample_types: bool, opts: InferOptions) -> (Vec<TableSchema>, HashMap<String, Vec<String>>) {
+        let statements = parse_statements(sql).unwrap();
+        let mut acc = SqlSchemaAccumulator::new(sample_types, opts);
+        for stmt in &statements {
+            acc.add_statement(stmt);
+        }
+        acc.finish()
+    }
+
+    #[test]
+    fn accumulator_lists_columns_and_row_counts_per_table_in_first_seen_order() {
         let sql = r#"
             CREATE TABLE users (id INT, name TEXT);
             CREATE TABLE orders (id INT, total INT);
@@ -272,8 +312,8 @@ mod tests {
             INSERT INTO orders VALUES (1, 100);
             INSERT INTO orders VALUES (2, 200);
         "#;
-        let statements = parse_statements(sql).unwrap();
-        let schemas = table_schemas(&statements);
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (schemas, _) = accumulate(sql, false, opts);
         assert_eq!(
             schemas.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(),
             vec!["users", "orders"]
@@ -284,46 +324,67 @@ mod tests {
     }
 
     #[test]
-    fn table_schemas_counts_rows_without_needing_a_convertible_expression() {
+    fn accumulator_counts_rows_without_needing_a_convertible_expression() {
         // NOW() is a function call — `expr_to_bson` would map it to `Bson::Null` rather than
-        // erroring, but the point here is `table_schemas` never looks at the expression's kind at
+        // erroring, but the point here is row counting never looks at the expression's kind at
         // all, only the tuple count, so it can't depend on conversion succeeding.
         let sql = "CREATE TABLE t (a TIMESTAMP); INSERT INTO t VALUES (NOW());";
-        let statements = parse_statements(sql).unwrap();
-        let schemas = table_schemas(&statements);
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (schemas, _) = accumulate(sql, false, opts);
         assert_eq!(schemas[0].row_count, 1);
     }
 
     #[test]
-    fn table_schemas_reports_zero_rows_for_a_create_table_with_no_insert() {
-        let statements = parse_statements("CREATE TABLE empty_t (a INT);").unwrap();
-        let schemas = table_schemas(&statements);
+    fn accumulator_reports_zero_rows_for_a_create_table_with_no_insert() {
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (schemas, _) = accumulate("CREATE TABLE empty_t (a INT);", false, opts);
         assert_eq!(schemas.len(), 1);
         assert_eq!(schemas[0].row_count, 0);
     }
 
     #[test]
-    fn table_schemas_skips_an_insert_with_no_columns_and_no_known_create_table() {
-        let statements = parse_statements("INSERT INTO ghost VALUES (1, 2);").unwrap();
-        let schemas = table_schemas(&statements);
+    fn accumulator_skips_an_insert_with_no_columns_and_no_known_create_table() {
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (schemas, _) = accumulate("INSERT INTO ghost VALUES (1, 2);", false, opts);
         assert!(schemas.is_empty());
     }
 
     #[test]
+    fn accumulator_skips_an_implicit_column_insert_that_appears_before_its_create_table() {
+        // Single forward pass — an accepted limitation for hand-edited/out-of-order dumps (real
+        // dump tools always emit CREATE TABLE before INSERT). The table still ends up registered
+        // (from the later CREATE TABLE), but the earlier INSERT's row is never counted.
+        let sql = "INSERT INTO t VALUES (1, 2); CREATE TABLE t (a INT, b INT);";
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (schemas, _) = accumulate(sql, false, opts);
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].row_count, 0);
+    }
+
+    #[test]
+    fn accumulator_carries_columns_by_table_into_finish_for_the_commit_pass_to_reuse() {
+        let sql = "CREATE TABLE t (a INT, b INT); INSERT INTO t VALUES (1, 2);";
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (_, columns_by_table) = accumulate(sql, false, opts);
+        assert_eq!(columns_by_table.get("t").unwrap(), &vec!["a".to_string(), "b".to_string()]);
+    }
+
+    #[test]
     fn resolve_insert_columns_prefers_the_explicit_column_list_over_create_table_order() {
-        let statements =
-            parse_statements("CREATE TABLE t (a INT, b INT); INSERT INTO t (b, a) VALUES (2, 1);")
-                .unwrap();
-        let columns_by_table = table_columns(&statements);
+        let sql = "CREATE TABLE t (a INT, b INT); INSERT INTO t (b, a) VALUES (2, 1);";
+        let statements = parse_statements(sql).unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (_, columns_by_table) = accumulate(sql, false, opts);
         let Statement::Insert(insert) = &statements[1] else { panic!("expected Insert") };
         assert_eq!(resolve_insert_columns(insert, &columns_by_table), vec!["b", "a"]);
     }
 
     #[test]
     fn resolve_insert_columns_falls_back_to_create_table_order_with_no_explicit_list() {
-        let statements =
-            parse_statements("CREATE TABLE t (a INT, b INT); INSERT INTO t VALUES (1, 2);").unwrap();
-        let columns_by_table = table_columns(&statements);
+        let sql = "CREATE TABLE t (a INT, b INT); INSERT INTO t VALUES (1, 2);";
+        let statements = parse_statements(sql).unwrap();
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let (_, columns_by_table) = accumulate(sql, false, opts);
         let Statement::Insert(insert) = &statements[1] else { panic!("expected Insert") };
         assert_eq!(resolve_insert_columns(insert, &columns_by_table), vec!["a", "b"]);
     }
@@ -404,64 +465,86 @@ mod tests {
     }
 
     #[test]
-    fn table_column_types_infers_a_uniform_int_column() {
-        let statements =
-            parse_statements("CREATE TABLE t (a INT, b INT); INSERT INTO t VALUES (1, 2), (3, 4);").unwrap();
+    fn accumulator_infers_a_uniform_int_column_when_sampling_is_on() {
+        let sql = "CREATE TABLE t (a INT, b INT); INSERT INTO t VALUES (1, 2), (3, 4);";
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let types = table_column_types(&statements, "t", &["a".to_string(), "b".to_string()], &opts);
-        assert_eq!(types, vec!["int".to_string(), "int".to_string()]);
+        let (schemas, _) = accumulate(sql, true, opts);
+        assert_eq!(schemas[0].column_types, vec!["int".to_string(), "int".to_string()]);
     }
 
     #[test]
-    fn table_column_types_reports_mixed_when_sampled_rows_disagree() {
-        let statements = parse_statements("CREATE TABLE t (a TEXT); INSERT INTO t VALUES (1), ('hello');").unwrap();
+    fn accumulator_reports_mixed_when_sampled_rows_disagree() {
+        let sql = "CREATE TABLE t (a TEXT); INSERT INTO t VALUES (1), ('hello');";
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let types = table_column_types(&statements, "t", &["a".to_string()], &opts);
-        assert_eq!(types, vec!["mixed".to_string()]);
+        let (schemas, _) = accumulate(sql, true, opts);
+        assert_eq!(schemas[0].column_types, vec!["mixed".to_string()]);
     }
 
     #[test]
-    fn table_column_types_reports_empty_for_a_table_with_no_insert() {
-        let statements = parse_statements("CREATE TABLE t (a INT, b INT);").unwrap();
+    fn accumulator_reports_empty_for_a_table_with_no_insert_when_sampling_is_on() {
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let types = table_column_types(&statements, "t", &["a".to_string(), "b".to_string()], &opts);
-        assert_eq!(types, vec!["empty".to_string(), "empty".to_string()]);
+        let (schemas, _) = accumulate("CREATE TABLE t (a INT, b INT);", true, opts);
+        assert_eq!(schemas[0].column_types, vec!["empty".to_string(), "empty".to_string()]);
     }
 
     #[test]
-    fn table_column_types_only_samples_the_first_matching_insert() {
+    fn accumulator_only_samples_the_first_matching_insert() {
         // The second INSERT would flip column "a" to "mixed" if it were sampled — it must not be.
-        let statements = parse_statements(
-            "CREATE TABLE t (a INT); INSERT INTO t VALUES (1), (2); INSERT INTO t VALUES ('not a number');",
-        )
-        .unwrap();
+        // Row counting is unaffected by the sampling toggle: both inserts still count.
+        let sql = "CREATE TABLE t (a INT); INSERT INTO t VALUES (1), (2); INSERT INTO t VALUES ('not a number');";
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let types = table_column_types(&statements, "t", &["a".to_string()], &opts);
-        assert_eq!(types, vec!["int".to_string()]);
+        let (schemas, _) = accumulate(sql, true, opts);
+        assert_eq!(schemas[0].column_types, vec!["int".to_string()]);
+        assert_eq!(schemas[0].row_count, 3);
     }
 
     #[test]
-    fn table_column_types_respects_explicit_out_of_order_insert_columns() {
+    fn accumulator_respects_explicit_out_of_order_insert_columns_when_sampling() {
         // INSERT explicitly lists (b, a) — types must attribute by column name, not position.
-        let statements = parse_statements(
-            "CREATE TABLE t (a INT, b TEXT); INSERT INTO t (b, a) VALUES ('x', 1);",
-        )
-        .unwrap();
+        let sql = "CREATE TABLE t (a INT, b TEXT); INSERT INTO t (b, a) VALUES ('x', 1);";
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let types = table_column_types(&statements, "t", &["a".to_string(), "b".to_string()], &opts);
-        assert_eq!(types, vec!["int".to_string(), "string".to_string()]);
+        let (schemas, _) = accumulate(sql, true, opts);
+        assert_eq!(schemas[0].column_types, vec!["int".to_string(), "string".to_string()]);
     }
 
     #[test]
-    fn table_column_types_stops_sampling_at_the_row_cap() {
+    fn accumulator_stops_sampling_at_the_row_cap() {
         // 10 int rows then a string row — with the cap at 10, the string row must not be sampled.
         let mut sql = String::from("CREATE TABLE t (a TEXT); INSERT INTO t VALUES ");
         let rows: Vec<String> = (0..10).map(|i| format!("({i})")).collect();
         sql.push_str(&rows.join(", "));
         sql.push_str(", ('boom');");
-        let statements = parse_statements(&sql).unwrap();
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let types = table_column_types(&statements, "t", &["a".to_string()], &opts);
-        assert_eq!(types, vec!["int".to_string()]);
+        let (schemas, _) = accumulate(&sql, true, opts);
+        assert_eq!(schemas[0].column_types, vec!["int".to_string()]);
+    }
+
+    #[test]
+    fn end_to_end_streaming_scan_parse_and_accumulate_over_a_dump_with_comments_and_quoted_semicolons() {
+        use crate::sql_stream::SqlStatementReader;
+        use std::io::Cursor;
+
+        let sql = "-- dump start\n\
+                   CREATE TABLE users (id INT, note TEXT);\n\
+                   /*!40000 ALTER TABLE users DISABLE KEYS */;\n\
+                   INSERT INTO users VALUES (1, 'semicolon; inside a string'), (2, 'it''s escaped');\n\
+                   -- dump end\n";
+        let mut scanner = SqlStatementReader::new(Cursor::new(sql.as_bytes()));
+        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let mut acc = SqlSchemaAccumulator::new(true, opts);
+        let mut statement_texts = Vec::new();
+        while let Some(text) = scanner.next_statement().unwrap() {
+            statement_texts.push(text.clone());
+            if let Ok(stmt) = parse_one_statement(&text) {
+                acc.add_statement(&stmt);
+            }
+        }
+        // The `/*!40000 ... */` line is a block comment followed by a bare `;` — the scanner
+        // swallows both without yielding an empty statement, so only 2 statements reach the parser.
+        assert_eq!(statement_texts.len(), 2);
+        let (schemas, _) = acc.finish();
+        assert_eq!(schemas.len(), 1);
+        assert_eq!(schemas[0].row_count, 2);
+        assert_eq!(schemas[0].column_types, vec!["int".to_string(), "string".to_string()]);
     }
 }

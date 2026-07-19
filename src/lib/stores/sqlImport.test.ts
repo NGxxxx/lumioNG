@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../api/sql", () => ({
   sqlImportPreview: vi.fn(),
   sqlImportCommit: vi.fn(),
+  cancelSqlImport: vi.fn(),
 }));
 
 import * as api from "../api/sql";
@@ -11,6 +12,7 @@ import { commandLog } from "./commandLog.svelte";
 
 const sqlImportPreview = api.sqlImportPreview as ReturnType<typeof vi.fn>;
 const sqlImportCommit = api.sqlImportCommit as ReturnType<typeof vi.fn>;
+const cancelSqlImport = api.cancelSqlImport as ReturnType<typeof vi.fn>;
 
 const preview = [
   { table: "users", columns: [{ name: "id", inferredType: "int" }, { name: "name", inferredType: "string" }], rowCount: 2 },
@@ -20,6 +22,7 @@ const preview = [
 describe("createSqlImport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    cancelSqlImport.mockResolvedValue(undefined);
     commandLog.clear();
   });
 
@@ -64,9 +67,10 @@ describe("createSqlImport", () => {
 
   it("run commits only the selected tables and reports results", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
-    sqlImportCommit.mockResolvedValueOnce([
-      { table: "users", inserted: 2, failed: 0, errors: [] },
-    ]);
+    sqlImportCommit.mockResolvedValueOnce({
+      tables: [{ table: "users", inserted: 2, failed: 0, errors: [] }],
+      cancelled: false,
+    });
     const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null, "skipDuplicates");
     await v.loadPreview();
     v.toggle("orders"); // deselect orders — only users should be committed
@@ -76,11 +80,12 @@ describe("createSqlImport", () => {
     );
     expect(v.phase).toBe("done");
     expect(v.results).toEqual([{ table: "users", inserted: 2, failed: 0, errors: [] }]);
+    expect(v.cancelled).toBe(false);
   });
 
   it("run passes a pre-selected target collection through to the commit call", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
-    sqlImportCommit.mockResolvedValueOnce([]);
+    sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
     const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", "movies", "skipDuplicates");
     await v.loadPreview();
     await v.run();
@@ -111,12 +116,35 @@ describe("createSqlImport", () => {
 
   it("run pushes a command-log entry with a measured duration", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
-    sqlImportCommit.mockResolvedValueOnce([]);
+    sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
     const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null, "skipDuplicates");
     await v.loadPreview();
     await v.run();
     const entry = commandLog.entries.at(-1)!;
     expect(entry.tookMs).toBeGreaterThanOrEqual(0);
     expect(entry.text).toContain("users, orders");
+  });
+
+  it("cancel while running asks the backend to interrupt it, and a cancelled result is flagged as partial", async () => {
+    sqlImportPreview.mockResolvedValueOnce(preview);
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null, "skipDuplicates");
+    await v.loadPreview();
+    sqlImportCommit.mockImplementationOnce(async () => {
+      v.cancel();
+      return { tables: [{ table: "users", inserted: 1, failed: 0, errors: [] }], cancelled: true };
+    });
+    await v.run();
+    expect(cancelSqlImport).toHaveBeenCalledWith("conn:1");
+    expect(v.phase).toBe("done");
+    expect(v.cancelled).toBe(true);
+    expect(v.results).toEqual([{ table: "users", inserted: 1, failed: 0, errors: [] }]);
+  });
+
+  it("cancel before running does nothing", async () => {
+    sqlImportPreview.mockResolvedValueOnce(preview);
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null, "skipDuplicates");
+    await v.loadPreview();
+    v.cancel();
+    expect(cancelSqlImport).not.toHaveBeenCalled();
   });
 });

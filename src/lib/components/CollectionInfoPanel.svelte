@@ -121,7 +121,7 @@
 </div>
 
 <style>
-  .infopanel { overflow: auto; height: 100%; padding: 0.75rem 1rem; font-size: 0.8125rem; }
+  .infopanel { overflow: auto; height: 100%; box-sizing: border-box; padding: 0.75rem 1rem; font-size: 0.8125rem; }
   h3 { margin: 1rem 0 0.375rem; font-size: 0.8125rem; color: var(--gray-44); }
   h3:first-child { margin-top: 0; }
   table.kv { border-collapse: collapse; user-select: none; }

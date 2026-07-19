@@ -6,11 +6,13 @@ mod csv_import;
 mod error;
 mod json_bson;
 mod json_stream;
+mod known_hosts;
 mod query_library;
 mod registry;
 mod script;
 mod sql_export;
 mod sql_import;
+mod sql_stream;
 mod ssh_tunnel;
 mod state;
 mod value_infer;
@@ -29,6 +31,7 @@ pub fn run() {
             commands::connection::delete_connection,
             commands::connection::touch_connection,
             commands::connection::disconnect,
+            commands::connection::forget_ssh_host_key,
             commands::query::query_page,
             commands::query::aggregate,
             commands::query::aggregate_count,
@@ -58,6 +61,7 @@ pub fn run() {
             commands::import_export::import_file_size,
             commands::sql::sql_import_preview,
             commands::sql::sql_import_commit,
+            commands::sql::cancel_import,
             commands::csv::csv_import_preview,
             commands::csv::csv_import_commit,
             commands::admin::create_collection,

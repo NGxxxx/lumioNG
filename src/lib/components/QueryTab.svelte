@@ -395,6 +395,6 @@
   .result-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
   .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
   .cancel-btn { font-size: 0.75rem; cursor: pointer; border: none; background: none; color: var(--link); }
-  .value-display { height: 100%; overflow: auto; padding: 0.5rem 0.75rem; }
+  .value-display { height: 100%; box-sizing: border-box; overflow: auto; padding: 0.5rem 0.75rem; }
   .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 </style>

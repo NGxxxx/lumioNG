@@ -76,6 +76,7 @@
 </script>
 
 <div class="toolbar">
+  <!-- ── Connection: session + tree state ── -->
   <!-- Session manager (always enabled) -->
   <span class="tt" use:tooltip={m.toolbar_session_manager()}>
     <button
@@ -95,57 +96,6 @@
     </button>
   </span>
 
-  <div class="sep"></div>
-
-  <!-- Save (enabled when a document tab is the active editor) -->
-  <span class="tt" use:tooltip={m.toolbar_save()}>
-    <button aria-label={m.toolbar_save()} class="btn-icon" disabled={!canSave} onclick={onsave}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2 2h9l3 3v9H2z" fill="var(--link)" stroke="var(--link-strong)" stroke-width="0.8"/>
-        <rect x="5" y="2" width="5" height="4" fill="var(--blue-tint5)"/>
-        <rect x="4.5" y="9" width="7" height="4" fill="var(--blue-tint5)"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- New document (disabled when !canNewDoc) -->
-  <span class="tt" use:tooltip={m.toolbar_new_document()}>
-    <button
-      aria-label={m.toolbar_new_document()}
-      class="btn-icon"
-      disabled={!canNewDoc}
-      onclick={onnewdocument}
-    >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M3 1.5h7l3 3v10H3z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
-        <path d="M10 1.5v3h3" fill="none" stroke="var(--muted)" stroke-width="0.9"/>
-        <path d="M8 7v5M5.5 9.5h5" stroke="var(--accent)" stroke-width="1.4"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Edit document (enabled when exactly one data-view row with an _id is selected) -->
-  <span class="tt" use:tooltip={m.toolbar_edit_document()}>
-    <button aria-label={m.toolbar_edit_document()} class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2 11l7-7 3 3-7 7H2z" fill="var(--warn)" stroke="var(--fg)" stroke-width="0.9"/>
-        <path d="M10 3l2-2 3 3-2 2z" fill="var(--muted)" stroke="var(--muted)" stroke-width="0.8"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Delete document (enabled when the data view has a selection) -->
-  <span class="tt" use:tooltip={m.toolbar_delete_document()}>
-    <button aria-label={m.toolbar_delete_document()} class="btn-icon" disabled={!canDeleteDoc} onclick={ondeletedocument}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 4h8l-1 10H5z" fill="var(--panel)" stroke="var(--danger)" stroke-width="0.9"/>
-        <path d="M3 4h10M6.5 4V2.5h3V4" stroke="var(--danger)" stroke-width="0.9" fill="none"/>
-      </svg>
-    </button>
-  </span>
-
-  <div class="sep"></div>
-
   <!-- Refresh (disabled when not connected) -->
   <span class="tt" use:tooltip={m.toolbar_refresh()}>
     <button
@@ -161,15 +111,59 @@
     </button>
   </span>
 
-  <!-- Stop (enabled while a query/script/page-load is in flight) -->
-  <span class="tt" use:tooltip={m.toolbar_stop()}>
-    <button aria-label={m.toolbar_stop()} class="btn-icon" disabled={!canStop} onclick={onstop}>
+  <div class="sep"></div>
+
+  <!-- ── Document CRUD (Save also covers the active Query tab) ── -->
+  <!-- Save (enabled when a document tab or a query tab is the active editor) -->
+  <span class="tt" use:tooltip={m.toolbar_save()}>
+    <button aria-label={m.toolbar_save()} class="btn-icon" disabled={!canSave} onclick={onsave}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <rect x="3" y="3" width="10" height="10" rx="1.5" fill="var(--danger)"/>
+        <path d="M2 2h9l3 3v9H2z" fill="var(--link)" stroke="var(--link-strong)" stroke-width="0.8"/>
+        <rect x="5" y="2" width="5" height="4" fill="var(--blue-tint5)"/>
+        <rect x="4.5" y="9" width="7" height="4" fill="var(--blue-tint5)"/>
       </svg>
     </button>
   </span>
 
+  <!-- New document (disabled when !canNewDoc, e.g. no collection selected or session is read-only) -->
+  <span class="tt" use:tooltip={m.toolbar_new_document()}>
+    <button
+      aria-label={m.toolbar_new_document()}
+      class="btn-icon"
+      disabled={!canNewDoc}
+      onclick={onnewdocument}
+    >
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+        <path d="M3 1.5h7l3 3v10H3z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
+        <path d="M10 1.5v3h3" fill="none" stroke="var(--muted)" stroke-width="0.9"/>
+        <path d="M8 7v5M5.5 9.5h5" stroke="var(--accent)" stroke-width="1.4"/>
+      </svg>
+    </button>
+  </span>
+
+  <!-- Edit document (enabled when exactly one data-view row with an _id is selected, and session is not read-only) -->
+  <span class="tt" use:tooltip={m.toolbar_edit_document()}>
+    <button aria-label={m.toolbar_edit_document()} class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+        <path d="M2 11l7-7 3 3-7 7H2z" fill="var(--warn)" stroke="var(--fg)" stroke-width="0.9"/>
+        <path d="M10 3l2-2 3 3-2 2z" fill="var(--muted)" stroke="var(--muted)" stroke-width="0.8"/>
+      </svg>
+    </button>
+  </span>
+
+  <!-- Delete document (enabled when the data view has a selection, and session is not read-only) -->
+  <span class="tt" use:tooltip={m.toolbar_delete_document()}>
+    <button aria-label={m.toolbar_delete_document()} class="btn-icon" disabled={!canDeleteDoc} onclick={ondeletedocument}>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+        <path d="M4 4h8l-1 10H5z" fill="var(--panel)" stroke="var(--danger)" stroke-width="0.9"/>
+        <path d="M3 4h10M6.5 4V2.5h3V4" stroke="var(--danger)" stroke-width="0.9" fill="none"/>
+      </svg>
+    </button>
+  </span>
+
+  <div class="sep"></div>
+
+  <!-- ── Query execution ── -->
   <!-- Run query (enabled when canRun) -->
   <span class="tt" use:tooltip={m.toolbar_run_query()}>
     <button aria-label={m.toolbar_run_query()} class="btn-icon" disabled={!canRun} onclick={onrun}>
@@ -189,7 +183,16 @@
     </button>
   </span>
 
-  <!-- Explain (enabled when the active query tab has a pure find/aggregate cursor result) -->
+  <!-- Stop (enabled only while the active query tab's script is actually running) -->
+  <span class="tt" use:tooltip={m.toolbar_stop()}>
+    <button aria-label={m.toolbar_stop()} class="btn-icon" disabled={!canStop} onclick={onstop}>
+      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
+        <rect x="3" y="3" width="10" height="10" rx="1.5" fill="var(--danger)"/>
+      </svg>
+    </button>
+  </span>
+
+  <!-- Explain (enabled whenever a query tab is active; re-runs first if not yet explainable) -->
   <span class="tt" use:tooltip={m.toolbar_explain()}>
     <button aria-label={m.toolbar_explain()} class="btn-icon" disabled={!canExplainQuery} onclick={onexplainquery}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
@@ -204,6 +207,7 @@
 
   <div class="sep"></div>
 
+  <!-- ── Data navigation ── -->
   <!-- Find / filter (enabled in the Data view or an active Query tab; focuses its search box) -->
   <span class="tt" use:tooltip={m.toolbar_find_title()}>
     <button aria-label={m.toolbar_find()} class="btn-icon" disabled={!canFind} onclick={onfind}>
@@ -235,6 +239,7 @@
 
   <div class="sep"></div>
 
+  <!-- ── Import / export ── -->
   <!-- Export (enabled in the data view; exports the selection if any, else the filtered set) -->
   <span class="tt" use:tooltip={m.toolbar_export()}>
     <button aria-label={m.toolbar_export()} class="btn-icon" disabled={!canExport} onclick={onexport}>
@@ -245,7 +250,7 @@
     </button>
   </span>
 
-  <!-- Import (enabled when a collection is selected; imports into it from a JSON/JSONL/BSON file) -->
+  <!-- Import (enabled when a collection is selected and session is not read-only; imports from a JSON/JSONL/BSON/SQL file) -->
   <span class="tt" use:tooltip={m.toolbar_import()}>
     <button aria-label={m.toolbar_import()} class="btn-icon" disabled={!canImport} onclick={onimport}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
@@ -255,6 +260,9 @@
     </button>
   </span>
 
+  <div class="sep"></div>
+
+  <!-- ── View toggles (persistent on/off state, not one-shot actions) ── -->
   <!-- Wrap long lines (always enabled — shared across Tree view, Edit Document, query cells) -->
   <span class="tt" use:tooltip={m.wrap_toggle_title()}>
     <button
@@ -269,8 +277,6 @@
       </svg>
     </button>
   </span>
-
-  <div class="sep"></div>
 
   <!-- Command log (always enabled) -->
   <span class="tt" use:tooltip={m.toolbar_command_log()}>

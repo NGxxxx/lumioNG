@@ -1,4 +1,5 @@
 use crate::error::AppError;
+use crate::known_hosts;
 use crate::registry::{self, ConnectionInput, SavedConnection};
 use crate::ssh_tunnel::{self, SshTunnelConfig, SshTunnelHandle};
 use crate::state::AppState;
@@ -15,6 +16,7 @@ use tauri::{AppHandle, Manager, State};
 /// forwarded port before the Mongo client ever sees the real remote host. Shared by `connect`
 /// and `test_connection` so both go through the identical tunnel-then-ping sequence.
 async fn open_client(
+    app: &AppHandle,
     uri: &str,
     ssh: Option<SshTunnelConfig>,
 ) -> Result<(Client, Option<SshTunnelHandle>), AppError> {
@@ -36,7 +38,7 @@ async fn open_client(
             else {
                 return Err(AppError::Connection("SSH tunnel requires a direct host:port URI".into()));
             };
-            let tunnel = ssh_tunnel::open(&cfg, &remote_host, remote_port.unwrap_or(27017)).await?;
+            let tunnel = ssh_tunnel::open(&cfg, &remote_host, remote_port.unwrap_or(27017), &known_hosts_path(app)?).await?;
             opts.hosts = vec![ServerAddress::Tcp { host: "127.0.0.1".into(), port: Some(tunnel.local_port) }];
             Some(tunnel)
         }
@@ -57,13 +59,14 @@ async fn open_client(
 
 #[tauri::command]
 pub async fn connect(
+    app: AppHandle,
     session_id: String,
     uri: String,
     read_only: bool,
     ssh: Option<SshTunnelConfig>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (client, tunnel) = open_client(&uri, ssh).await?;
+    let (client, tunnel) = open_client(&app, &uri, ssh).await?;
     state.insert_session(session_id, client, read_only, tunnel).await;
     Ok(())
 }
@@ -71,8 +74,8 @@ pub async fn connect(
 /// Validates a connection (SSH tunnel + Mongo auth/TLS) without opening a session — the client
 /// and tunnel are simply dropped at the end of this function.
 #[tauri::command]
-pub async fn test_connection(uri: String, ssh: Option<SshTunnelConfig>) -> Result<(), AppError> {
-    open_client(&uri, ssh).await?;
+pub async fn test_connection(app: AppHandle, uri: String, ssh: Option<SshTunnelConfig>) -> Result<(), AppError> {
+    open_client(&app, &uri, ssh).await?;
     Ok(())
 }
 
@@ -118,6 +121,23 @@ fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {
         .app_config_dir()
         .map_err(|e| AppError::Io(e.to_string()))?;
     Ok(dir.join("connections.json"))
+}
+
+fn known_hosts_path(app: &AppHandle) -> Result<PathBuf, AppError> {
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(dir.join("known_hosts.json"))
+}
+
+/// Drops the trusted SSH host key for `host:port`, if any, so the next connect trusts whatever key
+/// the server presents (first use again) — the escape hatch for a legitimate host key rotation.
+#[tauri::command]
+pub fn forget_ssh_host_key(app: AppHandle, host: String, port: u16) -> Result<(), AppError> {
+    let path = known_hosts_path(&app)?;
+    let list = known_hosts::forget(known_hosts::load(&path)?, &host, port);
+    known_hosts::save(&path, &list)
 }
 
 #[tauri::command]

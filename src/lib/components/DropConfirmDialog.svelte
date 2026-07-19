@@ -7,12 +7,14 @@
     title,
     message,
     expectedName,
+    confirmLabel,
     onconfirm,
     oncancel,
   }: {
     title: string;
     message: string;
     expectedName: string;
+    confirmLabel?: string;
     onconfirm: () => Promise<void> | void;
     oncancel: () => void;
   } = $props();
@@ -56,7 +58,7 @@
     <footer>
       <button onclick={oncancel} disabled={busy}>{m.common_cancel()}</button>
       <button class="danger" disabled={!matches || busy} onclick={confirm}>
-        {#if busy}<span class="dlg-spinner" aria-hidden="true"></span>{m.common_running()}{:else}{m.drop_dialog_drop()}{/if}
+        {#if busy}<span class="dlg-spinner" aria-hidden="true"></span>{m.common_running()}{:else}{confirmLabel ?? m.drop_dialog_drop()}{/if}
       </button>
     </footer>
   </div>
