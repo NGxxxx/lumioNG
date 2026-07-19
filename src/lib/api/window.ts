@@ -15,3 +15,14 @@ export async function minimize(): Promise<void> {
 export async function toggleMaximize(): Promise<void> {
   await getCurrentWindow().toggleMaximize();
 }
+
+/** Whether the application window is currently maximized. */
+export async function isMaximized(): Promise<boolean> {
+  return getCurrentWindow().isMaximized();
+}
+
+/** Notifies on every maximize/restore (also fires for other resizes; caller just re-reads state). */
+export async function onMaximizedChange(callback: (maximized: boolean) => void): Promise<() => void> {
+  const win = getCurrentWindow();
+  return win.onResized(async () => callback(await win.isMaximized()));
+}

@@ -188,6 +188,15 @@
     openDocument(s.db, s.coll, initial, "insert");
   }
 
+  /** Go to > Next/Previous tab: cycles the open work tabs (query/document), wrapping around. */
+  function cycleWorkTab(dir: 1 | -1) {
+    const tabs = sm.workTabs;
+    if (tabs.length === 0) return;
+    const idx = active?.zone === "work" ? tabs.findIndex((t) => t.id === active.id) : -1;
+    const next = idx === -1 ? 0 : (idx + dir + tabs.length) % tabs.length;
+    sm.activateWork(tabs[next].id);
+  }
+
   // Horizontal splitter for the sidebar.
   function startSidebarDrag(e: MouseEvent) {
     e.preventDefault();
@@ -245,6 +254,32 @@
     onrefresh={doRefresh}
     onquit={requestQuit}
     onresetdefault={requestReset}
+    onnewquery={() => sm.openQuery(aggregateTemplate(""))}
+    canNewDoc={sel?.coll != null && !readOnly}
+    onnewdocument={newDocActive}
+    canImport={sel?.coll != null && !readOnly}
+    onimport={() => { if (sel?.coll && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); }}
+    canExport={canUseDataView ? (activeDataView.handle?.canExport ?? false) : false}
+    onexport={() => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined)}
+    canRun={activeQueryRun != null}
+    onrun={() => activeQueryRun?.run(sel?.db ?? null)}
+    canRunSelection={activeQueryRun?.hasSelection ?? false}
+    onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
+    canStop={activeQueryRun?.running ?? false}
+    onstop={() => { if (sm.activeId) cancelScript(sm.activeId); }}
+    canExplainQuery={activeQueryRun != null}
+    onexplainquery={() => activeQueryRun?.explainAfterRun(sel?.db ?? null)}
+    canAggregate={sel?.coll != null}
+    onaggregate={() => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); }}
+    canSaveQuery={activeQueryTab != null && !queryLibrary.blocked}
+    onsavequery={saveActiveQuery}
+    {contextTabs}
+    activeContextKind={active?.zone === "context" ? active.kind : null}
+    onshowcontext={(kind) => sm.showContext(kind)}
+    canNextTab={sm.workTabs.length > 1}
+    onnexttab={() => cycleWorkTab(1)}
+    canPrevTab={sm.workTabs.length > 1}
+    onprevtab={() => cycleWorkTab(-1)}
   />
   <Toolbar
     connected={shell.connection !== null}

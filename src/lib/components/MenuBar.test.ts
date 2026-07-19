@@ -6,7 +6,39 @@ import { appLocale } from "../stores/locale.svelte";
 import { uiSize } from "../stores/uiSize.svelte";
 import { theme } from "../stores/theme.svelte";
 
-const base = { connected: true, onsession: vi.fn(), onrefresh: vi.fn(), onquit: vi.fn(), onresetdefault: vi.fn() };
+const base = {
+  connected: true,
+  onsession: vi.fn(),
+  onrefresh: vi.fn(),
+  onquit: vi.fn(),
+  onresetdefault: vi.fn(),
+  onnewquery: vi.fn(),
+  canNewDoc: false,
+  onnewdocument: vi.fn(),
+  canImport: false,
+  onimport: vi.fn(),
+  canExport: false,
+  onexport: vi.fn(),
+  canRun: false,
+  onrun: vi.fn(),
+  canRunSelection: false,
+  onrunselection: vi.fn(),
+  canStop: false,
+  onstop: vi.fn(),
+  canExplainQuery: false,
+  onexplainquery: vi.fn(),
+  canAggregate: false,
+  onaggregate: vi.fn(),
+  canSaveQuery: false,
+  onsavequery: vi.fn(),
+  contextTabs: [],
+  activeContextKind: null,
+  onshowcontext: vi.fn(),
+  canNextTab: false,
+  onnexttab: vi.fn(),
+  canPrevTab: false,
+  onprevtab: vi.fn(),
+};
 
 describe("MenuBar", () => {
   it("File → Session manager calls onsession", async () => {
@@ -92,5 +124,57 @@ describe("MenuBar", () => {
     await fireEvent.click(screen.getByRole("button", { name: "View" }));
     await fireEvent.click(screen.getByRole("button", { name: "Reset to default" }));
     expect(onresetdefault).toHaveBeenCalled();
+  });
+
+  it("File → New document is disabled when canNewDoc is false, enabled and wired when true", async () => {
+    const onnewdocument = vi.fn();
+    const { rerender, getByText } = render(MenuBar, { props: { ...base, canNewDoc: false, onnewdocument } });
+    await fireEvent.click(getByText("File"));
+    expect((getByText("New document") as HTMLButtonElement).disabled).toBe(true);
+
+    await rerender({ ...base, canNewDoc: true, onnewdocument });
+    await fireEvent.click(getByText("New document"));
+    expect(onnewdocument).toHaveBeenCalled();
+  });
+
+  it("Query → Run calls onrun only when canRun", async () => {
+    const onrun = vi.fn();
+    const { getByText } = render(MenuBar, { props: { ...base, canRun: true, onrun } });
+    await fireEvent.click(getByText("Query"));
+    await fireEvent.click(getByText("Run query"));
+    expect(onrun).toHaveBeenCalled();
+  });
+
+  it("Go to lists context tabs and marks the active one checked", async () => {
+    const onshowcontext = vi.fn();
+    const { getByText, getByRole } = render(MenuBar, {
+      props: {
+        ...base,
+        contextTabs: [
+          { kind: "host", label: "Host" },
+          { kind: "database", label: "Database" },
+        ],
+        activeContextKind: "host",
+        onshowcontext,
+      },
+    });
+    await fireEvent.click(getByText("Go to"));
+    const hostItem = getByRole("button", { name: /Host/ });
+    expect(hostItem.textContent).toContain("✓");
+    await fireEvent.click(getByText("Database"));
+    expect(onshowcontext).toHaveBeenCalledWith("database");
+  });
+
+  it("Go to is disabled when there are no context tabs and no tabs to cycle", async () => {
+    const { getByText } = render(MenuBar, { props: { ...base } });
+    const item = getByText("Go to") as HTMLButtonElement;
+    expect(item.disabled).toBe(true);
+  });
+
+  it("Help → About opens the About dialog", async () => {
+    const { getByText, getByRole } = render(MenuBar, { props: { ...base } });
+    await fireEvent.click(getByText("Help"));
+    await fireEvent.click(getByText("About"));
+    expect(getByRole("dialog", { name: "About" })).toBeInTheDocument();
   });
 });

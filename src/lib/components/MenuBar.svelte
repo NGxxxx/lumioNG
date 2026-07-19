@@ -8,6 +8,8 @@
   import { collectionSort } from "../stores/collectionSort.svelte";
   import { UI_SIZES, type UiSizeKey } from "../domain/uiSize";
   import type { CollectionSortMode } from "../domain/namespaces";
+  import type { ContextKind } from "../stores/navigation.svelte";
+  import AboutDialog from "./AboutDialog.svelte";
 
   let {
     connected,
@@ -15,13 +17,67 @@
     onrefresh,
     onquit,
     onresetdefault,
+    onnewquery,
+    canNewDoc,
+    onnewdocument,
+    canImport,
+    onimport,
+    canExport,
+    onexport,
+    canRun,
+    onrun,
+    canRunSelection,
+    onrunselection,
+    canStop,
+    onstop,
+    canExplainQuery,
+    onexplainquery,
+    canAggregate,
+    onaggregate,
+    canSaveQuery,
+    onsavequery,
+    contextTabs,
+    activeContextKind,
+    onshowcontext,
+    canNextTab,
+    onnexttab,
+    canPrevTab,
+    onprevtab,
   }: {
     connected: boolean;
     onsession: () => void;
     onrefresh: () => void;
     onquit: () => void;
     onresetdefault: () => void;
+    onnewquery: () => void;
+    canNewDoc: boolean;
+    onnewdocument: () => void;
+    canImport: boolean;
+    onimport: () => void;
+    canExport: boolean;
+    onexport: () => void;
+    canRun: boolean;
+    onrun: () => void;
+    canRunSelection: boolean;
+    onrunselection: () => void;
+    canStop: boolean;
+    onstop: () => void;
+    canExplainQuery: boolean;
+    onexplainquery: () => void;
+    canAggregate: boolean;
+    onaggregate: () => void;
+    canSaveQuery: boolean;
+    onsavequery: () => void;
+    contextTabs: { kind: ContextKind; label: string }[];
+    activeContextKind: ContextKind | null;
+    onshowcontext: (kind: ContextKind) => void;
+    canNextTab: boolean;
+    onnexttab: () => void;
+    canPrevTab: boolean;
+    onprevtab: () => void;
   } = $props();
+
+  let aboutOpen = $state(false);
 
   // An item is either a leaf (with `run`) or a parent that opens a submenu (`children`).
   type Item = { label: string; run?: () => void; disabled?: boolean; checked?: boolean; children?: Item[] };
@@ -43,10 +99,13 @@
       items: [
         { label: m.menu_session_manager(), run: onsession },
         { label: m.menu_refresh(), run: onrefresh, disabled: !connected },
+        { label: m.tab_bar_new_query(), run: onnewquery, disabled: !connected },
+        { label: m.menu_new_document(), run: onnewdocument, disabled: !canNewDoc },
+        { label: m.menu_import(), run: onimport, disabled: !canImport },
+        { label: m.menu_export(), run: onexport, disabled: !canExport },
         { label: m.menu_quit(), run: onquit },
       ],
     },
-    { name: m.menu_edit(), items: [{ label: m.menu_copy(), disabled: true }] },
     {
       name: m.menu_view(),
       // Language lives in a submenu so Appearance / Font size can sit beside it later.
@@ -90,9 +149,31 @@
         { label: m.menu_reset_to_default(), run: onresetdefault },
       ],
     },
-    { name: m.menu_query(), items: [{ label: m.menu_run_query(), disabled: true }] },
-    { name: m.menu_go_to(), items: [], disabled: true },
-    { name: m.menu_help(), items: [{ label: m.menu_about(), disabled: true }] },
+    {
+      name: m.menu_query(),
+      items: [
+        { label: m.menu_run_query(), run: onrun, disabled: !canRun },
+        { label: m.menu_run_selection(), run: onrunselection, disabled: !canRunSelection },
+        { label: m.menu_stop(), run: onstop, disabled: !canStop },
+        { label: m.menu_explain(), run: onexplainquery, disabled: !canExplainQuery },
+        { label: m.menu_aggregate(), run: onaggregate, disabled: !canAggregate },
+        { label: m.menu_save_query(), run: onsavequery, disabled: !canSaveQuery },
+      ],
+    },
+    {
+      name: m.menu_go_to(),
+      items: [
+        ...contextTabs.map((c) => ({
+          label: c.label,
+          checked: activeContextKind === c.kind,
+          run: () => onshowcontext(c.kind),
+        })),
+        { label: m.menu_next_tab(), run: onnexttab, disabled: !canNextTab },
+        { label: m.menu_previous_tab(), run: onprevtab, disabled: !canPrevTab },
+      ],
+      disabled: contextTabs.length === 0 && !canNextTab && !canPrevTab,
+    },
+    { name: m.menu_help(), items: [{ label: m.menu_about(), run: () => (aboutOpen = true) }] },
   ]);
 
   function closeAll() {
@@ -171,6 +252,10 @@
     </div>
   {/each}
 </div>
+
+{#if aboutOpen}
+  <AboutDialog onclose={() => (aboutOpen = false)} />
+{/if}
 
 <style>
   .menubar {
