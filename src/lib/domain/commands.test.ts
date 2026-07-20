@@ -33,4 +33,13 @@ describe("commands", () => {
     }
     expect(gridEntries.length).toBeGreaterThan(0);
   });
+
+  it("has the three shortcut-less menu commands registered with no bound shortcut", () => {
+    expect(COMMAND_SCOPE["file.sessionManager"]).toBe("global");
+    expect(COMMAND_SCOPE["file.quit"]).toBe("global");
+    expect(COMMAND_SCOPE["view.resetToDefault"]).toBe("global");
+    expect(SHORTCUTS["file.sessionManager"]).toBeUndefined();
+    expect(SHORTCUTS["file.quit"]).toBeUndefined();
+    expect(SHORTCUTS["view.resetToDefault"]).toBeUndefined();
+  });
 });

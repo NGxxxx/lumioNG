@@ -7,11 +7,12 @@
   import { statusPill, jsonValueColor, bsonValueKind } from "../domain/theme";
   import { describeValue, truncateForDisplay } from "../domain/extjson";
   import type { GridPageView } from "../domain/gridView";
+  import type { Doc } from "../domain/doc";
   import { portal } from "../actions/portal";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
-  let { v }: { v: GridPageView } = $props();
+  let { v, onopendocument }: { v: GridPageView; onopendocument?: (doc: Doc, mode: "insert") => void } = $props();
 
   const FALLBACK_COL_W = 160;
   const ROWNUM_W = 42;
@@ -64,14 +65,54 @@
   }
 
   function focusSelect(node: HTMLInputElement) { node.focus(); node.select(); }
+
+  /** Commits the current edit, then — only if the commit actually succeeded (the store clears
+   *  `editing` on success, leaves it set with `editError` populated on failure) — opens the next
+   *  row's same-column cell for editing, matching HeidiSQL's Excel-style "Enter advances".
+   *  `commitEdit` is async and clears `editing` only after its internal await resolves, so this
+   *  must await it before checking `v.editing` — checking synchronously right after the call
+   *  always observes the still-pending state. */
+  async function commitAndAdvance(row: number, key: string) {
+    await v.commitEdit();
+    if (v.editing !== null) return; // commit failed; stay put
+    if (row + 1 < v.docs.length) v.startEdit(row + 1, key);
+  }
+
   function onEditKey(e: KeyboardEvent) {
-    if (e.key === "Enter") { e.preventDefault(); v.commitEdit(); }
-    else if (e.key === "Escape") { e.preventDefault(); v.cancelEdit(); }
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      v.commitEdit();
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const editing = v.editing;
+      if (editing) void commitAndAdvance(editing.row, editing.key);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      v.cancelEdit();
+    }
   }
   function onGridKey(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+    const mod = e.ctrlKey || e.metaKey;
+    if (mod && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
       v.selectAll?.();
+    } else if (mod && (e.key === "i" || e.key === "I")) {
+      e.preventDefault();
+      v.invertSelection?.();
+    } else if (mod && (e.key === "c" || e.key === "C") && v.copySelectedAsJson) {
+      e.preventDefault();
+      v.copySelectedAsJson();
+    } else if (mod && e.key === "Delete") {
+      e.preventDefault();
+      v.requestDeleteSelected?.();
+    } else if (mod && e.key === "Insert") {
+      e.preventDefault();
+      const dup = v.duplicateSelected?.();
+      if (dup) onopendocument?.(dup, "insert");
+    } else if (!mod && e.key === "Insert") {
+      e.preventDefault();
+      const doc = v.newDocument?.();
+      if (doc) onopendocument?.(doc, "insert");
     }
   }
 </script>

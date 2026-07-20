@@ -4,11 +4,13 @@ export type CommandScope = "global" | "grid" | "editor";
 
 export type CommandId =
   // Global (app menu / toolbar)
+  | "file.sessionManager"
   | "file.refresh"
   | "file.newQuery"
   | "file.newDocument"
   | "file.import"
   | "file.export"
+  | "file.quit"
   | "query.run"
   | "query.runSelection"
   | "query.stop"
@@ -22,6 +24,7 @@ export type CommandId =
   | "goto.collection"
   | "goto.data"
   | "view.closeWorkTab"
+  | "view.resetToDefault"
   | "help.about"
   // Grid (result grid / data view)
   | "grid.newDocument"
@@ -46,11 +49,13 @@ export type CommandId =
   | "editor.toggleComment";
 
 export const COMMAND_SCOPE: Record<CommandId, CommandScope> = {
+  "file.sessionManager": "global",
   "file.refresh": "global",
   "file.newQuery": "global",
   "file.newDocument": "global",
   "file.import": "global",
   "file.export": "global",
+  "file.quit": "global",
   "query.run": "global",
   "query.runSelection": "global",
   "query.stop": "global",
@@ -64,6 +69,7 @@ export const COMMAND_SCOPE: Record<CommandId, CommandScope> = {
   "goto.collection": "global",
   "goto.data": "global",
   "view.closeWorkTab": "global",
+  "view.resetToDefault": "global",
   "help.about": "global",
   "grid.newDocument": "grid",
   "grid.duplicateDocument": "grid",
@@ -139,3 +145,9 @@ export function shortcutsByScope(scope: CommandScope): { id: CommandId; shortcut
     .filter((id) => COMMAND_SCOPE[id] === scope)
     .map((id) => ({ id, shortcut: SHORTCUTS[id]! }));
 }
+
+/** A registry entry: whether the action is currently available, and what running it does. Labels stay local to whichever component renders the command (menu item text vs. toolbar tooltip legitimately differ) — this type deliberately carries no label. */
+export type Command = {
+  disabled: boolean;
+  run: () => void;
+};

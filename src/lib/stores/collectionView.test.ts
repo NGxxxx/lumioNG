@@ -1163,6 +1163,50 @@ describe("selection-aware context menu", () => {
   });
 });
 
+describe("createCollectionView — grid shortcuts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValue(2);
+  });
+
+  it("invertSelection flips selected rows within the currently visible set", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }, { _id: { $oid: "b" }, x: 2 }]);
+    samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.clickRow(0, { ctrl: false, shift: false });
+    expect([...v.selected]).toEqual([0]);
+    v.invertSelection();
+    expect([...v.selected]).toEqual([1]);
+    v.invertSelection();
+    expect([...v.selected]).toEqual([0]);
+  });
+
+  it("newDocument returns a skeleton built from the current columns", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    const doc = v.newDocument();
+    expect(Object.keys(doc)).toContain("x");
+  });
+
+  it("duplicateSelected returns null unless exactly one row is selected", async () => {
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }, { _id: { $oid: "b" }, x: 2 }]);
+    samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    expect(v.duplicateSelected()).toBeNull(); // nothing selected
+    v.clickRow(0, { ctrl: false, shift: false });
+    v.clickRow(1, { ctrl: true, shift: false });
+    expect(v.duplicateSelected()).toBeNull(); // two selected
+    v.clickRow(0, { ctrl: false, shift: false });
+    const dup = v.duplicateSelected();
+    expect(dup).not.toBeNull();
+    expect(dup!.x).toBe(1);
+  });
+});
+
 describe("createCollectionView — column widths", () => {
   beforeEach(() => {
     vi.clearAllMocks();

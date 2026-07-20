@@ -51,4 +51,17 @@ export interface GridPageView {
 
   readonly sortKeys?: SortKey[];
   toggleSort?(path: string, shift: boolean): void;
+
+  // Grid-scoped keyboard shortcuts (Slice 4) — all optional since the two backing stores
+  // (collectionView vs. queryScript) aren't symmetric in what they support.
+  /** Ctrl+Delete: delete the current selection (both stores support this). */
+  requestDeleteSelected?(): void;
+  /** Ctrl+C: copy the current selection as a JSON array (collectionView only). */
+  copySelectedAsJson?(): void;
+  /** Ctrl+I: flip which rows are selected, within the currently visible (filtered) set. */
+  invertSelection?(): void;
+  /** Insert: build a blank document skeleton to open in the insert form (collectionView only). */
+  newDocument?(): Doc;
+  /** Ctrl+Insert: build a duplicate of the single selected document (collectionView only); null if not exactly one row is selected. */
+  duplicateSelected?(): Doc | null;
 }

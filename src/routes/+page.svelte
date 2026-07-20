@@ -36,6 +36,11 @@
   import Toolbar from "$lib/components/Toolbar.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
   import CommandLog from "$lib/components/CommandLog.svelte";
+  import AboutDialog from "$lib/components/AboutDialog.svelte";
+  import { SHORTCUTS, type Command, type CommandId } from "$lib/domain/commands";
+  import { matchesEvent } from "$lib/domain/shortcuts";
+  import { detectPlatform } from "$lib/stores/platform";
+  import { isModalOpen } from "$lib/stores/modalStack";
 
   const CONTEXT_LABEL: Record<ContextKind, string> = {
     host: "Host",
@@ -47,6 +52,7 @@
 
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
+  let aboutOpen = $state(false);
   let saveQueryDialog = $state<{ tabId: number } | null>(null);
   let namespacePanelRef: NamespacePanel | undefined = $state();
 
@@ -228,15 +234,60 @@
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
   }
+
+  const plat = detectPlatform();
+
+  const commands: Partial<Record<CommandId, Command>> = $derived({
+    "file.sessionManager": { disabled: false, run: () => shell.toggleSession() },
+    "file.refresh": { disabled: shell.connection === null, run: doRefresh },
+    "file.newQuery": { disabled: shell.connection === null, run: () => sm.openQuery(aggregateTemplate("")) },
+    "file.newDocument": { disabled: !(sel?.coll != null && !readOnly), run: newDocActive },
+    "file.import": {
+      disabled: !(sel?.coll != null && !readOnly),
+      run: () => { if (sel?.coll && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); },
+    },
+    "file.export": {
+      disabled: !(canUseDataView ? (activeDataView.handle?.canExport ?? false) : false),
+      run: () => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined),
+    },
+    "file.quit": { disabled: false, run: requestQuit },
+    "query.run": { disabled: activeQueryRun == null, run: () => activeQueryRun?.run(sel?.db ?? null) },
+    "query.runSelection": { disabled: !(activeQueryRun?.hasSelection ?? false), run: () => activeQueryRun?.runSelection(sel?.db ?? null) },
+    "query.stop": { disabled: !(activeQueryRun?.running ?? false), run: () => { if (sm.activeId) cancelScript(sm.activeId); } },
+    "query.explain": { disabled: activeQueryRun == null, run: () => activeQueryRun?.explainAfterRun(sel?.db ?? null) },
+    "query.aggregate": { disabled: !(sel?.coll != null), run: () => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); } },
+    "query.save": {
+      disabled: !(activeQueryTab ? !queryLibrary.blocked : (activeDocumentForm.handle?.canSave ?? false)),
+      run: () => (activeQueryTab ? saveActiveQuery() : activeDocumentForm.handle?.save()),
+    },
+    "goto.nextTab": { disabled: !(sm.workTabs.length > 1), run: () => cycleWorkTab(1) },
+    "goto.prevTab": { disabled: !(sm.workTabs.length > 1), run: () => cycleWorkTab(-1) },
+    "view.closeWorkTab": {
+      disabled: active?.zone !== "work",
+      run: () => { if (active?.zone === "work") { disposeQueryRun(active.id); sm.closeWork(active.id); } },
+    },
+    "goto.host": { disabled: !navContextTabs.includes("host"), run: () => sm.showContext("host") },
+    "goto.database": { disabled: !navContextTabs.includes("database"), run: () => sm.showContext("database") },
+    "goto.collection": { disabled: !navContextTabs.includes("collection"), run: () => sm.showContext("collection") },
+    "goto.data": { disabled: !navContextTabs.includes("data"), run: () => sm.showContext("data") },
+    "view.resetToDefault": { disabled: false, run: requestReset },
+    "help.about": { disabled: false, run: () => (aboutOpen = true) },
+  });
 </script>
 
 <svelte:window
   onkeydown={(e) => {
-    // Ctrl/Cmd+S: active Query tab overwrites/save-as; active document form saves via its bridged handle.
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s" && (activeQueryTab || activeDocumentForm.handle)) {
-      e.preventDefault();
-      if (activeQueryTab) saveActiveQuery();
-      else activeDocumentForm.handle?.save();
+    if (isModalOpen() || e.defaultPrevented) return;
+    for (const id of Object.keys(SHORTCUTS) as CommandId[]) {
+      const combo = SHORTCUTS[id];
+      if (!combo) continue;
+      const c = commands[id];
+      if (!c || c.disabled) continue;
+      if (matchesEvent(combo, e, plat)) {
+        e.preventDefault();
+        c.run();
+        return;
+      }
     }
   }}
 />
@@ -249,69 +300,23 @@
     onquit={requestQuit}
   />
   <MenuBar
-    connected={shell.connection !== null}
-    onsession={() => shell.toggleSession()}
-    onrefresh={doRefresh}
-    onquit={requestQuit}
-    onresetdefault={requestReset}
-    onnewquery={() => sm.openQuery(aggregateTemplate(""))}
-    canNewDoc={sel?.coll != null && !readOnly}
-    onnewdocument={newDocActive}
-    canImport={sel?.coll != null && !readOnly}
-    onimport={() => { if (sel?.coll && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); }}
-    canExport={canUseDataView ? (activeDataView.handle?.canExport ?? false) : false}
-    onexport={() => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined)}
-    canRun={activeQueryRun != null}
-    onrun={() => activeQueryRun?.run(sel?.db ?? null)}
-    canRunSelection={activeQueryRun?.hasSelection ?? false}
-    onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
-    canStop={activeQueryRun?.running ?? false}
-    onstop={() => { if (sm.activeId) cancelScript(sm.activeId); }}
-    canExplainQuery={activeQueryRun != null}
-    onexplainquery={() => activeQueryRun?.explainAfterRun(sel?.db ?? null)}
-    canAggregate={sel?.coll != null}
-    onaggregate={() => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); }}
-    canSaveQuery={activeQueryTab != null && !queryLibrary.blocked}
-    onsavequery={saveActiveQuery}
+    {commands}
     {contextTabs}
     activeContextKind={active?.zone === "context" ? active.kind : null}
     onshowcontext={(kind) => sm.showContext(kind)}
-    canNextTab={sm.workTabs.length > 1}
-    onnexttab={() => cycleWorkTab(1)}
-    canPrevTab={sm.workTabs.length > 1}
-    onprevtab={() => cycleWorkTab(-1)}
   />
   <Toolbar
-    connected={shell.connection !== null}
+    {commands}
     canNewDoc={sel?.coll != null && !readOnly}
-    onsession={() => shell.toggleSession()}
-    onrefresh={doRefresh}
-    onnewdocument={newDocActive}
-    onToggleLog={() => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog())}
-    canRun={activeQueryRun != null}
-    onrun={() => activeQueryRun?.run(sel?.db ?? null)}
-    canRunSelection={activeQueryRun?.hasSelection ?? false}
-    onrunselection={() => activeQueryRun?.runSelection(sel?.db ?? null)}
-    canExplainQuery={activeQueryRun != null}
-    onexplainquery={() => activeQueryRun?.explainAfterRun(sel?.db ?? null)}
     canEditDoc={canUseDataView && !readOnly && (activeDataView.handle?.canEdit ?? false)}
     oneditdocument={() => activeDataView.handle?.editSelected()}
-    canExport={canUseDataView ? (activeDataView.handle?.canExport ?? false) : false}
-    onexport={() => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined)}
-    canImport={sel?.coll != null && !readOnly}
-    onimport={() => { if (sel?.coll && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); }}
-    canSave={activeQueryTab ? !queryLibrary.blocked : (activeDocumentForm.handle?.canSave ?? false)}
-    onsave={() => (activeQueryTab ? saveActiveQuery() : activeDocumentForm.handle?.save())}
     canDeleteDoc={canUseDataView && !readOnly && (activeDataView.handle?.canDelete ?? false)}
     ondeletedocument={() => activeDataView.handle?.deleteSelected()}
-    canAggregate={sel?.coll != null}
-    onaggregate={() => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); }}
     canIndexes={sel?.coll != null}
     onindexes={() => { if (sel?.coll) { sm.showContext("collection"); nav?.setCollectionSection("indexes"); } }}
-    canStop={activeQueryRun?.running ?? false}
-    onstop={() => { if (sm.activeId) cancelScript(sm.activeId); }}
     canFind={canUseDataView}
     onfind={() => activeDataView.handle?.focusSearch?.()}
+    onToggleLog={() => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog())}
     logOpen={activeDataView.handle?.toggleLog ? (activeDataView.handle.logOpen ?? false) : shell.logOpen}
     savedQueriesOpen={shell.savedQueriesOpen}
     onToggleSavedQueries={() => shell.toggleSavedQueries()}
@@ -480,6 +485,9 @@
       onconfirm={doReset}
       oncancel={() => (confirmReset = false)}
     />
+  {/if}
+  {#if aboutOpen}
+    <AboutDialog onclose={() => (aboutOpen = false)} />
   {/if}
 </div>
 

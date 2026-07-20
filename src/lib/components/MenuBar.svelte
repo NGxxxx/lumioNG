@@ -9,80 +9,40 @@
   import { UI_SIZES, type UiSizeKey } from "../domain/uiSize";
   import type { CollectionSortMode } from "../domain/namespaces";
   import type { ContextKind } from "../stores/navigation.svelte";
-  import AboutDialog from "./AboutDialog.svelte";
+  import { SHORTCUTS, type Command, type CommandId } from "../domain/commands";
+  import { formatCombo } from "../domain/shortcuts";
+  import { detectPlatform } from "../stores/platform";
 
   let {
-    connected,
-    onsession,
-    onrefresh,
-    onquit,
-    onresetdefault,
-    onnewquery,
-    canNewDoc,
-    onnewdocument,
-    canImport,
-    onimport,
-    canExport,
-    onexport,
-    canRun,
-    onrun,
-    canRunSelection,
-    onrunselection,
-    canStop,
-    onstop,
-    canExplainQuery,
-    onexplainquery,
-    canAggregate,
-    onaggregate,
-    canSaveQuery,
-    onsavequery,
+    commands,
     contextTabs,
     activeContextKind,
     onshowcontext,
-    canNextTab,
-    onnexttab,
-    canPrevTab,
-    onprevtab,
   }: {
-    connected: boolean;
-    onsession: () => void;
-    onrefresh: () => void;
-    onquit: () => void;
-    onresetdefault: () => void;
-    onnewquery: () => void;
-    canNewDoc: boolean;
-    onnewdocument: () => void;
-    canImport: boolean;
-    onimport: () => void;
-    canExport: boolean;
-    onexport: () => void;
-    canRun: boolean;
-    onrun: () => void;
-    canRunSelection: boolean;
-    onrunselection: () => void;
-    canStop: boolean;
-    onstop: () => void;
-    canExplainQuery: boolean;
-    onexplainquery: () => void;
-    canAggregate: boolean;
-    onaggregate: () => void;
-    canSaveQuery: boolean;
-    onsavequery: () => void;
+    commands: Partial<Record<CommandId, Command>>;
     contextTabs: { kind: ContextKind; label: string }[];
     activeContextKind: ContextKind | null;
     onshowcontext: (kind: ContextKind) => void;
-    canNextTab: boolean;
-    onnexttab: () => void;
-    canPrevTab: boolean;
-    onprevtab: () => void;
   } = $props();
 
-  let aboutOpen = $state(false);
-
   // An item is either a leaf (with `run`) or a parent that opens a submenu (`children`).
-  type Item = { label: string; run?: () => void; disabled?: boolean; checked?: boolean; children?: Item[] };
+  type Item = { label: string; shortcut?: string; run?: () => void; disabled?: boolean; checked?: boolean; children?: Item[] };
   let openMenu = $state<string | null>(null);
   let openSub = $state<string | null>(null);
+
+  const plat = detectPlatform();
+
+  /** Builds a leaf menu item from a registry command id, with its shortcut hint (if any). */
+  function cmdItem(id: CommandId, label: string): Item {
+    const c = commands[id];
+    const combo = SHORTCUTS[id];
+    return {
+      label,
+      shortcut: combo ? formatCombo(combo, plat) : undefined,
+      run: c?.run,
+      disabled: !c || c.disabled,
+    };
+  }
 
   const LOCALE_NAMES: Record<Locale, string> = { en: "English", vi: "Tiếng Việt" };
 
@@ -97,13 +57,13 @@
     {
       name: m.menu_file(),
       items: [
-        { label: m.menu_session_manager(), run: onsession },
-        { label: m.menu_refresh(), run: onrefresh, disabled: !connected },
-        { label: m.tab_bar_new_query(), run: onnewquery, disabled: !connected },
-        { label: m.menu_new_document(), run: onnewdocument, disabled: !canNewDoc },
-        { label: m.menu_import(), run: onimport, disabled: !canImport },
-        { label: m.menu_export(), run: onexport, disabled: !canExport },
-        { label: m.menu_quit(), run: onquit },
+        cmdItem("file.sessionManager", m.menu_session_manager()),
+        cmdItem("file.refresh", m.menu_refresh()),
+        cmdItem("file.newQuery", m.tab_bar_new_query()),
+        cmdItem("file.newDocument", m.menu_new_document()),
+        cmdItem("file.import", m.menu_import()),
+        cmdItem("file.export", m.menu_export()),
+        cmdItem("file.quit", m.menu_quit()),
       ],
     },
     {
@@ -146,18 +106,18 @@
             run: () => collectionSort.set(mode),
           })),
         },
-        { label: m.menu_reset_to_default(), run: onresetdefault },
+        cmdItem("view.resetToDefault", m.menu_reset_to_default()),
       ],
     },
     {
       name: m.menu_query(),
       items: [
-        { label: m.menu_run_query(), run: onrun, disabled: !canRun },
-        { label: m.menu_run_selection(), run: onrunselection, disabled: !canRunSelection },
-        { label: m.menu_stop(), run: onstop, disabled: !canStop },
-        { label: m.menu_explain(), run: onexplainquery, disabled: !canExplainQuery },
-        { label: m.menu_aggregate(), run: onaggregate, disabled: !canAggregate },
-        { label: m.menu_save_query(), run: onsavequery, disabled: !canSaveQuery },
+        cmdItem("query.run", m.menu_run_query()),
+        cmdItem("query.runSelection", m.menu_run_selection()),
+        cmdItem("query.stop", m.menu_stop()),
+        cmdItem("query.explain", m.menu_explain()),
+        cmdItem("query.aggregate", m.menu_aggregate()),
+        cmdItem("query.save", m.menu_save_query()),
       ],
     },
     {
@@ -168,12 +128,12 @@
           checked: activeContextKind === c.kind,
           run: () => onshowcontext(c.kind),
         })),
-        { label: m.menu_next_tab(), run: onnexttab, disabled: !canNextTab },
-        { label: m.menu_previous_tab(), run: onprevtab, disabled: !canPrevTab },
+        cmdItem("goto.nextTab", m.menu_next_tab()),
+        cmdItem("goto.prevTab", m.menu_previous_tab()),
       ],
-      disabled: contextTabs.length === 0 && !canNextTab && !canPrevTab,
+      disabled: contextTabs.length === 0 && (commands["goto.nextTab"]?.disabled ?? true) && (commands["goto.prevTab"]?.disabled ?? true),
     },
-    { name: m.menu_help(), items: [{ label: m.menu_about(), run: () => (aboutOpen = true) }] },
+    { name: m.menu_help(), items: [cmdItem("help.about", m.menu_about())] },
   ]);
 
   function closeAll() {
@@ -230,7 +190,7 @@
                   <div class="dropdown submenu">
                     {#each it.children as sub (sub.label)}
                       <button class="item" disabled={sub.disabled} onclick={() => choose(sub)}>
-                        {#if sub.checked}✓ {/if}{sub.label}
+                        <span>{#if sub.checked}✓ {/if}{sub.label}</span>
                       </button>
                     {/each}
                   </div>
@@ -243,7 +203,8 @@
                 onmouseenter={() => (openSub = null)}
                 onclick={() => choose(it)}
               >
-                {#if it.checked}✓ {/if}{it.label}
+                <span>{#if it.checked}✓ {/if}{it.label}</span>
+                {#if it.shortcut}<span class="shortcut">{it.shortcut}</span>{/if}
               </button>
             {/if}
           {/each}
@@ -252,10 +213,6 @@
     </div>
   {/each}
 </div>
-
-{#if aboutOpen}
-  <AboutDialog onclose={() => (aboutOpen = false)} />
-{/if}
 
 <style>
   .menubar {
@@ -289,12 +246,16 @@
     left: 0;
     z-index: 30;
     min-width: 10rem;
+    width: max-content;
     background: var(--panel);
     border: 1px solid var(--border);
     box-shadow: 0 2px 6px rgba(0,0,0,.15);
   }
   .item {
-    display: block;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
     width: 100%;
     text-align: left;
     border: none;
@@ -303,12 +264,13 @@
     cursor: pointer;
     font-size: 0.75rem;
     color: var(--fg);
+    white-space: nowrap;
   }
   .item:hover:not(:disabled) { background: var(--menu-hover); }
   .item:disabled { color: var(--gray-aa); cursor: default; }
+  .shortcut { color: var(--muted); font-size: 0.6875rem; flex: none; }
   /* Submenu parent row + right-anchored flyout */
   .parent { position: relative; }
-  .parent .item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
   .arrow { color: var(--muted); font-size: 0.625rem; }
   .submenu { top: 0; left: 100%; }
 </style>

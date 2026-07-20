@@ -2,87 +2,68 @@
 <script lang="ts">
   import { settings } from "../stores/settings.svelte";
   import { tooltip } from "../actions/tooltip";
+  import { SHORTCUTS, type Command, type CommandId } from "../domain/commands";
+  import { formatCombo } from "../domain/shortcuts";
+  import { detectPlatform } from "../stores/platform";
   import * as m from "$lib/paraglide/messages";
 
   let {
-    connected,
+    commands,
     canNewDoc,
-    onsession,
-    onrefresh,
-    onnewdocument,
-    onToggleLog,
-    canRun = false,
-    onrun = () => {},
-    canRunSelection = false,
-    onrunselection = () => {},
-    canExplainQuery = false,
-    onexplainquery = () => {},
     canEditDoc = false,
     oneditdocument = () => {},
-    canExport = false,
-    onexport = () => {},
-    canImport = false,
-    onimport = () => {},
-    canSave = false,
-    onsave = () => {},
     canDeleteDoc = false,
     ondeletedocument = () => {},
-    canAggregate = false,
-    onaggregate = () => {},
     canIndexes = false,
     onindexes = () => {},
-    canStop = false,
-    onstop = () => {},
     canFind = false,
     onfind = () => {},
+    onToggleLog,
     logOpen = false,
     savedQueriesOpen = false,
     onToggleSavedQueries = () => {},
   }: {
-    connected: boolean;
+    commands: Partial<Record<CommandId, Command>>;
     canNewDoc: boolean;
-    onsession: () => void;
-    onrefresh: () => void;
-    onnewdocument: () => void;
-    onToggleLog: () => void;
-    canRun?: boolean;
-    onrun?: () => void;
-    canRunSelection?: boolean;
-    onrunselection?: () => void;
-    canExplainQuery?: boolean;
-    onexplainquery?: () => void;
     canEditDoc?: boolean;
     oneditdocument?: () => void;
-    canExport?: boolean;
-    onexport?: () => void;
-    canImport?: boolean;
-    onimport?: () => void;
-    canSave?: boolean;
-    onsave?: () => void;
     canDeleteDoc?: boolean;
     ondeletedocument?: () => void;
-    canAggregate?: boolean;
-    onaggregate?: () => void;
     canIndexes?: boolean;
     onindexes?: () => void;
-    canStop?: boolean;
-    onstop?: () => void;
     canFind?: boolean;
     onfind?: () => void;
+    onToggleLog: () => void;
     logOpen?: boolean;
     savedQueriesOpen?: boolean;
     onToggleSavedQueries?: () => void;
   } = $props();
+
+  const plat = detectPlatform();
+
+  /** Appends the command's shortcut (if any) to a tooltip label, e.g. "Run query (F9)". */
+  function tt(id: CommandId, label: string): string {
+    const combo = SHORTCUTS[id];
+    return combo ? `${label} (${formatCombo(combo, plat)})` : label;
+  }
+
+  function disabledOf(id: CommandId): boolean {
+    return !commands[id] || commands[id]!.disabled;
+  }
+  function runOf(id: CommandId): () => void {
+    return () => commands[id]?.run();
+  }
 </script>
 
 <div class="toolbar">
   <!-- ── Connection: session + tree state ── -->
   <!-- Session manager (always enabled) -->
-  <span class="tt" use:tooltip={m.toolbar_session_manager()}>
+  <span class="tt" use:tooltip={tt("file.sessionManager", m.toolbar_session_manager())}>
     <button
       aria-label={m.toolbar_session_manager()}
       class="btn-icon session"
-      onclick={onsession}
+      disabled={disabledOf("file.sessionManager")}
+      onclick={runOf("file.sessionManager")}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <rect x="2" y="2.5" width="12" height="4" rx="1" fill="var(--tab-inactive-bg)" stroke="var(--muted)" stroke-width="1"/>
@@ -96,13 +77,13 @@
     </button>
   </span>
 
-  <!-- Refresh (disabled when not connected) -->
-  <span class="tt" use:tooltip={m.toolbar_refresh()}>
+  <!-- Refresh -->
+  <span class="tt" use:tooltip={tt("file.refresh", m.toolbar_refresh())}>
     <button
       aria-label={m.toolbar_refresh()}
       class="btn-icon"
-      disabled={!connected}
-      onclick={onrefresh}
+      disabled={disabledOf("file.refresh")}
+      onclick={runOf("file.refresh")}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M13 5a5.5 5.5 0 1 0 1 4" fill="none" stroke="var(--link)" stroke-width="1.4"/>
@@ -115,8 +96,8 @@
 
   <!-- ── Document CRUD (Save also covers the active Query tab) ── -->
   <!-- Save (enabled when a document tab or a query tab is the active editor) -->
-  <span class="tt" use:tooltip={m.toolbar_save()}>
-    <button aria-label={m.toolbar_save()} class="btn-icon" disabled={!canSave} onclick={onsave}>
+  <span class="tt" use:tooltip={tt("query.save", m.toolbar_save())}>
+    <button aria-label={m.toolbar_save()} class="btn-icon" disabled={disabledOf("query.save")} onclick={runOf("query.save")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M2 2h9l3 3v9H2z" fill="var(--link)" stroke="var(--link-strong)" stroke-width="0.8"/>
         <rect x="5" y="2" width="5" height="4" fill="var(--blue-tint5)"/>
@@ -126,12 +107,12 @@
   </span>
 
   <!-- New document (disabled when !canNewDoc, e.g. no collection selected or session is read-only) -->
-  <span class="tt" use:tooltip={m.toolbar_new_document()}>
+  <span class="tt" use:tooltip={tt("file.newDocument", m.toolbar_new_document())}>
     <button
       aria-label={m.toolbar_new_document()}
       class="btn-icon"
-      disabled={!canNewDoc}
-      onclick={onnewdocument}
+      disabled={disabledOf("file.newDocument")}
+      onclick={runOf("file.newDocument")}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M3 1.5h7l3 3v10H3z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
@@ -164,18 +145,18 @@
   <div class="sep"></div>
 
   <!-- ── Query execution ── -->
-  <!-- Run query (enabled when canRun) -->
-  <span class="tt" use:tooltip={m.toolbar_run_query()}>
-    <button aria-label={m.toolbar_run_query()} class="btn-icon" disabled={!canRun} onclick={onrun}>
+  <!-- Run query -->
+  <span class="tt" use:tooltip={tt("query.run", m.toolbar_run_query())}>
+    <button aria-label={m.toolbar_run_query()} class="btn-icon" disabled={disabledOf("query.run")} onclick={runOf("query.run")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M4 3l9 5-9 5z" fill="var(--run)"/>
       </svg>
     </button>
   </span>
 
-  <!-- Run selection (enabled when query tab has a highlighted statement) -->
-  <span class="tt" use:tooltip={m.toolbar_run_selection()}>
-    <button aria-label={m.toolbar_run_selection()} class="btn-icon" disabled={!canRunSelection} onclick={onrunselection}>
+  <!-- Run selection -->
+  <span class="tt" use:tooltip={tt("query.runSelection", m.toolbar_run_selection())}>
+    <button aria-label={m.toolbar_run_selection()} class="btn-icon" disabled={disabledOf("query.runSelection")} onclick={runOf("query.runSelection")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M3 3l6 5-6 5z" fill="var(--run)"/>
         <rect x="11" y="3" width="2.2" height="10" fill="var(--run)"/>
@@ -185,7 +166,7 @@
 
   <!-- Stop (enabled only while the active query tab's script is actually running) -->
   <span class="tt" use:tooltip={m.toolbar_stop()}>
-    <button aria-label={m.toolbar_stop()} class="btn-icon" disabled={!canStop} onclick={onstop}>
+    <button aria-label={m.toolbar_stop()} class="btn-icon" disabled={disabledOf("query.stop")} onclick={runOf("query.stop")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <rect x="3" y="3" width="10" height="10" rx="1.5" fill="var(--danger)"/>
       </svg>
@@ -193,8 +174,8 @@
   </span>
 
   <!-- Explain (enabled whenever a query tab is active; re-runs first if not yet explainable) -->
-  <span class="tt" use:tooltip={m.toolbar_explain()}>
-    <button aria-label={m.toolbar_explain()} class="btn-icon" disabled={!canExplainQuery} onclick={onexplainquery}>
+  <span class="tt" use:tooltip={tt("query.explain", m.toolbar_explain())}>
+    <button aria-label={m.toolbar_explain()} class="btn-icon" disabled={disabledOf("query.explain")} onclick={runOf("query.explain")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <circle cx="7" cy="7" r="4.2" fill="none" stroke="var(--muted)" stroke-width="1.3"/>
         <path d="M10.2 10.2 L14 14" stroke="var(--muted)" stroke-width="1.5"/>
@@ -219,8 +200,8 @@
   </span>
 
   <!-- Aggregate (enabled when a collection is selected; opens a new Query tab with a starter pipeline) -->
-  <span class="tt" use:tooltip={m.toolbar_aggregate()}>
-    <button aria-label={m.toolbar_aggregate()} class="btn-icon" disabled={!canAggregate} onclick={onaggregate}>
+  <span class="tt" use:tooltip={tt("query.aggregate", m.toolbar_aggregate())}>
+    <button aria-label={m.toolbar_aggregate()} class="btn-icon" disabled={disabledOf("query.aggregate")} onclick={runOf("query.aggregate")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M3 2h10l-4 6 4 6H3l4-6z" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
       </svg>
@@ -241,8 +222,8 @@
 
   <!-- ── Import / export ── -->
   <!-- Export (enabled in the data view; exports the selection if any, else the filtered set) -->
-  <span class="tt" use:tooltip={m.toolbar_export()}>
-    <button aria-label={m.toolbar_export()} class="btn-icon" disabled={!canExport} onclick={onexport}>
+  <span class="tt" use:tooltip={tt("file.export", m.toolbar_export())}>
+    <button aria-label={m.toolbar_export()} class="btn-icon" disabled={disabledOf("file.export")} onclick={runOf("file.export")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M4 1.5h6l3 3v10H4z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
         <path d="M8 6v5M5.6 8.6L8 11l2.4-2.4" stroke="var(--link)" stroke-width="1.2" fill="none"/>
@@ -251,8 +232,8 @@
   </span>
 
   <!-- Import (enabled when a collection is selected and session is not read-only; imports from a JSON/JSONL/BSON/SQL file) -->
-  <span class="tt" use:tooltip={m.toolbar_import()}>
-    <button aria-label={m.toolbar_import()} class="btn-icon" disabled={!canImport} onclick={onimport}>
+  <span class="tt" use:tooltip={tt("file.import", m.toolbar_import())}>
+    <button aria-label={m.toolbar_import()} class="btn-icon" disabled={disabledOf("file.import")} onclick={runOf("file.import")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M4 1.5h6l3 3v10H4z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
         <path d="M8 11V6M5.6 8.4L8 6l2.4 2.4" stroke="var(--link)" stroke-width="1.2" fill="none"/>

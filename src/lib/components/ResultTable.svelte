@@ -79,6 +79,12 @@
 
     get sortKeys() { return v.sortKeys; },
     toggleSort: v.toggleSort,
+
+    requestDeleteSelected: v.requestDeleteSelected,
+    copySelectedAsJson: () => v.copySelectedAs("json"),
+    invertSelection: v.invertSelection,
+    newDocument: v.newDocument,
+    duplicateSelected: v.duplicateSelected,
   };
 
   async function onMenuSelect(action: string) {
@@ -134,7 +140,7 @@
 
   <div class="content">
     {#if view === "grid"}
-      <ResultGrid v={gridView} />
+      <ResultGrid v={gridView} {onopendocument} />
     {:else}
       <div class="tree-wrap">
         <ResultTree bind:this={treeRef} docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}

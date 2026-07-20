@@ -612,6 +612,13 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     ({ selected, anchor } = clickRowSelection({ selected, anchor }, row, mods, visibleIndices));
   }
 
+  function invertSelection() {
+    const universe = visibleIndices ?? docs.map((_, i) => i);
+    const next = new Set(universe.filter((i) => !selected.has(i)));
+    selected = next;
+    anchor = next.size > 0 ? [...next][0] : null;
+  }
+
   function openMenu(e: MouseEvent, row: number, key: string, source: "grid" | "tree" = "grid") {
     e.preventDefault(); e.stopPropagation();
     ({ selected, anchor } = selectForMenu({ selected, anchor }, row));
@@ -863,6 +870,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get selected() { return selected; },
     get menu() { return menu; },
     clickRow,
+    invertSelection,
     openMenu,
     closeMenu,
     menuItems,

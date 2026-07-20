@@ -695,6 +695,16 @@ describe("activeDataView bridge (canEditSelected/canDeleteSelected/getSelectedFo
       expect(input.columns.every((c) => c.type === undefined)).toBe(true);
     }
   });
+
+  it("invertSelection flips selected rows within the full 3-row result", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    s.clickRow(0, { ctrl: false, shift: false });
+    expect([...s.selected]).toEqual([0]);
+    s.invertSelection();
+    expect([...s.selected].sort()).toEqual([1, 2]);
+    s.invertSelection();
+    expect([...s.selected]).toEqual([0]);
+  });
 });
 
 describe("quick search (visibleIndices/searchInvalid)", () => {

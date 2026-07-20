@@ -477,6 +477,13 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     anchor = docs.length > 0 ? 0 : null;
   }
 
+  function invertSelection() {
+    const universe = visibleIndices ?? docs.map((_, i) => i);
+    const next = new Set(universe.filter((i) => !selected.has(i)));
+    selected = next;
+    anchor = next.size > 0 ? [...next][0] : null;
+  }
+
   function clearSelection() {
     selected = new Set();
     anchor = null;
@@ -551,6 +558,17 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       { label: "Duplicate document…", action: "duplicate", disabled: n !== 1 },
     );
     return items;
+  }
+
+  function newDocument(): Doc {
+    return buildSkeleton(rawColumnFields);
+  }
+
+  function duplicateSelected(): Doc | null {
+    const rows = [...selected];
+    if (rows.length !== 1) return null;
+    const doc = docs[rows[0]];
+    return doc ? duplicateForInsert(doc) : null;
   }
 
   async function copy(text: string) {
@@ -805,6 +823,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get confirmSelectionDelete() { return confirmSelectionDelete; },
     clickRow,
     selectAll,
+    invertSelection,
     clearSelection,
     selectedIds,
     requestDeleteSelected,
@@ -883,5 +902,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     exportInput,
     effectiveSelectionCount,
     copySelectedAs,
+    newDocument,
+    duplicateSelected,
   };
 }

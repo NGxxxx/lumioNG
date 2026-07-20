@@ -16,7 +16,7 @@ beforeAll(() => {
 afterAll(() => restoreOffsetHeight?.());
 
 function baseView(docs: Doc[], overrides: Partial<GridPageView> = {}): GridPageView {
-  return {
+  const base = {
     docs,
     visibleIndices: null,
     columnFields: mergeColumns(null, docs),
@@ -29,8 +29,12 @@ function baseView(docs: Doc[], overrides: Partial<GridPageView> = {}): GridPageV
     menuItems: () => [],
     editing: null, editText: "", editTextLoading: false, editError: null, saving: false,
     startEdit: vi.fn(), commitEdit: vi.fn(), cancelEdit: vi.fn(), onEditBlur: vi.fn(),
-    ...overrides,
   };
+  // Merge via property descriptors (not a plain `...overrides` spread) so that a `get editing()`
+  // accessor in `overrides` stays a live getter on the returned view — a plain spread would read
+  // it once and flatten it into a static value, breaking tests that mutate the backing variable
+  // after render to simulate the store clearing `editing` on a successful commit.
+  return Object.defineProperties(base, Object.getOwnPropertyDescriptors(overrides)) as GridPageView;
 }
 
 describe("ResultGrid inline edit", () => {
@@ -107,6 +111,165 @@ describe("ResultGrid", () => {
     });
     const { container } = render(ResultGrid, { props: { v } });
     expect(container.querySelector(".sortarrow")).toBeTruthy();
+  });
+});
+
+describe("ResultGrid keyboard shortcuts", () => {
+  it("Ctrl+I calls invertSelection", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs, { invertSelection: vi.fn() });
+    const { container } = render(ResultGrid, { props: { v } });
+    await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "i", ctrlKey: true });
+    expect(v.invertSelection).toHaveBeenCalled();
+  });
+
+  it("Ctrl+C calls copySelectedAsJson", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs, { copySelectedAsJson: vi.fn() });
+    const { container } = render(ResultGrid, { props: { v } });
+    await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "c", ctrlKey: true });
+    expect(v.copySelectedAsJson).toHaveBeenCalled();
+  });
+
+  it("Ctrl+Delete calls requestDeleteSelected", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs, { requestDeleteSelected: vi.fn() });
+    const { container } = render(ResultGrid, { props: { v } });
+    await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "Delete", ctrlKey: true });
+    expect(v.requestDeleteSelected).toHaveBeenCalled();
+  });
+
+  it("Insert calls newDocument and forwards the result via onopendocument", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const newDoc = { name: "" };
+    const v = baseView(docs, { newDocument: vi.fn().mockReturnValue(newDoc) });
+    const onopendocument = vi.fn();
+    const { container } = render(ResultGrid, { props: { v, onopendocument } });
+    await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "Insert" });
+    expect(v.newDocument).toHaveBeenCalled();
+    expect(onopendocument).toHaveBeenCalledWith(newDoc, "insert");
+  });
+
+  it("Ctrl+Insert calls duplicateSelected and forwards a non-null result via onopendocument", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const dupDoc = { name: "x" };
+    const v = baseView(docs, { duplicateSelected: vi.fn().mockReturnValue(dupDoc) });
+    const onopendocument = vi.fn();
+    const { container } = render(ResultGrid, { props: { v, onopendocument } });
+    await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "Insert", ctrlKey: true });
+    expect(v.duplicateSelected).toHaveBeenCalled();
+    expect(onopendocument).toHaveBeenCalledWith(dupDoc, "insert");
+  });
+
+  it("Ctrl+Insert does nothing when duplicateSelected returns null", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs, { duplicateSelected: vi.fn().mockReturnValue(null) });
+    const onopendocument = vi.fn();
+    const { container } = render(ResultGrid, { props: { v, onopendocument } });
+    await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "Insert", ctrlKey: true });
+    expect(onopendocument).not.toHaveBeenCalled();
+  });
+
+  it("Insert/Ctrl+Insert/Ctrl+I/Ctrl+C/Ctrl+Delete no-op when the view doesn't implement them (Query tab grid)", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs); // none of the new optional methods provided
+    const { container } = render(ResultGrid, { props: { v } });
+    const scroller = container.querySelector(".scroller")!;
+    // None of these should throw.
+    await fireEvent.keyDown(scroller, { key: "Insert" });
+    await fireEvent.keyDown(scroller, { key: "Insert", ctrlKey: true });
+    await fireEvent.keyDown(scroller, { key: "i", ctrlKey: true });
+    await fireEvent.keyDown(scroller, { key: "c", ctrlKey: true });
+    await fireEvent.keyDown(scroller, { key: "Delete", ctrlKey: true });
+  });
+});
+
+describe("ResultGrid cell-edit keyboard", () => {
+  it("Ctrl+Enter commits and stays on the same cell", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }, { _id: { $oid: "b" }, name: "y" }];
+    const v = baseView(docs, {
+      editing: { row: 0, key: "name", kind: "inline" },
+      editText: "x",
+      commitEdit: vi.fn(),
+      startEdit: vi.fn(),
+    });
+    const { container } = render(ResultGrid, { props: { v } });
+    const input = container.querySelector("input.celledit")!;
+    await fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+    expect(v.commitEdit).toHaveBeenCalled();
+    expect(v.startEdit).not.toHaveBeenCalled();
+  });
+
+  // Both real stores (collectionView.svelte.ts, queryScript.svelte.ts) clear `editing` only
+  // AFTER an internal `await` inside `commitEdit` — never synchronously as part of the call.
+  // The mock below reproduces that exact timing (an `await` happens *before* the mutation) so
+  // that a caller which reads `v.editing` right after calling `v.commitEdit()` without awaiting
+  // it observes the stale (still non-null) value, matching production behavior.
+  async function flushMicrotasks() {
+    // A handful of microtask hops is enough to drain the commitEdit → commitAndAdvance await
+    // chain; using a real macrotask boundary would also work but this matches the lighter-weight
+    // `await Promise.resolve()` flush already used elsewhere in this codebase (QueryTab.test.ts).
+    for (let i = 0; i < 4; i++) await Promise.resolve();
+  }
+
+  it("bare Enter commits, then starts editing the next row's same column", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }, { _id: { $oid: "b" }, name: "y" }];
+    let editingNow: { row: number; key: string; kind: "inline" | "modal" } | null = { row: 0, key: "name", kind: "inline" };
+    const commitEdit = vi.fn().mockImplementation(async () => {
+      await Promise.resolve(); // real store: at least one await happens before `editing` clears
+      editingNow = null; // mirrors the real store: a successful commit clears `editing`
+    });
+    const startEdit = vi.fn();
+    const v = baseView(docs, {
+      get editing() { return editingNow; },
+      editText: "x",
+      commitEdit,
+      startEdit,
+    });
+    const { container } = render(ResultGrid, { props: { v } });
+    const input = container.querySelector("input.celledit")!;
+    await fireEvent.keyDown(input, { key: "Enter" });
+    await flushMicrotasks();
+    expect(commitEdit).toHaveBeenCalled();
+    expect(startEdit).toHaveBeenCalledWith(1, "name");
+  });
+
+  it("bare Enter on the last row commits and does not call startEdit again", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    let editingNow: { row: number; key: string; kind: "inline" | "modal" } | null = { row: 0, key: "name", kind: "inline" };
+    const commitEdit = vi.fn().mockImplementation(async () => {
+      await Promise.resolve();
+      editingNow = null;
+    });
+    const startEdit = vi.fn();
+    const v = baseView(docs, {
+      get editing() { return editingNow; },
+      editText: "x",
+      commitEdit,
+      startEdit,
+    });
+    const { container } = render(ResultGrid, { props: { v } });
+    const input = container.querySelector("input.celledit")!;
+    await fireEvent.keyDown(input, { key: "Enter" });
+    await flushMicrotasks();
+    expect(commitEdit).toHaveBeenCalled();
+    expect(startEdit).not.toHaveBeenCalled();
+  });
+
+  it("bare Enter does not advance when commitEdit fails (editError set, editing unchanged)", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }, { _id: { $oid: "b" }, name: "y" }];
+    const editingNow = { row: 0, key: "name", kind: "inline" as const };
+    const commitEdit = vi.fn().mockImplementation(async () => {
+      await Promise.resolve(); // does NOT clear editing — simulates a validation/save failure
+    });
+    const startEdit = vi.fn();
+    const v = baseView(docs, { editing: editingNow, editText: "bad", commitEdit, startEdit });
+    const { container } = render(ResultGrid, { props: { v } });
+    const input = container.querySelector("input.celledit")!;
+    await fireEvent.keyDown(input, { key: "Enter" });
+    await flushMicrotasks();
+    expect(commitEdit).toHaveBeenCalled();
+    expect(startEdit).not.toHaveBeenCalled();
   });
 });
 

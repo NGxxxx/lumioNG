@@ -3,21 +3,45 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import Toolbar from "./Toolbar.svelte";
 import { settings } from "../stores/settings.svelte";
+import type { Command, CommandId } from "../domain/commands";
 
-const base = { connected: true, canNewDoc: true, onsession: vi.fn(), onrefresh: vi.fn(), onnewdocument: vi.fn(), onToggleLog: vi.fn() };
+function cmd(disabled = false, run: () => void = vi.fn()): Command {
+  return { disabled, run };
+}
+
+function baseCommands(overrides: Partial<Record<CommandId, Command>> = {}): Partial<Record<CommandId, Command>> {
+  return {
+    "file.sessionManager": cmd(),
+    "file.refresh": cmd(true),
+    "file.newDocument": cmd(true),
+    "file.export": cmd(true),
+    "file.import": cmd(true),
+    "query.run": cmd(true),
+    "query.runSelection": cmd(true),
+    "query.stop": cmd(true),
+    "query.explain": cmd(true),
+    "query.aggregate": cmd(true),
+    "query.save": cmd(true),
+    ...overrides,
+  };
+}
+
+const base = { commands: baseCommands(), canNewDoc: true, onToggleLog: vi.fn() };
 
 describe("Toolbar", () => {
-  it("Session manager is always enabled and calls onsession", async () => {
-    const onsession = vi.fn();
-    const { getByLabelText } = render(Toolbar, { props: { ...base, connected: false, onsession } });
+  it("Session manager is always enabled and calls its command's run", async () => {
+    const run = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, commands: baseCommands({ "file.sessionManager": cmd(false, run) }) },
+    });
     const btn = getByLabelText("Session manager") as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     await fireEvent.click(btn);
-    expect(onsession).toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
   });
 
-  it("Refresh is disabled when not connected", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base, connected: false } });
+  it("Refresh is disabled when its command is disabled", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Refresh") as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -26,8 +50,8 @@ describe("Toolbar", () => {
     expect((getByLabelText("New document") as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it("contextual button (Run query) is disabled in default state", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+  it("Run query (contextual button) is disabled in default state", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Run query") as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -45,7 +69,7 @@ describe("Toolbar Wrap toggle", () => {
   beforeEach(() => settings.setWrapLongLines(false));
 
   it("is always enabled and toggles settings.wrapLongLines on each click", async () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    const { getByLabelText } = render(Toolbar, { props: base });
     const btn = getByLabelText("Wrap") as HTMLButtonElement;
     expect(btn.disabled).toBe(false);
     expect(settings.wrapLongLines).toBe(false);
@@ -57,34 +81,53 @@ describe("Toolbar Wrap toggle", () => {
 });
 
 describe("Toolbar Run query", () => {
-  it("is disabled when canRun is false", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base, canRun: false, onrun: vi.fn() } });
+  it("is disabled when its command is disabled", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Run query") as HTMLButtonElement).disabled).toBe(true);
   });
-  it("calls onrun when enabled and clicked", async () => {
-    const onrun = vi.fn();
-    const { getByLabelText } = render(Toolbar, { props: { ...base, canRun: true, onrun } });
+  it("calls its command's run when enabled and clicked", async () => {
+    const run = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, commands: baseCommands({ "query.run": cmd(false, run) }) },
+    });
     await fireEvent.click(getByLabelText("Run query"));
-    expect(onrun).toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
+  });
+  it("shows the F9 shortcut in its tooltip", () => {
+    // The `tooltip` action (src/lib/actions/tooltip.ts) renders a floating .app-tooltip div into
+    // document.body after a 300ms hover delay — it does not set any DOM attribute directly on the
+    // button, so the tooltip's actual text has to be read after simulating that hover.
+    vi.useFakeTimers();
+    try {
+      const { getByLabelText } = render(Toolbar, { props: base });
+      const wrapper = getByLabelText("Run query").closest(".tt") as HTMLElement;
+      wrapper.dispatchEvent(new PointerEvent("pointerenter"));
+      vi.advanceTimersByTime(300);
+      expect(document.body.querySelector(".app-tooltip")?.textContent).toContain("F9");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
 describe("Toolbar Save", () => {
-  it("is disabled when canSave is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+  it("is disabled when its command is disabled (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Save") as HTMLButtonElement).disabled).toBe(true);
   });
-  it("calls onsave when enabled and clicked", async () => {
-    const onsave = vi.fn();
-    const { getByLabelText } = render(Toolbar, { props: { ...base, canSave: true, onsave } });
+  it("calls its command's run when enabled and clicked", async () => {
+    const run = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, commands: baseCommands({ "query.save": cmd(false, run) }) },
+    });
     await fireEvent.click(getByLabelText("Save"));
-    expect(onsave).toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
   });
 });
 
 describe("Toolbar Delete document", () => {
   it("is disabled when canDeleteDoc is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Delete document") as HTMLButtonElement).disabled).toBe(true);
   });
   it("calls ondeletedocument when enabled and clicked", async () => {
@@ -98,21 +141,23 @@ describe("Toolbar Delete document", () => {
 });
 
 describe("Toolbar Stop", () => {
-  it("is disabled when canStop is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+  it("is disabled when its command is disabled (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Stop") as HTMLButtonElement).disabled).toBe(true);
   });
-  it("calls onstop when enabled and clicked", async () => {
-    const onstop = vi.fn();
-    const { getByLabelText } = render(Toolbar, { props: { ...base, canStop: true, onstop } });
+  it("calls its command's run when enabled and clicked", async () => {
+    const run = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, commands: baseCommands({ "query.stop": cmd(false, run) }) },
+    });
     await fireEvent.click(getByLabelText("Stop"));
-    expect(onstop).toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
   });
 });
 
 describe("Toolbar Find", () => {
   it("is disabled when canFind is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Find") as HTMLButtonElement).disabled).toBe(true);
   });
   it("calls onfind when enabled and clicked", async () => {
@@ -124,23 +169,23 @@ describe("Toolbar Find", () => {
 });
 
 describe("Toolbar Aggregate", () => {
-  it("is disabled when canAggregate is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+  it("is disabled when its command is disabled (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Aggregate") as HTMLButtonElement).disabled).toBe(true);
   });
-  it("calls onaggregate when enabled and clicked", async () => {
-    const onaggregate = vi.fn();
+  it("calls its command's run when enabled and clicked", async () => {
+    const run = vi.fn();
     const { getByLabelText } = render(Toolbar, {
-      props: { ...base, canAggregate: true, onaggregate },
+      props: { ...base, commands: baseCommands({ "query.aggregate": cmd(false, run) }) },
     });
     await fireEvent.click(getByLabelText("Aggregate"));
-    expect(onaggregate).toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
   });
 });
 
 describe("Toolbar Indexes", () => {
   it("is disabled when canIndexes is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Indexes") as HTMLButtonElement).disabled).toBe(true);
   });
   it("calls onindexes when enabled and clicked", async () => {
@@ -154,16 +199,16 @@ describe("Toolbar Indexes", () => {
 });
 
 describe("Toolbar Explain", () => {
-  it("is disabled when canExplainQuery is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: { ...base } });
+  it("is disabled when its command is disabled (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
     expect((getByLabelText("Explain") as HTMLButtonElement).disabled).toBe(true);
   });
-  it("calls onexplainquery when enabled and clicked", async () => {
-    const onexplainquery = vi.fn();
+  it("calls its command's run when enabled and clicked", async () => {
+    const run = vi.fn();
     const { getByLabelText } = render(Toolbar, {
-      props: { ...base, canExplainQuery: true, onexplainquery },
+      props: { ...base, commands: baseCommands({ "query.explain": cmd(false, run) }) },
     });
     await fireEvent.click(getByLabelText("Explain"));
-    expect(onexplainquery).toHaveBeenCalled();
+    expect(run).toHaveBeenCalled();
   });
 });
