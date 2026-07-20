@@ -3,8 +3,9 @@
   import { onMount } from "svelte";
   import { EditorView, keymap, lineNumbers } from "@codemirror/view";
   import { EditorState } from "@codemirror/state";
-  import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+  import { defaultKeymap, history, historyKeymap, toggleComment } from "@codemirror/commands";
   import { bracketMatching } from "@codemirror/language";
+  import { search, openSearchPanel, findNext } from "@codemirror/search";
   import {
     autocompletion,
     closeBrackets,
@@ -15,11 +16,13 @@
   import { javascript } from "@codemirror/lang-javascript";
   import { appEditorTheme } from "../domain/cmTheme";
 
-  let { value, onChange, onSelectionChange, onRun, complete, readonly = false, wrap = false }: {
+  let { value, onChange, onSelectionChange, onRun, onRunSelection, onExplain, complete, readonly = false, wrap = false }: {
     value: string;
     onChange: (text: string) => void;
     onSelectionChange?: (from: number, to: number) => void;
     onRun?: () => void;
+    onRunSelection?: () => void;
+    onExplain?: () => void;
     complete?: CompletionSource;
     readonly?: boolean;
     wrap?: boolean;
@@ -35,9 +38,18 @@
       bracketMatching(),
       closeBrackets(),
       javascript(),
+      search(),
       autocompletion(complete ? { override: [complete], activateOnTyping: true } : {}),
       keymap.of([
-        ...(onRun ? [{ key: "Mod-Enter", run: () => { onRun!(); return true; } }] : []),
+        ...(onRun ? [{ key: "F9", run: () => { onRun!(); return true; } }] : []),
+        ...(onRunSelection ? [{ key: "Mod-F9", run: () => { onRunSelection!(); return true; } }] : []),
+        ...(onExplain ? [{ key: "Mod-Shift-F9", run: () => { onExplain!(); return true; } }] : []),
+        { key: "Mod-F8", run: () => { format(); return true; } },
+        { key: "Mod-w", run: () => { clear(); return true; } },
+        { key: "Mod-/", run: toggleComment },
+        { key: "Mod-f", run: openSearchPanel },
+        { key: "Mod-r", run: openSearchPanel },
+        { key: "F3", run: findNext },
         ...closeBracketsKeymap,
         ...completionKeymap,
         ...defaultKeymap,

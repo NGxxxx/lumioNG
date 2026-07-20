@@ -190,6 +190,8 @@
       onChange={(t) => (v.statementText = t)}
       onSelectionChange={v.setSelection}
       onRun={runQuery}
+      onRunSelection={runSelectionQuery}
+      onExplain={explainFromMenu}
       complete={completionSource} />
   </div>
 

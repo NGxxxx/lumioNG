@@ -30,7 +30,6 @@ export type CommandId =
   | "grid.newDocument"
   | "grid.duplicateDocument"
   | "grid.deleteDocument"
-  | "grid.editCell"
   | "grid.commitEdit"
   | "grid.cancelEdit"
   | "grid.selectAll"
@@ -74,7 +73,6 @@ export const COMMAND_SCOPE: Record<CommandId, CommandScope> = {
   "grid.newDocument": "grid",
   "grid.duplicateDocument": "grid",
   "grid.deleteDocument": "grid",
-  "grid.editCell": "grid",
   "grid.commitEdit": "grid",
   "grid.cancelEdit": "grid",
   "grid.selectAll": "grid",
@@ -121,7 +119,6 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "grid.newDocument": "Insert",
   "grid.duplicateDocument": "Mod+Insert",
   "grid.deleteDocument": "Mod+Delete",
-  "grid.editCell": "F2",
   "grid.commitEdit": "Mod+Enter",
   "grid.cancelEdit": "Escape",
   "grid.selectAll": "Mod+A",

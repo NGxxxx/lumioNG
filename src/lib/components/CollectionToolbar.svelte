@@ -22,6 +22,20 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     searchInputEl?.focus();
   }
 
+  const unlockedFields = $derived(v.columnFields.filter((c) => c.path !== "_id"));
+  const allFieldsChecked = $derived(unlockedFields.every((c) => !v.hiddenDraft.has(c.path)));
+  const someFieldsChecked = $derived(unlockedFields.some((c) => !v.hiddenDraft.has(c.path)));
+
+  /** `indeterminate` isn't a reflected HTML attribute — it must be set as a DOM property. */
+  function indeterminate(node: HTMLInputElement, value: boolean) {
+    node.indeterminate = value;
+    return {
+      update(v: boolean) {
+        node.indeterminate = v;
+      },
+    };
+  }
+
   function toggleDropdown(which: "sort" | "fields") {
     if (which === "fields" && openDropdown !== "fields") v.resetProjectionDraft();
     openDropdown = openDropdown === which ? null : which;
@@ -134,8 +148,15 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     {#if openDropdown === "fields"}
       <div class="dropdown fields-dd">
         <div class="dd-allnone">
-          <button onclick={v.showAllFieldsDraft}>{m.result_table_fields_show_all()}</button>
-          <button onclick={v.hideAllFieldsDraft}>{m.result_table_fields_hide_all()}</button>
+          <label class="chooser-row">
+            <input
+              type="checkbox"
+              checked={allFieldsChecked}
+              use:indeterminate={someFieldsChecked && !allFieldsChecked}
+              onchange={(e) => (e.currentTarget.checked ? v.showAllFieldsDraft() : v.hideAllFieldsDraft())}
+            />
+            {m.result_table_fields_select_all()}
+          </label>
         </div>
         <div class="fields-list">
           {#each v.columnFields as c}
@@ -310,14 +331,14 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     min-width: 11.25rem; max-height: 20rem; overflow: auto;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   }
-  .dd-allnone { display: flex; gap: 0.375rem; padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--bg); }
-  .dd-allnone button { flex: 1; font-size: 0.6875rem; padding: 0.125rem 0; cursor: pointer; border: none; background: none; color: var(--link); }
+  .dd-allnone { padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--bg); }
+  .dd-allnone .chooser-row { font-weight: 600; }
   .locked { color: var(--gray-aa); font-size: 0.625rem; margin-left: 0.25rem; }
   /* Fields popover: pin Show/Hide-all + Apply, scroll only the field list. */
   .fields-dd { display: flex; flex-direction: column; overflow: hidden; }
   .fields-dd .dd-allnone { flex: none; }
-  .fields-list { flex: 1; min-height: 0; overflow: auto; }
-  .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
+  .fields-list { flex: 1; min-height: 0; overflow: auto; border-bottom: 1px solid var(--bg); }
+  .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; }
 
   .dd-empty { color: var(--gray-99); font-size: 0.75rem; padding: 0.125rem 0.125rem 0.375rem; }
   .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }

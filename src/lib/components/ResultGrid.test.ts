@@ -4,6 +4,7 @@ import ResultGrid from "./ResultGrid.svelte";
 import { mergeColumns } from "../domain/schema";
 import type { GridPageView } from "../domain/gridView";
 import type { Doc } from "../domain/doc";
+import { activeDataView, type DataViewHandle } from "../stores/activeDataView.svelte";
 
 let restoreOffsetHeight: (() => void) | undefined;
 beforeAll(() => {
@@ -129,6 +130,21 @@ describe("ResultGrid keyboard shortcuts", () => {
     const { container } = render(ResultGrid, { props: { v } });
     await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "c", ctrlKey: true });
     expect(v.copySelectedAsJson).toHaveBeenCalled();
+  });
+
+  it("Ctrl+F focuses the active data view's search box", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs);
+    const focusSearch = vi.fn();
+    const handle = { canEdit: false, canExport: true, canDelete: false, editSelected: vi.fn(), exportCurrent: vi.fn(), deleteSelected: vi.fn(), focusSearch } as unknown as DataViewHandle;
+    activeDataView.register(handle);
+    try {
+      const { container } = render(ResultGrid, { props: { v } });
+      await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "f", ctrlKey: true });
+      expect(focusSearch).toHaveBeenCalled();
+    } finally {
+      activeDataView.unregister(handle);
+    }
   });
 
   it("Ctrl+Delete calls requestDeleteSelected", async () => {

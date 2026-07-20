@@ -11,6 +11,7 @@
   import { portal } from "../actions/portal";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
+  import { activeDataView } from "../stores/activeDataView.svelte";
 
   let { v, onopendocument }: { v: GridPageView; onopendocument?: (doc: Doc, mode: "insert") => void } = $props();
 
@@ -102,6 +103,9 @@
     } else if (mod && (e.key === "c" || e.key === "C") && v.copySelectedAsJson) {
       e.preventDefault();
       v.copySelectedAsJson();
+    } else if (mod && (e.key === "f" || e.key === "F")) {
+      e.preventDefault();
+      activeDataView.handle?.focusSearch?.();
     } else if (mod && e.key === "Delete") {
       e.preventDefault();
       v.requestDeleteSelected?.();
