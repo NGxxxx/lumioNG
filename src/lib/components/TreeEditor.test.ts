@@ -43,6 +43,22 @@ describe("TreeEditor", () => {
     expect(labels).toContain("zip");
   });
 
+  it("collapsing an expanded container back down does not throw (virtualizer count must shrink in step with rows)", async () => {
+    // many children so rows shrinks enough for a stale virtualItems to index past it
+    const doc = { address: { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8 } };
+    const { container } = setup(doc);
+    const addressLabel = Array.from(container.querySelectorAll(".label")).find((el) => el.textContent === "address")!;
+    await fireEvent.click(addressLabel);
+    await tick();
+    expect(container.querySelectorAll(".label").length).toBeGreaterThan(1);
+
+    await fireEvent.click(addressLabel); // collapse back down
+    await tick();
+
+    const labels = Array.from(container.querySelectorAll(".label")).map((el) => el.textContent);
+    expect(labels).toEqual(["address"]);
+  });
+
   it("_id is locked: no remove button, shown as a non-editable display row", () => {
     const doc = { _id: { $oid: "507f1f77bcf86cd799439011" }, name: "Ann" };
     const { container } = setup(doc);

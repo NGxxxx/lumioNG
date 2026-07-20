@@ -4,6 +4,7 @@
   import { portal } from "../actions/portal";
   import { getAppVersion } from "$lib/api/app";
   import { pushModal } from "$lib/stores/modalStack";
+  import appIcon from "$lib/assets/app-icon.png";
   import * as m from "$lib/paraglide/messages";
 
   let { onclose }: { onclose: () => void } = $props();
@@ -24,14 +25,16 @@
 >
   <div class="modal" role="dialog" aria-modal="true" aria-label={m.menu_about()}>
     <div class="body">
-      <svg class="logo" width="40" height="40" viewBox="0 0 24 24" aria-hidden="true">
-        <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="var(--accent)" stroke-width="1.6" />
-        <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="var(--accent)" stroke-width="1.6" />
-      </svg>
+      <div class="icon-tile">
+        <img class="logo" src={appIcon} alt="" width="64" height="64" />
+      </div>
       <div class="name">LumioNG</div>
       <div class="tagline">{m.about_dialog_tagline()}</div>
-      {#if version}<div class="version">{m.about_dialog_version({ version })}</div>{/if}
-      <div class="author">{m.about_dialog_author({ author: "NG" })}</div>
+      <div class="meta">
+        {#if version}<span class="version">{m.about_dialog_version({ version })}</span>{/if}
+        {#if version}<span class="dot" aria-hidden="true">·</span>{/if}
+        <span class="author">{m.about_dialog_author({ author: "NG" })}</span>
+      </div>
     </div>
     <footer>
       <button onclick={onclose}>{m.common_close()}</button>
@@ -41,11 +44,22 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
-  .modal { background: var(--panel); width: 18.75rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; }
-  .body { padding: 1.5rem 1rem 1rem; display: flex; flex-direction: column; align-items: center; text-align: center; gap: 0.1875rem; }
-  .logo { margin-bottom: 0.5rem; }
-  .name { font-size: 1rem; font-weight: 600; color: var(--fg); }
-  .tagline, .version, .author { font-size: 0.75rem; color: var(--muted); }
+  .modal { background: var(--panel); width: 20rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25); }
+  .body { padding: 1.75rem 1.25rem 1.25rem; display: flex; flex-direction: column; align-items: center; text-align: center; }
+  .icon-tile {
+    width: 4.5rem; height: 4.5rem; border-radius: 0.875rem; margin-bottom: 0.875rem;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--bg); border: 1px solid var(--border);
+  }
+  .logo { width: 2.75rem; height: 2.75rem; display: block; }
+  .name { font-size: 1.0625rem; font-weight: 700; color: var(--fg); letter-spacing: -0.01em; }
+  .tagline {
+    margin-top: 0.375rem; font-size: 0.6875rem; color: var(--slate); background: var(--blue-tint5);
+    padding: 0.125rem 0.5rem; border-radius: 0.1875rem;
+  }
+  .meta { margin-top: 0.875rem; font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 0.375rem; }
+  .version { font-family: var(--mono); background: var(--tab-inactive-bg); border-radius: 0.1875rem; padding: 0.0625rem 0.3125rem; }
+  .dot { color: var(--gray-b8); }
   footer { display: flex; justify-content: center; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
   footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
   footer button:hover { background: var(--bg); }

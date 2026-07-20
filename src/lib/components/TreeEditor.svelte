@@ -68,7 +68,8 @@
     overscan: OVERSCAN,
   });
 
-  $effect(() => {
+  // $effect.pre, not $effect: must resync count before the DOM re-renders shorter `rows`, or a stale virtualItems indexes past it and throws.
+  $effect.pre(() => {
     const count = rows.length;
     const el = scrollerEl;
     get(rowVirtualizer).setOptions({
@@ -151,9 +152,12 @@
 </div>
 
 <style>
+  /* flex: 1 load-bearing: absolute-positioned rows give this no intrinsic width in the row-flex parent, so it collapses to ~0px without it. */
   .tree-scroller {
     overflow: auto;
     height: 100%;
+    flex: 1;
+    min-width: 0;
     position: relative;
     background: var(--panel);
     font-family: Consolas, "Courier New", monospace;

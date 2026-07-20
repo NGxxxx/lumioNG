@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vites
 import { render, fireEvent } from "@testing-library/svelte";
 import DocumentForm from "./DocumentForm.svelte";
 import * as documents from "../api/documents";
+import { proxiedDoc } from "./DocumentForm.test-helpers.svelte";
 
 vi.mock("../api/documents", () => ({
   insertDocument: vi.fn(),
@@ -82,6 +83,16 @@ describe("DocumentForm — Raw JSON view", () => {
       '{"$oid":"abc"}',
       '{"_id":{"$oid":"abc"},"a":2}',
     );
+  });
+
+  it("initial doc coming from a $state store (reactive proxy, e.g. workTabs) mounts without throwing", async () => {
+    // unlike the other tests' plain object — mirrors workTabs, a deep $state array.
+    const initial = proxiedDoc({ _id: { $oid: "abc" }, a: 1, nested: { b: 2 } });
+    const { getByText } = render(DocumentForm, {
+      props: { mode: "edit", db: "d", coll: "c", initial, onsaved: () => {}, oncancel: () => {} },
+    });
+
+    expect(getByText("Save")).toBeTruthy();
   });
 
   it("scrolling the textarea keeps the line-number gutter in sync", async () => {

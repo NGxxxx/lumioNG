@@ -10,6 +10,7 @@
   import ExportWizard from "./ExportWizard.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
+  import { validateCollectionName } from "../domain/namespaces";
   import * as m from "$lib/paraglide/messages";
   import type { Session } from "../stores/sessionManager.svelte";
 
@@ -52,6 +53,7 @@
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
     { label: m.menu_refresh(), action: "refresh" },
     { label: m.export_wizard_menu_export_db(), action: "exportDb" },
+    { label: m.namespace_panel_menu_import(), action: "import" },
     { label: m.namespace_panel_menu_import_sql(), action: "importSql" },
     { label: m.namespace_panel_menu_drop_db(), action: "dropDb" },
   ]);
@@ -69,6 +71,7 @@
   type Dialog =
     | { type: "newDb"; sessionId: string }
     | { type: "newColl"; db: string; sessionId: string }
+    | { type: "importTarget"; db: string; sessionId: string }
     | { type: "rename"; db: string; coll: string; sessionId: string }
     | { type: "duplicate"; db: string; coll: string; sessionId: string }
     | { type: "dropColl"; db: string; coll: string; sessionId: string }
@@ -110,6 +113,7 @@
         const db = databases.find((d) => d.name === target.db);
         exportWizard = { mode: "pick", preChecked: (db?.collections ?? []).map((c) => ({ db: target.db, coll: c })) };
       }
+      else if (action === "import") dialog = { type: "importTarget", db: target.db, sessionId: target.sessionId };
       else if (action === "importSql") openImportDialog(target.sessionId, target.db, null);
       else if (action === "dropDb") dialog = { type: "dropDb", db: target.db, sessionId: target.sessionId };
     } else {
@@ -270,6 +274,19 @@
     label={m.namespace_panel_new_coll_label()}
     onsubmit={async (name) => {
       await sessionById(d.sessionId)?.tree?.createCollection(d.db, name);
+      dialog = null;
+    }}
+    oncancel={() => (dialog = null)}
+  />
+{:else if dialog?.type === "importTarget"}
+  {@const d = dialog}
+  <NameDialog
+    title={m.namespace_panel_import_target_title()}
+    label={m.namespace_panel_import_target_label()}
+    onsubmit={async (name) => {
+      const msg = validateCollectionName(name);
+      if (msg) throw msg;
+      openImportDialog(d.sessionId, d.db, name);
       dialog = null;
     }}
     oncancel={() => (dialog = null)}

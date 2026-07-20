@@ -35,7 +35,10 @@
   // Source of truth: tree object, cloned from `initial` (edit doc, pre-filled insert, or empty).
   // structuredClone (native) instead of the old JSON.parse(JSON.stringify(...)) round-trip — same
   // deep-clone result, one pass instead of two.
-  let docValue = $state<Doc>(untrack(() => structuredClone(initial ?? ({} as Doc))));
+  // $state.snapshot first: `initial` comes from workTabs (a deep $state array), so it's a reactive Proxy — structuredClone throws DataCloneError on those directly.
+  let docValue = $state<Doc>(
+    untrack(() => structuredClone($state.snapshot(initial) ?? ({} as Doc))),
+  );
   // Raw JSON text is derived from docValue lazily (see toRaw/toTree) — never needed at all if the
   // user stays on the Tree tab, and previously recomputed from scratch on every tab switch even
   // when nothing had changed since.

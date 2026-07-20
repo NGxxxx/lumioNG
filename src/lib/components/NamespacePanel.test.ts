@@ -67,13 +67,30 @@ describe("NamespacePanel", () => {
     expect(writeText).toHaveBeenCalledWith("shop.users");
   });
 
-  it("db menu shows New collection… / Copy name / Refresh / Drop database…", async () => {
+  it("db menu shows New collection… / Copy name / Refresh / Drop database… / Import… / Import SQL dump…", async () => {
     const { getByText } = render(NamespacePanel, { props: {} });
     await fireEvent.contextMenu(getByText("shop"));
     expect(getByText("New collection…")).toBeTruthy();
     expect(getByText("Copy name")).toBeTruthy();
     expect(getByText("Refresh")).toBeTruthy();
     expect(getByText("Drop database…")).toBeTruthy();
+    expect(getByText("Import…")).toBeTruthy();
+    expect(getByText("Import SQL dump…")).toBeTruthy();
+  });
+
+  it("db menu Import… prompts for a target collection, then opens the general Import dialog (not SQL-only)", async () => {
+    const { getByText, getByLabelText } = render(NamespacePanel, { props: {} });
+    await fireEvent.contextMenu(getByText("shop"));
+    await fireEvent.click(getByText("Import…"));
+
+    expect(getByText("Import into collection")).toBeTruthy();
+    await fireEvent.input(getByLabelText("name-input"), { target: { value: "orders" } });
+    await fireEvent.click(getByText("OK"));
+
+    // general (non-SQL) dialog, not the SQL-only whole-database flow
+    expect(getByText("Import into shop.orders")).toBeTruthy();
+    expect(getByText("Collection")).toBeTruthy();
+    expect(getByText("orders")).toBeTruthy();
   });
 
   it("clicking error-status session header calls reconnect, not focusSession", async () => {
