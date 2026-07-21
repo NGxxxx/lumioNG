@@ -60,6 +60,21 @@ fn to_js_err<'js>(ctx: &Ctx<'js>, e: impl ToString) -> rquickjs::Error {
     Exception::throw_message(ctx, &e.to_string())
 }
 
+/// Shared tail of every `bind_*` host function: run a DB future to completion on this blocking
+/// QuickJS call thread, racing it against `h`'s cancel flag/deadline (`with_interrupt`), and
+/// mapping any error into a thrown JS exception.
+fn run_blocking<'js, T>(
+    h: HostCtx,
+    ctx: &Ctx<'js>,
+    fut: impl std::future::Future<Output = Result<T, crate::error::AppError>>,
+) -> JsResult<T> {
+    let cancel = h.cancel.clone();
+    let deadline = h.deadline;
+    h.handle
+        .block_on(with_interrupt(cancel, deadline, fut))
+        .map_err(|e| to_js_err(ctx, e))
+}
+
 // ── Write-command denylist ────────────────────────────────────────────────────
 
 /// Top-level write/DDL command names (lowercased). Anything else is treated as a read/admin-read.
@@ -233,11 +248,7 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
         ctx.clone(),
         move |ctx: Ctx<'_>, db: String, coll: String, ops_json: String| -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
+            run_blocking(h.clone(), &ctx, async move {
                 use crate::bson_json::bson_to_canonical_string;
                 use mongodb::options::{ReplaceOptions, UpdateOptions};
 
@@ -347,9 +358,7 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                     return Err(e);
                 }
                 Ok::<String, crate::error::AppError>(acc.build_ack())
-            }));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+            })
         },
     )?;
     ctx.globals().set("__write", f)?;
@@ -402,64 +411,57 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
               options_json: String|
               -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    use crate::json_bson::canonical_string_to_doc;
-                    use mongodb::options::FindOptions;
+            run_blocking(h.clone(), &ctx, async move {
+                use crate::json_bson::canonical_string_to_doc;
+                use mongodb::options::FindOptions;
 
-                    let filter = canonical_string_to_doc(&filter_json)?;
-                    let opts_doc = canonical_string_to_doc(&options_json).ok();
+                let filter = canonical_string_to_doc(&filter_json)?;
+                let opts_doc = canonical_string_to_doc(&options_json).ok();
 
-                    let collection = h.client.database(&db).collection::<Document>(&coll);
+                let collection = h.client.database(&db).collection::<Document>(&coll);
 
-                    let mut find_opts = FindOptions::default();
-                    apply_find_options(opts_doc.as_ref(), &mut find_opts);
+                let mut find_opts = FindOptions::default();
+                apply_find_options(opts_doc.as_ref(), &mut find_opts);
 
-                    // Inject default maxTimeMS from deadline if not set by caller
-                    if find_opts.max_time.is_none() {
-                        let remaining = deadline.saturating_duration_since(Instant::now());
-                        if !remaining.is_zero() {
-                            find_opts.max_time = Some(remaining);
-                        }
+                // Inject default maxTimeMS from deadline if not set by caller
+                if find_opts.max_time.is_none() {
+                    let remaining = h.deadline.saturating_duration_since(Instant::now());
+                    if !remaining.is_zero() {
+                        find_opts.max_time = Some(remaining);
                     }
+                }
 
-                    let mut cursor = collection
-                        .find(filter)
-                        .with_options(find_opts)
-                        .await
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let mut cursor = collection
+                    .find(filter)
+                    .with_options(find_opts)
+                    .await
+                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
-                    let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
-                    // Drain the first batch on the owned cursor (never across the RefCell borrow via `.await`), bytes-capped so huge documents can't fill one giant batch.
-                    let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
-                        &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
-                    )
-                    .await?;
-                    let handle_id = {
-                        let mut store = h.cursors.borrow_mut();
-                        let id = store.next_handle();
-                        if !exhausted {
-                            store.put(id, cursor);
-                        }
-                        id
-                    };
+                let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
+                // Drain the first batch on the owned cursor (never across the RefCell borrow via `.await`), bytes-capped so huge documents can't fill one giant batch.
+                let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
+                    &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
+                )
+                .await?;
+                let handle_id = {
+                    let mut store = h.cursors.borrow_mut();
+                    let id = store.next_handle();
+                    if !exhausted {
+                        store.put(id, cursor);
+                    }
+                    id
+                };
 
-                    let rows_json = rows
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    let bytes = rows_json.len();
-                    Ok::<String, crate::error::AppError>(format!(
-                        r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
-                    ))
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+                let rows_json = rows
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let bytes = rows_json.len();
+                Ok::<String, crate::error::AppError>(format!(
+                    r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
+                ))
+            })
         },
     )?;
     ctx.globals().set("__find", f)?;
@@ -480,78 +482,71 @@ fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
               options_json: String|
               -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    use crate::json_bson::canonical_string_to_doc_array;
-                    use crate::json_bson::canonical_string_to_doc;
-                    use mongodb::bson::Bson;
-                    use mongodb::options::AggregateOptions;
+            run_blocking(h.clone(), &ctx, async move {
+                use crate::json_bson::canonical_string_to_doc_array;
+                use crate::json_bson::canonical_string_to_doc;
+                use mongodb::bson::Bson;
+                use mongodb::options::AggregateOptions;
 
-                    let pipeline =
-                        canonical_string_to_doc_array(&pipeline_json, "pipeline must be array", "pipeline stage must be a document")?;
+                let pipeline =
+                    canonical_string_to_doc_array(&pipeline_json, "pipeline must be array", "pipeline stage must be a document")?;
 
-                    if h.read_only && pipeline_writes(&pipeline) {
-                        return Err(crate::error::AppError::Query("Connection is read-only".into()));
+                if h.read_only && pipeline_writes(&pipeline) {
+                    return Err(crate::error::AppError::Query("Connection is read-only".into()));
+                }
+
+                let opts_doc = canonical_string_to_doc(&options_json).ok();
+
+                let collection = h.client.database(&db).collection::<Document>(&coll);
+
+                let mut agg_opts = AggregateOptions::default();
+                if let Some(ref o) = opts_doc {
+                    if let Some(Bson::Int64(ms)) = o.get("maxTimeMS") {
+                        agg_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
+                    } else if let Some(Bson::Int32(ms)) = o.get("maxTimeMS") {
+                        agg_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
                     }
+                }
 
-                    let opts_doc = canonical_string_to_doc(&options_json).ok();
-
-                    let collection = h.client.database(&db).collection::<Document>(&coll);
-
-                    let mut agg_opts = AggregateOptions::default();
-                    if let Some(ref o) = opts_doc {
-                        if let Some(Bson::Int64(ms)) = o.get("maxTimeMS") {
-                            agg_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
-                        } else if let Some(Bson::Int32(ms)) = o.get("maxTimeMS") {
-                            agg_opts.max_time = Some(std::time::Duration::from_millis(*ms as u64));
-                        }
+                // Inject default maxTimeMS from deadline if not set by caller
+                if agg_opts.max_time.is_none() {
+                    let remaining = h.deadline.saturating_duration_since(Instant::now());
+                    if !remaining.is_zero() {
+                        agg_opts.max_time = Some(remaining);
                     }
+                }
 
-                    // Inject default maxTimeMS from deadline if not set by caller
-                    if agg_opts.max_time.is_none() {
-                        let remaining = deadline.saturating_duration_since(Instant::now());
-                        if !remaining.is_zero() {
-                            agg_opts.max_time = Some(remaining);
-                        }
+                let mut cursor = collection
+                    .aggregate(pipeline)
+                    .with_options(agg_opts)
+                    .await
+                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+
+                let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
+                // Drain on the owned cursor first (no RefCell across await), bytes-capped so huge documents can't fill one giant batch.
+                let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
+                    &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
+                )
+                .await?;
+                let handle_id = {
+                    let mut store = h.cursors.borrow_mut();
+                    let id = store.next_handle();
+                    if !exhausted {
+                        store.put(id, cursor);
                     }
+                    id
+                };
 
-                    let mut cursor = collection
-                        .aggregate(pipeline)
-                        .with_options(agg_opts)
-                        .await
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
-
-                    let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
-                    // Drain on the owned cursor first (no RefCell across await), bytes-capped so huge documents can't fill one giant batch.
-                    let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
-                        &mut cursor, batch_size, crate::script::cursors::MAX_DRAIN_BYTES,
-                    )
-                    .await?;
-                    let handle_id = {
-                        let mut store = h.cursors.borrow_mut();
-                        let id = store.next_handle();
-                        if !exhausted {
-                            store.put(id, cursor);
-                        }
-                        id
-                    };
-
-                    let rows_json = rows
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<_>>()
-                        .join(",");
-                    let bytes = rows_json.len();
-                    Ok::<String, crate::error::AppError>(format!(
-                        r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
-                    ))
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+                let rows_json = rows
+                    .iter()
+                    .map(|s| s.as_str())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                let bytes = rows_json.len();
+                Ok::<String, crate::error::AppError>(format!(
+                    r#"{{"handle":{handle_id},"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
+                ))
+            })
         },
     )?;
     ctx.globals().set("__aggregate", f)?;
@@ -572,29 +567,22 @@ fn bind_count(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
               mode: String|
               -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    let c = h.client.database(&db).collection::<Document>(&coll);
-                    let n: i64 = match mode.as_str() {
-                        "estimated" => c
-                            .estimated_document_count()
+            run_blocking(h.clone(), &ctx, async move {
+                let c = h.client.database(&db).collection::<Document>(&coll);
+                let n: i64 = match mode.as_str() {
+                    "estimated" => c
+                        .estimated_document_count()
+                        .await
+                        .map_err(|e| crate::error::AppError::Query(e.to_string()))? as i64,
+                    _ => {
+                        let f = crate::json_bson::canonical_string_to_doc(&filter_json)?;
+                        c.count_documents(f)
                             .await
-                            .map_err(|e| crate::error::AppError::Query(e.to_string()))? as i64,
-                        _ => {
-                            let f = crate::json_bson::canonical_string_to_doc(&filter_json)?;
-                            c.count_documents(f)
-                                .await
-                                .map_err(|e| crate::error::AppError::Query(e.to_string()))? as i64
-                        }
-                    };
-                    Ok::<String, crate::error::AppError>(format!(r#"{{"$numberLong":"{n}"}}"#))
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+                            .map_err(|e| crate::error::AppError::Query(e.to_string()))? as i64
+                    }
+                };
+                Ok::<String, crate::error::AppError>(format!(r#"{{"$numberLong":"{n}"}}"#))
+            })
         },
     )?;
     ctx.globals().set("__count", f)?;
@@ -615,27 +603,20 @@ fn bind_distinct(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
               filter_json: String|
               -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    use crate::bson_json::bson_to_canonical_string;
+            run_blocking(h.clone(), &ctx, async move {
+                use crate::bson_json::bson_to_canonical_string;
 
-                    let filter = crate::json_bson::canonical_string_to_doc(&filter_json)?;
-                    let c = h.client.database(&db).collection::<Document>(&coll);
-                    let values = c
-                        .distinct(&field, filter)
-                        .await
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let filter = crate::json_bson::canonical_string_to_doc(&filter_json)?;
+                let c = h.client.database(&db).collection::<Document>(&coll);
+                let values = c
+                    .distinct(&field, filter)
+                    .await
+                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
-                    let parts: Result<Vec<String>, _> =
-                        values.iter().map(bson_to_canonical_string).collect();
-                    Ok::<String, crate::error::AppError>(format!("[{}]", parts?.join(",")))
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+                let parts: Result<Vec<String>, _> =
+                    values.iter().map(bson_to_canonical_string).collect();
+                Ok::<String, crate::error::AppError>(format!("[{}]", parts?.join(",")))
+            })
         },
     )?;
     ctx.globals().set("__distinct", f)?;
@@ -651,30 +632,23 @@ fn bind_run_command(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
         ctx.clone(),
         move |ctx: Ctx<'_>, db: String, cmd_json: String| -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    use crate::bson_json::doc_to_canonical_string;
+            run_blocking(h.clone(), &ctx, async move {
+                use crate::bson_json::doc_to_canonical_string;
 
-                    let cmd = crate::json_bson::canonical_string_to_doc(&cmd_json)?;
-                    if h.read_only && is_write_command(&cmd) {
-                        return Err(crate::error::AppError::Query(
-                            "Connection is read-only".into(),
-                        ));
-                    }
-                    let reply = h
-                        .client
-                        .database(&db)
-                        .run_command(cmd)
-                        .await
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
-                    doc_to_canonical_string(reply)
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+                let cmd = crate::json_bson::canonical_string_to_doc(&cmd_json)?;
+                if h.read_only && is_write_command(&cmd) {
+                    return Err(crate::error::AppError::Query(
+                        "Connection is read-only".into(),
+                    ));
+                }
+                let reply = h
+                    .client
+                    .database(&db)
+                    .run_command(cmd)
+                    .await
+                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                doc_to_canonical_string(reply)
+            })
         },
     )?;
     ctx.globals().set("__runCommand", f)?;
@@ -690,30 +664,23 @@ fn bind_admin_command(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
         ctx.clone(),
         move |ctx: Ctx<'_>, cmd_json: String| -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    use crate::bson_json::doc_to_canonical_string;
+            run_blocking(h.clone(), &ctx, async move {
+                use crate::bson_json::doc_to_canonical_string;
 
-                    let cmd = crate::json_bson::canonical_string_to_doc(&cmd_json)?;
-                    if h.read_only && is_write_command(&cmd) {
-                        return Err(crate::error::AppError::Query(
-                            "Connection is read-only".into(),
-                        ));
-                    }
-                    let reply = h
-                        .client
-                        .database("admin")
-                        .run_command(cmd)
-                        .await
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
-                    doc_to_canonical_string(reply)
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+                let cmd = crate::json_bson::canonical_string_to_doc(&cmd_json)?;
+                if h.read_only && is_write_command(&cmd) {
+                    return Err(crate::error::AppError::Query(
+                        "Connection is read-only".into(),
+                    ));
+                }
+                let reply = h
+                    .client
+                    .database("admin")
+                    .run_command(cmd)
+                    .await
+                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                doc_to_canonical_string(reply)
+            })
         },
     )?;
     ctx.globals().set("__adminCommand", f)?;
@@ -729,25 +696,18 @@ fn bind_list_collections(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
         ctx.clone(),
         move |ctx: Ctx<'_>, db: String| -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    let names: Vec<String> = h
-                        .client
-                        .database(&db)
-                        .list_collection_names()
-                        .await
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+            run_blocking(h.clone(), &ctx, async move {
+                let names: Vec<String> = h
+                    .client
+                    .database(&db)
+                    .list_collection_names()
+                    .await
+                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
 
-                    // Serialize as a JSON array; serde handles quotes, backslashes, control chars.
-                    serde_json::to_string(&names)
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+                // Serialize as a JSON array; serde handles quotes, backslashes, control chars.
+                serde_json::to_string(&names)
+                    .map_err(|e| crate::error::AppError::Query(e.to_string()))
+            })
         },
     )?;
     ctx.globals().set("__listCollections", f)?;
@@ -763,33 +723,26 @@ fn bind_cursor_fetch(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
         ctx.clone(),
         move |ctx: Ctx<'_>, handle: u32, n: usize| -> JsResult<String> {
             let h = h.clone();
-            let cancel = h.cancel.clone();
-            let deadline = h.deadline;
-            let result = h.handle.block_on(crate::script::host::with_interrupt(
-                cancel, deadline,
-                async move {
-                    // Take the cursor out so the RefCell isn't borrowed across `.await`.
-                    let taken = h.cursors.borrow_mut().take(handle);
-                    let mut cursor = match taken {
-                        Some(c) => c,
-                        None => return Err(crate::error::AppError::Query("unknown cursor".into())),
-                    };
-                    let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
-                        &mut cursor, n, crate::script::cursors::MAX_DRAIN_BYTES,
-                    )
-                    .await?;
-                    if !exhausted {
-                        h.cursors.borrow_mut().put(handle, cursor);
-                    }
-                    let rows_json = rows.join(",");
-                    let bytes = rows_json.len();
-                    Ok::<String, crate::error::AppError>(format!(
-                        r#"{{"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
-                    ))
-                },
-            ));
-
-            result.map_err(|e| to_js_err(&ctx, e))
+            run_blocking(h.clone(), &ctx, async move {
+                // Take the cursor out so the RefCell isn't borrowed across `.await`.
+                let taken = h.cursors.borrow_mut().take(handle);
+                let mut cursor = match taken {
+                    Some(c) => c,
+                    None => return Err(crate::error::AppError::Query("unknown cursor".into())),
+                };
+                let (rows, exhausted) = crate::script::cursors::CursorStore::drain(
+                    &mut cursor, n, crate::script::cursors::MAX_DRAIN_BYTES,
+                )
+                .await?;
+                if !exhausted {
+                    h.cursors.borrow_mut().put(handle, cursor);
+                }
+                let rows_json = rows.join(",");
+                let bytes = rows_json.len();
+                Ok::<String, crate::error::AppError>(format!(
+                    r#"{{"rows":[{rows_json}],"exhausted":{exhausted},"bytes":{bytes}}}"#
+                ))
+            })
         },
     )?;
     ctx.globals().set("__cursorFetch", f)?;

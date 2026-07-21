@@ -3,6 +3,7 @@ use crate::error::AppError;
 use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc, canonical_string_to_doc_array};
 use crate::state::AppState;
 use mongodb::bson::{doc, Document};
+use mongodb::Collection;
 use tauri::State;
 
 use super::query::parse_user_filter;
@@ -50,6 +51,24 @@ pub(crate) fn ensure_filter_allowed(filter: &Document, allow_all: bool) -> Resul
         ));
     }
     Ok(())
+}
+
+/// Shared prefix of every bulk-write command: fetch the client, enforce the read-only guard,
+/// resolve the target collection, and parse+gate the user filter.
+async fn resolve_write_target(
+    state: &AppState,
+    session_id: &str,
+    db: &str,
+    coll: &str,
+    filter: Option<&str>,
+    allow_all: bool,
+) -> Result<(Collection<Document>, Document), AppError> {
+    let client = state.client(session_id).await?;
+    state.ensure_writable(session_id).await?;
+    let collection = client.database(db).collection::<Document>(coll);
+    let f = parse_user_filter(filter)?;
+    ensure_filter_allowed(&f, allow_all)?;
+    Ok((collection, f))
 }
 
 #[tauri::command]
@@ -127,11 +146,8 @@ pub async fn update_many(
     allow_all: bool,
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let f = parse_user_filter(filter.as_deref())?;
-    ensure_filter_allowed(&f, allow_all)?;
+    let (collection, f) =
+        resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let update_doc = canonical_string_to_doc(&update)?;
     let res = collection.update_many(f, update_doc).await?;
     Ok(BulkResult {
@@ -149,11 +165,8 @@ pub async fn delete_many(
     allow_all: bool,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let f = parse_user_filter(filter.as_deref())?;
-    ensure_filter_allowed(&f, allow_all)?;
+    let (collection, f) =
+        resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let res = collection.delete_many(f).await?;
     Ok(res.deleted_count)
 }
@@ -198,11 +211,8 @@ pub async fn update_one(
     allow_all: bool,
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let f = parse_user_filter(filter.as_deref())?;
-    ensure_filter_allowed(&f, allow_all)?;
+    let (collection, f) =
+        resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let update_doc = canonical_string_to_doc(&update)?;
     let res = collection.update_one(f, update_doc).await?;
     Ok(BulkResult {
@@ -221,11 +231,8 @@ pub async fn replace_one(
     allow_all: bool,
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let f = parse_user_filter(filter.as_deref())?;
-    ensure_filter_allowed(&f, allow_all)?;
+    let (collection, f) =
+        resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let repl = canonical_string_to_doc(&replacement)?;
     let res = collection.replace_one(f, repl).await?;
     Ok(BulkResult {
@@ -243,11 +250,8 @@ pub async fn delete_one(
     allow_all: bool,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-    let f = parse_user_filter(filter.as_deref())?;
-    ensure_filter_allowed(&f, allow_all)?;
+    let (collection, f) =
+        resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let res = collection.delete_one(f).await?;
     Ok(res.deleted_count)
 }
