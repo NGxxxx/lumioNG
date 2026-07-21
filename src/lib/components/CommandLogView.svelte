@@ -42,7 +42,7 @@
 </div>
 
 <style>
-  .body { flex: 1; overflow: auto; font-family: var(--mono); font-size: 0.75rem; line-height: 1.55; padding: 0.25rem 0; }
+  .body { flex: 1; overflow: auto; font-family: var(--mono); font-size: var(--fs); line-height: 1.55; padding: 0.25rem 0; }
   .line { display: flex; align-items: center; padding: 0 0.5rem; white-space: pre; }
   .line:hover { background: var(--bg); }
   .n { width: 1.75rem; flex: none; text-align: right; color: var(--gray-b8); margin-right: 0.375rem; user-select: none; }

@@ -11,6 +11,7 @@
   import ImportDialog from "./ImportDialog.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
   import { validateCollectionName } from "../domain/namespaces";
+  import { SEARCH_DEBOUNCE_MS } from "../domain/timing";
   import * as m from "$lib/paraglide/messages";
   import type { Session } from "../stores/sessionManager.svelte";
 
@@ -40,6 +41,15 @@
 
   let menu = $state<(TreeMenuTarget & { sessionId: string }) | null>(null);
   let query = $state("");
+  // filterNamespaces walks every DB/collection in every session's tree; debounce it (immediate on
+  // clear) so typing doesn't re-filter the whole sidebar on every keystroke against a large cluster.
+  let appliedQuery = $state("");
+  $effect(() => {
+    const q = query;
+    if (q === "") { appliedQuery = ""; return; }
+    const timer = setTimeout(() => { appliedQuery = q; }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  });
 
   // Menu items per node kind
   const connItems = $derived([
@@ -167,7 +177,7 @@
 {#each sessionManager.sessions as sess (sess.id)}
   {@const isCollapsed = collapsedSessions.has(sess.id)}
   {@const databases = sess.tree?.databases ?? []}
-  {@const filtered = filterNamespaces(databases, query)}
+  {@const filtered = filterNamespaces(databases, appliedQuery)}
   {@const isActive = sessionManager.activeId === sess.id}
 
   <div class="session-root" class:active={isActive}>
@@ -237,7 +247,7 @@
       {/if}
       <NamespaceTree
         databases={filtered.databases}
-        forceExpand={query ? filtered.expand : null}
+        forceExpand={appliedQuery ? filtered.expand : null}
         selected={sess.nav.selection}
         onselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); onselect?.(d); }}
         onselectdb={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectDatabase(d.db); onselectdb?.(d); }}
@@ -371,11 +381,11 @@
 {/if}
 
 <style>
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
   .ns-search { display: flex; align-items: center; gap: 0.3125rem; height: 1.625rem; padding: 0 0.5rem; border-bottom: 1px solid var(--border); background: var(--panel); flex: none; }
   /* <aside> clips overflow (+page.svelte); this is the actual scroll region. */
   .sessions-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-  .ns-search input { flex: 1; border: none; background: none; font-size: 0.75rem; outline: none; }
+  .ns-search input { flex: 1; border: none; background: none; font-size: var(--fs); outline: none; }
   .ns-clear { border: none; background: none; cursor: pointer; color: var(--gray-99); font-size: 0.875rem; line-height: 1; padding: 0 0.125rem; }
   .ns-clear:hover { color: var(--gray-44); }
 
@@ -393,7 +403,7 @@
     user-select: none;
     border-bottom: 1px solid var(--border);
     background: var(--panel);
-    font-size: 0.75rem;
+    font-size: var(--fs);
     font-weight: 600;
   }
   .session-header:hover { background: var(--row-hover); }

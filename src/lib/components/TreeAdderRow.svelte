@@ -49,7 +49,7 @@
 
 <style>
   .add { display: flex; align-items: center; gap: 0.375rem; }
-  .add button { border: none; background: none; color: var(--link); cursor: pointer; padding: 0; font-size: 0.75rem; }
-  .add .name { font-size: 0.75rem; padding: 0.0625rem 0.25rem; }
+  .add button { border: none; background: none; color: var(--link); cursor: pointer; padding: 0; font-size: var(--fs); }
+  .add .name { font-size: var(--fs); padding: 0.0625rem 0.25rem; }
   .adderr { color: var(--error); font-size: 0.6875rem; }
 </style>

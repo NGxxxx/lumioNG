@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { idJson } from "$lib/domain/docid";
+  import { rafThrottle } from "$lib/domain/rafThrottle";
   import { aggregateTemplate } from "$lib/domain/queryStatement";
   import { inferSchema } from "$lib/domain/schema";
   import { buildSkeleton } from "$lib/domain/skeleton";
@@ -171,10 +172,12 @@
     e.preventDefault();
     const startY = e.clientY;
     const startH = shell.savedQueriesHeight;
-    function move(ev: MouseEvent) {
+    // rAF-throttled: coalesce raw mousemove ticks to at most one panel re-layout per frame.
+    const move = rafThrottle((ev: MouseEvent) => {
       shell.setSavedQueriesHeight(startH + (startY - ev.clientY));
-    }
+    });
     function up() {
+      move.cancel();
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
     }
@@ -208,10 +211,12 @@
     e.preventDefault();
     const startX = e.clientX;
     const startW = shell.sidebarWidth;
-    function move(ev: MouseEvent) {
+    // rAF-throttled: coalesce raw mousemove ticks to at most one sidebar re-layout per frame.
+    const move = rafThrottle((ev: MouseEvent) => {
       shell.setSidebarWidth(startW + (ev.clientX - startX));
-    }
+    });
     function up() {
+      move.cancel();
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
     }
@@ -224,10 +229,12 @@
     e.preventDefault();
     const startY = e.clientY;
     const startH = shell.logHeight;
-    function move(ev: MouseEvent) {
+    // rAF-throttled: coalesce raw mousemove ticks to at most one log-panel re-layout per frame.
+    const move = rafThrottle((ev: MouseEvent) => {
       shell.setLogHeight(startH + (startY - ev.clientY));
-    }
+    });
     function up() {
+      move.cancel();
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
     }
@@ -312,8 +319,6 @@
     oneditdocument={() => activeDataView.handle?.editSelected()}
     canDeleteDoc={canUseDataView && !readOnly && (activeDataView.handle?.canDelete ?? false)}
     ondeletedocument={() => activeDataView.handle?.deleteSelected()}
-    canIndexes={sel?.coll != null}
-    onindexes={() => { if (sel?.coll) { sm.showContext("collection"); nav?.setCollectionSection("indexes"); } }}
     canFind={canUseDataView}
     onfind={() => activeDataView.handle?.focusSearch?.()}
     onToggleLog={() => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog())}

@@ -312,9 +312,9 @@
   .file-row button:hover { background: var(--bg); }
   .label { color: var(--gray-77); flex: none; }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
-  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.75rem; margin-bottom: 0.75rem; }
+  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: var(--fs); margin-bottom: 0.75rem; }
   .notice-cancelled { background: var(--warn-bg); color: var(--warn-fg); }
-  .insert-mode-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: 0.75rem; margin-bottom: 0.75rem; }
+  .insert-mode-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: var(--fs); margin-bottom: 0.75rem; }
   .insert-mode-group .label { color: var(--gray-77); }
   .insert-mode-group label { display: flex; align-items: center; gap: 0.25rem; cursor: pointer; }
   .status { color: var(--gray-77); }
@@ -322,11 +322,11 @@
   .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: 0.25rem; overflow: hidden; }
   .fill { height: 100%; background: var(--progress); transition: width .2s; }
   .progress-unknown { color: var(--gray-77); }
-  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; border-radius: 0.1875rem; }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; border-radius: 0.1875rem; }
-  .link { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; font-size: 0.75rem; margin-top: 0.5rem; }
+  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; border-radius: 0.1875rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; border-radius: 0.1875rem; }
+  .link { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; font-size: var(--fs); margin-top: 0.5rem; }
   .link:hover { text-decoration: underline; }
-  .errlist { margin: 0.375rem 0 0; padding-left: 1.125rem; max-height: 8rem; overflow: auto; font-size: 0.75rem; color: var(--error); }
+  .errlist { margin: 0.375rem 0 0; padding-left: 1.125rem; max-height: 8rem; overflow: auto; font-size: var(--fs); color: var(--error); }
 
   /* ── SQL table picker ── */
   .table-header { border-bottom: 1px solid var(--border); margin-bottom: 0.25rem; }
@@ -337,12 +337,12 @@
   .tname { font-family: ui-monospace, monospace; }
   .tmeta { margin-left: auto; color: var(--gray-77); font-size: 0.6875rem; }
   .tcolumns { padding-left: 1.5rem; color: var(--gray-77); font-family: ui-monospace, monospace; font-size: 0.6875rem; word-break: break-word; }
-  .csv-options { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem; font-size: 0.75rem; }
+  .csv-options { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem; font-size: var(--fs); }
   .csv-radio-group { display: flex; align-items: center; gap: 0.625rem; }
   .csv-radio-group .label { color: var(--gray-77); }
   .csv-checkbox { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; }
   .csv-preview-wrap { max-height: 16rem; overflow: auto; }
-  .csv-preview { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+  .csv-preview { width: 100%; border-collapse: collapse; font-size: var(--fs); }
   .csv-preview th, .csv-preview td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border); }
   .csv-preview td.tname { font-family: ui-monospace, monospace; }
 

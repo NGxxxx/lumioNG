@@ -51,5 +51,5 @@
   .field { color: var(--text-strong); }
   .badge { padding: 0.0625rem 0.4375rem; border-radius: 0.5625rem; font-size: 0.6875rem; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
-  .status { padding: 0.5rem 0; color: var(--muted); font-size: 0.75rem; }
+  .status { padding: 0.5rem 0; color: var(--muted); font-size: var(--fs); }
 </style>

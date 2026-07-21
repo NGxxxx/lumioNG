@@ -7,12 +7,13 @@ import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { scanDestructive, scanCritical } from "../domain/scriptScan";
-import { compileSearch, matchingIndices } from "../domain/search";
+import { matchingIndices } from "../domain/search";
 import { settings } from "./settings.svelte";
+import { createQuickSearch } from "./quickSearch.svelte";
 import { updateOne, deleteMany } from "../api/documents";
 import { createIndex } from "../api/indexes";
 import { summarizeExplain, type ExplainSummary } from "../domain/explainPlan";
-import { suggestIndex, type IndexSuggestion } from "../domain/indexAdvisor";
+import { suggestIndex } from "../domain/indexAdvisor";
 import { idJson } from "../domain/docid";
 import { clipboardTextOf } from "../domain/extjson";
 import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, seedModalEditText, commitModalValue, buildSetUpdate, setByPath } from "../domain/celledit";
@@ -69,22 +70,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let defaultColWidths = $state<Record<string, number>>({});
 
   // Client-side quick search (HeidiSQL-style): filters the current in-memory result set in place, no server round-trip.
-  let searchTerm = $state("");
-  const searchRegex = $derived(compileSearch(searchTerm));
-  const searchInvalid = $derived(searchTerm !== "" && searchRegex === null);
-  // matchingIndices() rescans every doc/column on every keystroke; debounce it (immediate on
-  // clear) so typing stays smooth once `docs` is large (e.g. "Show all" on thousands of rows).
-  const SEARCH_DEBOUNCE_MS = 1000;
-  let searchApplied = $state("");
-  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
-  function setSearchTerm(v: string) {
-    searchTerm = v;
-    clearTimeout(searchDebounce);
-    if (v === "") searchApplied = "";
-    else searchDebounce = setTimeout(() => { searchApplied = v; }, SEARCH_DEBOUNCE_MS);
-  }
-  const appliedSearchRegex = $derived(compileSearch(searchApplied));
-  const visibleIndices = $derived(matchingIndices(docs, columnFields, appliedSearchRegex));
+  const quickSearch = createQuickSearch();
+  const visibleIndices = $derived(matchingIndices(docs, columnFields, quickSearch.appliedSearchRegex));
 
   let displayModeVal = $state<DisplayMode>("none");
   let valueJson = $state<string | null>(null);
@@ -796,9 +783,9 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get docs() { return docs; },
     get visibleIndices() { return visibleIndices; },
     get columnFields() { return columnFields; },
-    get searchTerm() { return searchTerm; },
-    set searchTerm(v: string) { setSearchTerm(v); },
-    get searchInvalid() { return searchInvalid; },
+    get searchTerm() { return quickSearch.searchTerm; },
+    set searchTerm(v: string) { quickSearch.searchTerm = v; },
+    get searchInvalid() { return quickSearch.searchInvalid; },
     get consoleEntries() { return consoleEntries; },
     get lastElapsedMs() { return lastElapsedMs; },
     clearConsole,

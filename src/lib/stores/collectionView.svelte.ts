@@ -11,7 +11,7 @@ import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, limitColumnsToDepth, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, seedModalEditText, commitModalValue, setByPath, buildSetUpdate } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
-import { compileSearch, matchingIndices } from "../domain/search";
+import { matchingIndices } from "../domain/search";
 import {
   cycleSort,
   buildSort,
@@ -30,6 +30,7 @@ import { activity } from "./activity.svelte";
 import { settings } from "./settings.svelte";
 import { findCmd, updateOneCmd, deleteOneCmd, deleteManyCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { createCollectionBulk } from "./collectionBulk.svelte";
+import { createQuickSearch } from "./quickSearch.svelte";
 
 /** State and actions for one collection view: data, paging, inline edit, context menu, and delete. */
 export function createCollectionView(sessionId: string, db: string, coll: string) {
@@ -45,21 +46,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let generation = 0;
 
   // Client-side quick search (HeidiSQL-style): filters the currently loaded page in place, no server round-trip — distinct from the real Mongo query filter above.
-  let searchTerm = $state("");
-  const searchRegex = $derived(compileSearch(searchTerm));
-  const searchInvalid = $derived(searchTerm !== "" && searchRegex === null);
-  // matchingIndices() rescans every doc/column on every keystroke; debounce it (immediate on
-  // clear) so typing stays smooth once `docs` is large (e.g. "Show all" on thousands of rows).
-  const SEARCH_DEBOUNCE_MS = 1000;
-  let searchApplied = $state("");
-  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
-  function setSearchTerm(v: string) {
-    searchTerm = v;
-    clearTimeout(searchDebounce);
-    if (v === "") searchApplied = "";
-    else searchDebounce = setTimeout(() => { searchApplied = v; }, SEARCH_DEBOUNCE_MS);
-  }
-  const appliedSearchRegex = $derived(compileSearch(searchApplied));
+  const quickSearch = createQuickSearch();
 
   let sortKeys = $state<SortKey[]>([]);
   let hidden = $state<Set<string>>(new Set());
@@ -99,11 +86,19 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let exportRequest = $state<{ kind: "filter" } | { kind: "selection"; count: number } | null>(null);
   let pendingExportFilter: string | null = "{}";
 
-  const rawColumnFields = $derived(mergeColumns(schema, docs));
+  // $state, not $derived: mergeColumns() does a full flattenPaths() scan of `docs` to discover
+  // extra fields, and `docs` is reassigned (new array ref) on every inline cell edit too (see
+  // CLAUDE.md's $state.raw contract). A cell edit only ever touches an already-known column path,
+  // so re-scanning on every keystroke/edit is pure waste — recompute explicitly only where the
+  // document SET actually changes (page load, show-all, schema arriving), not on edit.
+  let rawColumnFields = $state<ColumnField[]>([]);
+  function ensureColumns() {
+    rawColumnFields = mergeColumns(schema, docs);
+  }
   const columnFields = $derived(limitColumnsToDepth(rawColumnFields, settings.gridMaxDepth));
   // Search only currently-visible columns (matches what the column chooser hid and what the grid actually renders), not the full unfiltered columnFields.
   const searchableColumns = $derived(columnFields.filter((c) => !hidden.has(c.path)));
-  const visibleIndices = $derived(matchingIndices(docs, searchableColumns, appliedSearchRegex));
+  const visibleIndices = $derived(matchingIndices(docs, searchableColumns, quickSearch.appliedSearchRegex));
 
   /** Compute default widths once per column-set; recompute only when the paths change. */
   function ensureColWidths() {
@@ -145,6 +140,11 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     await refreshCount();
     await loadPage();
     await schemaP;
+    // loadPage() already recomputed columns against `schema` as of that moment; loadSchema()
+    // can still resolve after it (it's not awaited before loadPage above), so recompute once more
+    // in case schema's type/mixed/presence metadata arrived late.
+    ensureColumns();
+    ensureColWidths();
   }
 
   /** Load the current page (replaces docs). */
@@ -182,6 +182,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         Date.now() - startedAt,
       );
       docs = batch;
+      ensureColumns();
       ensureColWidths();
       clearSelection();
     } catch (e) {
@@ -261,6 +262,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         Date.now() - startedAt,
       );
       docs = all;
+      ensureColumns();
       ensureColWidths();
       clearSelection();
       allShown = true;
@@ -779,13 +781,13 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     },
     applyFilter,
     get searchTerm() {
-      return searchTerm;
+      return quickSearch.searchTerm;
     },
     set searchTerm(v: string) {
-      setSearchTerm(v);
+      quickSearch.searchTerm = v;
     },
     get searchInvalid() {
-      return searchInvalid;
+      return quickSearch.searchInvalid;
     },
     get visibleIndices() {
       return visibleIndices;

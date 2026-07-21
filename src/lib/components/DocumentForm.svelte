@@ -36,7 +36,9 @@
   // structuredClone (native) instead of the old JSON.parse(JSON.stringify(...)) round-trip — same
   // deep-clone result, one pass instead of two.
   // $state.snapshot first: `initial` comes from workTabs (a deep $state array), so it's a reactive Proxy — structuredClone throws DataCloneError on those directly.
-  let docValue = $state<Doc>(
+  // $state.raw (not $state): docValue is always reassigned wholesale (editTree.ts is fully
+  // immutable), so deep-proxying it only cost RAM — same fix as `docs` in collectionView.svelte.ts.
+  let docValue = $state.raw<Doc>(
     untrack(() => structuredClone($state.snapshot(initial) ?? ({} as Doc))),
   );
   // Raw JSON text is derived from docValue lazily (see toRaw/toTree) — never needed at all if the
@@ -335,7 +337,7 @@
     cursor: pointer;
     background: transparent;
     border: none;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     font-weight: 400;
     border-radius: 0.1875rem 0.1875rem 0 0;
     height: 100%;
@@ -430,7 +432,7 @@
     background: var(--error-bg);
     color: var(--error);
     padding: 0.375rem 0.875rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     flex: none;
   }
 

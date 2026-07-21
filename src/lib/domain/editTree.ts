@@ -97,6 +97,56 @@ export function flattenEditableDoc(root: Doc, open: ReadonlySet<string>, lockedK
   return rows;
 }
 
+function collectExpandablePaths(value: unknown, path: string, acc: Set<string>): void {
+  const info = childCountOf(value);
+  if (info === null || info.count === 0) return;
+  acc.add(path);
+  for (const child of childrenOf(value)!) collectExpandablePaths(child.value, `${path}.${child.key}`, acc);
+}
+
+/** Every row path needed in `open` to fully expand the document at every depth ("Expand all"). */
+export function allExpandablePaths(root: Doc): Set<string> {
+  const acc = new Set<string>();
+  for (const [key, value] of Object.entries(root)) collectExpandablePaths(value, key, acc);
+  return acc;
+}
+
+export interface FieldMatch {
+  path: string;
+  segments: PathSegment[];
+  key: string;
+}
+
+function collectFieldMatches(
+  value: unknown, segments: PathSegment[], path: string, key: string, query: string, acc: FieldMatch[],
+): void {
+  if (key.toLowerCase().includes(query)) acc.push({ path, segments, key });
+  const info = childCountOf(value);
+  if (info === null) return;
+  for (const child of childrenOf(value)!) {
+    const seg: PathSegment = info.isArray ? Number(child.key) : child.key;
+    collectFieldMatches(child.value, [...segments, seg], `${path}.${child.key}`, child.key, query, acc);
+  }
+}
+
+/** Every field at any depth whose key contains `query` (case-insensitive). One pass over the
+ *  whole document — meant to run once per search (debounced), not per keystroke while editing. */
+export function findFieldMatches(root: Doc, query: string): FieldMatch[] {
+  const q = query.trim().toLowerCase();
+  if (!q) return [];
+  const acc: FieldMatch[] = [];
+  for (const [key, value] of Object.entries(root)) collectFieldMatches(value, [key], key, key, q, acc);
+  return acc;
+}
+
+/** Ancestor paths of `path` (excluding `path` itself) — add these to `open` to reveal it as a row. */
+export function ancestorPathsOf(path: string): string[] {
+  const parts = path.split(".");
+  const acc: string[] = [];
+  for (let i = 1; i < parts.length; i++) acc.push(parts.slice(0, i).join("."));
+  return acc;
+}
+
 /** Read the value at a segment path (undefined if any intermediate segment is missing/a scalar). */
 export function getAtPath(root: unknown, segments: readonly PathSegment[]): unknown {
   let cur = root;

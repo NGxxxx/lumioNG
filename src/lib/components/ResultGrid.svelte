@@ -12,6 +12,7 @@
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
   import { activeDataView } from "../stores/activeDataView.svelte";
+  import { pushModal } from "$lib/stores/modalStack";
 
   let { v, onopendocument }: { v: GridPageView; onopendocument?: (doc: Doc, mode: "insert") => void } = $props();
 
@@ -72,11 +73,16 @@
    *  row's same-column cell for editing, matching HeidiSQL's Excel-style "Enter advances".
    *  `commitEdit` is async and clears `editing` only after its internal await resolves, so this
    *  must await it before checking `v.editing` — checking synchronously right after the call
-   *  always observes the still-pending state. */
+   *  always observes the still-pending state.
+   *  Advances within the same universe `rowAt`/`rowCount` render from (visibleIndices when a
+   *  quick-search filter is active, else every doc) — otherwise Enter could land `editing` on a
+   *  row filtered out of the DOM, with no `<tr>`/`<input>` for the user to see or interact with. */
   async function commitAndAdvance(row: number, key: string) {
     await v.commitEdit();
     if (v.editing !== null) return; // commit failed; stay put
-    if (row + 1 < v.docs.length) v.startEdit(row + 1, key);
+    const universe = v.visibleIndices ?? v.docs.map((_, i) => i);
+    const pos = universe.indexOf(row);
+    if (pos !== -1 && pos + 1 < universe.length) v.startEdit(universe[pos + 1], key);
   }
 
   function onEditKey(e: KeyboardEvent) {
@@ -106,6 +112,9 @@
     } else if (mod && (e.key === "f" || e.key === "F")) {
       e.preventDefault();
       activeDataView.handle?.focusSearch?.();
+    } else if (!mod && e.key === "F2") {
+      e.preventDefault();
+      activeDataView.handle?.editSelected();
     } else if (mod && e.key === "Delete") {
       e.preventDefault();
       v.requestDeleteSelected?.();
@@ -119,6 +128,16 @@
       if (doc) onopendocument?.(doc, "insert");
     }
   }
+
+  // Registers the object/array modal editor with the shared modalStack so Escape closes it
+  // regardless of which element has focus (Save/Cancel buttons included), matching every other
+  // dialog in the app.
+  $effect(() => {
+    if (v.editing?.kind !== "modal") return;
+    return pushModal({
+      onEscape: () => { if (!v.saving) v.cancelEdit(); },
+    });
+  });
 </script>
 
 <div class="grid-region">
@@ -223,9 +242,7 @@
       {#if v.editTextLoading}
         <div class="modal-loading">{m.common_loading()}</div>
       {:else}
-        <textarea class="modal-textarea" bind:value={v.editText} disabled={v.saving} spellcheck="false"
-          onkeydown={(e) => { if (e.key === "Escape") { e.preventDefault(); v.cancelEdit(); } }}
-        ></textarea>
+        <textarea class="modal-textarea" bind:value={v.editText} disabled={v.saving} spellcheck="false"></textarea>
       {/if}
       {#if v.editError}<div class="cellerror modal-error">{msgKey(v.editError)}</div>{/if}
       <footer>
@@ -243,20 +260,20 @@
   .grid-region { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   /* Isolates paint context to avoid a WebView2 compositing glitch on the sticky header seam. */
   .scroller { overflow: auto; flex: 1; position: relative; contain: paint; isolation: isolate; }
-  .empty { padding: 1rem; color: var(--muted); font-size: 0.75rem; }
+  .empty { padding: 1rem; color: var(--muted); font-size: var(--fs); }
 
   /* ── Loading overlay (covers the visible grid region, fixed regardless of scroll) ── */
   .loading-overlay {
     position: absolute; inset: 0; z-index: 5;
     display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-    background: color-mix(in srgb, var(--panel) 65%, transparent); color: var(--gray-55); font-size: 0.75rem;
+    background: color-mix(in srgb, var(--panel) 65%, transparent); color: var(--gray-55); font-size: var(--fs);
   }
   .spinner { width: 0.875rem; height: 0.875rem; border: 2px solid var(--spinner-track); border-top-color: var(--progress); border-radius: 50%; animation: spin .7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
   /* ── Table base ── */
   /* separate + zero spacing: collapse + sticky is a known Chromium hairline-gap bug. */
-  table { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: 0.75rem; white-space: nowrap; user-select: none; }
+  table { border-collapse: separate; border-spacing: 0; table-layout: fixed; font-size: var(--fs); white-space: nowrap; user-select: none; }
 
   /* ── Header ── */
   th {
@@ -319,7 +336,7 @@
   .data-cell .cell {
     padding: 0 0.5625rem; display: inline-block; height: 22px; line-height: 22px;
     max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    vertical-align: bottom; font-family: ui-monospace, monospace; font-size: 0.75rem;
+    vertical-align: bottom; font-family: ui-monospace, monospace; font-size: var(--fs);
   }
   .data-cell .cell.string { font-family: system-ui, sans-serif; }
   .data-cell .cell.null { font-style: italic; }
@@ -337,7 +354,7 @@
   }
 
   /* ── Edit cell ── */
-  .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.125rem 0.25rem; }
+  .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: var(--fs); padding: 0.125rem 0.25rem; }
   .celledit:disabled { opacity: 0.6; }
   .cell-spinner {
     position: absolute; top: 50%; right: 0.25rem; transform: translateY(-50%);
@@ -354,7 +371,7 @@
   .modal-editor header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); font-size: 0.8125rem; }
   .modal-textarea {
     height: 18rem; margin: 0.875rem; width: calc(100% - 1.75rem); box-sizing: border-box;
-    font-family: ui-monospace, monospace; font-size: 0.75rem; padding: 0.5rem; resize: vertical;
+    font-family: ui-monospace, monospace; font-size: var(--fs); padding: 0.5rem; resize: vertical;
   }
   .modal-textarea:disabled { opacity: 0.6; }
   .modal-loading { height: 18rem; margin: 0.875rem; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 0.8125rem; }

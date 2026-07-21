@@ -158,26 +158,26 @@
 
 <style>
   .explain-pane { flex: 1; min-height: 0; overflow: auto; padding: 0.5rem 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-  .status { color: var(--muted); font-size: 0.75rem; }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
+  .status { color: var(--muted); font-size: var(--fs); }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
   .banner { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.8125rem; background: var(--panel); }
   .banner.warn { background: var(--warn-bg2); color: var(--warn-fg); }
   .banner.caution { background: var(--warn-bg); color: var(--warn-fg); }
   .banner.ok { background: var(--bg); color: var(--fg); }
   .banner .time { font-variant-numeric: tabular-nums; color: var(--muted); }
-  table.stages { border-collapse: collapse; font-size: 0.75rem; width: 100%; }
+  table.stages { border-collapse: collapse; font-size: var(--fs); width: 100%; }
   table.stages th, table.stages td { padding: 0.1875rem 0.5rem; text-align: left; }
   table.stages th { color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
   .bar-cell { width: 6rem; }
   .bar { height: 0.5rem; background: var(--accent); border-radius: 0.125rem; }
   .suggestion { border: 1px solid var(--gray-cf); border-radius: 0.1875rem; padding: 0.5rem 0.625rem; display: flex; flex-direction: column; gap: 0.375rem; }
-  .suggestion-title { font-weight: 600; font-size: 0.75rem; }
-  .suggestion code { font-family: ui-monospace, monospace; font-size: 0.75rem; background: var(--bg); padding: 0.25rem 0.375rem; border-radius: 0.1875rem; }
+  .suggestion-title { font-weight: 600; font-size: var(--fs); }
+  .suggestion code { font-family: ui-monospace, monospace; font-size: var(--fs); background: var(--bg); padding: 0.25rem 0.375rem; border-radius: 0.1875rem; }
   .suggestion-actions { display: flex; gap: 0.5rem; }
   .compare { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
   .compare-col { flex: 1; min-width: 12rem; }
   .compare-label { font-size: 0.6875rem; color: var(--muted); margin-bottom: 0.1875rem; }
-  .improvement { font-size: 0.75rem; color: var(--run); font-weight: 600; }
+  .improvement { font-size: var(--fs); color: var(--run); font-weight: 600; }
   .refresh-row { display: flex; justify-content: flex-end; }
-  .raw pre { margin: 0; font-family: ui-monospace, monospace; font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; }
+  .raw pre { margin: 0; font-family: ui-monospace, monospace; font-size: var(--fs); white-space: pre-wrap; word-break: break-word; }
 </style>

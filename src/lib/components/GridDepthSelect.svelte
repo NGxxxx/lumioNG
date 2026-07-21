@@ -26,12 +26,12 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     color: var(--gray-77);
   }
   .depth-ctl select {
     height: 1.375rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     border: 1px solid var(--gray-c4);
     background: var(--bg);
     color: var(--gray-44);

@@ -226,7 +226,7 @@
   .sq-header {
     display: flex; align-items: center; gap: 0.375rem; height: 1.625rem; padding: 0 0.5rem;
     background: var(--panel); border-bottom: 1px solid var(--border);
-    font-size: 0.75rem; font-weight: 600; cursor: pointer; user-select: none; flex: none;
+    font-size: var(--fs); font-weight: 600; cursor: pointer; user-select: none; flex: none;
   }
   .sq-header:hover { background: var(--row-hover); }
   .caret { flex: none; }
@@ -239,11 +239,11 @@
   .sq-new-folder:hover { background: var(--hover); color: var(--fg); }
   .sq-body { overflow-y: auto; flex: none; }
   .sq-body.drop-root { box-shadow: inset 0 0 0 2px var(--accent); }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-  .empty { padding: 0.5rem 0.625rem; color: var(--muted); font-size: 0.75rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
+  .empty { padding: 0.5rem 0.625rem; color: var(--muted); font-size: var(--fs); }
   .row {
     display: flex; align-items: center; gap: 0.3125rem; height: 1.375rem; padding-right: 0.375rem;
-    font-size: 0.75rem; cursor: default; user-select: none; white-space: nowrap;
+    font-size: var(--fs); cursor: default; user-select: none; white-space: nowrap;
   }
   .row:hover { background: var(--row-hover); }
   .row.drop { background: var(--hover); box-shadow: inset 0 0 0 1px var(--accent); }

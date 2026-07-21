@@ -69,7 +69,7 @@
   .row { display: flex; gap: 0.375rem; margin-bottom: 0.375rem; }
   .row input { flex: 1; padding: 0.25rem 0.375rem; }
   .rm { border: none; background: none; cursor: pointer; color: var(--error); font-size: 1rem; }
-  .addfield { border: 1px dashed var(--gray-c4); background: var(--panel); color: var(--fg); border-radius: 0.25rem; padding: 0.1875rem 0.5rem; cursor: pointer; font-size: 0.75rem; }
+  .addfield { border: 1px dashed var(--gray-c4); background: var(--panel); color: var(--fg); border-radius: 0.25rem; padding: 0.1875rem 0.5rem; cursor: pointer; font-size: var(--fs); }
   .opt { display: block; margin-top: 0.5rem; }
   .opt input:not([type]) { width: 100%; box-sizing: border-box; margin-top: 0.25rem; padding: 0.25rem 0.375rem; }
   .dlg-error { color: var(--error); margin-top: 0.5rem; }

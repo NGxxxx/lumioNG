@@ -138,6 +138,45 @@ describe("Toolbar Delete document", () => {
     await fireEvent.click(getByLabelText("Delete document"));
     expect(ondeletedocument).toHaveBeenCalled();
   });
+  it("shows the Del shortcut in its tooltip", () => {
+    vi.useFakeTimers();
+    try {
+      const { getByLabelText } = render(Toolbar, { props: base });
+      const wrapper = getByLabelText("Delete document").closest(".tt") as HTMLElement;
+      wrapper.dispatchEvent(new PointerEvent("pointerenter"));
+      vi.advanceTimersByTime(300);
+      expect(document.body.querySelector(".app-tooltip")?.textContent).toContain("Del");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("Toolbar Edit document", () => {
+  it("is disabled when canEditDoc is false (default)", () => {
+    const { getByLabelText } = render(Toolbar, { props: base });
+    expect((getByLabelText("Edit document") as HTMLButtonElement).disabled).toBe(true);
+  });
+  it("calls oneditdocument when enabled and clicked", async () => {
+    const oneditdocument = vi.fn();
+    const { getByLabelText } = render(Toolbar, {
+      props: { ...base, canEditDoc: true, oneditdocument },
+    });
+    await fireEvent.click(getByLabelText("Edit document"));
+    expect(oneditdocument).toHaveBeenCalled();
+  });
+  it("shows the F2 shortcut in its tooltip", () => {
+    vi.useFakeTimers();
+    try {
+      const { getByLabelText } = render(Toolbar, { props: base });
+      const wrapper = getByLabelText("Edit document").closest(".tt") as HTMLElement;
+      wrapper.dispatchEvent(new PointerEvent("pointerenter"));
+      vi.advanceTimersByTime(300);
+      expect(document.body.querySelector(".app-tooltip")?.textContent).toContain("F2");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Toolbar Stop", () => {
@@ -153,6 +192,18 @@ describe("Toolbar Stop", () => {
     await fireEvent.click(getByLabelText("Stop"));
     expect(run).toHaveBeenCalled();
   });
+  it("shows the Esc shortcut in its tooltip", () => {
+    vi.useFakeTimers();
+    try {
+      const { getByLabelText } = render(Toolbar, { props: base });
+      const wrapper = getByLabelText("Stop").closest(".tt") as HTMLElement;
+      wrapper.dispatchEvent(new PointerEvent("pointerenter"));
+      vi.advanceTimersByTime(300);
+      expect(document.body.querySelector(".app-tooltip")?.textContent).toContain("Esc");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Toolbar Find", () => {
@@ -165,6 +216,18 @@ describe("Toolbar Find", () => {
     const { getByLabelText } = render(Toolbar, { props: { ...base, canFind: true, onfind } });
     await fireEvent.click(getByLabelText("Find"));
     expect(onfind).toHaveBeenCalled();
+  });
+  it("shows the Ctrl+F shortcut in its tooltip", () => {
+    vi.useFakeTimers();
+    try {
+      const { getByLabelText } = render(Toolbar, { props: base });
+      const wrapper = getByLabelText("Find").closest(".tt") as HTMLElement;
+      wrapper.dispatchEvent(new PointerEvent("pointerenter"));
+      vi.advanceTimersByTime(300);
+      expect(document.body.querySelector(".app-tooltip")?.textContent).toContain("Ctrl+F");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -180,21 +243,6 @@ describe("Toolbar Aggregate", () => {
     });
     await fireEvent.click(getByLabelText("Aggregate"));
     expect(run).toHaveBeenCalled();
-  });
-});
-
-describe("Toolbar Indexes", () => {
-  it("is disabled when canIndexes is false (default)", () => {
-    const { getByLabelText } = render(Toolbar, { props: base });
-    expect((getByLabelText("Indexes") as HTMLButtonElement).disabled).toBe(true);
-  });
-  it("calls onindexes when enabled and clicked", async () => {
-    const onindexes = vi.fn();
-    const { getByLabelText } = render(Toolbar, {
-      props: { ...base, canIndexes: true, onindexes },
-    });
-    await fireEvent.click(getByLabelText("Indexes"));
-    expect(onindexes).toHaveBeenCalled();
   });
 });
 

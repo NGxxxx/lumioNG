@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   flattenEditableDoc, getAtPath, existingKeysAt, setAtPath, removeAtPath, insertAtPath,
+  allExpandablePaths, findFieldMatches, ancestorPathsOf,
   type EditRow,
 } from "./editTree";
 
@@ -62,6 +63,72 @@ describe("flattenEditableDoc", () => {
     const doc2 = { _id: { x: 1 } };
     const rows = flattenEditableDoc(doc2, new Set(["_id"]), ["_id"]);
     expect(rows.some((r) => r.kind === "adder" && r.path === "_id.__add")).toBe(false);
+  });
+});
+
+describe("allExpandablePaths", () => {
+  it("returns every container path at every depth, skipping leaves", () => {
+    const doc = { _id: { $oid: "507f1f77bcf86cd799439011" }, name: "Ann", address: { city: "Hue", zip: "1000" }, tags: ["a", "b"] };
+    const paths = allExpandablePaths(doc);
+    expect(paths).toEqual(new Set(["address", "tags"]));
+  });
+
+  it("recurses into nested containers at any depth", () => {
+    const deep = { a: { b: { c: { d: 1 } } } };
+    expect(allExpandablePaths(deep)).toEqual(new Set(["a", "a.b", "a.b.c"]));
+  });
+
+  it("skips empty containers (nothing to expand into)", () => {
+    expect(allExpandablePaths({ empty: {}, emptyArr: [] })).toEqual(new Set());
+  });
+
+  it("is a no-op set for a flat document", () => {
+    expect(allExpandablePaths({ a: 1, b: "x" })).toEqual(new Set());
+  });
+});
+
+describe("findFieldMatches", () => {
+  const doc = { _id: { $oid: "507f1f77bcf86cd799439011" }, name: "Ann", address: { city: "Hue", zip: "1000" }, tags: ["a", "b"] };
+
+  it("finds a depth-0 field by exact key", () => {
+    const matches = findFieldMatches(doc, "name");
+    expect(matches).toEqual([{ path: "name", segments: ["name"], key: "name" }]);
+  });
+
+  it("finds a nested field by key, case-insensitive substring", () => {
+    const matches = findFieldMatches(doc, "CIT");
+    expect(matches).toEqual([{ path: "address.city", segments: ["address", "city"], key: "city" }]);
+  });
+
+  it("matches every field whose key contains the query, at any depth", () => {
+    const deep = { a: { name: 1 }, name: 2, other: { nested: { name: 3 } } };
+    const matches = findFieldMatches(deep, "name");
+    expect(matches.map((m) => m.path)).toEqual(["a.name", "name", "other.nested.name"]);
+  });
+
+  it("returns an empty array for a blank/whitespace query", () => {
+    expect(findFieldMatches(doc, "")).toEqual([]);
+    expect(findFieldMatches(doc, "   ")).toEqual([]);
+  });
+
+  it("returns an empty array when nothing matches", () => {
+    expect(findFieldMatches(doc, "nope")).toEqual([]);
+  });
+
+  it("array items are addressable by numeric segment", () => {
+    const matches = findFieldMatches({ tags: ["a", "b"] }, "tags");
+    expect(matches).toEqual([{ path: "tags", segments: ["tags"], key: "tags" }]);
+    // array indices themselves aren't matched by a text query (their "key" is just "0", "1"...)
+    expect(findFieldMatches({ tags: ["a", "b"] }, "0")).toEqual([{ path: "tags.0", segments: ["tags", 0], key: "0" }]);
+  });
+});
+
+describe("ancestorPathsOf", () => {
+  it("returns each prefix of a dotted path, excluding the path itself", () => {
+    expect(ancestorPathsOf("a.b.c")).toEqual(["a", "a.b"]);
+  });
+  it("returns an empty array for a depth-0 path", () => {
+    expect(ancestorPathsOf("name")).toEqual([]);
   });
 });
 

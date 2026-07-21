@@ -1,7 +1,5 @@
 // src/lib/domain/commands.ts
 
-export type CommandScope = "global" | "grid" | "editor";
-
 export type CommandId =
   // Global (app menu / toolbar)
   | "file.sessionManager"
@@ -29,6 +27,7 @@ export type CommandId =
   // Grid (result grid / data view)
   | "grid.newDocument"
   | "grid.duplicateDocument"
+  | "grid.editDocument"
   | "grid.deleteDocument"
   | "grid.commitEdit"
   | "grid.cancelEdit"
@@ -46,49 +45,6 @@ export type CommandId =
   | "editor.replace"
   | "editor.findNext"
   | "editor.toggleComment";
-
-export const COMMAND_SCOPE: Record<CommandId, CommandScope> = {
-  "file.sessionManager": "global",
-  "file.refresh": "global",
-  "file.newQuery": "global",
-  "file.newDocument": "global",
-  "file.import": "global",
-  "file.export": "global",
-  "file.quit": "global",
-  "query.run": "global",
-  "query.runSelection": "global",
-  "query.stop": "global",
-  "query.explain": "global",
-  "query.aggregate": "global",
-  "query.save": "global",
-  "goto.nextTab": "global",
-  "goto.prevTab": "global",
-  "goto.host": "global",
-  "goto.database": "global",
-  "goto.collection": "global",
-  "goto.data": "global",
-  "view.closeWorkTab": "global",
-  "view.resetToDefault": "global",
-  "help.about": "global",
-  "grid.newDocument": "grid",
-  "grid.duplicateDocument": "grid",
-  "grid.deleteDocument": "grid",
-  "grid.commitEdit": "grid",
-  "grid.cancelEdit": "grid",
-  "grid.selectAll": "grid",
-  "grid.invertSelection": "grid",
-  "grid.copySelected": "grid",
-  "grid.focusFilter": "grid",
-  "editor.run": "editor",
-  "editor.runSelection": "editor",
-  "editor.explain": "editor",
-  "editor.format": "editor",
-  "editor.clear": "editor",
-  "editor.find": "editor",
-  "editor.replace": "editor",
-  "editor.findNext": "editor",
-  "editor.toggleComment": "editor",
-};
 
 /**
  * HeidiSQL-mapped default shortcuts (see the design spec's per-command [confirmed]/[adapted]
@@ -118,6 +74,7 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "help.about": "F1",
   "grid.newDocument": "Insert",
   "grid.duplicateDocument": "Mod+Insert",
+  "grid.editDocument": "F2",
   "grid.deleteDocument": "Mod+Delete",
   "grid.commitEdit": "Mod+Enter",
   "grid.cancelEdit": "Escape",
@@ -135,13 +92,6 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "editor.findNext": "F3",
   "editor.toggleComment": "Mod+/",
 };
-
-/** Every command with a bound shortcut in a given scope — used for same-scope collision checks and to build dispatchers. */
-export function shortcutsByScope(scope: CommandScope): { id: CommandId; shortcut: string }[] {
-  return (Object.keys(SHORTCUTS) as CommandId[])
-    .filter((id) => COMMAND_SCOPE[id] === scope)
-    .map((id) => ({ id, shortcut: SHORTCUTS[id]! }));
-}
 
 /** A registry entry: whether the action is currently available, and what running it does. Labels stay local to whichever component renders the command (menu item text vs. toolbar tooltip legitimately differ) — this type deliberately carries no label. */
 export type Command = {

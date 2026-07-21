@@ -55,7 +55,7 @@
   .field-label { font-size: 0.6875rem; font-weight: 600; color: var(--gray-55); }
 
   .field-input {
-    height: 1.625rem; padding: 0 0.5rem; font-size: 0.75rem;
+    height: 1.625rem; padding: 0 0.5rem; font-size: var(--fs);
     border: 1px solid var(--gray-c4); border-radius: 0.1875rem;
     background: var(--bg); color: var(--fg);
   }

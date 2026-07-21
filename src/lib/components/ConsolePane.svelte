@@ -64,14 +64,14 @@
   .head-btn { margin-left: auto; border: none; background: none; cursor: pointer; font-size: 0.6875rem; color: var(--muted); padding: 0.125rem 0.375rem; border-radius: 0.125rem; }
   .head-btn:hover:not(:disabled) { color: var(--fg); background: var(--hover); }
   .head-btn:disabled { opacity: 0.4; cursor: default; }
-  .idle { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; }
+  .idle { padding: 0.5rem 0.75rem; color: var(--muted); font-size: var(--fs); }
   .console { flex: 1; min-height: 0; overflow: auto; padding: 0.25rem 0; }
   .entry { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.125rem 0.625rem; }
   .entry:hover { background: var(--hover); }
   .entry .text {
     flex: 1; min-width: 0;
     font-family: ui-monospace, monospace;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     white-space: pre-wrap;
     word-break: break-all;
     color: var(--fg);

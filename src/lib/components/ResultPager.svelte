@@ -47,7 +47,7 @@
     padding: 0 0.625rem;
     border-top: 1px solid var(--border);
     background: var(--zebra-alt);
-    font-size: 0.75rem;
+    font-size: var(--fs);
   }
   .pg-btn {
     height: 1.375rem;

@@ -14,8 +14,6 @@
     oneditdocument = () => {},
     canDeleteDoc = false,
     ondeletedocument = () => {},
-    canIndexes = false,
-    onindexes = () => {},
     canFind = false,
     onfind = () => {},
     onToggleLog,
@@ -29,8 +27,6 @@
     oneditdocument?: () => void;
     canDeleteDoc?: boolean;
     ondeletedocument?: () => void;
-    canIndexes?: boolean;
-    onindexes?: () => void;
     canFind?: boolean;
     onfind?: () => void;
     onToggleLog: () => void;
@@ -123,7 +119,7 @@
   </span>
 
   <!-- Edit document (enabled when exactly one data-view row with an _id is selected, and session is not read-only) -->
-  <span class="tt" use:tooltip={m.toolbar_edit_document()}>
+  <span class="tt" use:tooltip={tt("grid.editDocument", m.toolbar_edit_document())}>
     <button aria-label={m.toolbar_edit_document()} class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M2 11l7-7 3 3-7 7H2z" fill="var(--warn)" stroke="var(--fg)" stroke-width="0.9"/>
@@ -133,7 +129,7 @@
   </span>
 
   <!-- Delete document (enabled when the data view has a selection, and session is not read-only) -->
-  <span class="tt" use:tooltip={m.toolbar_delete_document()}>
+  <span class="tt" use:tooltip={tt("grid.deleteDocument", m.toolbar_delete_document())}>
     <button aria-label={m.toolbar_delete_document()} class="btn-icon" disabled={!canDeleteDoc} onclick={ondeletedocument}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M4 4h8l-1 10H5z" fill="var(--panel)" stroke="var(--danger)" stroke-width="0.9"/>
@@ -165,7 +161,7 @@
   </span>
 
   <!-- Stop (enabled only while the active query tab's script is actually running) -->
-  <span class="tt" use:tooltip={m.toolbar_stop()}>
+  <span class="tt" use:tooltip={tt("query.stop", m.toolbar_stop())}>
     <button aria-label={m.toolbar_stop()} class="btn-icon" disabled={disabledOf("query.stop")} onclick={runOf("query.stop")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <rect x="3" y="3" width="10" height="10" rx="1.5" fill="var(--danger)"/>
@@ -190,7 +186,7 @@
 
   <!-- ── Data navigation ── -->
   <!-- Find / filter (enabled in the Data view or an active Query tab; focuses its search box) -->
-  <span class="tt" use:tooltip={m.toolbar_find_title()}>
+  <span class="tt" use:tooltip={tt("grid.focusFilter", m.toolbar_find_title())}>
     <button aria-label={m.toolbar_find()} class="btn-icon" disabled={!canFind} onclick={onfind}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <circle cx="7" cy="7" r="4.2" fill="none" stroke="var(--muted)" stroke-width="1.3"/>
@@ -204,16 +200,6 @@
     <button aria-label={m.toolbar_aggregate()} class="btn-icon" disabled={disabledOf("query.aggregate")} onclick={runOf("query.aggregate")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
         <path d="M3 2h10l-4 6 4 6H3l4-6z" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Indexes (enabled when a collection is selected; opens its Indexes sub-tab) -->
-  <span class="tt" use:tooltip={m.toolbar_indexes()}>
-    <button aria-label={m.toolbar_indexes()} class="btn-icon" disabled={!canIndexes} onclick={onindexes}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M3 4h10M3 8h10M3 12h7" stroke="var(--warn)" stroke-width="1.4"/>
-        <circle cx="13" cy="12" r="1.4" fill="none" stroke="var(--warn)" stroke-width="1.1"/>
       </svg>
     </button>
   </span>

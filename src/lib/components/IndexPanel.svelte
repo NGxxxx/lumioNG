@@ -112,8 +112,8 @@
   .danger { color: var(--error); }
   .danger:disabled { color: var(--gray-b8); }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
-  .status { padding: 0.5rem; color: var(--gray-77); font-size: 0.75rem; }
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
+  .status { padding: 0.5rem; color: var(--gray-77); font-size: var(--fs); }
+  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
   .modal { background: var(--panel); width: 26.25rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; }
   header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
   .body { padding: 0.875rem; font-size: 0.8125rem; }

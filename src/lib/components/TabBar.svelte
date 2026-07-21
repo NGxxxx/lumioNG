@@ -161,7 +161,7 @@
     align-items: center;
     gap: 0.3125rem;
     padding: 0.25rem 0.8125rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     border: 1px solid var(--gray-c4);
     border-bottom: none;
     border-radius: 0.25rem 0.25rem 0 0;
@@ -211,7 +211,7 @@
     border: none;
     background: none;
     padding: 0;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;

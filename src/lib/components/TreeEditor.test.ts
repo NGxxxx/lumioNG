@@ -23,6 +23,20 @@ function setup(value: Doc) {
   return { ...utils, onchange, onvalidchange, getCurrent: () => current };
 }
 
+// The row list (expand/collapse) is debounced (see TreeEditor.svelte) — wait past it before
+// asserting on rendered rows. Not needed for onchange-only assertions (that fires synchronously).
+const ROWS_DEBOUNCE_MS = 120;
+function waitForRows() {
+  return new Promise((r) => setTimeout(r, ROWS_DEBOUNCE_MS + 30));
+}
+
+// Find-field search is debounced too (see TreeEditor.svelte); a match jump then bypasses the rows
+// debounce itself, so only this wait is needed before asserting on search results.
+const SEARCH_DEBOUNCE_MS = 250;
+function waitForSearch() {
+  return new Promise((r) => setTimeout(r, SEARCH_DEBOUNCE_MS + 30));
+}
+
 describe("TreeEditor", () => {
   it("renders only depth-0 fields collapsed (nested container children not mounted)", () => {
     const doc = { _id: { $oid: "507f1f77bcf86cd799439011" }, name: "Ann", address: { city: "Hue" } };
@@ -37,7 +51,7 @@ describe("TreeEditor", () => {
     const { container } = setup(doc);
     const addressLabel = Array.from(container.querySelectorAll(".label")).find((el) => el.textContent === "address")!;
     await fireEvent.click(addressLabel);
-    await tick();
+    await waitForRows();
     const labels = Array.from(container.querySelectorAll(".label")).map((el) => el.textContent);
     expect(labels).toContain("city");
     expect(labels).toContain("zip");
@@ -49,11 +63,11 @@ describe("TreeEditor", () => {
     const { container } = setup(doc);
     const addressLabel = Array.from(container.querySelectorAll(".label")).find((el) => el.textContent === "address")!;
     await fireEvent.click(addressLabel);
-    await tick();
+    await waitForRows();
     expect(container.querySelectorAll(".label").length).toBeGreaterThan(1);
 
     await fireEvent.click(addressLabel); // collapse back down
-    await tick();
+    await waitForRows();
 
     const labels = Array.from(container.querySelectorAll(".label")).map((el) => el.textContent);
     expect(labels).toEqual(["address"]);
@@ -92,5 +106,90 @@ describe("TreeEditor", () => {
     const addButton = Array.from(container.querySelectorAll(".add button")).at(-1)!;
     await fireEvent.click(addButton);
     expect(onchange).toHaveBeenCalledWith({ name: "Ann", age: "" });
+  });
+
+  it("Expand all button opens every nested container at every depth", async () => {
+    const doc = { address: { city: "Hue", geo: { lat: 1, lng: 2 } }, tags: ["a"] };
+    const { container, getByText } = setup(doc);
+    await fireEvent.click(getByText("Expand all"));
+    await waitForRows();
+    const labels = Array.from(container.querySelectorAll(".label")).map((el) => el.textContent);
+    expect(labels).toEqual(expect.arrayContaining(["address", "city", "geo", "lat", "lng", "tags", "0"]));
+  });
+
+  it("toggles to Collapse all after expanding, which closes everything back down", async () => {
+    const doc = { address: { city: "Hue" } };
+    const { container, getByText } = setup(doc);
+    await fireEvent.click(getByText("Expand all"));
+    await waitForRows();
+    expect(container.querySelectorAll(".label").length).toBeGreaterThan(1);
+
+    await fireEvent.click(getByText("Collapse all"));
+    await waitForRows();
+    const labels = Array.from(container.querySelectorAll(".label")).map((el) => el.textContent);
+    expect(labels).toEqual(["address"]);
+  });
+
+  it("manually toggling a row after Expand all reverts the button back to 'Expand all'", async () => {
+    const doc = { address: { city: "Hue" } };
+    const { container, getByText } = setup(doc);
+    await fireEvent.click(getByText("Expand all"));
+    await tick();
+    const addressLabel = Array.from(container.querySelectorAll(".label")).find((el) => el.textContent === "address")!;
+    await fireEvent.click(addressLabel); // manually collapse just this one container
+    await tick();
+    expect(getByText("Expand all")).toBeTruthy();
+  });
+
+  describe("Find field search", () => {
+    it("finds and reveals a nested field without expanding the rest of the tree", async () => {
+      const doc = { name: "Ann", address: { city: "Hue", zip: "1000" }, other: { untouched: 1 } };
+      const { container, getByPlaceholderText } = setup(doc);
+      const input = getByPlaceholderText("Find field…");
+      await fireEvent.input(input, { target: { value: "city" } });
+      await waitForSearch();
+
+      const labels = Array.from(container.querySelectorAll(".label")).map((el) => el.textContent);
+      expect(labels).toContain("city"); // ancestor ("address") opened to reveal it
+      expect(labels).not.toContain("untouched"); // unrelated branch left closed
+      expect(container.querySelector(".tree-row-highlight .label")?.textContent).toBe("city");
+      expect(getByPlaceholderText("Find field…").parentElement?.textContent).toContain("1/1");
+    });
+
+    it("Next cycles to the following match and updates the count", async () => {
+      const doc = { a: { name: 1 }, b: { name: 2 } };
+      const { getByPlaceholderText, getByLabelText, container } = setup(doc);
+      await fireEvent.input(getByPlaceholderText("Find field…"), { target: { value: "name" } });
+      await waitForSearch();
+      expect(container.querySelector(".tree-row-highlight")?.textContent).toContain("a");
+
+      await fireEvent.click(getByLabelText("Next match"));
+      await tick();
+      expect(container.querySelector(".tree-row-highlight")?.textContent).toContain("b");
+
+      await fireEvent.click(getByLabelText("Next match")); // wraps back to the first match
+      await tick();
+      expect(container.querySelector(".tree-row-highlight")?.textContent).toContain("a");
+    });
+
+    it("shows 0/0 and no highlight when nothing matches", async () => {
+      const { getByPlaceholderText, container } = setup({ name: "Ann" });
+      await fireEvent.input(getByPlaceholderText("Find field…"), { target: { value: "zzz" } });
+      await waitForSearch();
+      expect(container.querySelector(".tree-search-count")?.textContent).toBe("0/0");
+      expect(container.querySelector(".tree-row-highlight")).toBeNull();
+    });
+
+    it("clearing the query hides the match count", async () => {
+      const { getByPlaceholderText, container } = setup({ name: "Ann" });
+      const input = getByPlaceholderText("Find field…");
+      await fireEvent.input(input, { target: { value: "name" } });
+      await waitForSearch();
+      expect(container.querySelector(".tree-search-count")).toBeTruthy();
+
+      await fireEvent.input(input, { target: { value: "" } });
+      await tick();
+      expect(container.querySelector(".tree-search-count")).toBeNull();
+    });
   });
 });

@@ -147,6 +147,21 @@ describe("ResultGrid keyboard shortcuts", () => {
     }
   });
 
+  it("F2 calls the active data view's editSelected", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs);
+    const editSelected = vi.fn();
+    const handle = { canEdit: true, canExport: true, canDelete: false, editSelected, exportCurrent: vi.fn(), deleteSelected: vi.fn() } as unknown as DataViewHandle;
+    activeDataView.register(handle);
+    try {
+      const { container } = render(ResultGrid, { props: { v } });
+      await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "F2" });
+      expect(editSelected).toHaveBeenCalled();
+    } finally {
+      activeDataView.unregister(handle);
+    }
+  });
+
   it("Ctrl+Delete calls requestDeleteSelected", async () => {
     const docs = [{ _id: { $oid: "a" }, name: "x" }];
     const v = baseView(docs, { requestDeleteSelected: vi.fn() });

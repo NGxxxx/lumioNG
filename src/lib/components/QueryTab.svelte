@@ -375,16 +375,16 @@
   .query { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; }
   .bar { display: flex; align-items: center; gap: 0.625rem; height: 1.875rem; flex: none; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 0.625rem; }
   .readonly-badge { font-size: 0.6875rem; color: var(--warn-fg); background: var(--warn-bg2); border: 1px solid var(--warn-fg); border-radius: 0.1875rem; padding: 0 0.375rem; line-height: 1.4; }
-  .db { color: var(--gray-77); font-size: 0.75rem; }
+  .db { color: var(--gray-77); font-size: var(--fs); }
   .bar-spacer { flex: 1; }
   .editor { height: 34%; flex: none; box-sizing: border-box; overflow: hidden; }
   .pane-divider { flex: none; height: 5px; cursor: row-resize; position: relative; border-bottom: 1px solid var(--gray-cf); }
   .pane-divider:hover { background: var(--tab-active-border); opacity: 0.5; }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; }
-  .cap { background: var(--warn-bg2); color: var(--warn-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; display: flex; align-items: center; gap: 0.625rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
+  .cap { background: var(--warn-bg2); color: var(--warn-fg); padding: 0.375rem 0.625rem; font-size: var(--fs); display: flex; align-items: center; gap: 0.625rem; }
   .bottom { flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .bottom-tabs { display: flex; align-items: center; gap: 0.125rem; height: 1.625rem; flex: none; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 0.375rem; }
-  .bottom-tabs > button { height: 1.25rem; padding: 0 0.625rem; font-size: 0.75rem; border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
+  .bottom-tabs > button { height: 1.25rem; padding: 0 0.625rem; font-size: var(--fs); border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
   .bottom-tabs > button.active { background: var(--panel); color: var(--tab-active-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--tab-active-border); }
   .right-tools { margin-left: auto; display: flex; align-items: center; gap: 0.375rem; }
   .view-toggle { display: flex; gap: 0.0625rem; }
@@ -395,8 +395,8 @@
   .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
   .log-clear:hover { background: var(--hover); }
   .result-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
-  .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: 0.75rem; display: flex; align-items: center; gap: 0.5rem; }
-  .cancel-btn { font-size: 0.75rem; cursor: pointer; border: none; background: none; color: var(--link); }
+  .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: var(--fs); display: flex; align-items: center; gap: 0.5rem; }
+  .cancel-btn { font-size: var(--fs); cursor: pointer; border: none; background: none; color: var(--link); }
   .value-display { height: 100%; box-sizing: border-box; overflow: auto; padding: 0.5rem 0.75rem; }
-  .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: 0.75rem; color: var(--fg); white-space: pre-wrap; word-break: break-word; }
+  .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: var(--fs); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 </style>

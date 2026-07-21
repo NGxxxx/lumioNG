@@ -209,7 +209,7 @@
   .toolbar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
   .toolbar button:hover:not(:disabled) { background: var(--bg); }
   .toolbar button:disabled { color: var(--gray-b8); cursor: default; }
-  .status { color: var(--muted); font-size: 0.75rem; }
+  .status { color: var(--muted); font-size: var(--fs); }
   .scroller { overflow: auto; flex: 1; }
   table { border-collapse: collapse; width: 100%; font-size: 0.8125rem; user-select: none; }
   th, td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; text-align: left; }

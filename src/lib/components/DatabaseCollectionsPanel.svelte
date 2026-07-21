@@ -76,5 +76,5 @@
   .muted { color: var(--muted); }
   .error, .error-cell { color: var(--error); }
   .error { background: var(--error-bg); padding: 0.375rem 0.625rem; }
-  .link { border: none; background: none; color: var(--link); cursor: pointer; padding: 0; font-size: 0.75rem; }
+  .link { border: none; background: none; color: var(--link); cursor: pointer; padding: 0; font-size: var(--fs); }
 </style>

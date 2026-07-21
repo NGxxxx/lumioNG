@@ -266,10 +266,10 @@
   .cols-2 { display: flex; gap: 0.75rem; align-items: stretch; }
   .panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 0.25rem; overflow: hidden; }
   .panel-bar { display: flex; align-items: center; gap: 0.625rem; padding: 0.3125rem 0.5rem; border-bottom: 1px solid var(--bg); background: var(--zebra); }
-  .panel-title { font-size: 0.75rem; color: var(--gray-77); }
-  .panel-bar .count { margin-left: auto; color: var(--gray-77); font-size: 0.75rem; }
+  .panel-title { font-size: var(--fs); color: var(--gray-77); }
+  .panel-bar .count { margin-left: auto; color: var(--gray-77); font-size: var(--fs); }
   .panel-bar .link:last-of-type { margin-left: 0; }
-  .link { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; font-size: 0.75rem; }
+  .link { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; font-size: var(--fs); }
   .link:hover { text-decoration: underline; }
 
   /* Scrollable list — behaves like the namespace sidebar when long */
@@ -286,10 +286,10 @@
   fieldset { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.625rem; margin: 0; }
   fieldset button[type="button"]:not(.link) { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
   fieldset button[type="button"]:not(.link):hover { background: var(--bg); }
-  legend { font-size: 0.75rem; color: var(--gray-77); padding: 0 0.25rem; }
+  legend { font-size: var(--fs); color: var(--gray-77); padding: 0 0.25rem; }
   .options label { display: block; padding: 0.125rem 0; }
-  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.75rem; margin: 0 0 0.625rem; }
-  .dir { margin: 0.375rem 0 0; color: var(--th-fg); font-size: 0.75rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: var(--fs); margin: 0 0 0.625rem; }
+  .dir { margin: 0.375rem 0 0; color: var(--th-fg); font-size: var(--fs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
   footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
@@ -308,6 +308,6 @@
   .overall { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.625rem; }
   .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: 0.25rem; overflow: hidden; }
   .fill { height: 100%; background: var(--progress); transition: width .2s; }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; }
-  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: 0.75rem; margin-top: 0.625rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; }
+  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; }
 </style>

@@ -107,7 +107,7 @@
   code { background: var(--bg); padding: 0.0625rem 0.25rem; border-radius: 0.1875rem; font-family: ui-monospace, monospace; }
   .warn { background: var(--warn-bg); border: 1px solid var(--warn); padding: 0.5rem; border-radius: 0.25rem; }
   .ulabel { display: flex; flex-direction: column; gap: 0.25rem; }
-  textarea { font-family: ui-monospace, monospace; font-size: 0.75rem; }
+  textarea { font-family: ui-monospace, monospace; font-size: var(--fs); }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
   .counter button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
   .counter button:hover:not(:disabled) { background: var(--bg); }

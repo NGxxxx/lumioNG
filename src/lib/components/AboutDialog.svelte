@@ -57,7 +57,7 @@
     margin-top: 0.375rem; font-size: 0.6875rem; color: var(--slate); background: var(--blue-tint5);
     padding: 0.125rem 0.5rem; border-radius: 0.1875rem;
   }
-  .meta { margin-top: 0.875rem; font-size: 0.75rem; color: var(--muted); display: flex; align-items: center; gap: 0.375rem; }
+  .meta { margin-top: 0.875rem; font-size: var(--fs); color: var(--muted); display: flex; align-items: center; gap: 0.375rem; }
   .version { font-family: var(--mono); background: var(--tab-inactive-bg); border-radius: 0.1875rem; padding: 0.0625rem 0.3125rem; }
   .dot { color: var(--gray-b8); }
   footer { display: flex; justify-content: center; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }

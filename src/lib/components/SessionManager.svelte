@@ -464,7 +464,7 @@
   }
   .header-title {
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     color: var(--fg);
   }
   .close-btn {
@@ -527,7 +527,7 @@
     flex: 1;
     border: none;
     outline: none;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     background: transparent;
     color: var(--fg);
     min-width: 0;
@@ -572,7 +572,7 @@
     gap: 0.375rem;
     padding: 0.3125rem 0.5rem;
     cursor: default;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     border-bottom: 1px solid var(--bg);
   }
   .session-row:hover {
@@ -586,7 +586,7 @@
   .session-icon { flex: none; }
   .session-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .session-last { width: 5.625rem; color: var(--muted); font-size: 0.6875rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .session-empty { padding: 1rem 0.5rem; color: var(--muted); font-size: 0.75rem; }
+  .session-empty { padding: 1rem 0.5rem; color: var(--muted); font-size: var(--fs); }
 
   /* ── Right column: connection form ── */
   .right-col {
@@ -603,7 +603,7 @@
   .view-toggle { display: flex; align-items: center; gap: 0.0625rem; margin-bottom: 0.75rem; }
   .toggle-btn {
     display: flex; align-items: center; height: 1.375rem; padding: 0 0.75rem;
-    font-size: 0.75rem; border: 1px solid var(--gray-c4); background: var(--bg);
+    font-size: var(--fs); border: 1px solid var(--gray-c4); background: var(--bg);
     cursor: pointer; color: var(--gray-44); border-radius: 0.125rem;
   }
   .toggle-btn:hover { background: var(--cell-border); }
@@ -624,7 +624,7 @@
 
   .form-label {
     color: var(--gray-44);
-    font-size: 0.75rem;
+    font-size: var(--fs);
     text-align: right;
   }
 
@@ -633,7 +633,7 @@
     border: 1px solid var(--gray-c4);
     border-radius: 0.125rem;
     padding: 0 0.5rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     background: var(--panel);
     color: var(--fg);
     font-family: inherit;
@@ -646,21 +646,21 @@
   .form-input.short { width: 5.625rem; }
   .form-input:disabled { background: var(--zebra); color: var(--gray-99); cursor: default; }
 
-  .form-check { display: flex; align-items: center; gap: 0.375rem; font-size: 0.75rem; color: var(--fg); }
+  .form-check { display: flex; align-items: center; gap: 0.375rem; font-size: var(--fs); color: var(--fg); }
   .import-row { display: flex; gap: 0.375rem; }
   .import-row .form-input { flex: 1; }
   .import-btn {
     height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.125rem;
-    background: var(--panel); cursor: pointer; font-size: 0.75rem; color: var(--fg); flex: none;
+    background: var(--panel); cursor: pointer; font-size: var(--fs); color: var(--fg); flex: none;
   }
   .import-btn:hover { background: var(--bg); }
   .import-btn:disabled { color: var(--gray-99); cursor: default; }
-  .ssh-forget-done { font-size: 0.75rem; color: var(--fg); align-self: center; }
+  .ssh-forget-done { font-size: var(--fs); color: var(--fg); align-self: center; }
 
   .form-error {
     margin-top: 0.625rem;
     color: var(--error);
-    font-size: 0.75rem;
+    font-size: var(--fs);
   }
   .form-notice {
     margin-top: 0.625rem;
@@ -669,7 +669,7 @@
     border: 1px solid var(--warn);
     border-radius: 0.1875rem;
     color: var(--fg);
-    font-size: 0.75rem;
+    font-size: var(--fs);
   }
   /* ── Footer ── */
   .footer {
@@ -696,7 +696,7 @@
     border: 1px solid var(--gray-b8);
     border-radius: 0.1875rem;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     color: var(--fg);
     font-family: inherit;
   }

@@ -193,7 +193,7 @@
 {/if}
 
 <style>
-  .empty { padding: 1rem; color: var(--muted); font-size: 0.75rem; }
+  .empty { padding: 1rem; color: var(--muted); font-size: var(--fs); }
   .tree-scroller {
     overflow: auto;
     /* Size to content, capped by the parent — short results don't force-fill the pane. */

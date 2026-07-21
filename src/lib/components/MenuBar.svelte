@@ -32,17 +32,30 @@
 
   const plat = detectPlatform();
 
+  /** Looks up a registry command's shortcut hint (if any), formatted for the current platform. */
+  function shortcutOf(id: CommandId): string | undefined {
+    const combo = SHORTCUTS[id];
+    return combo ? formatCombo(combo, plat) : undefined;
+  }
+
   /** Builds a leaf menu item from a registry command id, with its shortcut hint (if any). */
   function cmdItem(id: CommandId, label: string): Item {
     const c = commands[id];
-    const combo = SHORTCUTS[id];
     return {
       label,
-      shortcut: combo ? formatCombo(combo, plat) : undefined,
+      shortcut: shortcutOf(id),
       run: c?.run,
       disabled: !c || c.disabled,
     };
   }
+
+  /** Maps a "Go to" context tab to its registry command id, so its menu item can pick up the Mod+1..4 shortcut hint. */
+  const GOTO_CMD: Record<ContextKind, CommandId> = {
+    host: "goto.host",
+    database: "goto.database",
+    collection: "goto.collection",
+    data: "goto.data",
+  };
 
   const LOCALE_NAMES: Record<Locale, string> = { en: "English", vi: "Tiếng Việt" };
 
@@ -125,6 +138,7 @@
       items: [
         ...contextTabs.map((c) => ({
           label: c.label,
+          shortcut: shortcutOf(GOTO_CMD[c.kind]),
           checked: activeContextKind === c.kind,
           run: () => onshowcontext(c.kind),
         })),
@@ -230,7 +244,7 @@
     border: none;
     background: none;
     padding: 0.1875rem 0.5625rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     color: var(--fg);
     border-radius: 0.125rem;
     cursor: pointer;
@@ -262,7 +276,7 @@
     background: none;
     padding: 0.3125rem 0.75rem;
     cursor: pointer;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     color: var(--fg);
     white-space: nowrap;
   }

@@ -79,7 +79,7 @@
     padding-left: 0.625rem; user-select: none;
   }
   .logo { flex: none; }
-  .crumb { margin-left: 0.5rem; font-size: 0.75rem; color: var(--gray-33); }
+  .crumb { margin-left: 0.5rem; font-size: var(--fs); color: var(--gray-33); }
   .wbtns { margin-left: auto; display: flex; height: 100%; }
   .wbtn {
     width: 2.875rem; height: 100%; border: none; background: transparent;

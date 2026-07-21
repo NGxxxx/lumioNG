@@ -233,7 +233,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     border-bottom: 1px solid var(--border);
     padding: 0 0.625rem;
   }
-  .filter-label { color: var(--gray-77); font-size: 0.75rem; }
+  .filter-label { color: var(--gray-77); font-size: var(--fs); }
   .filter-input {
     flex: 1;
     height: 1.3125rem;
@@ -242,7 +242,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     border-radius: 0.125rem;
     padding: 0 0.5rem;
     font-family: Consolas, monospace;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     box-sizing: border-box;
   }
   .btn-run {
@@ -257,7 +257,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     border-radius: 0.1875rem;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.75rem;
+    font-size: var(--fs);
   }
   .btn-run:hover { background: var(--run-hover); }
 
@@ -269,7 +269,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     gap: 0.25rem;
     height: 1.375rem;
     padding: 0 0.5rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     border: 1px solid var(--gray-c4);
     background: var(--bg);
     cursor: pointer;
@@ -293,7 +293,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     border-radius: 0.125rem;
     padding: 0 0.5rem;
     font-family: Consolas, monospace;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     box-sizing: border-box;
   }
   .search-invalid { border-color: var(--error); color: var(--error); }
@@ -301,13 +301,13 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
 
   /* ── Column chooser ── */
-  .chooser-row { display: block; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }
+  .chooser-row { display: block; font-size: var(--fs); padding: 0.125rem 0; white-space: nowrap; }
   .chooser-apply {
     display: block;
     margin: 0.5rem 0 0.125rem auto;
     height: 1.375rem;
     padding: 0 0.625rem;
-    font-size: 0.75rem;
+    font-size: var(--fs);
     border: 1px solid var(--gray-c4);
     border-radius: 0.125rem;
     background: var(--bg);
@@ -320,7 +320,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .dropwrap { position: relative; display: flex; align-items: center; gap: 0.25rem; margin-left: 0.25rem; }
   .dropwrap:focus { outline: none; }
   .drop-btn {
-    height: 1.375rem; padding: 0 0.5rem; font-size: 0.75rem;
+    height: 1.375rem; padding: 0 0.5rem; font-size: var(--fs);
     border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44);
     border-radius: 0.125rem; cursor: pointer; white-space: nowrap;
   }
@@ -340,8 +340,8 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .fields-list { flex: 1; min-height: 0; overflow: auto; border-bottom: 1px solid var(--bg); }
   .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; }
 
-  .dd-empty { color: var(--gray-99); font-size: 0.75rem; padding: 0.125rem 0.125rem 0.375rem; }
-  .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: 0.75rem; padding: 0.125rem 0; white-space: nowrap; }
+  .dd-empty { color: var(--gray-99); font-size: var(--fs); padding: 0.125rem 0.125rem 0.375rem; }
+  .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: var(--fs); padding: 0.125rem 0; white-space: nowrap; }
   .dd-rank { color: var(--gray-99); width: 1rem; }
   .dd-field { flex: 1; font-family: ui-monospace, monospace; }
   .dd-ic {
@@ -351,7 +351,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .dd-ic:hover { background: var(--tab-inactive-bg); }
   .dd-ic:disabled { opacity: 0.35; cursor: default; }
   .dd-x:hover { background: var(--error-bg); color: var(--error); }
-  .dd-add { display: block; font-size: 0.75rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
-  .dd-add select { margin-left: 0.375rem; font-size: 0.75rem; }
+  .dd-add { display: block; font-size: var(--fs); margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
+  .dd-add select { margin-left: 0.375rem; font-size: var(--fs); }
   .dd-clear { margin-top: 0.375rem; width: 100%; font-size: 0.6875rem; cursor: pointer; border: none; background: none; color: var(--link); }
 </style>

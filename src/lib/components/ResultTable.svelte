@@ -162,7 +162,7 @@
   /* ── Error / status messages ── */
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
   /* Tree-view loading hint: overlay so it doesn't disturb the 100%-height virtual scroller. */
-  .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: var(--gray-77); font-size: 0.75rem;
+  .status { position: absolute; top: 0.375rem; right: 0.75rem; padding: 0.1875rem 0.5rem; color: var(--gray-77); font-size: var(--fs);
     background: color-mix(in srgb, var(--panel) 80%, transparent); border-radius: 0.1875rem; z-index: 5; }
 
   /* ── Tree view ── (rendering lives in ResultTree.svelte); shrinks to content instead of always filling. */

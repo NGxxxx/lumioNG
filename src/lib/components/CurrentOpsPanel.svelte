@@ -82,8 +82,8 @@
   .bar { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 0.625rem; }
   .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
   .bar button:hover { background: var(--bg); }
-  .status { color: var(--muted); font-size: 0.75rem; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.75rem; user-select: none; }
+  .status { color: var(--muted); font-size: var(--fs); }
+  table { border-collapse: collapse; width: 100%; font-size: var(--fs); user-select: none; }
   th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); }
   .v { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: var(--text-strong); font-family: var(--mono); }
   tr.own .v { background: var(--ok-bg); }

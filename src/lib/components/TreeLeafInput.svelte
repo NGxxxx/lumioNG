@@ -98,7 +98,7 @@
   .nested-preview {
     margin: 0.125rem 0 0.25rem 1.125rem; padding: 0.375rem 0.5rem; background: var(--bg);
     border: 1px solid var(--border); border-radius: 0.1875rem; font-family: ui-monospace, monospace;
-    font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; color: var(--gray-33);
+    font-size: var(--fs); white-space: pre-wrap; word-break: break-word; color: var(--gray-33);
   }
   .cellerror { color: var(--error); font-size: 0.6875rem; margin-left: 0.375rem; }
 </style>

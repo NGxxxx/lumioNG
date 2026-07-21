@@ -1,4 +1,5 @@
 import { MIN_PANE_PX } from "../stores/settings.svelte";
+import { rafThrottle } from "../domain/rafThrottle";
 
 /** Drag handle between the Query tab's editor and its bottom (result/log) pane; mirrors `createColumnResize`'s window-listener approach but for a pane, not a grid column. */
 export function createPaneResize(setEditorPx: (px: number) => void) {
@@ -13,11 +14,13 @@ export function createPaneResize(setEditorPx: (px: number) => void) {
     const flexSpace = startH + bottomEl.getBoundingClientRect().height;
     const maxEditorPx = flexSpace - MIN_PANE_PX;
 
-    function move(ev: MouseEvent) {
+    // rAF-throttled: coalesce raw mousemove ticks to at most one pane re-layout per frame.
+    const move = rafThrottle((ev: MouseEvent) => {
       const next = startH + (ev.clientY - startY);
       setEditorPx(Math.max(MIN_PANE_PX, Math.min(maxEditorPx, next)));
-    }
+    });
     function up() {
+      move.cancel();
       window.removeEventListener("mousemove", move);
       window.removeEventListener("mouseup", up);
       resizing = false;
