@@ -2,6 +2,7 @@
   import { errorMessage } from "../api/errors";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
+  import CodeEditor from "./CodeEditor.svelte";
 
   let {
     onsubmit,
@@ -11,6 +12,10 @@
       fields: { field: string; dir: 1 | -1 }[],
       unique: boolean,
       name: string,
+      sparse: boolean,
+      ttlSeconds: number | null,
+      partialFilter: string,
+      collation: string,
     ) => Promise<void>;
     oncancel: () => void;
   } = $props();
@@ -18,6 +23,12 @@
   let rows = $state<{ field: string; dir: 1 | -1 }[]>([{ field: "", dir: 1 }]);
   let unique = $state(false);
   let name = $state("");
+  let advancedOpen = $state(false);
+  let sparse = $state(false);
+  let ttlEnabled = $state(false);
+  let ttlSeconds = $state(0);
+  let partialFilter = $state("");
+  let collation = $state("");
   let error = $state<string | null>(null);
   let busy = $state(false);
 
@@ -32,7 +43,15 @@
     busy = true;
     error = null;
     try {
-      await onsubmit($state.snapshot(rows), unique, name);
+      await onsubmit(
+        $state.snapshot(rows),
+        unique,
+        name,
+        sparse,
+        ttlEnabled ? ttlSeconds : null,
+        partialFilter,
+        collation,
+      );
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -57,6 +76,22 @@
   <button class="addfield" onclick={addRow}>{m.index_create_add_field()}</button>
   <label class="opt"><input type="checkbox" bind:checked={unique} aria-label="unique" /> {m.index_create_unique_label()}</label>
   <label class="opt">{m.index_create_name_label()}<input bind:value={name} aria-label="index-name" /></label>
+  <button type="button" class="advanced-toggle" onclick={() => (advancedOpen = !advancedOpen)}>
+    {advancedOpen ? m.index_create_advanced_hide() : m.index_create_advanced_show()}
+  </button>
+  {#if advancedOpen}
+    <label class="opt"><input type="checkbox" bind:checked={sparse} aria-label="sparse" /> {m.index_create_sparse_label()}</label>
+    <label class="opt ttl-row">
+      <input type="checkbox" bind:checked={ttlEnabled} aria-label="ttl-enabled" /> {m.index_create_ttl_label()}
+      <input type="number" min="0" bind:value={ttlSeconds} disabled={!ttlEnabled} aria-label="ttl-seconds" />
+    </label>
+    <label class="opt">{m.index_create_partial_label()}
+      <div class="jsoneditor"><CodeEditor value={partialFilter} onChange={(v) => (partialFilter = v)} /></div>
+    </label>
+    <label class="opt">{m.index_create_collation_label()}
+      <div class="jsoneditor"><CodeEditor value={collation} onChange={(v) => (collation = v)} /></div>
+    </label>
+  {/if}
   {#if error}<div class="dlg-error">{msgKey(error)}</div>{/if}
   <footer>
     <button onclick={oncancel}>{m.common_cancel()}</button>
@@ -72,6 +107,10 @@
   .addfield { border: 1px dashed var(--gray-c4); background: var(--panel); color: var(--fg); border-radius: 0.25rem; padding: 0.1875rem 0.5rem; cursor: pointer; font-size: var(--fs); }
   .opt { display: block; margin-top: 0.5rem; }
   .opt input:not([type]) { width: 100%; box-sizing: border-box; margin-top: 0.25rem; padding: 0.25rem 0.375rem; }
+  .ttl-row input[type="number"] { width: 6rem; margin-left: 0.5rem; padding: 0.1875rem 0.375rem; }
+  .advanced-toggle { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; margin-top: 0.625rem; font-size: var(--fs); }
+  .advanced-toggle:hover { text-decoration: underline; }
+  .jsoneditor { height: 6rem; border: 1px solid var(--border); border-radius: 0.25rem; overflow: auto; margin-top: 0.25rem; }
   .dlg-error { color: var(--error); margin-top: 0.5rem; }
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem; }
   footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }

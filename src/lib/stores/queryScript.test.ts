@@ -1108,7 +1108,7 @@ describe("explain", () => {
     await s.runExplain();
     await s.createSuggestedIndex();
 
-    expect(createIndexMock).toHaveBeenCalledWith("sess", "d", "c", '{"status":1}', false, null);
+    expect(createIndexMock).toHaveBeenCalledWith("sess", "d", "c", '{"status":1}', false, null, false, null, null, null);
     expect(s.explainPrevSummary?.verdict).toBe("collscan");
     expect(s.explainSummary?.verdict).toBe("ixscan");
     expect(explainQueryMock).toHaveBeenCalledTimes(2);

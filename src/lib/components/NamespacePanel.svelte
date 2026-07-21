@@ -10,7 +10,6 @@
   import ExportWizard from "./ExportWizard.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
-  import { validateCollectionName } from "../domain/namespaces";
   import { SEARCH_DEBOUNCE_MS } from "../domain/timing";
   import * as m from "$lib/paraglide/messages";
   import type { Session } from "../stores/sessionManager.svelte";
@@ -64,7 +63,6 @@
     { label: m.menu_refresh(), action: "refresh" },
     { label: m.export_wizard_menu_export_db(), action: "exportDb" },
     { label: m.namespace_panel_menu_import(), action: "import" },
-    { label: m.namespace_panel_menu_import_sql(), action: "importSql" },
     { label: m.namespace_panel_menu_drop_db(), action: "dropDb" },
   ]);
   const collItems = $derived([
@@ -81,7 +79,6 @@
   type Dialog =
     | { type: "newDb"; sessionId: string }
     | { type: "newColl"; db: string; sessionId: string }
-    | { type: "importTarget"; db: string; sessionId: string }
     | { type: "rename"; db: string; coll: string; sessionId: string }
     | { type: "duplicate"; db: string; coll: string; sessionId: string }
     | { type: "dropColl"; db: string; coll: string; sessionId: string }
@@ -96,6 +93,10 @@
 
   function sessionById(id: string): Session | undefined {
     return sessionManager.sessions.find((s) => s.id === id);
+  }
+
+  function collectionsFor(sessionId: string, db: string): string[] {
+    return sessionById(sessionId)?.tree?.databases.find((d) => d.name === db)?.collections ?? [];
   }
 
   function onMenuSelect(action: string) {
@@ -123,8 +124,7 @@
         const db = databases.find((d) => d.name === target.db);
         exportWizard = { mode: "pick", preChecked: (db?.collections ?? []).map((c) => ({ db: target.db, coll: c })) };
       }
-      else if (action === "import") dialog = { type: "importTarget", db: target.db, sessionId: target.sessionId };
-      else if (action === "importSql") openImportDialog(target.sessionId, target.db, null);
+      else if (action === "import") openImportDialog(target.sessionId, target.db, null);
       else if (action === "dropDb") dialog = { type: "dropDb", db: target.db, sessionId: target.sessionId };
     } else {
       if (action === "newQuery") onnewquery?.({ db: target.db, coll: target.coll });
@@ -142,7 +142,7 @@
     }
   }
 
-  /** `coll === null` is a whole-database SQL import; the dialog itself owns picking the file. */
+  /** `coll === null` is a whole-database import (any file type); the dialog itself owns picking the file and, for non-SQL files, collecting a target collection name. */
   function openImportDialog(sessionId: string, db: string, coll: string | null) {
     importDialog = { sessionId, db, coll };
   }
@@ -288,19 +288,6 @@
     }}
     oncancel={() => (dialog = null)}
   />
-{:else if dialog?.type === "importTarget"}
-  {@const d = dialog}
-  <NameDialog
-    title={m.namespace_panel_import_target_title()}
-    label={m.namespace_panel_import_target_label()}
-    onsubmit={async (name) => {
-      const msg = validateCollectionName(name);
-      if (msg) throw msg;
-      openImportDialog(d.sessionId, d.db, name);
-      dialog = null;
-    }}
-    oncancel={() => (dialog = null)}
-  />
 {:else if dialog?.type === "rename"}
   {@const d = dialog}
   <NameDialog
@@ -377,7 +364,13 @@
 
 {#if importDialog}
   {@const d = importDialog}
-  <ImportDialog sessionId={d.sessionId} db={d.db} coll={d.coll} onclose={closeImportDialog} />
+  <ImportDialog
+    sessionId={d.sessionId}
+    db={d.db}
+    coll={d.coll}
+    existingCollections={collectionsFor(d.sessionId, d.db)}
+    onclose={closeImportDialog}
+  />
 {/if}
 
 <style>

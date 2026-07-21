@@ -5,6 +5,7 @@
   import { maskUri } from "../domain/uri";
   import type { HostSection } from "../stores/navigation.svelte";
   import CurrentOpsPanel from "./CurrentOpsPanel.svelte";
+  import TopologyPanel from "./TopologyPanel.svelte";
   import UsersRolesPanel from "./UsersRolesPanel.svelte";
   import * as m from "$lib/paraglide/messages";
 
@@ -24,6 +25,7 @@
   <div class="subtabs">
     <button class:active={section === "info"} onclick={() => setSection("info")}>{m.host_tab_info()}</button>
     <button class:active={section === "currentOps"} onclick={() => setSection("currentOps")}>{m.host_tab_current_ops()}</button>
+    <button class:active={section === "topology"} onclick={() => setSection("topology")}>{m.host_tab_topology()}</button>
     <button class:active={section === "users"} onclick={() => setSection("users")}>{m.users_roles_toggle_users()}</button>
     <button class:active={section === "roles"} onclick={() => setSection("roles")}>{m.users_roles_toggle_roles()}</button>
   </div>
@@ -61,6 +63,8 @@
       </div>
     {:else if section === "currentOps"}
       <CurrentOpsPanel />
+    {:else if section === "topology"}
+      <TopologyPanel />
     {:else}
       <!-- Users and Roles share one mount (same else-branch) so switching doesn't refetch. -->
       <UsersRolesPanel tab={section === "roles" ? "roles" : "users"} />

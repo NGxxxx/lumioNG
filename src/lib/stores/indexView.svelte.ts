@@ -37,20 +37,30 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
     fields: { field: string; dir: 1 | -1 }[],
     unique: boolean,
     name: string | null,
+    sparse: boolean,
+    ttlSeconds: number | null,
+    partialFilter: string,
+    collation: string,
   ) {
     const msg = validateIndexFields(fields);
     if (msg) throw msg;
     const keys = buildIndexKeys(fields);
     const trimmed = name && name.trim() ? name.trim() : null;
+    const pf = partialFilter.trim() ? partialFilter.trim() : null;
+    const coln = collation.trim() ? collation.trim() : null;
     activity.begin(m.common_running());
-    const opts: Record<string, unknown> = {};
-    if (unique) opts.unique = true;
-    if (trimmed) opts.name = trimmed;
     try {
+      const opts: Record<string, unknown> = {};
+      if (unique) opts.unique = true;
+      if (sparse) opts.sparse = true;
+      if (ttlSeconds !== null) opts.expireAfterSeconds = ttlSeconds;
+      if (pf) opts.partialFilterExpression = JSON.parse(pf);
+      if (coln) opts.collation = JSON.parse(coln);
+      if (trimmed) opts.name = trimmed;
       await commandLog.pushTimed(
         createIndexCmd(coll, JSON.parse(keys) as Record<string, unknown>, Object.keys(opts).length ? opts : undefined),
         sessionId,
-        () => createIndex(sessionId, db, coll, keys, unique, trimmed),
+        () => createIndex(sessionId, db, coll, keys, unique, trimmed, sparse, ttlSeconds, pf, coln),
       );
       await refresh();
     } finally {

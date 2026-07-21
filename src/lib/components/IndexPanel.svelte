@@ -42,8 +42,8 @@
   {#if v.error}<div class="error">{v.error}</div>{/if}
   {#if creating}
     <IndexCreateForm
-      onsubmit={async (fields, unique, name) => {
-        await v.create(fields, unique, name);
+      onsubmit={async (fields, unique, name, sparse, ttlSeconds, partialFilter, collation) => {
+        await v.create(fields, unique, name, sparse, ttlSeconds, partialFilter, collation);
         creating = false;
       }}
       oncancel={() => (creating = false)}

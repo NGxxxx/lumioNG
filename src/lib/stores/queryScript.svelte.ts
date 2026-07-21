@@ -267,7 +267,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const gen = generation;
     try {
       await commandLog.pushTimed(suggestion.snippet, sessionId, () =>
-        createIndex(sessionId, r.db, r.coll, JSON.stringify(suggestion.keys), false, null));
+        createIndex(sessionId, r.db, r.coll, JSON.stringify(suggestion.keys), false, null, false, null, null, null));
       if (gen !== generation) return; // a fresh run superseded this before the index finished
       explainPrevSummary = prev;
       await runExplain();

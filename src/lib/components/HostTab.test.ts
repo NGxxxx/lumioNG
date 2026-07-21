@@ -35,6 +35,15 @@ vi.mock("../stores/currentOps.svelte", () => ({
   }),
 }));
 
+vi.mock("../stores/topology.svelte", () => ({
+  createTopologyStatus: () => ({
+    info: { kind: "standalone" as const },
+    loading: false,
+    error: null,
+    load: vi.fn(),
+  }),
+}));
+
 vi.mock("../stores/usersRoles.svelte", () => ({
   createUsersRolesView: () => ({
     users: [],
@@ -110,5 +119,12 @@ describe("HostTab", () => {
     // Scoped to role="button": UserList's "Roles" table column header is also on screen.
     await fireEvent.click(getByRole("button", { name: "Roles" }));
     expect(getByText("＋ Create role")).toBeTruthy();
+  });
+
+  it("clicking Topology switches the sub-pane", async () => {
+    mockInfo = null;
+    const { getByText, getByRole } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
+    await fireEvent.click(getByRole("button", { name: "Topology" }));
+    expect(getByText("Standalone server (not part of a replica set or sharded cluster).")).toBeTruthy();
   });
 });

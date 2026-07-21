@@ -59,19 +59,87 @@ describe("ImportDialog — setup stage", () => {
     );
   });
 
-  it("db-scoped import (coll=null) does not offer a .csv filter", async () => {
+  it("db-scoped import (coll=null) offers the full file filter, same as a collection-scoped one", async () => {
     openDialog.mockResolvedValueOnce(null);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: null, onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    expect(openDialog).toHaveBeenCalledWith([{ name: "SQL", extensions: ["sql"] }]);
+    expect(openDialog).toHaveBeenCalledWith([
+      { name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] },
+    ]);
   });
 
-  it("db-scoped import (coll=null) only offers a .sql filter and shows no Collection row", async () => {
-    openDialog.mockResolvedValueOnce(null); // this test only checks the filter passed, not the resulting path
+  it("db-scoped import (coll=null) with a non-SQL file shows a target-collection field, not the read-only Collection row", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, {
+      props: { sessionId: "s", db: "d", coll: null, existingCollections: ["users", "orders"], onclose: vi.fn() },
+    });
+    await fireEvent.click(screen.getByText("Browse…"));
+    expect(screen.queryByText("Collection")).toBeNull();
+    expect(screen.getByLabelText("Target collection")).toBeTruthy();
+  });
+
+  it("db-scoped import (coll=null) with a .sql file still skips the target-collection field", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/dump.sql");
+    render(ImportDialog, {
+      props: { sessionId: "s", db: "d", coll: null, existingCollections: ["users"], onclose: vi.fn() },
+    });
+    await fireEvent.click(screen.getByText("Browse…"));
+    expect(screen.queryByLabelText("Target collection")).toBeNull();
+  });
+
+  it("Import stays disabled for a db-scoped non-SQL file until a valid target-collection name is entered", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: null, onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    expect(openDialog).toHaveBeenCalledWith([{ name: "SQL", extensions: ["sql"] }]);
-    expect(screen.queryByText("Collection")).toBeNull();
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "orders" } });
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("an invalid target-collection name blocks Import and shows an inline error", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: null, onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "system.foo" } });
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(true);
+    expect(await screen.findByText("Collection name cannot start with 'system.'.")).toBeTruthy();
+  });
+
+  it("the target-collection field suggests existingCollections via a datalist", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, {
+      props: { sessionId: "s", db: "d", coll: null, existingCollections: ["users", "orders"], onclose: vi.fn() },
+    });
+    await fireEvent.click(screen.getByText("Browse…"));
+    const input = screen.getByLabelText("Target collection") as HTMLInputElement;
+    const datalist = document.getElementById(input.getAttribute("list")!) as HTMLDataListElement;
+    expect([...datalist.options].map((o) => o.value)).toEqual(["users", "orders"]);
+  });
+
+  it("clicking Import for a db-scoped JSON file starts the import job with the typed target collection", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: null, onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "orders" } });
+    await fireEvent.click(screen.getByText("Import"));
+    await vi.waitFor(() =>
+      expect(importDocuments).toHaveBeenCalledWith("s", "d", "orders", "/tmp/data.json", "skipDuplicates", expect.any(Function)),
+    );
+  });
+
+  it("clicking Import for a db-scoped CSV file starts the CSV preview with the typed target collection", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.csv");
+    csvImportPreview.mockResolvedValueOnce([{ path: "id", inferredType: "int", samples: ["1"] }]);
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: null, onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "imported" } });
+    await fireEvent.click(screen.getByText("Import"));
+    expect(await screen.findByText("id")).toBeTruthy();
+  });
+
+  it("db-scoped import shows an \"Import into {db}\" title before a file is chosen", () => {
+    render(ImportDialog, { props: { sessionId: "s", db: "shop", coll: null, onclose: vi.fn() } });
+    expect(screen.getByRole("dialog", { name: "Import into shop" })).toBeTruthy();
   });
 
   it("clicking Import for a JSON file starts the import job", async () => {

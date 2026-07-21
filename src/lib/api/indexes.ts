@@ -11,8 +11,14 @@ export async function createIndex(
   keys: string,
   unique: boolean,
   name: string | null,
+  sparse: boolean,
+  ttlSeconds: number | null,
+  partialFilter: string | null,
+  collation: string | null,
 ): Promise<void> {
-  await invoke("create_index", { sessionId, db, coll, keys, unique, name });
+  await invoke("create_index", {
+    sessionId, db, coll, keys, unique, name, sparse, ttlSeconds, partialFilter, collation,
+  });
 }
 
 export async function dropIndex(sessionId: string, db: string, coll: string, name: string): Promise<void> {

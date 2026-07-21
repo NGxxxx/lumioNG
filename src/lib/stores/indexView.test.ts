@@ -36,21 +36,39 @@ describe("createIndexView", () => {
 
   it("create with valid fields: validate → buildKeys → api → refresh", async () => {
     const v = createIndexView("conn:1", "d", "c");
-    await v.create([{ field: "email", dir: 1 }], true, null);
-    expect(createIdx).toHaveBeenCalledWith("conn:1", "d", "c", '{"email":1}', true, null);
+    await v.create([{ field: "email", dir: 1 }], true, null, false, null, "", "");
+    expect(createIdx).toHaveBeenCalledWith("conn:1", "d", "c", '{"email":1}', true, null, false, null, null, null);
     expect(listIdx).toHaveBeenCalled();
   });
 
   it("create with invalid field → throws, api not called", async () => {
     const v = createIndexView("conn:1", "d", "c");
-    await expect(v.create([{ field: "  ", dir: 1 }], false, null)).rejects.toBeTruthy();
+    await expect(v.create([{ field: "  ", dir: 1 }], false, null, false, null, "", "")).rejects.toBeTruthy();
     expect(createIdx).not.toHaveBeenCalled();
   });
 
   it("create with blank name → sends null after trimming", async () => {
     const v = createIndexView("conn:1", "d", "c");
-    await v.create([{ field: "email", dir: 1 }], false, "   ");
-    expect(createIdx).toHaveBeenCalledWith("conn:1", "d", "c", '{"email":1}', false, null);
+    await v.create([{ field: "email", dir: 1 }], false, "   ", false, null, "", "");
+    expect(createIdx).toHaveBeenCalledWith("conn:1", "d", "c", '{"email":1}', false, null, false, null, null, null);
+  });
+
+  it("create with sparse + TTL + partial filter + collation forwards them all", async () => {
+    const v = createIndexView("conn:1", "d", "c");
+    await v.create(
+      [{ field: "createdAt", dir: 1 }], false, null, true, 3600,
+      '{"status":"active"}', '{"locale":"en","strength":2}',
+    );
+    expect(createIdx).toHaveBeenCalledWith(
+      "conn:1", "d", "c", '{"createdAt":1}', false, null, true, 3600,
+      '{"status":"active"}', '{"locale":"en","strength":2}',
+    );
+  });
+
+  it("create with blank partial filter / collation → sends null, not empty string", async () => {
+    const v = createIndexView("conn:1", "d", "c");
+    await v.create([{ field: "email", dir: 1 }], false, null, false, null, "   ", "");
+    expect(createIdx).toHaveBeenCalledWith("conn:1", "d", "c", '{"email":1}', false, null, false, null, null, null);
   });
 
   it("drop calls api and refreshes", async () => {
@@ -109,6 +127,22 @@ describe("indexView activity", () => {
     const v = createIndexView("conn:1", "d", "c");
     await v.refresh();
     expect(sawBusy).toBe(true);
+    expect(activity.busy).toBe(false);
+  });
+
+  it("create with invalid partial-filter JSON does not leak the activity counter", async () => {
+    const v = createIndexView("conn:1", "d", "c");
+    await expect(
+      v.create([{ field: "email", dir: 1 }], false, null, false, null, "{not valid json", ""),
+    ).rejects.toBeTruthy();
+    expect(activity.busy).toBe(false);
+  });
+
+  it("create with invalid collation JSON does not leak the activity counter", async () => {
+    const v = createIndexView("conn:1", "d", "c");
+    await expect(
+      v.create([{ field: "email", dir: 1 }], false, null, false, null, "", "{not valid json"),
+    ).rejects.toBeTruthy();
     expect(activity.busy).toBe(false);
   });
 });

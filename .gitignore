@@ -13,3 +13,4 @@ vite.config.ts.timestamp-*
 
 .superpowers/
 /src/lib/paraglide
+.worktrees/

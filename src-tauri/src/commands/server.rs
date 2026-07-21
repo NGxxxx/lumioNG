@@ -70,3 +70,55 @@ pub async fn kill_op(
         .await?;
     Ok(())
 }
+
+#[tauri::command]
+pub async fn is_master(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
+    let resp = client
+        .database("admin")
+        .run_command(doc! { "isMaster": 1 })
+        .await?;
+    doc_to_canonical_string(resp)
+}
+
+#[tauri::command]
+pub async fn repl_set_status(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
+    let resp = client
+        .database("admin")
+        .run_command(doc! { "replSetGetStatus": 1 })
+        .await?;
+    doc_to_canonical_string(resp)
+}
+
+#[tauri::command]
+pub async fn list_shards(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
+    let resp = client
+        .database("admin")
+        .run_command(doc! { "listShards": 1 })
+        .await?;
+    doc_to_canonical_string(resp)
+}
+
+#[tauri::command]
+pub async fn balancer_status(
+    session_id: String,
+    state: State<'_, AppState>,
+) -> Result<String, AppError> {
+    let client = state.client(&session_id).await?;
+    let resp = client
+        .database("admin")
+        .run_command(doc! { "balancerStatus": 1 })
+        .await?;
+    doc_to_canonical_string(resp)
+}
