@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, untrack } from "svelte";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
@@ -141,7 +142,7 @@
   }));
 </script>
 
-<div class="backdrop" use:portal role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !job?.running) onclose(); }}>
+<div class="backdrop" use:portal role="presentation" use:backdropClose={() => { if (!job?.running) onclose(); }}>
   <div class="modal" class:running={job !== null} role="dialog" aria-modal="true" aria-label={m.export_wizard_title()}>
     <header>{m.export_wizard_title()}</header>
 

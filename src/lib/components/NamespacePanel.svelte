@@ -23,7 +23,7 @@
   }: {
     onselect?: (d: { db: string; coll: string }) => void;
     onselectdb?: (d: { db: string }) => void;
-    onnewquery?: (d: { db: string; coll: string }) => void;
+    onnewquery?: (d: { sessionId: string; db: string; coll: string }) => void;
     onmanagesessions?: () => void;
     ondisconnect?: (sessionId: string) => void;
   } = $props();
@@ -67,6 +67,7 @@
   ]);
   const collItems = $derived([
     { label: m.namespace_panel_menu_new_aggregate(), action: "newQuery" },
+    { label: m.menu_refresh(), action: "refresh" },
     { label: m.namespace_panel_menu_export(), action: "export" },
     { label: m.namespace_panel_menu_import(), action: "import" },
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
@@ -127,7 +128,8 @@
       else if (action === "import") openImportDialog(target.sessionId, target.db, null);
       else if (action === "dropDb") dialog = { type: "dropDb", db: target.db, sessionId: target.sessionId };
     } else {
-      if (action === "newQuery") onnewquery?.({ db: target.db, coll: target.coll });
+      if (action === "newQuery") onnewquery?.({ sessionId: target.sessionId, db: target.db, coll: target.coll });
+      else if (action === "refresh") tree?.refresh();
       else if (action === "export") {
         // The wizard exports the ACTIVE session, so focus the target's session first.
         sessionManager.focusSession(target.sessionId);
@@ -185,8 +187,8 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       class="session-header"
-      onclick={() => sess.status === "error" ? sessionManager.reconnect(sess.id) : sessionManager.focusSession(sess.id)}
-      onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") sess.status === "error" ? sessionManager.reconnect(sess.id) : sessionManager.focusSession(sess.id); }}
+      onclick={() => { if (sess.status === "error") sessionManager.reconnect(sess.id); else { sessionManager.focusSession(sess.id); toggleSession(sess.id); } }}
+      onkeydown={(e) => { if (e.key === "Enter" || e.key === " ") { if (sess.status === "error") sessionManager.reconnect(sess.id); else { sessionManager.focusSession(sess.id); toggleSession(sess.id); } } }}
       oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); menu = { kind: "conn", x: e.clientX, y: e.clientY, sessionId: sess.id }; }}
       role="button"
       tabindex="0"

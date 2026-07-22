@@ -8,7 +8,7 @@
   import { sampleDocuments } from "$lib/api/documents";
   import { cancelScript } from "$lib/api/script";
   import { sessionManager } from "$lib/stores/sessionManager.svelte";
-  import { getQueryRun, disposeQueryRun } from "$lib/stores/queryRuns.svelte";
+  import { getQueryRun } from "$lib/stores/queryRuns.svelte";
   import { shell } from "$lib/stores/shell.svelte";
   import { queryLibrary } from "$lib/stores/queryLibrary.svelte";
   import { activeDataView } from "$lib/stores/activeDataView.svelte";
@@ -38,6 +38,8 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import CommandLog from "$lib/components/CommandLog.svelte";
   import AboutDialog from "$lib/components/AboutDialog.svelte";
+  import ToastHost from "$lib/components/ToastHost.svelte";
+  import { toast } from "$lib/stores/toast.svelte";
   import { SHORTCUTS, type Command, type CommandId } from "$lib/domain/commands";
   import { matchesEvent } from "$lib/domain/shortcuts";
   import { detectPlatform } from "$lib/stores/platform";
@@ -129,6 +131,11 @@
     if (s?.coll) nav?.bumpCollection(s.db, s.coll);
   }
 
+  /** Each work tab is bound to its own session, which may have a different DB selected than whatever session is currently focused. */
+  function dbForSession(sessionId: string): string | null {
+    return sm.sessions.find((s) => s.id === sessionId)?.nav.selection?.db ?? null;
+  }
+
   async function doDisconnect(sessionId: string) {
     await sm.closeSession(sessionId);
     if (sm.sessions.length === 0) shell.setConnection(null);
@@ -136,13 +143,14 @@
   }
 
   /** Toolbar Save / Ctrl+S for the active Query tab: overwrite when associated, else save-as dialog. */
-  function saveActiveQuery() {
+  async function saveActiveQuery() {
     const tab = activeQueryTab;
     const run = activeQueryRun;
     if (!tab || !run || queryLibrary.blocked) return;
     // A deleted library node falls back to save-as (queryName returns null).
     if (tab.savedQueryId != null && queryLibrary.queryName(tab.savedQueryId) !== null) {
-      queryLibrary.overwrite(tab.savedQueryId, run.statementText, sel?.db ?? null);
+      await queryLibrary.overwrite(tab.savedQueryId, run.statementText, sel?.db ?? null);
+      toast.push(queryLibrary.saveError ?? m.toast_query_updated(), queryLibrary.saveError ? "error" : "success");
     } else {
       saveQueryDialog = { tabId: tab.id };
     }
@@ -155,7 +163,12 @@
     if (tab) {
       const run = getQueryRun(tab.id, tab.sessionId, tab.initialStatement);
       const id = await queryLibrary.saveQuery(name, run.statementText, sel?.db ?? null, parentId);
-      if (id !== null) sm.associateQueryTab(tab.id, id);
+      if (id !== null) {
+        sm.associateQueryTab(tab.id, id);
+        toast.push(m.toast_query_saved(), "success");
+      } else {
+        toast.push(queryLibrary.loadError ?? m.toast_query_saved(), "error");
+      }
     }
     saveQueryDialog = null;
   }
@@ -168,21 +181,24 @@
   }
 
   // Vertical splitter above the Saved Queries panel (mirrors startLogDrag).
-  function startSavedQueriesDrag(e: MouseEvent) {
+  function startSavedQueriesDrag(e: PointerEvent) {
     e.preventDefault();
     const startY = e.clientY;
     const startH = shell.savedQueriesHeight;
-    // rAF-throttled: coalesce raw mousemove ticks to at most one panel re-layout per frame.
-    const move = rafThrottle((ev: MouseEvent) => {
+    // Pointer capture: keeps pointermove/pointerup routed here (and auto-releases on pointerup)
+    // even if the drag exits the window bounds, so `up()` always fires.
+    (e.target as Element).setPointerCapture(e.pointerId);
+    // rAF-throttled: coalesce raw pointermove ticks to at most one panel re-layout per frame.
+    const move = rafThrottle((ev: PointerEvent) => {
       shell.setSavedQueriesHeight(startH + (startY - ev.clientY));
     });
     function up() {
       move.cancel();
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
     }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }
 
   async function newDocActive() {
@@ -207,39 +223,45 @@
   }
 
   // Horizontal splitter for the sidebar.
-  function startSidebarDrag(e: MouseEvent) {
+  function startSidebarDrag(e: PointerEvent) {
     e.preventDefault();
     const startX = e.clientX;
     const startW = shell.sidebarWidth;
-    // rAF-throttled: coalesce raw mousemove ticks to at most one sidebar re-layout per frame.
-    const move = rafThrottle((ev: MouseEvent) => {
+    // Pointer capture: keeps pointermove/pointerup routed here (and auto-releases on pointerup)
+    // even if the drag exits the window bounds, so `up()` always fires.
+    (e.target as Element).setPointerCapture(e.pointerId);
+    // rAF-throttled: coalesce raw pointermove ticks to at most one sidebar re-layout per frame.
+    const move = rafThrottle((ev: PointerEvent) => {
       shell.setSidebarWidth(startW + (ev.clientX - startX));
     });
     function up() {
       move.cancel();
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
     }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }
 
   // Vertical splitter for the command log panel.
-  function startLogDrag(e: MouseEvent) {
+  function startLogDrag(e: PointerEvent) {
     e.preventDefault();
     const startY = e.clientY;
     const startH = shell.logHeight;
-    // rAF-throttled: coalesce raw mousemove ticks to at most one log-panel re-layout per frame.
-    const move = rafThrottle((ev: MouseEvent) => {
+    // Pointer capture: keeps pointermove/pointerup routed here (and auto-releases on pointerup)
+    // even if the drag exits the window bounds, so `up()` always fires.
+    (e.target as Element).setPointerCapture(e.pointerId);
+    // rAF-throttled: coalesce raw pointermove ticks to at most one log-panel re-layout per frame.
+    const move = rafThrottle((ev: PointerEvent) => {
       shell.setLogHeight(startH + (startY - ev.clientY));
     });
     function up() {
       move.cancel();
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
     }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }
 
   const plat = detectPlatform();
@@ -271,7 +293,7 @@
     "goto.prevTab": { disabled: !(sm.workTabs.length > 1), run: () => cycleWorkTab(-1) },
     "view.closeWorkTab": {
       disabled: active?.zone !== "work",
-      run: () => { if (active?.zone === "work") { disposeQueryRun(active.id); sm.closeWork(active.id); } },
+      run: () => { if (active?.zone === "work") sm.closeWork(active.id); },
     },
     "goto.host": { disabled: !navContextTabs.includes("host"), run: () => sm.showContext("host") },
     "goto.database": { disabled: !navContextTabs.includes("database"), run: () => sm.showContext("database") },
@@ -333,7 +355,10 @@
           bind:this={namespacePanelRef}
           onselect={(d) => nav?.selectCollection(d.db, d.coll)}
           onselectdb={(d) => nav?.selectDatabase(d.db)}
-          onnewquery={(d) => { nav?.selectCollection(d.db, d.coll); sm.openQuery(aggregateTemplate(d.coll)); }}
+          onnewquery={(d) => {
+            sm.sessions.find((s) => s.id === d.sessionId)?.nav.selectCollection(d.db, d.coll);
+            sm.openQuery(aggregateTemplate(d.coll), null, d.sessionId);
+          }}
           onmanagesessions={() => shell.openSession()}
           ondisconnect={doDisconnect}
         />
@@ -346,7 +371,7 @@
             role="separator"
             aria-orientation="horizontal"
             tabindex="-1"
-            onmousedown={startSavedQueriesDrag}
+            onpointerdown={startSavedQueriesDrag}
             onkeydown={() => {}}
           ></div>
         {/if}
@@ -359,7 +384,7 @@
       role="separator"
       aria-orientation="vertical"
       tabindex="-1"
-      onmousedown={startSidebarDrag}
+      onpointerdown={startSidebarDrag}
       onkeydown={() => {}}
     ></div>
     <section>
@@ -370,7 +395,7 @@
         {active}
         onShowContext={(kind) => sm.showContext(kind)}
         onActivateWork={(id) => sm.activateWork(id)}
-        onCloseWork={(id) => { disposeQueryRun(id); sm.closeWork(id); }}
+        onCloseWork={(id) => sm.closeWork(id)}
         onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
       />
       <div class="panes">
@@ -414,7 +439,7 @@
           <div class="tabpane" hidden={!isActiveTab}>
             {#if tab.kind === "query"}
               <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement}
-                currentDb={sel?.db ?? null} active={isActiveTab}
+                currentDb={dbForSession(tab.sessionId)} active={isActiveTab}
                 onopendocument={(doc, db, coll) => openDocument(db, coll, doc, "edit")} />
             {:else}
               <DocumentForm
@@ -443,7 +468,7 @@
           role="separator"
           aria-orientation="horizontal"
           tabindex="-1"
-          onmousedown={startLogDrag}
+          onpointerdown={startLogDrag}
           onkeydown={() => {}}
         ></div>
         <CommandLog height={shell.logHeight} onToggle={() => shell.toggleLog()} />
@@ -494,6 +519,7 @@
   {#if aboutOpen}
     <AboutDialog onclose={() => (aboutOpen = false)} />
   {/if}
+  <ToastHost />
 </div>
 
 <style>

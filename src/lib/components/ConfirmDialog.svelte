@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
 
@@ -34,9 +35,7 @@
   class="backdrop"
   use:portal
   role="presentation"
-  onclick={(e) => {
-    if (e.target === e.currentTarget) oncancel();
-  }}
+  use:backdropClose={oncancel}
 >
   <div class="modal" role="dialog" aria-modal="true" aria-label={title}>
     <header>{title}</header>

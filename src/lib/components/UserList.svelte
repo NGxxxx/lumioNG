@@ -1,5 +1,6 @@
 <script lang="ts">
   import { errorMessage } from "../api/errors";
+  import { backdropClose } from "../actions/backdropClose";
   import { msgKey } from "$lib/msgkey";
   import type { createUsersRolesView } from "../stores/usersRoles.svelte";
   import type { UserInfo } from "../domain/users";
@@ -158,7 +159,7 @@
 
 {#if editingRoles}
   {@const target = editingRoles}
-  <div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) editingRoles = null; }}>
+  <div class="backdrop" role="presentation" use:backdropClose={() => (editingRoles = null)}>
     <div class="modal" role="dialog" aria-modal="true" aria-label={m.user_list_edit_roles()}>
       <header>{m.user_list_edit_roles()} — {target.user}</header>
       <div class="body">
@@ -177,7 +178,7 @@
 
 {#if changingPassword}
   {@const target = changingPassword}
-  <div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) changingPassword = null; }}>
+  <div class="backdrop" role="presentation" use:backdropClose={() => (changingPassword = null)}>
     <div class="modal" role="dialog" aria-modal="true" aria-label={m.user_password_modal_title()}>
       <header>{m.user_password_modal_title()} — {target.user}</header>
       <div class="body">

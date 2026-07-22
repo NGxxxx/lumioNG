@@ -154,10 +154,13 @@ export function createSessionManager() {
     }
   }
 
-  function openQuery(initialStatement: string, savedQueryId: number | null = null) {
-    if (!activeId) return;
+  /** `sessionId` defaults to the active session; pass the owning session explicitly (e.g. a right-click on a non-active session's tree) to avoid binding the new tab to whatever happens to be focused. */
+  function openQuery(initialStatement: string, savedQueryId: number | null = null, sessionId?: string) {
+    const sid = sessionId ?? activeId;
+    if (!sid || !sessions.some((s) => s.id === sid)) return;
     const used = workTabs.filter((t) => t.kind === "query").map((t) => t.seq);
-    workTabs = [...workTabs, { id: nextTabId++, kind: "query", seq: nextQuerySeq(used), initialStatement, sessionId: activeId, savedQueryId }];
+    workTabs = [...workTabs, { id: nextTabId++, kind: "query", seq: nextQuerySeq(used), initialStatement, sessionId: sid, savedQueryId }];
+    activeId = sid;
     zone = { zone: "work", id: workTabs.at(-1)!.id };
   }
 
@@ -192,6 +195,9 @@ export function createSessionManager() {
     if (idx === -1) return;
     const wasActive = zone?.zone === "work" && zone.id === tabId;
     workTabs = workTabs.filter((t) => t.id !== tabId);
+    // A no-op for document tabs (never in the query-run cache); centralized here so no future
+    // close path can forget it and leak a query tab's run/console state in the cache.
+    disposeQueryRun(tabId);
     if (wasActive) {
       const neighbor = workTabs[idx - 1] ?? workTabs[idx] ?? null;
       if (neighbor) { activeId = neighbor.sessionId; zone = { zone: "work", id: neighbor.id }; }

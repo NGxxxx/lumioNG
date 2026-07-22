@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { errorMessage } from "../api/errors";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
@@ -31,27 +32,32 @@
     }
   }
 
-  onMount(() => pushModal({ onEscape: oncancel, onEnter: submit, enterDisabled: () => busy }));
+  onMount(() => pushModal({
+    onEscape: () => { if (!busy) oncancel(); },
+    onEnter: submit,
+    enterDisabled: () => busy,
+  }));
 </script>
 
 <div
   class="backdrop"
   use:portal
   role="presentation"
-  onclick={(e) => {
-    if (e.target === e.currentTarget) oncancel();
-  }}
+  use:backdropClose={() => { if (!busy) oncancel(); }}
 >
   <div class="modal" role="dialog" aria-modal="true" aria-label="New database">
     <header>New database</header>
     <div class="body">
       <p class="hint">{m.new_db_hint()}</p>
-      <label>{m.new_db_name_label()}<input bind:value={db} aria-label="db-input" /></label>
-      <label>{m.new_db_first_collection_label()}<input bind:value={coll} aria-label="coll-input" /></label>
+      <label>{m.new_db_name_label()}
+        <!-- svelte-ignore a11y_autofocus -->
+        <input bind:value={db} disabled={busy} aria-label="db-input" autofocus />
+      </label>
+      <label>{m.new_db_first_collection_label()}<input bind:value={coll} disabled={busy} aria-label="coll-input" /></label>
       {#if error}<div class="dlg-error">{msgKey(error)}</div>{/if}
     </div>
     <footer>
-      <button onclick={oncancel}>{m.common_cancel()}</button>
+      <button onclick={oncancel} disabled={busy}>{m.common_cancel()}</button>
       <button class="primary" disabled={busy} onclick={submit}>{m.common_create()}</button>
     </footer>
   </div>

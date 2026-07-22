@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { errorMessage } from "../api/errors";
+  import { backdropClose } from "../actions/backdropClose";
   import { msgKey } from "$lib/msgkey";
   import type { createUsersRolesView } from "../stores/usersRoles.svelte";
   import type { RoleInfo } from "../domain/users";
@@ -144,7 +145,7 @@
 
 {#if editing}
   {@const target = editing}
-  <div class="backdrop" role="presentation" onclick={(e) => { if (e.target === e.currentTarget) editing = null; }}>
+  <div class="backdrop" role="presentation" use:backdropClose={() => (editing = null)}>
     <div class="modal" role="dialog" aria-modal="true" aria-label={m.role_list_edit()}>
       <header>{m.role_list_edit()} — {target.role}</header>
       <div class="body">

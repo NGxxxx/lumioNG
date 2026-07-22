@@ -2,6 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { errorMessage } from "../api/errors";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
@@ -47,14 +48,15 @@
   class="backdrop"
   use:portal
   role="presentation"
-  onclick={(e) => {
-    if (e.target === e.currentTarget && !busy) oncancel();
-  }}
+  use:backdropClose={() => { if (!busy) oncancel(); }}
 >
   <div class="modal" role="dialog" aria-modal="true" aria-label={title}>
     <header>{title}</header>
     <div class="body">
-      <label>{label}<input bind:value disabled={busy} aria-label="name-input" /></label>
+      <label>{label}
+        <!-- svelte-ignore a11y_autofocus -->
+        <input bind:value disabled={busy} aria-label="name-input" autofocus />
+      </label>
       {#if error}<div class="dlg-error">{msgKey(error)}</div>{/if}
     </div>
     <footer>

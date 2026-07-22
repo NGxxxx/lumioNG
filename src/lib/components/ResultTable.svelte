@@ -29,7 +29,6 @@
     getCollectionView(sessionManager.active?.id ?? "", db, coll, version),
   );
 
-  let view = $state<"grid" | "tree">("grid");
   let toolbarRef: CollectionToolbar | undefined;
   let treeRef: ResultTree | undefined = $state();
 
@@ -134,12 +133,12 @@
 <div class="result">
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
-  <CollectionToolbar {v} bind:view bind:this={toolbarRef}
+  <CollectionToolbar {v} bind:view={v.view} bind:this={toolbarRef}
     treeAllExpanded={treeRef?.isAllExpanded() ?? false}
     ontoggleexpand={() => treeRef?.toggleExpandAll()} />
 
   <div class="content">
-    {#if view === "grid"}
+    {#if v.view === "grid"}
       <ResultGrid v={gridView} {onopendocument} />
     {:else}
       <div class="tree-wrap">

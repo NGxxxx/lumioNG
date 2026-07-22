@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { pushModal } from "$lib/stores/modalStack";
+  import { backdropClose } from "../actions/backdropClose";
   import { createConnectionRegistry } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
   import { openDialog } from "../api/files";
@@ -129,7 +130,7 @@
 <div
   class="overlay"
   role="presentation"
-  onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}
+  use:backdropClose={onclose}
 >
   <div class="panel">
     <!-- Header -->

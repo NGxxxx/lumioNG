@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
   import { openDialog, importFileSize } from "../api/files";
   import { describeSqlImportTargets, isLargeImportFile, formatFileSize } from "../domain/importPlan";
@@ -129,7 +130,7 @@
   class="backdrop"
   use:portal
   role="presentation"
-  onclick={(e) => { if (e.target === e.currentTarget && canClose) onclose(); }}
+  use:backdropClose={() => { if (canClose) onclose(); }}
 >
   <div class="modal" class:modal-sql={stage === "working" && isSql} role="dialog" aria-modal="true" aria-label={title}>
     <header>{title}</header>
@@ -146,6 +147,7 @@
           <div class="file-row">
             <span class="label">{m.import_dialog_target_collection_label()}</span>
             <input
+              class="target-input"
               list="import-target-collections"
               bind:value={targetColl}
               aria-label={m.import_dialog_target_collection_label()}
@@ -335,6 +337,19 @@
   .file-row button:hover { background: var(--bg); }
   .label { color: var(--gray-77); flex: none; }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
+  .target-input {
+    flex: 1;
+    min-width: 0;
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    box-sizing: border-box;
+    border: 1px solid var(--gray-b8);
+    border-radius: 0.1875rem;
+    background: var(--panel);
+    color: var(--fg);
+    font-size: var(--fs);
+  }
+  .target-input:focus { outline: none; border-color: var(--focus-ring); }
   .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: var(--fs); margin-bottom: 0.75rem; }
   .notice-cancelled { background: var(--warn-bg); color: var(--warn-fg); }
   .insert-mode-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: var(--fs); margin-bottom: 0.75rem; }

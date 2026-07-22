@@ -2,6 +2,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
   import * as m from "$lib/paraglide/messages";
 
@@ -20,9 +21,7 @@
   class="backdrop"
   use:portal
   role="presentation"
-  onclick={(e) => {
-    if (e.target === e.currentTarget) onclose();
-  }}
+  use:backdropClose={onclose}
 >
   <div class="modal" role="dialog" aria-modal="true" aria-label={m.session_manager_test_result_title()}>
     <header>{m.session_manager_test_result_title()}</header>

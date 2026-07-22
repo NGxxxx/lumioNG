@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import { errorMessage } from "../api/errors";
   import { queryLibrary } from "../stores/queryLibrary.svelte";
   import { folderOptions } from "../domain/queryTree";
@@ -45,9 +46,7 @@
   class="backdrop"
   use:portal
   role="presentation"
-  onclick={(e) => {
-    if (e.target === e.currentTarget && !busy) oncancel();
-  }}
+  use:backdropClose={() => { if (!busy) oncancel(); }}
 >
   <div class="modal" role="dialog" aria-modal="true" aria-label={m.saved_queries_save_title()}>
     <header>{m.saved_queries_save_title()}</header>

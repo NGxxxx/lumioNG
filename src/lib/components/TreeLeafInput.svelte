@@ -42,7 +42,6 @@
     const r = rebuildLeaf(type, editText);
     if (r.ok) {
       editError = null;
-      dirty = false;
       onerror(false);
       onchange(r.value);
     } else {
