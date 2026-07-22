@@ -137,9 +137,7 @@
     }
   }
 
-  // Bridge for the global toolbar (Edit document / Export / Delete). Registered once for this
-  // tab's whole lifetime (Query tabs stay mounted when hidden); activeDataView.setActiveQueryId
-  // (set by the app shell) decides which registered tab the toolbar actually defers to.
+  // Bridge for the global toolbar (Edit/Export/Delete); registered once for this tab's lifetime, activeDataView.setActiveQueryId decides which tab it defers to.
   const dataViewHandle = {
     get canEdit() { return v.canEditSelected; },
     get canExport() { return v.docs.length > 0; },
@@ -198,7 +196,7 @@
   <div
     class="pane-divider"
     role="presentation"
-    onmousedown={(e) => editorEl && bottomEl && paneResize.start(e, editorEl, bottomEl)}
+    onpointerdown={(e) => editorEl && bottomEl && paneResize.start(e, editorEl, bottomEl)}
     ondblclick={() => settings.resetQueryEditorHeight()}
   ></div>
 

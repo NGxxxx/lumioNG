@@ -74,6 +74,8 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
       await commandLog.pushTimed(dropIndexCmd(coll, name), sessionId, () =>
         dropIndex(sessionId, db, coll, name));
       await refresh();
+    } catch (e) {
+      error = errorMessage(e);
     } finally {
       activity.end();
     }

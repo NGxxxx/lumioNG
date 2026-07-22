@@ -12,9 +12,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 
-/// Opens an SSH tunnel (if `ssh` is enabled) and rewrites `opts.hosts` to point at the local
-/// forwarded port before the Mongo client ever sees the real remote host. Shared by `connect`
-/// and `test_connection` so both go through the identical tunnel-then-ping sequence.
+/// Opens an SSH tunnel (if enabled) and rewrites `opts.hosts` to the local forwarded port; shared by `connect` and `test_connection`.
 async fn open_client(
     app: &AppHandle,
     uri: &str,
@@ -96,6 +94,7 @@ const SYSTEM_DBS: [&str; 3] = ["admin", "local", "config"];
 #[tauri::command]
 pub async fn list_namespaces(
     session_id: String,
+    include_system_dbs: bool,
     state: State<'_, AppState>,
 ) -> Result<Vec<DbInfo>, AppError> {
     let client = state.client(&session_id).await?;
@@ -104,7 +103,7 @@ pub async fn list_namespaces(
     // Fetch each database's collection list concurrently instead of one round trip at a time.
     let fetches = db_names
         .into_iter()
-        .filter(|name| !SYSTEM_DBS.contains(&name.as_str()))
+        .filter(|name| include_system_dbs || !SYSTEM_DBS.contains(&name.as_str()))
         .map(|name| {
             let client = client.clone();
             async move {

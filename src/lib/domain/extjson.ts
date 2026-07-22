@@ -49,11 +49,7 @@ export function truncateForDisplay(s: string, max = MAX_DISPLAY_LEN): string {
   return s.length > max ? s.slice(0, max) + "…" : s;
 }
 
-/** Cheap check for whether `v` is a plain container (array or object) the tree editor should let
- *  the user expand — same ExtJSON-wrapper exclusions as `describeValue`'s type discrimination
- *  below, but skips computing `display` (a full `JSON.stringify` of the whole value), which a
- *  container row never uses. Use this instead of `describeValue(v).type` anywhere that only needs
- *  to know if `v` is expandable, e.g. counting a large collapsed array/object's children. */
+/** Cheap check for whether `v` is a plain container (array/object) the tree editor can expand, without computing `describeValue`'s display text. */
 export function containerKind(v: unknown): "array" | "object" | null {
   if (v === null || typeof v !== "object") return null;
   if (Array.isArray(v)) return "array";

@@ -7,6 +7,7 @@ const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
 const WRAP_KEY = "wrap-long-lines";
 const EDITOR_H_KEY = "query-editor-height-px";
 const GRID_DEPTH_KEY = "grid-max-depth";
+const SHOW_SYSTEM_DBS_KEY = "show-system-databases";
 
 /** Absolute floor (px) for either side of the Query tab's editor/bottom split. */
 export const MIN_PANE_PX = 120;
@@ -81,6 +82,7 @@ export function createSettings() {
   let gridMaxDepth = $state<number | null>(
     hasStorage ? untrack(() => readGridDepth()) : DEFAULT_GRID_DEPTH,
   );
+  let showSystemDatabases = $state<boolean>(hasStorage ? untrack(() => readBool(SHOW_SYSTEM_DBS_KEY)) : false);
 
   return {
     get suppressDestructiveWarning(): boolean {
@@ -146,6 +148,14 @@ export function createSettings() {
       if (v !== null && (!Number.isFinite(v) || v <= 0)) return;
       gridMaxDepth = v === null ? null : Math.floor(v);
       writeKey(GRID_DEPTH_KEY, gridMaxDepth === null ? "all" : String(gridMaxDepth));
+    },
+    /** When true, the sidebar tree and Database tab also list MongoDB's own admin/local/config databases. */
+    get showSystemDatabases(): boolean {
+      return showSystemDatabases;
+    },
+    setShowSystemDatabases(v: boolean) {
+      showSystemDatabases = v;
+      writeKey(SHOW_SYSTEM_DBS_KEY, v ? "true" : "false");
     },
   };
 }

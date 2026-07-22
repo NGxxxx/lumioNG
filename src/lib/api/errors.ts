@@ -1,3 +1,5 @@
+import { friendlyConnectionError } from "../domain/connectionError";
+
 export interface AppErrorShape {
   kind: "Connection" | "SshTunnel" | "Query" | "Serialize" | "Parse" | "Io" | "NotConnected";
   message?: string;
@@ -6,7 +8,8 @@ export interface AppErrorShape {
 export function errorMessage(e: unknown): string {
   if (e && typeof e === "object" && "kind" in e) {
     const err = e as AppErrorShape;
-    return err.message ? `${err.kind}: ${err.message}` : err.kind;
+    const raw = err.message ? `${err.kind}: ${err.message}` : err.kind;
+    return friendlyConnectionError(raw);
   }
   return String(e);
 }

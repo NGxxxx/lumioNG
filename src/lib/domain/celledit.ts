@@ -60,9 +60,7 @@ export function rebuildJsonValue(text: string): RebuildResult {
  *  still works fine with compact JSON, it's just not indented. */
 const MODAL_PRETTY_PRINT_CAP = 200_000;
 
-/** Text to seed the modal editor with when starting an edit. A raw string is shown as-is (no
- *  JSON.stringify — that would wrap it in quotes and escape its content, which is confusing and
- *  not what the user is editing); object/array values are pretty-printed JSON. */
+/** Text to seed the modal editor with: a raw string is shown as-is (JSON.stringify would wrap/escape it confusingly); object/array values are pretty-printed. */
 export function seedModalEditText(value: unknown): string {
   if (typeof value === "string") return value;
   const compact = JSON.stringify(value);

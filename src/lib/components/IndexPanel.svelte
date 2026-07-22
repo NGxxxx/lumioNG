@@ -3,7 +3,7 @@
   import { createIndexView } from "../stores/indexView.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { describeKeys, type IndexInfo } from "../domain/indexes";
-  import { pushModal } from "$lib/stores/modalStack";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import IndexCreateForm from "./IndexCreateForm.svelte";
   import * as m from "$lib/paraglide/messages";
 
@@ -25,14 +25,12 @@
     v.init();
   });
 
-  $effect(() => {
+  /** Dismiss immediately (matches RoleList/UserList); the drop runs in the background and any failure surfaces via `v.error`'s banner. */
+  function confirmDropIndex() {
     const target = confirmDrop;
-    if (!target) return;
-    return pushModal({
-      onEscape: () => (confirmDrop = null),
-      onEnter: async () => { await v.drop(target); confirmDrop = null; },
-    });
-  });
+    confirmDrop = null;
+    if (target) v.drop(target);
+  }
 </script>
 
 <div class="indexpanel">
@@ -72,28 +70,14 @@
 </div>
 
 {#if confirmDrop}
-  {@const target = confirmDrop}
-  <div
-    class="backdrop"
-    role="presentation"
-    onclick={(e) => {
-      if (e.target === e.currentTarget) confirmDrop = null;
-    }}
-  >
-    <div class="modal" role="dialog" aria-modal="true" aria-label={m.index_panel_drop_title()}>
-      <header>{m.index_panel_drop_title()}</header>
-      <div class="body">{m.index_panel_drop_body_prefix()} <code>{target}</code>{m.index_panel_drop_body_suffix()}</div>
-      <footer>
-        <button onclick={() => (confirmDrop = null)}>{m.common_cancel()}</button>
-        <button
-          class="danger"
-          onclick={async () => {
-            await v.drop(target);
-            confirmDrop = null;
-          }}>{m.index_panel_drop()}</button>
-      </footer>
-    </div>
-  </div>
+  <ConfirmDialog
+    title={m.index_panel_drop_title()}
+    message={`${m.index_panel_drop_body_prefix()} "${confirmDrop}"${m.index_panel_drop_body_suffix()}`}
+    confirmLabel={m.index_panel_drop()}
+    danger
+    onconfirm={confirmDropIndex}
+    oncancel={() => (confirmDrop = null)}
+  />
 {/if}
 
 <style>
@@ -113,13 +97,4 @@
   .danger:disabled { color: var(--gray-b8); }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
   .status { padding: 0.5rem; color: var(--gray-77); font-size: var(--fs); }
-  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
-  .modal { background: var(--panel); width: 26.25rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; }
-  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
-  .body { padding: 0.875rem; font-size: 0.8125rem; }
-  code { background: var(--bg); padding: 0.0625rem 0.25rem; border-radius: 0.1875rem; font-family: ui-monospace, monospace; }
-  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
-  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
-  footer button:hover:not(:disabled) { background: var(--bg); }
-  footer button:disabled { color: var(--gray-b8); cursor: default; }
 </style>

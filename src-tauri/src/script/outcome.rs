@@ -38,10 +38,7 @@ pub struct Provenance {
     pub coll: String,
 }
 
-/// The originating query of the script's single constructed `Cursor`, if exactly one was
-/// constructed during the run — independent of how the completion value was finalized (a pure
-/// cursor recipe, a `.map()`/`.toArray()`'d array, a `.forEach()`'d `undefined`, etc). Lets Explain
-/// work on scripts that transform a cursor's rows in JS, not just bare `find()`/`aggregate()`.
+/// The originating query of the script's single constructed `Cursor`, if exactly one was made — lets Explain work on scripts that transform cursor rows.
 #[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ExplainHint {

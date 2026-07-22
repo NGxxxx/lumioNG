@@ -30,12 +30,7 @@ export interface SqlImportCommitResult {
   cancelled: boolean;
 }
 
-/**
- * Re-parses the dump and inserts the selected tables' rows. When the dump has exactly one table
- * and `targetColl` is set (the dialog was opened from a specific collection), that table's rows go
- * into `targetColl` instead of a new collection named after the table; multi-table dumps always
- * create one collection per table regardless of `targetColl`.
- */
+/** Re-parses the dump and inserts the selected tables' rows; a single-table dump with `targetColl` set goes there instead of a new collection. */
 export async function sqlImportCommit(
   sessionId: string,
   db: string,

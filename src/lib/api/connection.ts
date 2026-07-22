@@ -33,6 +33,6 @@ export async function forgetSshHostKey(host: string, port: number): Promise<void
   await invoke("forget_ssh_host_key", { host, port });
 }
 
-export async function listNamespaces(sessionId: string): Promise<DbInfo[]> {
-  return await invoke<DbInfo[]>("list_namespaces", { sessionId });
+export async function listNamespaces(sessionId: string, includeSystemDbs = false): Promise<DbInfo[]> {
+  return await invoke<DbInfo[]>("list_namespaces", { sessionId, includeSystemDbs });
 }

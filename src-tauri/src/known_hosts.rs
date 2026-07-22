@@ -3,8 +3,6 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// A trusted SSH host key, keyed by `(host, port)` — mirrors OpenSSH's `known_hosts` semantics.
-/// Shared across every saved connection that tunnels through the same bastion, and populated even
-/// for ad-hoc `test_connection` calls before a profile is ever saved.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct KnownHost {

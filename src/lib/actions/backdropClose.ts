@@ -1,10 +1,4 @@
-/**
- * Svelte action for modal backdrops: calls `handler` only when both the mousedown/pointerdown
- * AND the click (which fires at mouseup) land on the backdrop element itself. A plain
- * `onclick={(e) => e.target === e.currentTarget && close()}` fires at mouseup regardless of
- * where the drag started — so selecting text inside the dialog and releasing the mouse outside
- * it (a very easy accidental drag) closes the dialog mid-selection. Tracking pointerdown fixes that.
- */
+/** Svelte action for modal backdrops: fires `handler` only when both pointerdown and click land on the backdrop itself (avoids closing mid text-drag). */
 export function backdropClose(node: HTMLElement, handler: () => void) {
   let armed = false;
 

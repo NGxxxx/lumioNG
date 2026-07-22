@@ -3,10 +3,10 @@ import { listNamespaces } from "../api/connection";
 import type { DbInfo } from "../domain/namespaces";
 import * as admin from "../api/admin";
 import { errorMessage } from "../api/errors";
-import { friendlyConnectionError } from "../domain/connectionError";
 import { validateCollectionName, validateDatabaseName } from "../domain/namespaces";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
+import { settings } from "./settings.svelte";
 import * as m from "$lib/paraglide/messages";
 import {
   createCollectionCmd,
@@ -39,10 +39,10 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
     activity.begin(m.common_running());
     try {
       databases = await commandLog.pushTimed(listDatabasesCmd(), sessionId, () =>
-        listNamespaces(sessionId));
+        listNamespaces(sessionId, settings.showSystemDatabases));
       error = null;
     } catch (e) {
-      error = friendlyConnectionError(errorMessage(e));
+      error = errorMessage(e);
     } finally {
       activity.end();
     }

@@ -1,7 +1,4 @@
-//! Infers a BSON value from raw text found in a CSV cell or SQL string literal.
-//! Shared by SQL import (`sql_import.rs`) and CSV import (`csv_import.rs`) so
-//! both formats reconstruct nested objects/arrays and common scalar types the
-//! same way instead of duplicating the logic.
+//! Infers a BSON value from raw text found in a CSV cell or SQL string literal; shared by SQL and CSV import.
 use crate::json_bson::canonical_string_to_bson;
 use mongodb::bson::{oid::ObjectId, Bson, DateTime};
 
@@ -10,19 +7,14 @@ use mongodb::bson::{oid::ObjectId, Bson, DateTime};
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InferOptions {
-    /// Text shaped like `{...}` or `[...]` is parsed as Canonical Extended
-    /// JSON and, on success, used verbatim — this reconstructs nested
-    /// objects/arrays/ObjectId/Date losslessly because it's the same text
-    /// export already writes, not a heuristic.
+    /// Text shaped like `{...}` or `[...]` is parsed as Canonical Extended JSON and used verbatim on success (lossless, not a heuristic).
     pub parse_json_like: bool,
     /// Non-JSON-looking text is tried against a fixed order of scalar
     /// heuristics (see `infer_scalar`) before falling back to a plain string.
     pub infer_scalars: bool,
 }
 
-/// Convert one cell/literal's raw text into the `Bson` value it most likely
-/// represents, given the caller's `opts`. Never fails — worst case, returns
-/// `Bson::String` with the original text untouched.
+/// Converts one cell/literal's raw text into the `Bson` value it most likely represents; never fails, worst case returns `Bson::String`.
 pub fn infer_bson(text: &str, opts: &InferOptions) -> Bson {
     let trimmed = text.trim();
     if opts.parse_json_like && (trimmed.starts_with('{') || trimmed.starts_with('[')) {
@@ -38,9 +30,7 @@ pub fn infer_bson(text: &str, opts: &InferOptions) -> Bson {
     Bson::String(text.to_string())
 }
 
-/// Short type label for one inferred `Bson` value, used by CSV's and SQL's preview commands to
-/// annotate each column (`"int"`, `"double"`, `"bool"`, `"objectId"`, `"date"`, `"object"`,
-/// `"array"`, `"null"`, or the `"string"` fallback).
+/// Short type label for one inferred `Bson` value, used by CSV/SQL preview commands to annotate each column.
 pub fn bson_type_name(b: &Bson) -> &'static str {
     match b {
         Bson::Document(_) => "object",
@@ -82,10 +72,7 @@ fn infer_scalar(s: &str) -> Option<Bson> {
     None
 }
 
-/// `s` (optionally `-`-prefixed) is all ASCII digits with no leading zero
-/// (other than the single digit `"0"` itself) — a leading zero would be
-/// silently dropped by round-tripping through `i64`, so that text is left as
-/// a string on purpose.
+/// `s` (optionally `-`-prefixed) is all ASCII digits with no leading zero (other than a bare `"0"`) — a leading zero must stay a string.
 fn parse_clean_int(s: &str) -> Option<i64> {
     let digits = s.strip_prefix('-').unwrap_or(s);
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -225,9 +212,7 @@ mod tests {
 
     #[test]
     fn twenty_four_hex_chars_that_were_never_meant_as_an_object_id_still_becomes_one() {
-        // Documented, accepted trade-off from the spec: there's no way to
-        // distinguish "this text happens to be 24 hex chars" from "this is
-        // really an ObjectId" using text alone.
+        // Accepted trade-off: no way to distinguish "24 hex chars" from "really an ObjectId" using text alone.
         let out = infer_bson("abcdefabcdefabcdefabcdef", &opts(true, true));
         assert!(matches!(out, Bson::ObjectId(_)));
     }

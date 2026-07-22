@@ -63,7 +63,8 @@
 <div class="form">
   {#each rows as row, i}
     <div class="row">
-      <input bind:value={row.field} placeholder="field" aria-label={`field-${i}`} />
+      <!-- svelte-ignore a11y_autofocus -->
+      <input bind:value={row.field} placeholder="field" aria-label={`field-${i}`} autofocus={i === 0} />
       <select bind:value={row.dir} aria-label={`dir-${i}`}>
         <option value={1}>asc</option>
         <option value={-1}>desc</option>

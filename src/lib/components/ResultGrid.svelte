@@ -9,6 +9,7 @@
   import type { GridPageView } from "../domain/gridView";
   import type { Doc } from "../domain/doc";
   import { portal } from "../actions/portal";
+  import { backdropClose } from "../actions/backdropClose";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
   import { activeDataView } from "../stores/activeDataView.svelte";
@@ -68,15 +69,7 @@
 
   function focusSelect(node: HTMLInputElement) { node.focus(); node.select(); }
 
-  /** Commits the current edit, then — only if the commit actually succeeded (the store clears
-   *  `editing` on success, leaves it set with `editError` populated on failure) — opens the next
-   *  row's same-column cell for editing, matching HeidiSQL's Excel-style "Enter advances".
-   *  `commitEdit` is async and clears `editing` only after its internal await resolves, so this
-   *  must await it before checking `v.editing` — checking synchronously right after the call
-   *  always observes the still-pending state.
-   *  Advances within the same universe `rowAt`/`rowCount` render from (visibleIndices when a
-   *  quick-search filter is active, else every doc) — otherwise Enter could land `editing` on a
-   *  row filtered out of the DOM, with no `<tr>`/`<input>` for the user to see or interact with. */
+  /** Commits the edit, then (if it succeeded) opens the next row's same-column cell — Excel-style "Enter advances". */
   async function commitAndAdvance(row: number, key: string) {
     await v.commitEdit();
     if (v.editing !== null) return; // commit failed; stay put
@@ -129,9 +122,7 @@
     }
   }
 
-  // Registers the object/array modal editor with the shared modalStack so Escape closes it
-  // regardless of which element has focus (Save/Cancel buttons included), matching every other
-  // dialog in the app.
+  // Registers the modal editor with modalStack so Escape closes it regardless of focus, matching every other dialog.
   $effect(() => {
     if (v.editing?.kind !== "modal") return;
     return pushModal({
@@ -171,7 +162,7 @@
               >{/if}<span
                 class="col-resize"
                 role="presentation"
-                onmousedown={(e) => colResize.start(e, c.path)}
+                onpointerdown={(e) => colResize.start(e, c.path)}
                 ondblclick={(e) => { e.stopPropagation(); v.resetColWidth(c.path); }}
               ></span></th>
           {/each}
@@ -236,7 +227,7 @@
 </div>
 
 {#if v.editing?.kind === "modal"}
-  <div class="modal-backdrop" use:portal role="presentation" onclick={(e) => { if (e.target === e.currentTarget && !v.saving) v.cancelEdit(); }}>
+  <div class="modal-backdrop" use:portal role="presentation" use:backdropClose={() => { if (!v.saving) v.cancelEdit(); }}>
     <div class="modal-editor" role="dialog" aria-modal="true" aria-label={m.grid_edit_value_title()}>
       <header>{m.grid_edit_value_title()}</header>
       {#if v.editTextLoading}
@@ -254,9 +245,7 @@
 {/if}
 
 <style>
-  /* Copied verbatim from ResultTable.svelte's pre-refactor style block, keeping every class
-     name unchanged. Excludes the pager, error, io-ok, status and tree-wrap rules; those stay
-     with ResultPager.svelte and ResultTable.svelte respectively. */
+  /* Copied verbatim from ResultTable.svelte's pre-refactor style block; pager/error/io-ok/status/tree-wrap rules stay there. */
   .grid-region { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   /* Isolates paint context to avoid a WebView2 compositing glitch on the sticky header seam. */
   .scroller { overflow: auto; flex: 1; position: relative; contain: paint; isolation: isolate; }

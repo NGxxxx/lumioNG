@@ -132,10 +132,7 @@ export function parseUri(uri: string): { profile: ConnectionProfile; password: s
   };
 }
 
-/** When an SSH tunnel is enabled, only a single fixed host:port can be forwarded — SRV discovery
- *  and replica-set member discovery would both try to reach hosts outside the tunnel. Force a
- *  direct single-host shape so a stale scheme/replicaSet from before the tunnel was enabled can
- *  never leak into the built URI. */
+/** SSH tunnels forward a single fixed host:port, so force a direct single-host shape (no SRV/replicaSet leaking into the built URI). */
 export function normalizeForTunnel(p: ConnectionProfile, sshEnabled: boolean): ConnectionProfile {
   if (!sshEnabled) return p;
   return { ...p, scheme: "mongodb", replicaSet: "" };

@@ -11,9 +11,7 @@
   import TreeAdderRow from "./TreeAdderRow.svelte";
   import * as m from "$lib/paraglide/messages";
 
-  /** Virtualized, collapsed-by-default editor for a single document. Only mounts rows that are
-   *  actually visible/expanded — unlike the old fully-recursive TreeNode, cost no longer scales
-   *  with total document size (that was the ~2GB RAM / hang source on large documents). */
+  /** Virtualized, collapsed-by-default editor for a single document — only mounts visible/expanded rows, unlike the old fully-recursive TreeNode. */
   let {
     value,
     onchange,
@@ -30,12 +28,7 @@
   // TreeEditor itself (a new document/tab), never by editing the current one.
   let open = $state<Set<string>>(new Set());
 
-  // Debounced, not a plain $derived: this walks every OPEN row, and a leaf keystroke reassigns
-  // `value` (see TreeLeafInput/DocumentForm — every keystroke is a synchronous immutable rebuild).
-  // A plain $derived would re-walk on every single keystroke, which is enough sync work with
-  // several branches open to block the next paint. `docValue` itself (Save's source of truth)
-  // stays synchronous — only this display list lags, and the leaf being typed into already shows
-  // its own local buffer regardless (TreeLeafInput's `dirty` guard), so no edit is ever lost.
+  // Debounced, not $derived: a plain $derived would re-walk every OPEN row on every keystroke; only this display list lags, no edit is lost (TreeLeafInput's own buffer).
   const ROWS_DEBOUNCE_MS = 120;
   let rows = $state<EditRow[]>(untrack(() => flattenEditableDoc(value, open, LOCKED_KEYS)));
   $effect(() => {

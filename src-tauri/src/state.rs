@@ -6,9 +6,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-/// A live connection plus the read-only flag from its saved connection profile. `tunnel` is
-/// `Some` when the session connected through an SSH tunnel; dropping it (when the `Session` is
-/// removed on disconnect) aborts the forwarding task and closes the tunnel.
+/// A live connection plus the read-only flag; `tunnel` is `Some` when SSH-tunneled — dropping it closes the tunnel.
 pub struct Session {
     pub client: Client,
     pub read_only: bool,

@@ -1,6 +1,4 @@
-//! Import a CSV file into one collection. Two-step, mirroring `commands/sql.rs`:
-//! `csv_import_preview` reads only a small bounded prefix of the file to describe its columns;
-//! `csv_import_commit` streams the whole file, batching `CSV_IMPORT_BATCH` documents at a time.
+//! Import a CSV file into one collection: `csv_import_preview` reads a bounded prefix; `csv_import_commit` streams the whole file in batches.
 use crate::commands::import_export::{insert_batch, summarize_import, ExportProgress, ImportResult, InsertMode};
 use crate::csv_import::{convert_record, count_csv_rows, open_reader, preview_columns, CsvColumnPreview, CsvDelimiter, CsvRow};
 use crate::error::AppError;
@@ -34,10 +32,7 @@ pub async fn csv_import_preview(
 
 const CSV_IMPORT_BATCH: usize = 1000;
 
-/// Reads the CSV file on a blocking thread, converting rows through `convert_record` and sending
-/// them in `CSV_IMPORT_BATCH`-sized chunks over a bounded channel — the channel's capacity (2)
-/// bounds how many converted-but-not-yet-inserted chunks can queue up, so this producer can never
-/// race far ahead of the async consumer that inserts and drops each chunk in `csv_import_commit`.
+/// Reads the CSV file on a blocking thread, sending `CSV_IMPORT_BATCH`-sized chunks over a bounded (capacity 2) channel.
 fn spawn_csv_producer(
     path: String,
     delimiter: CsvDelimiter,

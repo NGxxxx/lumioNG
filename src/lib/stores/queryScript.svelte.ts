@@ -47,9 +47,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let recipe = $state<PagedRecipe | null>(null);
   /** True once the editor is touched after the run that produced `recipe`/`explainHint`, so Explain knows to re-run instead of silently reusing a stale plan. */
   let recipeDirty = $state(false);
-  /** The query of the script's single constructed Cursor, from `outcome.explainHint` — drives
-   *  Explain independently of `recipe` (paged mode), so `.map()`/`.forEach()` scripts stay
-   *  explainable even though they materialize through QuickJS instead of the Rust paging bypass. */
+  /** The query of the script's single constructed Cursor (from `outcome.explainHint`) — drives Explain for `.map()`/`.forEach()` scripts too, not just paged mode. */
   let explainHint = $state<ExplainHint | null>(null);
 
   let explainSummary = $state<ExplainSummary | null>(null);
@@ -626,33 +624,35 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const editable = isEditable();
     const allHaveId = effectiveRows().every((r) => { const d = docs[r]; return d ? idJson(d) !== null : false; });
     const items: MenuItem[] = [];
-    if (menu.source === "tree") items.push({ label: "Expand full depth", action: "expandFullDepth" });
     if (editable) {
-      items.push({ label: "Open document", action: "open", disabled: !hasId || n !== 1 });
+      items.push({ label: m.context_menu_open_document(), action: "open", disabled: !hasId || n !== 1 });
+    }
+    if (menu.source === "tree") items.push({ label: m.context_menu_expand_full_depth(), action: "expandFullDepth" });
+    if (editable) {
       items.push({
-        label: "Edit cell", action: "editCell",
+        label: m.context_menu_edit_cell(), action: "editCell",
         disabled: !doc || idJson(doc) === null
           || (!isInlineEditable(menu.key, getByPath(doc, menu.key)) && !isModalEditable(menu.key, getByPath(doc, menu.key))),
       });
     }
     const copyChildren: MenuItem[] = [
-      { label: "Value", action: "copyValue" },
-      { label: "Field path", action: "copyPath" },
-      { label: "_id", action: "copyId", disabled: !hasId },
-      { label: `Selected (${n}) as JSON`, action: "copyJson" },
-      { label: `Selected (${n}) as CSV`, action: "copyCsv" },
+      { label: m.context_menu_copy_value(), action: "copyValue" },
+      { label: m.context_menu_copy_field_path(), action: "copyPath" },
+      { label: m.context_menu_copy_id(), action: "copyId", disabled: !hasId },
+      { label: m.context_menu_copy_selected_json({ count: n }), action: "copyJson" },
+      { label: m.context_menu_copy_selected_csv({ count: n }), action: "copyCsv" },
     ];
     if (editable) {
-      items.push({ label: "Copy", action: "copy", children: copyChildren });
+      items.push({ label: m.context_menu_copy(), action: "copy", children: copyChildren });
     } else {
       items.push(...copyChildren);
     }
-    items.push({ label: "Export", action: "export", children: [
-      { label: `Selected (${n}) to file…`, action: "exportSelected" },
-      { label: "All results to file…", action: "exportAll" },
+    items.push({ label: m.context_menu_export(), action: "export", children: [
+      { label: m.context_menu_export_selected({ count: n }), action: "exportSelected" },
+      { label: m.context_menu_export_all_results(), action: "exportAll" },
     ]});
     if (editable) {
-      items.push({ label: `Delete selected (${n})`, action: "deleteSelected", disabled: !allHaveId });
+      items.push({ label: m.context_menu_delete_selected_n({ count: n }), action: "deleteSelected", disabled: !allHaveId });
     }
     return items;
   }

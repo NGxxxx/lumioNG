@@ -7,26 +7,28 @@ export const GRID_ROW_H = 24;
 export function createColumnResize(getWidth: (path: string) => number, setWidth: (path: string, px: number) => void) {
   let resizing = $state(false);
 
-  function start(e: MouseEvent, path: string) {
+  function start(e: PointerEvent, path: string) {
     e.preventDefault();
     e.stopPropagation();
     resizing = true;
     const startX = e.clientX;
     const startW = getWidth(path);
-    // rAF-throttled: raw mousemove can fire far more than once per frame, and each call writes
+    // Pointer capture: pointermove/pointerup keep routing here even outside the window bounds, so up() always fires instead of leaking listeners.
+    (e.target as Element).setPointerCapture(e.pointerId);
+    // rAF-throttled: raw pointermove can fire far more than once per frame, and each call writes
     // `$state` (a full grid column re-layout) — coalesce to at most one write per animation frame.
-    const move = rafThrottle((ev: MouseEvent) => {
+    const move = rafThrottle((ev: PointerEvent) => {
       setWidth(path, startW + (ev.clientX - startX));
     });
     function up() {
       move.cancel();
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
       // clear after the click event would have fired, so a header click-to-sort is suppressed
       setTimeout(() => { resizing = false; }, 0);
     }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }
 
   return {

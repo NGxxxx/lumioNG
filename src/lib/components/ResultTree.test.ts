@@ -19,20 +19,22 @@ describe("ResultTree", () => {
     expect(container.querySelector(".tree-scroller")).toBeNull();
   });
 
-  it("expandAll/collapseAll change the virtual row count (sizer height)", async () => {
-    // 2 docs × 2 non-_id fields → collapsed 2 rows, expanded 6 rows. Sizer height = rows × ROW_EST.
+  it("defaults to depth-1 expanded, and collapseAll/expandAll change the virtual row count", async () => {
+    // 2 docs × 2 non-_id fields → collapsed 2 rows, depth-1-expanded (the default) 6 rows.
+    // Sizer height = rows × ROW_EST.
     const docs = [
       { _id: { $oid: "aa" }, a: 1, b: 2 },
       { _id: { $oid: "bb" }, a: 1, b: 2 },
     ];
     const { container, component } = render(ResultTree, { props: { docs } });
     const sizer = () => container.querySelector<HTMLDivElement>(".tree-sizer")!;
-    const collapsed = parseInt(sizer().style.height);
-    component.expandAll();
-    await tick();
-    expect(parseInt(sizer().style.height)).toBe(collapsed * 3);
+    const expanded = parseInt(sizer().style.height);
     component.collapseAll();
     await tick();
-    expect(parseInt(sizer().style.height)).toBe(collapsed);
+    const collapsed = parseInt(sizer().style.height);
+    expect(expanded).toBe(collapsed * 3);
+    component.expandAll();
+    await tick();
+    expect(parseInt(sizer().style.height)).toBe(expanded);
   });
 });

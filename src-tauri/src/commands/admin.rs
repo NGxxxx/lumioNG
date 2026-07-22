@@ -50,9 +50,7 @@ pub async fn duplicate_collection(
     if database.list_collection_names().await?.iter().any(|n| n == &target) {
         return Err(AppError::Query(format!("collection \"{target}\" already exists")));
     }
-    // Copy every document into the new collection via `$out` (same DB). Server runs the
-    // whole pipeline before returning an empty cursor; draining it surfaces any error.
-    // Note: `$out` copies documents only, not indexes.
+    // $out copies documents only (not indexes); draining the empty cursor it returns surfaces any pipeline error.
     let mut cursor = database
         .collection::<Document>(&source)
         .aggregate(vec![doc! { "$out": &target }])

@@ -1,7 +1,4 @@
-//! Import a generic SQL dump (`CREATE TABLE` + `INSERT INTO` only) into one MongoDB collection
-//! per table. Two-step: `sql_import_preview` lists tables to pick from; `sql_import_commit`
-//! streams the file again (bounded memory — see `sql_import::SqlSchemaAccumulator` and
-//! `sql_stream::SqlStatementReader`) and inserts the selected ones.
+//! Import a generic SQL dump into one MongoDB collection per table: `sql_import_preview` lists tables; `sql_import_commit` streams and inserts.
 use crate::commands::import_export::{insert_batch, InsertMode};
 use crate::error::AppError;
 use crate::sql_import::{
@@ -47,9 +44,7 @@ pub async fn sql_import_preview(path: String) -> Result<Vec<SqlTablePreview>, Ap
         let mut acc = SqlSchemaAccumulator::new(true, opts);
         let mut scanner = SqlStatementReader::new(reader);
         while let Some(text) = scanner.next_statement().map_err(AppError::Parse)? {
-            // A statement that fails to parse is skipped, not fatal — see design doc's
-            // "Per-statement error tolerance" section. A scanner-level structural failure (e.g. an
-            // unterminated quote) is still propagated above via the `?` on `next_statement()`.
+            // A statement that fails to parse is skipped, not fatal; a scanner-level structural failure still propagates via `next_statement()`'s `?`.
             if let Ok(stmt) = parse_one_statement(&text) {
                 acc.add_statement(&stmt);
             }

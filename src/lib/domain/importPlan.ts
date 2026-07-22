@@ -4,10 +4,7 @@ export type SqlImportTargetPlan =
   | { kind: "existing"; coll: string }
   | { kind: "new"; collections: string[] };
 
-/** Mirrors sql_import.rs::resolve_target_collection: a single-table dump with a pre-selected
- *  coll always lands there regardless of selection; anything else creates one new collection per
- *  currently selected table name. `totalTables` is the whole dump's table count (not the
- *  selection size) — matches resolve_target_collection's is_single_table_dump check. */
+/** Mirrors sql_import.rs::resolve_target_collection: a single-table dump with a pre-selected coll lands there; otherwise one new collection per selected table. */
 export function describeSqlImportTargets(
   totalTables: number,
   selected: string[],

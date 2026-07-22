@@ -21,10 +21,7 @@ pub async fn list_users(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    // usersInfo has no cursor form — the whole response (with its `users` array) comes back as
-    // one document, same shape as `currentOp` in commands/server.rs. `forAllDBs` must be nested
-    // inside the `usersInfo` argument itself (not a sibling field) — the server rejects
-    // { usersInfo: 1, forAllDBs: true } with "unknown field 'usersInfo.forAllDBs'".
+    // usersInfo has no cursor form (whole response is one document); forAllDBs must nest inside the usersInfo argument, not be a sibling field.
     let resp = client
         .database("admin")
         .run_command(doc! { "usersInfo": { "forAllDBs": true } })

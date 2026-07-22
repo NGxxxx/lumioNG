@@ -1,11 +1,5 @@
-//! Streaming scanner for a top-level JSON array's elements. `ArrayElementReader` finds each
-//! element's raw text by tracking `{}[]` nesting depth and string/escape state — it does not
-//! validate JSON grammar beyond that, so a syntactically-broken element that still balances
-//! braces/quotes is still yielded as one element (the caller's JSON parser rejects it later;
-//! see the design doc's "Behavior change" section). Byte-level comparisons against ASCII
-//! structural bytes (`{}[]",\`) are UTF-8-safe: those bytes can never appear as a continuation
-//! byte of a multi-byte UTF-8 sequence (which always has the high bit set), so scanning raw
-//! bytes never splits a multi-byte character.
+//! Streaming scanner for a top-level JSON array's elements, tracking `{}[]` nesting depth and string state without
+//! validating JSON grammar (a broken element that still balances braces/quotes is yielded as-is; the caller's parser rejects it later).
 use std::io::BufRead;
 
 fn peek_byte<R: BufRead>(r: &mut R) -> Result<Option<u8>, String> {
@@ -106,9 +100,7 @@ impl<R: BufRead> ArrayElementReader<R> {
                 None => return Err("unexpected EOF inside array element".to_string()),
             };
             if !in_string && depth == 0 && (b == b',' || b == b']') {
-                // Only strips interstitial JSON whitespace between a value and its `,`/`]` --
-                // never string-internal content, since a string only ever exits `in_string` on
-                // its closing quote, which is always the last byte pushed before this point.
+                // Only strips interstitial JSON whitespace between a value and its `,`/`]`, never string-internal content.
                 let text = String::from_utf8_lossy(&out).into_owned();
                 return Ok(text.trim_end().to_string());
             }
@@ -134,9 +126,7 @@ impl<R: BufRead> ArrayElementReader<R> {
     }
 }
 
-/// Counts top-level elements without retaining any element's text past its own scan —
-/// drives the same `next_element` scan step as `ArrayElementReader` so the count can never
-/// drift from what the reader actually yields.
+/// Counts top-level elements without retaining any element's text, driving the same `next_element` scan `ArrayElementReader` uses.
 pub fn count_array_elements<R: BufRead>(reader: R) -> Result<u64, String> {
     let mut r = ArrayElementReader::new(reader)?;
     let mut n = 0u64;
@@ -179,8 +169,7 @@ mod tests {
 
     #[test]
     fn a_string_containing_structural_characters_does_not_confuse_depth_tracking() {
-        // The string itself contains a comma, a bracket, and a brace — none of them may end
-        // the element or the array early.
+        // The string contains a comma, a bracket, and a brace — none may end the element or array early.
         let out = elements(r#"["a,b]{"]"#).unwrap();
         assert_eq!(out, vec![r#""a,b]{""#.to_string()]);
     }
@@ -198,8 +187,7 @@ mod tests {
 
     #[test]
     fn a_syntactically_invalid_but_brace_balanced_element_is_still_yielded() {
-        // The scanner only tracks brace balance, not JSON grammar -- `tru` (not `true`) still
-        // yields as one element; whether it *parses* is the caller's problem (see Task 3).
+        // The scanner only tracks brace balance, not JSON grammar — `tru` still yields as one element.
         let out = elements(r#"[{"a":1},{"a": tru},{"b":2}]"#).unwrap();
         assert_eq!(out.len(), 3);
         assert_eq!(out[1], r#"{"a": tru}"#);
@@ -219,9 +207,7 @@ mod tests {
 
     #[test]
     fn a_string_value_ending_in_whitespace_keeps_its_trailing_whitespace() {
-        // trim_end() only strips whitespace *after* a value's closing structural byte -- a
-        // string's own trailing whitespace sits inside the quotes, before that closing `"`, so
-        // it must survive.
+        // trim_end() only strips whitespace after a value's closing byte — a string's own trailing whitespace must survive.
         let out = elements(r#"["hello "]"#).unwrap();
         assert_eq!(out, vec![r#""hello ""#.to_string()]);
     }

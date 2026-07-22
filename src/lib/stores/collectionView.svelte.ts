@@ -49,6 +49,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const quickSearch = createQuickSearch();
 
   let sortKeys = $state<SortKey[]>([]);
+  // Grid/Tree toggle, kept here (not in ResultTable's local state) so it survives the `#key` remount that
+  // happens when switching context tabs away from and back to Data.
+  let view = $state<"grid" | "tree">("grid");
   let hidden = $state<Set<string>>(new Set());
   let hiddenDraft = $state<Set<string>>(new Set());
   let colWidths = $state<Record<string, number>>({});
@@ -86,11 +89,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let exportRequest = $state<{ kind: "filter" } | { kind: "selection"; count: number } | null>(null);
   let pendingExportFilter: string | null = "{}";
 
-  // $state, not $derived: mergeColumns() does a full flattenPaths() scan of `docs` to discover
-  // extra fields, and `docs` is reassigned (new array ref) on every inline cell edit too (see
-  // CLAUDE.md's $state.raw contract). A cell edit only ever touches an already-known column path,
-  // so re-scanning on every keystroke/edit is pure waste — recompute explicitly only where the
-  // document SET actually changes (page load, show-all, schema arriving), not on edit.
+  // $state, not $derived: mergeColumns() rescans docs, but docs is reassigned on every cell edit too — recompute explicitly only when the doc set actually changes.
   let rawColumnFields = $state<ColumnField[]>([]);
   function ensureColumns() {
     rawColumnFields = mergeColumns(schema, docs);
@@ -140,9 +139,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     await refreshCount();
     await loadPage();
     await schemaP;
-    // loadPage() already recomputed columns against `schema` as of that moment; loadSchema()
-    // can still resolve after it (it's not awaited before loadPage above), so recompute once more
-    // in case schema's type/mixed/presence metadata arrived late.
+    // loadSchema() can resolve after loadPage() already recomputed columns, so recompute once more in case schema metadata arrived late.
     ensureColumns();
     ensureColWidths();
   }
@@ -513,51 +510,51 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const n = effectiveSelectionCount();
     const hasId = idJson(docs[menu.row]) !== null;
     const items: MenuItem[] = [];
-    if (n === 1) items.push({ label: "Open document", action: "open" });
-    if (menu.source === "tree") items.push({ label: "Expand full depth", action: "expandFullDepth" });
+    if (n === 1) items.push({ label: m.context_menu_open_document(), action: "open" });
+    if (menu.source === "tree") items.push({ label: m.context_menu_expand_full_depth(), action: "expandFullDepth" });
     items.push({
-      label: "Edit cell",
+      label: m.context_menu_edit_cell(),
       action: "editCell",
       disabled: !isInlineEditable(menu.key, value) && !isModalEditable(menu.key, value),
     });
     items.push({
-      label: "Copy",
+      label: m.context_menu_copy(),
       action: "copy",
       children: [
-        { label: "Value", action: "copyValue" },
-        { label: "Field path", action: "copyPath" },
-        { label: "_id", action: "copyId", disabled: !hasId },
-        { label: `Selected (${n}) as JSON`, action: "copyJson" },
-        { label: `Selected (${n}) as CSV`, action: "copyCsv" },
+        { label: m.context_menu_copy_value(), action: "copyValue" },
+        { label: m.context_menu_copy_field_path(), action: "copyPath" },
+        { label: m.context_menu_copy_id(), action: "copyId", disabled: !hasId },
+        { label: m.context_menu_copy_selected_json({ count: n }), action: "copyJson" },
+        { label: m.context_menu_copy_selected_csv({ count: n }), action: "copyCsv" },
       ],
     });
     items.push({
-      label: "Export",
+      label: m.context_menu_export(),
       action: "export",
       children: [
-        { label: `Selected (${n}) to file…`, action: "exportSelected" },
-        { label: "All matching filter to file…", action: "exportFilter" },
+        { label: m.context_menu_export_selected({ count: n }), action: "exportSelected" },
+        { label: m.context_menu_export_all_filter(), action: "exportFilter" },
       ],
     });
     items.push({
-      label: "Update",
+      label: m.context_menu_update(),
       action: "update",
       children: [
-        { label: `Selected (${n})…`, action: "updateSelected" },
-        { label: "All matching filter…", action: "updateAll" },
+        { label: m.context_menu_update_selected({ count: n }), action: "updateSelected" },
+        { label: m.context_menu_update_all_filter(), action: "updateAll" },
       ],
     });
     items.push({
-      label: "Delete",
+      label: m.context_menu_delete(),
       action: "delete",
       children: [
-        { label: `Selected (${n})`, action: "deleteSelected" },
-        { label: "All matching filter…", action: "deleteAll" },
+        { label: m.context_menu_delete_selected({ count: n }), action: "deleteSelected" },
+        { label: m.context_menu_delete_all_filter(), action: "deleteAll" },
       ],
     });
     items.push(
-      { label: "New document…", action: "newDoc" },
-      { label: "Duplicate document…", action: "duplicate", disabled: n !== 1 },
+      { label: m.context_menu_new_document(), action: "newDoc" },
+      { label: m.context_menu_duplicate_document(), action: "duplicate", disabled: n !== 1 },
     );
     return items;
   }
@@ -833,6 +830,12 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     confirmDeleteSelected,
     get sortKeys() {
       return sortKeys;
+    },
+    get view() {
+      return view;
+    },
+    set view(v: "grid" | "tree") {
+      view = v;
     },
     get hidden() {
       return hidden;

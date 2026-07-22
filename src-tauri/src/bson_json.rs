@@ -13,11 +13,7 @@ pub fn bson_to_canonical_string(value: &Bson) -> Result<String, AppError> {
     serde_json::to_string(&v).map_err(|e| AppError::Serialize(e.to_string()))
 }
 
-/// Type tag + display text for one BSON value, mirroring `domain/extjson.ts::describeValue` for
-/// CSV/SQL export cell formatting. Binary is a summary (e.g. "Binary(4 b64 chars)"), NOT the full
-/// canonical JSON like object/array. Object/array values here always get their FULL canonical-JSON
-/// text, never a truncated preview -- that's what every current caller (`csv_export`/`sql_export`)
-/// needs for a lossless cell, matching `csvCell`/`sqlLiteral`'s own `JSON.stringify(value)` branch.
+/// Type tag + display text for one BSON value (CSV/SQL cell formatting); Binary is a summary, object/array get full canonical JSON.
 pub fn describe_bson(b: &Bson) -> (&'static str, String) {
     match b {
         Bson::Null => ("null", "null".to_string()),
@@ -35,10 +31,7 @@ pub fn describe_bson(b: &Bson) -> (&'static str, String) {
     }
 }
 
-/// Pulls one canonical-ExtJSON wrapper key's string value out of `b` (e.g. `$oid`,
-/// `$numberLong`) -- every wrapper this is called for always serializes that key as a JSON
-/// string, so reusing the existing, tested `into_canonical_extjson()` conversion is simpler and
-/// safer than re-deriving each type's exact digit/hex text by hand.
+/// Pulls one canonical-ExtJSON wrapper key's string value out of `b` (e.g. `$oid`, `$numberLong`).
 fn extjson_wrapper_string(b: &Bson, key: &str) -> String {
     b.clone()
         .into_canonical_extjson()
@@ -48,9 +41,7 @@ fn extjson_wrapper_string(b: &Bson, key: &str) -> String {
         .to_string()
 }
 
-/// Extract base64 length from a Binary value's canonical ExtJSON representation.
-/// Binary in ExtJSON looks like `{"$binary": {"base64": "...", "subtype": "..."}}`.
-/// Returns summary text like "Binary(4 b64 chars)".
+/// Extracts base64 length from a Binary value's canonical ExtJSON representation, returning e.g. "Binary(4 b64 chars)".
 fn binary_display(b: &Bson) -> String {
     let extjson = b.clone().into_canonical_extjson();
     let len = extjson
@@ -62,13 +53,7 @@ fn binary_display(b: &Bson) -> String {
     format!("Binary({len} b64 chars)")
 }
 
-/// Formats a Unix millisecond timestamp as `Date.prototype.toISOString()` would: always UTC,
-/// always exactly 3 fractional-second digits, always a trailing `Z`. Deliberately hand-rolled
-/// rather than using `DateTime::try_to_rfc3339_string()`, which omits the fractional part
-/// entirely for a whole-second timestamp and so would silently break CSV/SQL export parity for
-/// the common case of a Date with no sub-second component. Years outside 0000-9999 are not
-/// reproduced in JS's alternate extended-year format -- not a realistic case for real collection
-/// data, and out of scope for this slice.
+/// Formats a Unix millisecond timestamp as `Date.prototype.toISOString()` would (hand-rolled since `DateTime::try_to_rfc3339_string()` omits sub-second zeros).
 fn millis_to_iso8601(ms: i64) -> String {
     let days = ms.div_euclid(86_400_000);
     let ms_of_day = ms.rem_euclid(86_400_000);
@@ -80,10 +65,7 @@ fn millis_to_iso8601(ms: i64) -> String {
     format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.{millis:03}Z")
 }
 
-/// Converts a day count since the Unix epoch (1970-01-01) to a proleptic-Gregorian
-/// (year, month, day). Howard Hinnant's `civil_from_days` algorithm
-/// (http://howardhinnant.github.io/date_algorithms.html) -- handles negative `z` (pre-1970 dates)
-/// correctly, which a naive `days / 365` division would not.
+/// Converts a day count since the Unix epoch to (year, month, day) — Howard Hinnant's `civil_from_days` algorithm, handles pre-1970 dates.
 fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719_468;
     let era = (if z >= 0 { z } else { z - 146_096 }) / 146_097;
@@ -205,9 +187,7 @@ mod tests {
     fn describe_bson_double_normal_and_whole_number() {
         // A fractional double's canonical text is its plain digits.
         assert_eq!(describe_bson(&Bson::Double(3.14)), ("double", "3.14".to_string()));
-        // A whole-number double's canonical text always keeps a forced ".0" -- this is
-        // `into_canonical_extjson`'s own rule (see bson crate `bson.rs`), not something this
-        // function adds; asserted explicitly so it isn't "fixed" away by accident later.
+        // A whole-number double's canonical text always keeps a forced ".0" — into_canonical_extjson's own rule, not added here.
         assert_eq!(describe_bson(&Bson::Double(2.0)), ("double", "2.0".to_string()));
     }
 

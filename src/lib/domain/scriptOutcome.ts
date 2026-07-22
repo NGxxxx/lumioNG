@@ -18,10 +18,7 @@ export type ResultDisplay =
   | { kind: "ack"; json: string }
   | { kind: "none" };
 export type Provenance = { db: string; coll: string };
-/** The originating query of the script's single constructed Cursor, if exactly one was
- *  constructed during the run — independent of how the completion value was shaped (a pure
- *  cursor recipe, a `.map()`/`.toArray()`'d array, a `.forEach()`'d `undefined`, etc). Lets
- *  Explain work on scripts that transform a cursor's rows in JS, not just bare find/aggregate. */
+/** The originating query of the script's single constructed Cursor, if exactly one was made — lets Explain work on scripts that transform cursor rows. */
 export type ExplainHint = {
   cursorKind: "find" | "agg";
   db: string;

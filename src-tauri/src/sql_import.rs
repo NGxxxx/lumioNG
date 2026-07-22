@@ -1,6 +1,5 @@
-//! Parse a generic SQL dump (`CREATE TABLE` + `INSERT INTO`) into per-table documents. Value
-//! types come from each literal's own kind, not the declared column type — sidesteps modeling
-//! every SQL dialect's type vocabulary, so any dump (MySQL, Postgres, ...) can be imported.
+//! Parses a generic SQL dump (`CREATE TABLE` + `INSERT INTO`) into per-table documents; value
+//! types come from each literal's own kind, not the declared column type.
 use crate::value_infer::{bson_type_name, infer_bson, InferOptions};
 use mongodb::bson::{Bson, Document};
 use sqlparser::ast::{Expr, Insert, ObjectName, SetExpr, Statement, UnaryOperator, Value as SqlValue};
@@ -8,10 +7,7 @@ use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
 use std::collections::{HashMap, HashSet};
 
-/// Parses one statement's raw text (as yielded by `sql_stream::SqlStatementReader::next_statement`)
-/// into a single `Statement` — the one place `sqlparser` runs in production. Errors if the text
-/// doesn't parse, or parses to zero statements (shouldn't happen given the scanner only ever
-/// yields one statement's text at a time, but handled defensively).
+/// Parses one statement's raw text into a single `Statement` — the only place `sqlparser` runs in production.
 pub fn parse_one_statement(text: &str) -> Result<Statement, String> {
     let dialect = GenericDialect {};
     let mut statements = Parser::parse_sql(&dialect, text).map_err(|e| e.to_string())?;
@@ -21,18 +17,12 @@ pub fn parse_one_statement(text: &str) -> Result<Statement, String> {
     Ok(statements.remove(0))
 }
 
-/// The table segment of a possibly schema-qualified identifier (`public.movie` -> `movie`) — Mongo
-/// collections are flat. Uses each `Ident`'s `.value` (not `ObjectName`'s `Display`, which
-/// re-emits the original quote character for a quoted identifier — `CREATE TABLE "movie"` would
-/// otherwise round-trip to a collection literally named `"movie"`, quotes included).
+/// The table segment of a possibly schema-qualified identifier (`public.movie` -> `movie`); Mongo collections are flat.
 pub fn table_ident(name: &ObjectName) -> String {
     name.0.last().map(|ident| ident.value.clone()).unwrap_or_default()
 }
 
-/// The column order to use for one `INSERT`'s rows: its own explicit `(col, col, ...)` list if
-/// given, otherwise the table's `CREATE TABLE` column order. Empty means "unknown" — the row can't
-/// be placed into fields and should be skipped (an `INSERT` with no column list into a table this
-/// dump never declared via `CREATE TABLE`).
+/// The column order for one `INSERT`'s rows: its own explicit list if given, else the table's `CREATE TABLE` order; empty means skip.
 pub fn resolve_insert_columns(insert: &Insert, columns_by_table: &HashMap<String, Vec<String>>) -> Vec<String> {
     let explicit: Vec<String> = insert.columns.iter().map(|c| c.value.clone()).collect();
     if !explicit.is_empty() {
@@ -59,10 +49,7 @@ pub struct TableSchema {
     pub name: String,
     pub columns: Vec<String>,
     pub row_count: u64,
-    /// Per-column inferred type label, aligned index-for-index with `columns` (same reduction
-    /// the old `table_column_types` used to produce). Empty when the accumulator that produced
-    /// this was built with `sample_types: false` (the commit path's cheap totals-only pass never
-    /// needs it).
+    /// Per-column inferred type label, aligned with `columns`; empty when built with `sample_types: false`.
     pub column_types: Vec<String>,
 }
 
@@ -70,15 +57,8 @@ pub struct TableSchema {
 /// picker's type annotation doesn't need every row, just a representative sample.
 const SQL_COLUMN_TYPE_SAMPLE_ROWS: usize = 10;
 
-/// Folds one dump's statements into per-table schema (and, optionally, column-type samples) one
-/// statement at a time — the streaming replacement for the old slice-based `table_columns` +
-/// `table_schemas` + `table_column_types` (each of which needed the whole parsed `Vec<Statement>`
-/// resident to do its own full pass). Because this only ever sees one statement at a time, in file
-/// order, an implicit-column `INSERT` can only resolve its columns if that table's `CREATE TABLE`
-/// was already folded in — true for every real dump tool (`mysqldump`/`pg_dump` always emit schema
-/// before data). An out-of-order dump's implicit-column `INSERT` is treated like an `INSERT` into
-/// a wholly undeclared table: `resolve_insert_columns` returns empty and the row is skipped, same
-/// fallback already used today for that case.
+/// Folds one dump's statements into per-table schema (and, optionally, column-type samples) one statement at a time —
+/// streaming, so the whole parsed `Vec<Statement>` never needs to be resident.
 pub struct SqlSchemaAccumulator {
     sample_types: bool,
     opts: InferOptions,
@@ -90,10 +70,7 @@ pub struct SqlSchemaAccumulator {
 }
 
 impl SqlSchemaAccumulator {
-    /// `sample_types` controls whether column-type inference runs at all — the preview command
-    /// needs it (`true`); the commit command's cheap totals-only first pass doesn't and turns it
-    /// off (`false`) to preserve the old `table_schemas`'s perf property of never converting a
-    /// literal to `Bson` just to count rows.
+    /// `sample_types`: `true` for the preview (needs type inference), `false` for commit's cheap totals-only pass.
     pub fn new(sample_types: bool, opts: InferOptions) -> Self {
         Self {
             sample_types,
@@ -144,9 +121,7 @@ impl SqlSchemaAccumulator {
         }
     }
 
-    /// Consumes the accumulator, returning each table's schema in first-seen order plus the full
-    /// `columns_by_table` map — the latter is what `sql_import_commit`'s second pass needs to
-    /// resolve `INSERT` columns without re-deriving it from a second `CREATE TABLE` scan.
+    /// Consumes the accumulator into each table's schema (first-seen order) plus `columns_by_table`, for the commit pass to reuse.
     pub fn finish(self) -> (Vec<TableSchema>, HashMap<String, Vec<String>>) {
         let schemas = self
             .order
@@ -211,9 +186,7 @@ fn expr_to_bson(expr: &Expr, opts: &InferOptions) -> Bson {
     }
 }
 
-/// Converts one `INSERT` row's literal expressions into a document, zipping each value against
-/// `cols` in order (extra values beyond `cols.len()`, or missing ones, are silently dropped —
-/// matches a malformed row rather than erroring the whole import over it).
+/// Converts one `INSERT` row's literals into a document, zipping against `cols` (extra/missing values are silently dropped).
 pub fn row_to_document(cols: &[String], row: &[Expr], opts: &InferOptions) -> Document {
     let mut d = Document::new();
     for (col, expr) in cols.iter().zip(row.iter()) {
@@ -222,11 +195,7 @@ pub fn row_to_document(cols: &[String], row: &[Expr], opts: &InferOptions) -> Do
     d
 }
 
-/// Decides which collection one table's rows should land in: when the whole dump has exactly one
-/// table (`is_single_table_dump`) and the caller pre-selected a destination (`target_coll`,
-/// typically the collection the Import dialog was opened from), insert there regardless of the
-/// table's own name. A multi-table dump always keeps its own one-collection-per-table names —
-/// there's no way to know which table the pre-selected collection was meant for.
+/// Decides the target collection: single-table dumps use the caller's pre-selected `target_coll`; multi-table dumps keep each table's own name.
 pub fn resolve_target_collection(table_name: &str, is_single_table_dump: bool, target_coll: Option<&str>) -> String {
     match (is_single_table_dump, target_coll) {
         (true, Some(t)) => t.to_string(),
@@ -238,11 +207,7 @@ pub fn resolve_target_collection(table_name: &str, is_single_table_dump: bool, t
 mod tests {
     use super::*;
 
-    /// Multi-statement fixture builder for tests — `sqlparser::Parser::parse_sql` run directly
-    /// over a whole string, the same way production code did before the streaming rewrite. Kept
-    /// test-only (not `pub`, not reachable from a real build) so it doesn't reintroduce the
-    /// whole-file-in-memory parse as production dead code: real dumps go through
-    /// `sql_stream::SqlStatementReader` + `parse_one_statement` one statement at a time instead.
+    /// Test-only multi-statement fixture builder (whole-string parse); production parses one statement at a time via `sql_stream`.
     fn parse_statements(sql: &str) -> Result<Vec<Statement>, String> {
         let dialect = GenericDialect {};
         Parser::parse_sql(&dialect, sql).map_err(|e| e.to_string())
@@ -325,9 +290,7 @@ mod tests {
 
     #[test]
     fn accumulator_counts_rows_without_needing_a_convertible_expression() {
-        // NOW() is a function call — `expr_to_bson` would map it to `Bson::Null` rather than
-        // erroring, but the point here is row counting never looks at the expression's kind at
-        // all, only the tuple count, so it can't depend on conversion succeeding.
+        // NOW() maps to Bson::Null, but row counting only counts tuples, not conversion success.
         let sql = "CREATE TABLE t (a TIMESTAMP); INSERT INTO t VALUES (NOW());";
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
         let (schemas, _) = accumulate(sql, false, opts);
@@ -351,9 +314,7 @@ mod tests {
 
     #[test]
     fn accumulator_skips_an_implicit_column_insert_that_appears_before_its_create_table() {
-        // Single forward pass — an accepted limitation for hand-edited/out-of-order dumps (real
-        // dump tools always emit CREATE TABLE before INSERT). The table still ends up registered
-        // (from the later CREATE TABLE), but the earlier INSERT's row is never counted.
+        // Single forward pass: real dump tools emit CREATE TABLE before INSERT, so out-of-order INSERTs just go uncounted.
         let sql = "INSERT INTO t VALUES (1, 2); CREATE TABLE t (a INT, b INT);";
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
         let (schemas, _) = accumulate(sql, false, opts);

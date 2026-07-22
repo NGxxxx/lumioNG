@@ -1,7 +1,4 @@
-// Turns raw MongoDB driver error strings (often long Debug-formatted dumps, e.g. topology
-// errors) into short, human-readable messages for the sidebar. Pure domain logic — no
-// Tauri/Svelte imports. Falls back to the original message (truncated if very long) when the
-// shape isn't recognized, rather than inventing a bogus category.
+// Turns raw MongoDB driver error strings into short, human-readable messages for the sidebar; falls back to the (truncated) original message.
 
 const MAX_FALLBACK_LENGTH = 200;
 
@@ -15,6 +12,16 @@ export function friendlyConnectionError(raw: string): string {
   }
   if (/failed to lookup address/i.test(raw) || /no such host/i.test(raw) || /getaddrinfo/i.test(raw)) {
     return "Couldn't resolve the server address. Check the connection URI and your network.";
+  }
+  const dupKey = raw.match(/E11000 duplicate key error collection: \S+ index: (\S+)/i);
+  if (dupKey) {
+    return `A document with this value already exists (duplicate key on index "${dupKey[1]}").`;
+  }
+  if (/E11000 duplicate key/i.test(raw)) {
+    return "A document with this value already exists (duplicate key).";
+  }
+  if (/failed validation/i.test(raw)) {
+    return "This document doesn't satisfy the collection's validation rules.";
   }
   if (raw.length > MAX_FALLBACK_LENGTH) {
     return `${raw.slice(0, MAX_FALLBACK_LENGTH).trimEnd()}…`;

@@ -13,9 +13,7 @@
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
-  // File extension alone decides the flow: a `.sql` file always switches to the multi-table SQL flow;
-  // a `.csv` file always switches to the single-collection CSV flow. When `coll === null` (db-scoped
-  // import) and the file isn't `.sql`, a target-collection name is collected inline via `needsTarget`.
+  // File extension alone decides the flow (.sql -> multi-table SQL, .csv -> single-collection CSV); db-scoped non-.sql imports collect a target via needsTarget.
   let { sessionId, db, coll = null, existingCollections = [], onclose }: {
     sessionId: string;
     db: string;

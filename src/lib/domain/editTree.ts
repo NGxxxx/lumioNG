@@ -1,10 +1,4 @@
-/** Flatten a single editable document into virtualized tree rows, plus generic immutable
- *  path-based mutation (object keys + array indices). Pure: no Svelte, no Tauri.
- *
- *  Unlike domain/treeFlatten.ts (multi-doc, read-only, doc-row wrapped), here the root object's
- *  own keys ARE the depth-0 rows — there's exactly one document being edited, so no wrapper row
- *  is needed. Containers default closed; only `open` paths get their children flattened in, which
- *  is what keeps opening a huge/deeply-nested document cheap (see DocumentForm.svelte). */
+/** Flattens a single editable document into virtualized tree rows, plus generic immutable path-based mutation. Pure: no Svelte, no Tauri. */
 import type { Doc } from "./doc";
 import { containerKind } from "./extjson";
 
@@ -43,9 +37,7 @@ interface ChildEntry {
   value: unknown;
 }
 
-/** Count of a container's children plus whether it's an array, without materializing entries --
- *  cheap even for a huge array/object, unlike `childrenOf`. Used for every row so a collapsed
- *  container's size doesn't cost more than counting (no per-child allocation, no display text). */
+/** Count of a container's children plus whether it's an array, without materializing entries — cheap even for huge containers. */
 function childCountOf(value: unknown): { count: number; isArray: boolean } | null {
   const kind = containerKind(value);
   if (kind === "array") return { count: (value as unknown[]).length, isArray: true };
@@ -53,9 +45,7 @@ function childCountOf(value: unknown): { count: number; isArray: boolean } | nul
   return null;
 }
 
-/** Children as ordered [key,value] entries for plain containers; null for leaves. Only called once
- *  a container is actually open (see `walk`) -- avoids allocating entries for a collapsed
- *  container's children, which the row list never needs unless the user expands it. */
+/** Children as ordered [key,value] entries for plain containers; null for leaves. Only called once a container is open. */
 function childrenOf(value: unknown): ChildEntry[] | null {
   const kind = containerKind(value);
   if (kind === "array") return (value as unknown[]).map((v, i) => ({ key: String(i), value: v }));
@@ -85,9 +75,7 @@ function walk(
   }
 }
 
-/** Flatten the document's own fields (depth 0) plus whatever's open beneath them, ending with a
- *  root-level adder row. `lockedKeys` (e.g. `["_id"]`) applies only at depth 0, matching the old
- *  recursive TreeNode's behavior of never propagating locks into nested values. */
+/** Flattens the document's own fields (depth 0) plus whatever's open beneath, ending with a root-level adder row; `lockedKeys` applies only at depth 0. */
 export function flattenEditableDoc(root: Doc, open: ReadonlySet<string>, lockedKeys: string[]): EditRow[] {
   const rows: EditRow[] = [];
   for (const [key, value] of Object.entries(root)) {

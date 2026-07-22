@@ -44,9 +44,7 @@ async fn open_export_cursor(
     Ok((q.await?, total))
 }
 
-/// Same as `open_export_cursor` but skips `count_documents` -- for a second pass over the same
-/// filter where the caller already has `total` from an earlier `open_export_cursor` call (CSV/SQL
-/// export's write pass, after the schema-scan pass already counted).
+/// Same as `open_export_cursor` but skips `count_documents`, for a second pass where the caller already has `total`.
 async fn open_write_cursor(
     state: State<'_, AppState>,
     session_id: &str,
@@ -105,9 +103,7 @@ pub(crate) fn summarize_import(inserted: u64, mut errors: Vec<String>) -> Import
     ImportResult { inserted, failed, errors }
 }
 
-/// Shared by every import path (`import_documents`, `import_bson`, `sql_import_commit`,
-/// `csv_import_commit`) so the user picks one behavior regardless of file format. Default is
-/// `SkipDuplicates` — no behavior change for a caller that doesn't surface the other two.
+/// Shared insert behavior across every import path; default is `SkipDuplicates`.
 #[derive(Debug, Clone, Copy, PartialEq, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum InsertMode {
@@ -122,10 +118,7 @@ pub enum InsertMode {
     StopOnFirstError,
 }
 
-/// Folds an **unordered** `insert_many`'s write errors into `inserted`/`errors`: every document in
-/// the batch was attempted regardless of another one failing, so `inserted` grows by
-/// `batch_len - write_errors.len()`. Each error's batch-local index is remapped back to its
-/// original file/row index via `raw_idx[index]`.
+/// Folds an unordered `insert_many`'s write errors into `inserted`/`errors`, remapping each batch-local index to `raw_idx[index]`.
 pub(crate) fn apply_unordered_write_errors(
     write_errors: &[mongodb::error::IndexedWriteError],
     raw_idx: &[usize],
@@ -140,10 +133,7 @@ pub(crate) fn apply_unordered_write_errors(
     *inserted += batch_len.saturating_sub(write_errors.len() as u64);
 }
 
-/// Folds an **ordered** `insert_many`'s single write error into `inserted`/`errors`: the server
-/// stops at the first failure, so only the documents strictly before `write_error.index` actually
-/// landed — unlike the unordered case, `batch_len - 1` would overcount (documents after the
-/// failure were never attempted, not merely rejected).
+/// Folds an ordered `insert_many`'s single write error: only documents strictly before `write_error.index` actually landed.
 pub(crate) fn apply_ordered_write_error(
     write_error: &mongodb::error::IndexedWriteError,
     raw_idx: &[usize],
@@ -155,12 +145,7 @@ pub(crate) fn apply_ordered_write_error(
     errors.push(format!("doc#{raw}: {}", write_error.message));
 }
 
-/// Insert one already-parsed batch under the chosen `mode`, remapping write-errors back to each
-/// doc's original raw file/row index (`raw_idx[k]` = original index of `batch[k]`). Returns
-/// `true` when the caller should stop pulling further batches — only possible for
-/// `StopOnFirstError` after it hits a write error; the other two modes always return `false` and
-/// let the caller keep going (a `SkipDuplicates`/`UpsertById` per-doc failure is recorded but never
-/// halts the rest of the import).
+/// Inserts one already-parsed batch under `mode`; returns `true` if the caller should stop pulling further batches (`StopOnFirstError` only).
 pub(crate) async fn insert_batch(
     collection: &mongodb::Collection<Document>,
     batch: Vec<Document>,
@@ -237,10 +222,7 @@ async fn insert_many_ordered(
     }
 }
 
-/// Bounded fan-out for per-document `replace_one`: MongoDB Rust driver 3.x only exposes bulk
-/// writes via `Client::bulk_write` (server 8.0+ only), so a collection-scoped upsert-by-id can't
-/// use it without breaking older servers -- this runs up to `UPSERT_CONCURRENCY` replaces at once
-/// instead of one round-trip at a time, staying compatible with any server version.
+/// Bounded fan-out for per-document `replace_one` — avoids `Client::bulk_write` (server 8.0+ only) so upsert-by-id stays compatible with older servers.
 const UPSERT_CONCURRENCY: usize = 16;
 
 async fn upsert_by_id(
@@ -276,9 +258,7 @@ async fn upsert_by_id(
     }
 }
 
-/// One item from any JSON/JSONL/BSON import producer: successfully parsed, or a parse-error
-/// message not yet formatted with a `doc#N:` prefix -- only the consumer (`consume_import_batches`)
-/// knows an item's position in the overall stream, so it adds that prefix.
+/// One item from any JSON/JSONL/BSON import producer: parsed, or an unprefixed parse-error message.
 type ImportItem = Result<Document, String>;
 
 /// Parses one JSONL line, or `None` if the line is blank (skipped, not counted as a document).
@@ -291,10 +271,7 @@ fn parse_jsonl_line(line: &str) -> Option<ImportItem> {
     }
 }
 
-/// Parses one JSON-array element's raw text (see `json_stream::ArrayElementReader`) --
-/// separate name from `parse_jsonl_line` even though both just call `canonical_string_to_doc`,
-/// since the two producers read from different scanners and this keeps each call site's intent
-/// obvious.
+/// Parses one JSON-array element's raw text (kept separate from `parse_jsonl_line` for call-site clarity).
 fn parse_array_element(text: &str) -> ImportItem {
     canonical_string_to_doc(text).map_err(|e| e.to_string())
 }
@@ -312,9 +289,7 @@ fn count_jsonl_lines<R: std::io::BufRead>(reader: R) -> Result<u64, AppError> {
     Ok(n)
 }
 
-/// Peeks the file's first non-whitespace byte to choose the JSON-array vs. JSONL producer,
-/// reading only a small bounded prefix (never the whole file). An empty file is treated as
-/// JSONL (zero documents), matching today's `split_import` behavior for an empty input.
+/// Peeks the first non-whitespace byte to choose the JSON-array vs. JSONL producer; an empty file is treated as JSONL.
 fn detect_json_array(path: &str) -> Result<bool, AppError> {
     use std::io::BufRead as _;
     let file = std::fs::File::open(path).map_err(|e| AppError::Io(e.to_string()))?;
@@ -332,11 +307,7 @@ fn detect_json_array(path: &str) -> Result<bool, AppError> {
     }
 }
 
-/// Drains `rx`, inserting each batch and reporting progress against `total`, until the channel
-/// closes or `insert_batch` signals stop (`StopOnFirstError` after a write error). Dropping `rx`
-/// when this function returns is the signal a producer's `tx.blocking_send(..).is_err()` check
-/// picks up to stop reading early -- same contract as `csv_import_commit`'s loop. Shared by the
-/// JSON-array, JSONL (this task), and BSON (Task 4) producers so this loop isn't triplicated.
+/// Drains `rx`, inserting each batch and reporting progress, until the channel closes or `insert_batch` signals stop.
 async fn consume_import_batches(
     mut rx: mpsc::Receiver<Result<Vec<ImportItem>, AppError>>,
     collection: &mongodb::Collection<Document>,
@@ -460,9 +431,7 @@ fn spawn_json_array_producer(path: String) -> mpsc::Receiver<Result<Vec<ImportIt
     rx
 }
 
-/// Reads a 4-byte length prefix, distinguishing a clean end-of-file (0 bytes read, `Ok(None)`)
-/// from a truncated one (1-3 bytes read before EOF, `Err`) -- `Read::read_exact` alone can't make
-/// this distinction, since it reports `UnexpectedEof` identically in both cases.
+/// Reads a 4-byte length prefix, distinguishing clean EOF (`Ok(None)`) from a truncated one (`Err`).
 fn read_len_prefix<R: std::io::Read>(reader: &mut R) -> Result<Option<[u8; 4]>, AppError> {
     let mut buf = [0u8; 4];
     let mut filled = 0;
@@ -479,9 +448,7 @@ fn read_len_prefix<R: std::io::Read>(reader: &mut R) -> Result<Option<[u8; 4]>, 
     }
 }
 
-/// Counts concatenated BSON documents (mongodump-style) by reading only each document's
-/// 4-byte little-endian length prefix and discarding the body via `io::copy` into `io::sink`
-/// — never buffers a whole document, only `io::copy`'s small internal transfer buffer.
+/// Counts concatenated BSON documents by reading each length prefix and discarding the body, never buffering a whole document.
 fn count_bson_docs_streaming<R: std::io::Read>(mut reader: R) -> Result<u64, AppError> {
     let mut n = 0u64;
     loop {
@@ -503,11 +470,7 @@ fn count_bson_docs_streaming<R: std::io::Read>(mut reader: R) -> Result<u64, App
     Ok(n)
 }
 
-/// Streams concatenated BSON documents (mongodump-style) on a blocking thread, sending
-/// `PROGRESS_BATCH`-sized batches over a bounded channel. Reads exactly `total` documents
-/// (from the count pass already run in `import_bson`) rather than trying to detect EOF itself
-/// -- avoids having to distinguish "clean end of file" from "truncated document" inside the
-/// producer, since the count pass already validated that.
+/// Streams concatenated BSON documents on a blocking thread, reading exactly `total` documents (already validated by the count pass).
 fn spawn_bson_producer(path: String, total: u64) -> mpsc::Receiver<Result<Vec<ImportItem>, AppError>> {
     let (tx, rx) = mpsc::channel(2);
     tokio::task::spawn_blocking(move || {
@@ -990,10 +953,7 @@ mod tests {
     #[test]
     fn parse_jsonl_line_parses_a_valid_document() {
         let doc = parse_jsonl_line(r#"{"a":1}"#).unwrap().unwrap();
-        // Plain JSON integers that fit i32 parse to Bson::Int32 (see
-        // `canonical_string_to_bson`/`Bson::try_from`), not Int64 -- matches
-        // `parsed_bson_docs_roundtrip_via_document_from_reader`'s use of `get_i32` for the same
-        // `{"a":1}` shape elsewhere in this file.
+        // Plain JSON integers that fit i32 parse to Bson::Int32, not Int64.
         assert_eq!(doc.get_i32("a").unwrap(), 1);
     }
 
@@ -1046,9 +1006,7 @@ mod tests {
 
     #[test]
     fn a_syntactically_invalid_but_balanced_array_element_fails_to_parse_while_its_neighbors_do_not() {
-        // Proves the flagged behavior change end-to-end at the pure-function level: the scanner
-        // still yields all three elements (Task 1), and only the malformed one fails to parse here
-        // -- the whole array is not rejected as a unit the way `serde_json::from_str` used to.
+        // The scanner still yields all three elements; only the malformed one fails to parse (the array isn't rejected as a whole).
         let json = r#"[{"a":1},{"a": tru},{"b":2}]"#;
         let mut r = crate::json_stream::ArrayElementReader::new(std::io::Cursor::new(json.as_bytes())).unwrap();
         let mut results = Vec::new();
@@ -1149,9 +1107,7 @@ mod tests {
 
     #[test]
     fn count_bson_docs_streaming_rejects_a_truncated_trailing_length_prefix() {
-        // One valid document followed by 2 stray bytes (not 0, not a full 4-byte prefix) -- must
-        // error, not be silently treated as "clean end of file" the way a naive `read_exact` loop
-        // would (read_exact's UnexpectedEof looks identical whether 0 or 1-3 bytes were read).
+        // 2 stray trailing bytes must error, not be silently treated as clean EOF.
         use mongodb::bson::doc;
         let mut buf = mongodb::bson::to_vec(&doc! {"a": 1}).unwrap();
         buf.extend_from_slice(&[0xAA, 0xBB]);

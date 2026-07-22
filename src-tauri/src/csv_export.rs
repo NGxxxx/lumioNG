@@ -1,16 +1,11 @@
-//! CSV formatting for streaming collection export -- a Rust port of `domain/exporter.ts`'s
-//! `toCsv` (`escapeCsv`/`csvCell`/`flattenPaths`), adapted to fold one document at a time instead
-//! of operating on an in-memory `Doc[]`, so `commands::import_export::export_csv_progress` can
-//! walk a Mongo cursor without ever holding more than one document at a time.
+//! CSV formatting for streaming collection export -- a Rust port of `domain/exporter.ts`'s `toCsv`, folding one document at a time.
 use crate::bson_json::describe_bson;
 use mongodb::bson::{Bson, Document};
 use std::collections::HashSet;
 use std::io::{self, Write};
 
-/// Tracks every leaf dot-path seen across a stream of documents, in first-seen order -- the
-/// streaming equivalent of `domain/schema.ts::flattenPaths` (which runs over a whole in-memory
-/// `Doc[]` at once). Recurses into a non-empty nested `Bson::Document` only; an empty document,
-/// or any `Bson::Array`, is always a leaf -- matches `schema.ts`'s `isContainer`.
+/// Tracks every leaf dot-path seen across a stream of documents, in first-seen order; recurses into a non-empty nested
+/// `Bson::Document` only (an empty document or any array is always a leaf).
 #[derive(Default)]
 pub struct ColumnAccumulator {
     seen: HashSet<String>,
@@ -40,8 +35,7 @@ impl ColumnAccumulator {
         }
     }
 
-    /// Finalizes into the column list, `_id` promoted to the front when present -- matches
-    /// `flattenPaths`'s `idFirst`.
+    /// Finalizes into the column list, `_id` promoted to the front when present.
     pub fn into_columns(self) -> Vec<String> {
         let mut order = self.order;
         if let Some(idx) = order.iter().position(|p| p == "_id") {
@@ -54,10 +48,7 @@ impl ColumnAccumulator {
     }
 }
 
-/// Reads a value at a dot-path, recursing into nested documents only -- CSV's column paths are
-/// always object-key chains (never array indices, since `ColumnAccumulator` never recurses into
-/// arrays), so a plain document-key walk is enough here, unlike `domain/schema.ts::getBySegments`'s
-/// more general array-aware lookup.
+/// Reads a value at a dot-path, recursing into nested documents only (CSV column paths are always object-key chains, never array indices).
 fn get_leaf<'a>(doc: &'a Document, path: &str) -> Option<&'a Bson> {
     let mut segments = path.split('.');
     let mut cur = doc.get(segments.next()?)?;
@@ -77,10 +68,7 @@ pub fn escape_csv(field: &str) -> String {
     }
 }
 
-/// Raw (unescaped) cell text for one CSV value -- port of `csvCell`. A missing field is `""`;
-/// every present value (including nested object/array) uses `describe_bson`'s display text
-/// directly, since `describe_bson` already returns the full canonical-JSON text for object/array,
-/// matching `csvCell`'s `JSON.stringify(value)` branch exactly (not a truncated preview).
+/// Raw (unescaped) cell text for one CSV value; a missing field is `""`, nested object/array use `describe_bson`'s full JSON text.
 fn csv_cell(v: Option<&Bson>) -> String {
     v.map(|b| describe_bson(b).1).unwrap_or_default()
 }
@@ -92,10 +80,7 @@ pub fn write_header<W: Write>(w: &mut W, columns: &[String]) -> io::Result<()> {
     w.write_all(line.as_bytes())
 }
 
-/// Writes one data row, preceded by `\n`. Combined with `write_header`, N calls reproduce
-/// `[header, ...rows].join("\n")` byte-for-byte (no trailing newline after the last row). A
-/// `columns` entry with no matching path in `doc` -- schema drift between the export's two
-/// passes, or simply an optional field -- renders as an empty CSV cell.
+/// Writes one data row, preceded by `\n`; a `columns` entry with no matching path in `doc` renders as an empty cell.
 pub fn write_row<W: Write>(w: &mut W, columns: &[String], doc: &Document) -> io::Result<()> {
     w.write_all(b"\n")?;
     let line = columns
@@ -197,9 +182,7 @@ mod tests {
 
     #[test]
     fn write_row_drops_a_field_not_in_the_fixed_column_list() {
-        // Simulates schema drift: pass 1 only saw "_id"/"name"; pass 2's document has an extra
-        // "age" field the header doesn't know about. It must be silently dropped, not panic, and
-        // must not shift the other columns.
+        // Simulates schema drift: an extra field not in the header must be silently dropped, not shift other columns.
         let mut acc = ColumnAccumulator::new();
         acc.observe(&doc! { "_id": "a", "name": "x" });
         let columns = acc.into_columns();

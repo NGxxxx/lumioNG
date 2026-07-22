@@ -5,7 +5,7 @@ import { rafThrottle } from "../domain/rafThrottle";
 export function createPaneResize(setEditorPx: (px: number) => void) {
   let resizing = $state(false);
 
-  function start(e: MouseEvent, editorEl: HTMLElement, bottomEl: HTMLElement) {
+  function start(e: PointerEvent, editorEl: HTMLElement, bottomEl: HTMLElement) {
     e.preventDefault();
     resizing = true;
     const startY = e.clientY;
@@ -14,19 +14,22 @@ export function createPaneResize(setEditorPx: (px: number) => void) {
     const flexSpace = startH + bottomEl.getBoundingClientRect().height;
     const maxEditorPx = flexSpace - MIN_PANE_PX;
 
-    // rAF-throttled: coalesce raw mousemove ticks to at most one pane re-layout per frame.
-    const move = rafThrottle((ev: MouseEvent) => {
+    // Pointer capture: keeps pointermove/pointerup routed here (and auto-releases on pointerup) even
+    // if the drag exits the window bounds, so `up()` always fires instead of leaking listeners.
+    (e.target as Element).setPointerCapture(e.pointerId);
+    // rAF-throttled: coalesce raw pointermove ticks to at most one pane re-layout per frame.
+    const move = rafThrottle((ev: PointerEvent) => {
       const next = startH + (ev.clientY - startY);
       setEditorPx(Math.max(MIN_PANE_PX, Math.min(maxEditorPx, next)));
     });
     function up() {
       move.cancel();
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseup", up);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
       resizing = false;
     }
-    window.addEventListener("mousemove", move);
-    window.addEventListener("mouseup", up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   }
 
   return {

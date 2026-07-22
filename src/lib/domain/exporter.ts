@@ -117,9 +117,7 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-/** Serialize docs as `CREATE TABLE` + `INSERT INTO` statements (generic ANSI SQL). Not a lossless
- *  round-trip: BSON types (ObjectId, Date, Binary, nested objects/arrays) come back as plain
- *  strings on reimport, even through this app's own SQL import. */
+/** Serializes docs as `CREATE TABLE` + `INSERT INTO` statements (generic ANSI SQL); not lossless — BSON types come back as plain strings on reimport. */
 export function toSql(docs: Doc[], tableName: string): string {
   if (docs.length === 0) return "";
   const table = quoteIdent(tableName);

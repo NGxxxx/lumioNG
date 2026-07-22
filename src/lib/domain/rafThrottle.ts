@@ -1,7 +1,4 @@
-/** Wraps a callback so repeated calls collapse into at most one per animation frame, keeping the
- * latest args — for mousemove-driven drag handlers (column/pane/sidebar resize) that would
- * otherwise write reactive state dozens of times per frame. `cancel()` drops any pending frame
- * (call it on drag end, alongside removing the listener). */
+/** Wraps a callback so repeated calls collapse into at most one per animation frame, keeping the latest args; `cancel()` drops any pending frame. */
 export function rafThrottle<Args extends unknown[]>(fn: (...args: Args) => void) {
   let rafId: number | null = null;
   let lastArgs: Args;

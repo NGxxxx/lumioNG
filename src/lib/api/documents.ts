@@ -292,11 +292,7 @@ export interface ImportResult {
   errors: string[];
 }
 
-/**
- * Shared by every import path. `skipDuplicates` (default): insert_many(ordered=false), a bad
- * document doesn't block the rest. `upsertById`: replace_one(upsert=true) per document, keyed on
- * `_id`. `stopOnFirstError`: insert_many(ordered=true), stops at the first failure.
- */
+/** Shared by every import path: `skipDuplicates` (default) skips bad docs, `upsertById` replaces keyed on `_id`, `stopOnFirstError` stops at the first failure. */
 export type InsertMode = "skipDuplicates" | "upsertById" | "stopOnFirstError";
 
 /** Reads a file (JSON array or JSONL) and inserts under `insertMode`; reports progress. */

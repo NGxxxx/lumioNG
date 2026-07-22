@@ -1,7 +1,5 @@
-//! CSV import: parses a delimited file whose header row may use dot-paths (`address.city`, the
-//! same convention `domain/exporter.ts::flattenPaths` writes on export) and rebuilds each row into
-//! a nested document, reusing `value_infer` for cell-level type inference — the same module SQL
-//! import uses, so both formats reconstruct nested objects/scalars identically.
+//! CSV import: parses a delimited file whose header row may use dot-paths (`address.city`) and rebuilds each row into
+//! a nested document, reusing `value_infer` for cell-level type inference (same as SQL import).
 use crate::value_infer::{bson_type_name, infer_bson, InferOptions};
 use mongodb::bson::{Bson, Document};
 use std::collections::HashSet;
@@ -25,10 +23,8 @@ impl CsvDelimiter {
     }
 }
 
-/// Inserts `value` at a possibly dotted `path` inside `doc`, creating intermediate sub-documents
-/// as needed — the inverse of `domain/schema.ts::walkLeaves`. A path segment that collides with an
-/// already-inserted non-document value is overwritten with a fresh sub-document rather than
-/// erroring (a malformed/conflicting header pair is an edge case, not worth aborting the row over).
+/// Inserts `value` at a possibly dotted `path` inside `doc`, creating intermediate sub-documents as needed; a colliding
+/// non-document value is overwritten rather than erroring.
 fn insert_dotted(doc: &mut Document, path: &str, value: Bson) {
     match path.split_once('.') {
         None => {
@@ -48,9 +44,7 @@ fn insert_dotted(doc: &mut Document, path: &str, value: Bson) {
     }
 }
 
-/// Converts one CSV row (`headers[i]` paired with `values[i]`) into a document: each cell's raw
-/// text goes through `infer_bson` (same as a SQL string literal), then lands at its — possibly
-/// dotted — header path via `insert_dotted`.
+/// Converts one CSV row into a document: each cell goes through `infer_bson`, then lands at its (possibly dotted) header path.
 pub fn unflatten_row(headers: &[String], values: &[String], opts: &InferOptions) -> Document {
     let mut doc = Document::new();
     for (header, value) in headers.iter().zip(values.iter()) {
@@ -59,9 +53,7 @@ pub fn unflatten_row(headers: &[String], values: &[String], opts: &InferOptions)
     doc
 }
 
-/// Opens a CSV reader over `rdr` with the given `delimiter` and returns its header row (owned,
-/// decoupled from the reader's internal borrow) alongside the reader itself, ready for
-/// `.records()`. The one place `csv::ReaderBuilder` is constructed in this module.
+/// Opens a CSV reader over `rdr` and returns its owned header row alongside the reader, ready for `.records()`.
 pub fn open_reader<R: Read>(rdr: R, delimiter: CsvDelimiter) -> Result<(Vec<String>, csv::Reader<R>), String> {
     let mut reader = csv::ReaderBuilder::new().delimiter(delimiter.as_byte()).from_reader(rdr);
     let headers = reader
@@ -81,11 +73,8 @@ pub struct CsvColumnPreview {
     pub samples: Vec<String>,
 }
 
-/// Reads only the header plus up to `max_rows` data rows (never the whole file) to report each
-/// column's path, inferred type (`"mixed"` when sampled rows disagree, `"empty"` when every
-/// sampled cell was blank/absent), and up to 3 raw sample values. A malformed row (wrong field
-/// count for the header) is skipped from contributing samples and type inference, but still counts
-/// toward `max_rows` — a run of malformed rows cannot force a full-file scan.
+/// Reads only the header plus up to `max_rows` data rows to report each column's path, inferred type, and up to 3 samples;
+/// malformed rows still count toward `max_rows`.
 pub fn preview_columns<R: Read>(
     rdr: R,
     delimiter: CsvDelimiter,
@@ -131,20 +120,15 @@ pub fn preview_columns<R: Read>(
         .collect())
 }
 
-/// One converted (or failed-to-convert) CSV data row, tagged with its 0-based row index among
-/// data rows (excluding the header) — used to build a `doc#N: ...` error message that matches the
-/// row a user would count in their spreadsheet tool.
+/// One converted (or failed-to-convert) CSV data row, tagged with its 0-based row index (excluding the header).
 #[derive(Debug)]
 pub enum CsvRow {
     Doc(usize, Document),
     ParseError(usize, String),
 }
 
-/// Converts one raw CSV read result into a `CsvRow`. A structural error (e.g. a row with the
-/// wrong number of fields for the header — `ErrorKind::UnequalLengths`) becomes a `ParseError`
-/// rather than propagating — the csv crate's reader position already advances past the bad line
-/// internally, so the next call still reads the following row (proven by
-/// `convert_record_reports_a_parse_error_for_a_ragged_row_and_keeps_reading`).
+/// Converts one raw CSV read result into a `CsvRow`; a structural error becomes a `ParseError` rather than propagating,
+/// so the next call still reads the following row.
 pub fn convert_record(
     row_no: usize,
     result: Result<csv::StringRecord, csv::Error>,
@@ -160,9 +144,7 @@ pub fn convert_record(
     }
 }
 
-/// Counts data rows (excluding the header) without building a single `Bson` value — every row
-/// attempt counts, whether it will later convert cleanly or fail, so the count matches
-/// `convert_record`'s row numbering and can be used as the commit progress total up front.
+/// Counts data rows (excluding the header) without building a single `Bson` value; matches `convert_record`'s row numbering.
 pub fn count_csv_rows<R: Read>(rdr: R, delimiter: CsvDelimiter) -> Result<u64, String> {
     let (_, mut reader) = open_reader(rdr, delimiter)?;
     Ok(reader.records().count() as u64)
@@ -234,9 +216,7 @@ mod tests {
 
     #[test]
     fn unflatten_row_reconstructs_a_json_shaped_cell_into_nested_bson_under_a_dotted_path() {
-        // A cell's own text can independently be JSON-like — this must compose with the
-        // dotted-path rebuild, not just the scalar/JSON split (row_to_document in sql_import.rs
-        // already covers the JSON-cell case in isolation; this proves the two features combine).
+        // A JSON-like cell must compose with the dotted-path rebuild, not just the scalar/JSON split.
         let doc = unflatten_row(
             &["meta.tags".into()],
             &[r#"["a","b"]"#.into()],
@@ -301,9 +281,7 @@ mod tests {
 
     #[test]
     fn preview_columns_stops_scanning_at_max_rows() {
-        // Rows 0-4 are ints; row 5 is a non-numeric sentinel. With max_rows=5, only rows 0-4
-        // are examined, so the column's inferred type must stay "int" — if the scan continued
-        // past the bound, row 5 would flip it to "mixed".
+        // With max_rows=5, row 5's non-numeric sentinel must never be examined, so type stays "int".
         let mut csv_text = String::from("n\n1\n2\n3\n4\n5\nboom\n");
         for i in 6..100 {
             csv_text.push_str(&format!("{i}\n"));
@@ -315,9 +293,7 @@ mod tests {
 
     #[test]
     fn preview_columns_bounds_the_scan_even_when_every_row_is_malformed() {
-        // 10 consecutive malformed rows (wrong field count for the 2-column header), followed
-        // by a well-formed row with a distinctive value. With max_rows=5, the malformed run
-        // alone must exhaust the scan budget — the well-formed row must never be reached.
+        // 10 malformed rows alone must exhaust the max_rows=5 scan budget before the well-formed row.
         let mut csv_text = String::from("a,b\n");
         for _ in 0..10 {
             csv_text.push_str("only_one_field\n");
@@ -330,8 +306,7 @@ mod tests {
 
     #[test]
     fn preview_columns_skips_a_malformed_row_without_stopping_the_scan() {
-        // Row 2 ("3") has one field where the header declares two — reported as unequal lengths
-        // by the csv crate; the scan must still pick up row 3's values afterward.
+        // Row 2 is a ragged row (unequal lengths); the scan must still pick up row 3 afterward.
         let cols = preview_columns("a,b\n1,2\n3\n4,5\n".as_bytes(), CsvDelimiter::Comma, 30, &opts(true, true)).unwrap();
         assert_eq!(cols[0].samples, vec!["1".to_string(), "4".to_string()]);
         assert_eq!(cols[1].samples, vec!["2".to_string(), "5".to_string()]);
@@ -374,8 +349,7 @@ mod tests {
 
     #[test]
     fn count_csv_rows_counts_every_data_row_including_a_malformed_one() {
-        // Matches convert_record's row numbering: a malformed row is still one "row" toward the
-        // progress total, since it will be attempted (and reported as an error) during commit.
+        // A malformed row still counts toward the progress total (it's attempted during commit).
         let n = count_csv_rows("a,b\n1,2\n3\n4,5\n".as_bytes(), CsvDelimiter::Comma).unwrap();
         assert_eq!(n, 3);
     }

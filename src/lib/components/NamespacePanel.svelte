@@ -38,6 +38,16 @@
     collapsedSessions = next;
   }
 
+  // try/catch matches ConsolePane/ExplainPane: some webviews (notably Linux WebKitGTK) reject
+  // clipboard writes outside a permission grant, and an unhandled rejection would otherwise surface.
+  async function copyName(text: string) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      /* clipboard unavailable */
+    }
+  }
+
   let menu = $state<(TreeMenuTarget & { sessionId: string }) | null>(null);
   let query = $state("");
   // filterNamespaces walks every DB/collection in every session's tree; debounce it (immediate on
@@ -117,7 +127,7 @@
       }
     } else if (target.kind === "db") {
       if (action === "newColl") dialog = { type: "newColl", db: target.db, sessionId: target.sessionId };
-      else if (action === "copyName") navigator.clipboard.writeText(target.db);
+      else if (action === "copyName") copyName(target.db);
       else if (action === "refresh") tree?.refresh();
       else if (action === "exportDb") {
         // The wizard exports the ACTIVE session, so focus the target's session first.
@@ -136,7 +146,7 @@
         exportWizard = { mode: "pick", preChecked: [{ db: target.db, coll: target.coll }] };
       }
       else if (action === "import") openImportDialog(target.sessionId, target.db, target.coll);
-      else if (action === "copyName") navigator.clipboard.writeText(`${target.db}.${target.coll}`);
+      else if (action === "copyName") copyName(`${target.db}.${target.coll}`);
       else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "duplicate") dialog = { type: "duplicate", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "truncate") dialog = { type: "truncate", db: target.db, coll: target.coll, sessionId: target.sessionId };

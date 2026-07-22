@@ -28,9 +28,7 @@ const theme = EditorView.theme({
     fontFamily: "var(--mono)",
   },
   ".cm-tooltip-autocomplete ul li[aria-selected]": { backgroundColor: "var(--menu-hover)", color: "var(--fg)" },
-  // @codemirror/search's find/replace panel ships with hardcoded light-mode colors
-  // (its baseTheme only swaps on CodeMirror's own dark flag, which this app never sets —
-  // theming is done entirely via CSS vars instead) and browser-default form controls.
+  // @codemirror/search's find/replace panel ships hardcoded light-mode colors (its baseTheme only swaps on CodeMirror's own dark flag, unused here) and default form controls.
   ".cm-panels": { backgroundColor: "var(--panel)", color: "var(--fg)" },
   ".cm-panels-top": { borderBottom: "1px solid var(--border)" },
   ".cm-panels-bottom": { borderTop: "1px solid var(--border)" },

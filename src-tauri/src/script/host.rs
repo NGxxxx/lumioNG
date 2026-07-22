@@ -60,9 +60,7 @@ fn to_js_err<'js>(ctx: &Ctx<'js>, e: impl ToString) -> rquickjs::Error {
     Exception::throw_message(ctx, &e.to_string())
 }
 
-/// Shared tail of every `bind_*` host function: run a DB future to completion on this blocking
-/// QuickJS call thread, racing it against `h`'s cancel flag/deadline (`with_interrupt`), and
-/// mapping any error into a thrown JS exception.
+/// Shared tail of every `bind_*` host function: runs a DB future on this blocking thread, racing it against `h`'s cancel flag/deadline.
 fn run_blocking<'js, T>(
     h: HostCtx,
     ctx: &Ctx<'js>,
@@ -952,10 +950,7 @@ globalThis.__DBNAME = "testdb";
 
     #[test]
     fn plain_finalize_without_hasnext_opens_once() {
-        // Superseded by Task 3 (see `pure_find_finalizes_to_cursor_ref_without_opening_the_host_query`
-        // below): a pure find with no prior hasNext()/next() call now bypasses materialization
-        // entirely, so the host query is never opened at all — that's the point of the recipe
-        // bypass. This test previously asserted the pre-Task-3 "always materializes" behavior.
+        // Superseded: a pure find with no prior hasNext()/next() now bypasses materialization entirely and never opens the host query.
         let opens = eval_int(r#"var c = db.c.find(); var r = __finalize(c);"#, "__openCount");
         assert_eq!(opens, 0, "pure find with no hasNext() bypasses materialization, so it never opens the host query");
     }
@@ -1008,9 +1003,7 @@ globalThis.__DBNAME = "testdb";
         assert_eq!(opens, 1);
     }
 
-    // A handful of huge documents (e.g. 10 docs x 16MB) must stop toArray() even though the row
-    // count never comes close to __CAP — bug: previously only row count was checked, so large
-    // documents could exhaust the QuickJS heap well before __CAP kicked in.
+    // A handful of huge documents must stop toArray() on byte size, not just row count (previously only row count was checked).
     const BYTE_CAP_STUBS: &str = r#"
 globalThis.__fetchCount = 0;
 globalThis.__find = function(db, coll, q, o){
@@ -1117,12 +1110,7 @@ globalThis.__DBNAME = "testdb";
 
     #[test]
     fn mapped_cursor_still_materializes_via_to_array() {
-        // Note: Cursor.map() (see prelude.js) sets `_pure = false` and returns
-        // `this.toArray().map(fn)` — a plain JS array, not `this`. So by the time __finalize
-        // sees it, `v` is already `Array.isArray(v) === true` and never reaches the Cursor
-        // branch at all. It gets tag "array", not "cursor" — engine.rs's classify() treats
-        // "cursor" and "array" identically (never a cursorRef bypass), so the invariant this
-        // test guards (.map() must never produce "cursorRef") holds either way.
+        // Cursor.map() returns a plain array, not `this`, so __finalize tags it "array" not "cursor" — either way, never "cursorRef".
         let rt = Runtime::new().unwrap();
         let ctx = Context::full(&rt).unwrap();
         let tag: String = ctx.with(|ctx| {
@@ -1234,10 +1222,7 @@ globalThis.__DBNAME = "testdb";
 
     #[test]
     fn impure_cursor_returned_directly_still_materializes_via_to_array() {
-        // When a cursor's ._pure is set to false (via .map()), but the original
-        // cursor instance is returned to __finalize (not the array .map() produced),
-        // __finalize must see the Cursor, recognize _pure=false, and fall through to
-        // the old materialize/toArray() path ("cursor" tag, not "cursorRef").
+        // When the original (impure) cursor instance is returned directly, __finalize must fall through to the materialize/toArray path.
         let rt = Runtime::new().unwrap();
         let ctx = Context::full(&rt).unwrap();
         let tag: String = ctx.with(|ctx| {

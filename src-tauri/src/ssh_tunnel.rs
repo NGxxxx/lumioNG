@@ -9,9 +9,7 @@ use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
-/// Frontend-supplied SSH tunnel config for `connect`/`test_connection`. Secrets are plaintext on
-/// this wire (same convention as the Mongo password embedded in `uri`) — obfuscation only applies
-/// to the persisted registry copy (`ConnectionInput`/`SavedConnection`), which Rust never touches.
+/// Frontend-supplied SSH tunnel config; secrets are plaintext on this wire (obfuscation only applies to the persisted registry copy).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SshTunnelConfig {
@@ -35,9 +33,7 @@ struct HostKeyMismatch {
     presented_fingerprint: String,
 }
 
-/// TOFU (trust-on-first-use) host key check, OpenSSH `known_hosts`-style: the first key seen for a
-/// `(host, port)` is trusted and recorded in `known_hosts_path`; every later connect must match it
-/// exactly, or the handshake is rejected and `mismatch` is filled in for `open()` to report.
+/// TOFU host key check, OpenSSH `known_hosts`-style: the first key seen is trusted; a later mismatch rejects the handshake and fills `mismatch`.
 struct ClientHandler {
     host: String,
     port: u16,
@@ -87,9 +83,7 @@ impl client::Handler for ClientHandler {
     }
 }
 
-/// Owns the local listener's accept-loop task plus every in-flight per-connection forward task;
-/// dropping it aborts all of them, closing the tunnel immediately rather than waiting for each
-/// forwarded socket to notice on its own.
+/// Owns the accept-loop task plus every in-flight forward task; dropping it aborts all of them immediately.
 #[derive(Debug)]
 pub struct SshTunnelHandle {
     pub local_port: u16,
@@ -220,9 +214,7 @@ mod tests {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
 
-    /// A minimal mock SSH server: accepts a fixed username/password (and any publickey), and on
-    /// `direct-tcpip` open connects to the local TCP echo listener the test spun up, relaying bytes
-    /// both ways via `copy_bidirectional` over the server-side channel stream.
+    /// A minimal mock SSH server: accepts a fixed username/password, and relays `direct-tcpip` opens to the test's local echo listener.
     struct MockHandler;
 
     impl server::Server for MockHandler {
@@ -271,10 +263,7 @@ mod tests {
         }
     }
 
-    /// Spins up the mock SSH server presenting `key`, optionally on a fixed `port` — used to
-    /// simulate the *same* host later presenting a *different* key (host-key-changed scenario).
-    /// Returns the bound port and the accept loop's task handle, which the caller can `.abort()`
-    /// to free the port for a follow-up server.
+    /// Spins up the mock SSH server presenting `key`, optionally on a fixed `port`; returns the bound port and the accept loop's abortable handle.
     async fn spawn_mock_ssh_server_with_key(port: Option<u16>, key: KeyPair) -> (u16, tokio::task::JoinHandle<()>) {
         let config = Arc::new(server::Config {
             keys: vec![key],
@@ -557,9 +546,7 @@ mod tests {
         drop(tunnel);
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
-        // With the forward task aborted, the local half of this already-established connection
-        // is dropped too, closing the socket. A read should observe that quickly (EOF or a reset
-        // error) instead of hanging forever waiting on a still-alive relay.
+        // The forward task's abort drops the local socket too; a read should see EOF/reset quickly, not hang.
         let mut probe = [0u8; 1];
         let result = tokio::time::timeout(
             std::time::Duration::from_millis(500),

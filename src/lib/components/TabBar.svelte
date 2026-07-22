@@ -133,9 +133,7 @@
     gap: 0.125rem;
     height: 2.25rem;
   }
-  /* Horizontal scrollbars always render at an element's own bottom edge, which collides with the
-     bottom-anchored tabs. Flipping the scroller puts that native-bottom scrollbar visually on
-     top instead; the inner flex row is flipped back so the tabs render normally. */
+  /* Horizontal scrollbars render at an element's bottom edge, colliding with bottom-anchored tabs — flip the scroller so the scrollbar lands on top, then flip the inner row back. */
   .work-tabs {
     flex: 1;
     min-width: 0;

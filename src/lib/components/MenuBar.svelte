@@ -6,6 +6,8 @@
   import { uiSize } from "../stores/uiSize.svelte";
   import { theme } from "../stores/theme.svelte";
   import { collectionSort } from "../stores/collectionSort.svelte";
+  import { settings } from "../stores/settings.svelte";
+  import { sessionManager } from "../stores/sessionManager.svelte";
   import { UI_SIZES, type UiSizeKey } from "../domain/uiSize";
   import type { CollectionSortMode } from "../domain/namespaces";
   import type { ContextKind } from "../stores/navigation.svelte";
@@ -29,6 +31,7 @@
   type Item = { label: string; shortcut?: string; run?: () => void; disabled?: boolean; checked?: boolean; children?: Item[] };
   let openMenu = $state<string | null>(null);
   let openSub = $state<string | null>(null);
+  let openSubSub = $state<string | null>(null);
 
   const plat = detectPlatform();
 
@@ -106,18 +109,31 @@
           ],
         },
         {
-          label: m.menu_sort_collections(),
-          children: (
-            [
-              ["default", m.sort_mode_default()],
-              ["asc", m.sort_mode_asc()],
-              ["desc", m.sort_mode_desc()],
-            ] as [CollectionSortMode, string][]
-          ).map(([mode, label]) => ({
-            label,
-            checked: collectionSort.current === mode,
-            run: () => collectionSort.set(mode),
-          })),
+          label: m.menu_database(),
+          children: [
+            {
+              label: m.menu_sort_collections(),
+              children: (
+                [
+                  ["default", m.sort_mode_default()],
+                  ["asc", m.sort_mode_asc()],
+                  ["desc", m.sort_mode_desc()],
+                ] as [CollectionSortMode, string][]
+              ).map(([mode, label]) => ({
+                label,
+                checked: collectionSort.current === mode,
+                run: () => collectionSort.set(mode),
+              })),
+            },
+            {
+              label: m.menu_show_system_databases(),
+              checked: settings.showSystemDatabases,
+              run: () => {
+                settings.setShowSystemDatabases(!settings.showSystemDatabases);
+                for (const s of sessionManager.sessions) s.tree.refresh();
+              },
+            },
+          ],
         },
         cmdItem("view.resetToDefault", m.menu_reset_to_default()),
       ],
@@ -153,10 +169,12 @@
   function closeAll() {
     openMenu = null;
     openSub = null;
+    openSubSub = null;
   }
   function toggle(name: string) {
     openMenu = openMenu === name ? null : name;
     openSub = null;
+    openSubSub = null;
   }
   function choose(it: Item) {
     closeAll();
@@ -187,7 +205,7 @@
               <div
                 class="parent"
                 role="presentation"
-                onmouseenter={() => (openSub = it.label)}
+                onmouseenter={() => { if (openSub !== it.label) { openSub = it.label; openSubSub = null; } }}
               >
                 <button
                   class="item"
@@ -196,6 +214,7 @@
                   onclick={(e) => {
                     e.stopPropagation();
                     openSub = openSub === it.label ? null : it.label;
+                    openSubSub = null;
                   }}
                 >
                   <span>{it.label}</span><span class="arrow" aria-hidden="true">▸</span>
@@ -203,9 +222,43 @@
                 {#if openSub === it.label}
                   <div class="dropdown submenu">
                     {#each it.children as sub (sub.label)}
-                      <button class="item" disabled={sub.disabled} onclick={() => choose(sub)}>
-                        <span>{#if sub.checked}✓ {/if}{sub.label}</span>
-                      </button>
+                      {#if sub.children}
+                        <div
+                          class="parent"
+                          role="presentation"
+                          onmouseenter={() => (openSubSub = sub.label)}
+                        >
+                          <button
+                            class="item"
+                            aria-haspopup="true"
+                            aria-expanded={openSubSub === sub.label}
+                            onclick={(e) => {
+                              e.stopPropagation();
+                              openSubSub = openSubSub === sub.label ? null : sub.label;
+                            }}
+                          >
+                            <span>{sub.label}</span><span class="arrow" aria-hidden="true">▸</span>
+                          </button>
+                          {#if openSubSub === sub.label}
+                            <div class="dropdown submenu">
+                              {#each sub.children as leaf (leaf.label)}
+                                <button class="item" disabled={leaf.disabled} onclick={() => choose(leaf)}>
+                                  <span>{#if leaf.checked}✓ {/if}{leaf.label}</span>
+                                </button>
+                              {/each}
+                            </div>
+                          {/if}
+                        </div>
+                      {:else}
+                        <button
+                          class="item"
+                          disabled={sub.disabled}
+                          onmouseenter={() => (openSubSub = null)}
+                          onclick={() => choose(sub)}
+                        >
+                          <span>{#if sub.checked}✓ {/if}{sub.label}</span>
+                        </button>
+                      {/if}
                     {/each}
                   </div>
                 {/if}
@@ -214,7 +267,7 @@
               <button
                 class="item"
                 disabled={it.disabled}
-                onmouseenter={() => (openSub = null)}
+                onmouseenter={() => { openSub = null; openSubSub = null; }}
                 onclick={() => choose(it)}
               >
                 <span>{#if it.checked}✓ {/if}{it.label}</span>

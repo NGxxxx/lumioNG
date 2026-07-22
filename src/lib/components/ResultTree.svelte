@@ -17,7 +17,12 @@
     onRowMenu?: (e: MouseEvent, docIndex: number, key: string) => void;
   } = $props();
 
-  let open = $state<Set<string>>(new Set());
+  /** Depth-1 default: every doc row starts with its immediate fields expanded (nested containers stay collapsed) — all-collapsed shows nothing but `_id`s. */
+  function depthOneOpen(docs: Doc[]): Set<string> {
+    return new Set(docs.map((_, i) => `#${i}`));
+  }
+
+  let open = $state<Set<string>>(untrack(() => depthOneOpen(docs)));
   const rows = $derived(flattenDocs(docs, open));
 
   function toggle(path: string) {
@@ -57,12 +62,12 @@
     open = new Set([...open, ...fullDepthPaths(doc, docIndex)]);
   }
 
-  // Reset expansion when docs change (paging/sort/filter/new query).
+  // Reset expansion when docs change (paging/sort/filter/new query) back to the depth-1 default.
   let lastDocs = untrack(() => docs);
   $effect(() => {
     if (docs !== lastDocs) {
       lastDocs = docs;
-      open = new Set();
+      open = depthOneOpen(docs);
     }
   });
 
@@ -117,9 +122,7 @@
   const virtualItems = $derived($rowVirtualizer.getVirtualItems());
   const totalSize = $derived($rowVirtualizer.getTotalSize());
 
-  // Rows are fixed-height so measuring returns exactly ROW_EST (no drift, negligible cost);
-  // keeping it unconditional means wrap-mode rows (variable height) are measured too, even
-  // when the Wrap toggle flips after rows have mounted.
+  // Rows are fixed-height (measuring is unconditional and cheap), which also covers wrap-mode rows if the Wrap toggle flips after mounting.
   function measure(node: HTMLDivElement) {
     get(rowVirtualizer).measureElement(node);
     return {};

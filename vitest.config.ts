@@ -14,10 +14,7 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    // jsdom setup is the single biggest cost in this suite (95 files, most of them pure logic
-    // that never touches the DOM). Only component tests, plus the handful of store tests that
-    // genuinely reference browser globals (document/localStorage/navigator), need it — everything
-    // else runs under plain "node", which skips jsdom setup entirely. First matching glob wins.
+    // jsdom setup is the biggest cost in this suite; only tests that touch browser globals need it, everything else runs under "node".
     environmentMatchGlobs: [
       ["src/lib/stores/collectionView.test.ts", "jsdom"], // Object.defineProperty(navigator, "clipboard", ...)
       ["src/lib/stores/queryScript.test.ts", "jsdom"], // Object.defineProperty(navigator, "clipboard", ...)

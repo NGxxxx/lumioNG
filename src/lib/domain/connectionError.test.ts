@@ -30,6 +30,25 @@ describe("friendlyConnectionError", () => {
     expect(result).toBe("Couldn't resolve the server address. Check the connection URI and your network.");
   });
 
+  it("maps a duplicate-key error to a friendly message naming the index", () => {
+    const raw =
+      'Query: E11000 duplicate key error collection: mydb.users index: email_1 dup key: { email: "a@b.com" }';
+    const result = friendlyConnectionError(raw);
+    expect(result).toBe('A document with this value already exists (duplicate key on index "email_1").');
+  });
+
+  it("maps a duplicate-key error without a parseable index name to a generic friendly message", () => {
+    const raw = "Query: E11000 duplicate key error, something unusual";
+    const result = friendlyConnectionError(raw);
+    expect(result).toBe("A document with this value already exists (duplicate key).");
+  });
+
+  it("maps a document-validation failure to a friendly message", () => {
+    const raw = "Query: Document failed validation";
+    const result = friendlyConnectionError(raw);
+    expect(result).toBe("This document doesn't satisfy the collection's validation rules.");
+  });
+
   it("falls back to the original message when the shape is unrecognized", () => {
     const raw = "Query: Some totally new driver error we've never seen before.";
     const result = friendlyConnectionError(raw);

@@ -46,12 +46,7 @@ export type CommandId =
   | "editor.findNext"
   | "editor.toggleComment";
 
-/**
- * HeidiSQL-mapped default shortcuts (see the design spec's per-command [confirmed]/[adapted]
- * annotations for provenance). Commands with no HeidiSQL analog and no sensible default
- * (`file.sessionManager`, `file.quit`) are intentionally absent — `SHORTCUTS[id]` is `undefined`
- * for those, meaning "no keyboard shortcut".
- */
+/** HeidiSQL-mapped default shortcuts; commands with no sensible default (`file.sessionManager`, `file.quit`) are intentionally absent. */
 export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "file.refresh": "F5",
   "file.newQuery": "Mod+T",

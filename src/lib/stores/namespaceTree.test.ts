@@ -74,7 +74,7 @@ describe("createNamespaceTree", () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.createCollection("d", "users");
     expect(createColl).toHaveBeenCalledWith("conn:1", "d", "users");
-    expect(listNs).toHaveBeenCalledWith("conn:1");
+    expect(listNs).toHaveBeenCalledWith("conn:1", false);
   });
 
   it("createCollection with invalid name throws and does not call api", async () => {
@@ -97,7 +97,7 @@ describe("createNamespaceTree", () => {
     await nt.dropCollection("d", "c");
     expect(dropColl).toHaveBeenCalledWith("conn:1", "d", "c");
     expect(calls.closeForCollection).toEqual([["d", "c"]]);
-    expect(listNs).toHaveBeenCalledWith("conn:1");
+    expect(listNs).toHaveBeenCalledWith("conn:1", false);
   });
 
   it("renameCollection calls api and forwards tab rename", async () => {
@@ -112,7 +112,7 @@ describe("createNamespaceTree", () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.duplicateCollection("d", "orders", "orders_copy");
     expect(duplicateColl).toHaveBeenCalledWith("conn:1", "d", "orders", "orders_copy");
-    expect(listNs).toHaveBeenCalledWith("conn:1");
+    expect(listNs).toHaveBeenCalledWith("conn:1", false);
   });
 
   it("duplicateCollection with invalid target name throws and does not call api", async () => {
@@ -127,7 +127,7 @@ describe("createNamespaceTree", () => {
     await nt.dropDatabase("d");
     expect(dropDb).toHaveBeenCalledWith("conn:1", "d");
     expect(calls.closeForDatabase).toEqual(["d"]);
-    expect(listNs).toHaveBeenCalledWith("conn:1");
+    expect(listNs).toHaveBeenCalledWith("conn:1", false);
   });
 
   it("truncate calls admin.truncateCollection and refreshes", async () => {
@@ -135,7 +135,7 @@ describe("createNamespaceTree", () => {
     const nt = createNamespaceTree("conn:1", mockNav().nav);
     await nt.truncate("db", "coll");
     expect(truncateMock).toHaveBeenCalledWith("conn:1", "db", "coll");
-    expect(listNs).toHaveBeenCalledWith("conn:1");
+    expect(listNs).toHaveBeenCalledWith("conn:1", false);
   });
 
   it("clear empties cached databases (disconnect)", async () => {

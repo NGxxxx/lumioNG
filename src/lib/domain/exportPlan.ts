@@ -68,16 +68,7 @@ export function pickColumns(docs: Doc[], paths: string[]): Doc[] {
   });
 }
 
-/** Distinct fields among `selectedCols` that will be written as JSON text on export, rather than
- *  their original type — count differs by format because CSV and SQL disagree on what "one
- *  column" means for a nested value:
- *  - CSV (toCsv/flattenPaths) flattens every leaf into its own scalar column, so a nested object
- *    round-trips losslessly as separate leaf columns; only a leaf whose own value is an array (or,
- *    rarely, a genuinely empty object) is written as JSON text. Counts lossy LEAF columns.
- *  - SQL (toSql/topLevelColumns) never flattens — any top-level field that is an object is written
- *    whole as JSON text regardless of which leaf sub-paths are selected. A selected dotted path
- *    means its top-level parent is an object; an undotted selected leaf counts only when its own
- *    type is array or object. Counts distinct TOP-LEVEL field names. */
+/** Distinct fields written as JSON text on export: lossy leaf columns for CSV (flattened), distinct top-level object fields for SQL (not flattened). */
 export function countLossyExportFields(
   selectedCols: { path: string; type?: BsonType }[],
   format: "csv" | "sql",

@@ -3,12 +3,11 @@
   import { nestedJsonPretty } from "../domain/extjson";
   import { editTextOf, rebuildLeaf, type LeafInputType } from "../domain/bsontree";
   import { settings } from "../stores/settings.svelte";
+  import JsonPreviewDialog from "./JsonPreviewDialog.svelte";
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
-  /** One editable leaf cell in the document tree editor. Kept as its own component (rather than
-   *  rendered inline by the virtualized row list) so each visible row's in-progress edit text is
-   *  independent local state — a row list item alone can't hold that. */
+  /** One editable leaf cell in the document tree editor; kept as its own component so each row's in-progress edit text is independent local state. */
   let {
     type,
     value,
@@ -74,14 +73,14 @@
   <button
     class="preview-toggle"
     class:active={showNestedPretty}
-    onclick={() => (showNestedPretty = !showNestedPretty)}
+    onclick={() => (showNestedPretty = true)}
     title={m.tree_node_preview_json_title()}
     aria-label={m.tree_node_preview_json_title()}
   >{"{ }"}</button>
 {/if}
 {#if editError}<div class="cellerror">{msgKey(editError)}</div>{/if}
 {#if nestedPretty !== null && showNestedPretty}
-  <pre class="nested-preview">{nestedPretty}</pre>
+  <JsonPreviewDialog json={nestedPretty} onclose={() => (showNestedPretty = false)} />
 {/if}
 
 <style>
@@ -94,10 +93,5 @@
     line-height: 1; padding: 0.0625rem 0.3125rem;
   }
   .preview-toggle:hover, .preview-toggle.active { background: var(--blue-tint5); color: var(--slate); }
-  .nested-preview {
-    margin: 0.125rem 0 0.25rem 1.125rem; padding: 0.375rem 0.5rem; background: var(--bg);
-    border: 1px solid var(--border); border-radius: 0.1875rem; font-family: ui-monospace, monospace;
-    font-size: var(--fs); white-space: pre-wrap; word-break: break-word; color: var(--gray-33);
-  }
   .cellerror { color: var(--error); font-size: 0.6875rem; margin-left: 0.375rem; }
 </style>

@@ -1,8 +1,5 @@
-//! SQL dump formatting for streaming collection export -- a Rust port of `domain/exporter.ts`'s
-//! `toSql` (`topLevelColumns`/`sqlColumnTypes`/`quoteIdent`/`escapeSqlString`/`sqlLiteral`).
-//! Column discovery and per-column type flags are combined into one accumulator pass (unlike
-//! `exporter.ts`, which conveniently walks its in-memory `Doc[]` twice) since a Mongo cursor can
-//! only be walked once per export pass.
+//! SQL dump formatting for streaming collection export -- a Rust port of `domain/exporter.ts`'s `toSql`. Column discovery
+//! and type flags are combined into one accumulator pass since a Mongo cursor can only be walked once.
 use crate::bson_json::describe_bson;
 use mongodb::bson::{Bson, Document};
 use std::collections::{HashMap, HashSet};
@@ -36,9 +33,7 @@ struct TypeFlags {
 }
 
 impl TypeFlags {
-    /// Port of `sqlColumnTypes`'s ternary decision table: any non-number/bool value, or a column
-    /// that mixes numbers and booleans, is TEXT; else bool wins over number; a number column is
-    /// REAL only if a float-typed value was ever seen, else INTEGER.
+    /// Any non-number/bool value, or a column mixing numbers and booleans, is TEXT; else bool wins over number; REAL only if a float was seen.
     fn finalize(self) -> SqlColType {
         if self.other || (self.number && self.bool_) {
             SqlColType::Text
@@ -52,8 +47,7 @@ impl TypeFlags {
     }
 }
 
-/// Tracks top-level field names (order + type flags) across a stream of documents -- the
-/// streaming equivalent of `topLevelColumns` + `sqlColumnTypes`.
+/// Tracks top-level field names (order + type flags) across a stream of documents.
 #[derive(Default)]
 pub struct SqlSchemaAccumulator {
     seen: HashSet<String>,
@@ -112,9 +106,7 @@ pub fn escape_sql_string(s: &str) -> String {
     s.replace('\'', "''")
 }
 
-/// `s` matches `^-?\d+(\.\d+)?$` -- port of `sqlLiteral`'s defensive regex guard. Mostly matters
-/// for Decimal128: unlike int32/int64 (whose canonical digit string is always plain digits), a
-/// `$numberDecimal` value can textually be `"NaN"`/`"Infinity"`/exponential notation.
+/// `s` matches `^-?\d+(\.\d+)?$` — mostly matters for Decimal128, whose text can be "NaN"/"Infinity"/exponential notation.
 fn is_clean_signed_decimal(s: &str) -> bool {
     let body = s.strip_prefix('-').unwrap_or(s);
     match body.split_once('.') {
@@ -128,11 +120,7 @@ fn is_clean_signed_decimal(s: &str) -> bool {
     }
 }
 
-/// Formats a finite f64 the way JS's `String(number)` would for typical application-data
-/// magnitudes -- matches Rust's shortest-round-trip `{}` Display, which agrees with JS's
-/// algorithm outside JS's exponential-notation range (|x| >= 1e21 or 0 < |x| < 1e-6, not
-/// reproduced here; not a realistic magnitude for real collection data). `-0.0` is normalized to
-/// `"0"` since Rust's Display keeps the sign of negative zero but JS's `String(-0)` does not.
+/// Formats a finite f64 the way JS's `String(number)` would for typical magnitudes; `-0.0` is normalized to `"0"`.
 fn format_js_double(f: f64) -> String {
     if f == 0.0 {
         "0".to_string()
@@ -141,12 +129,8 @@ fn format_js_double(f: f64) -> String {
     }
 }
 
-/// SQL literal for one cell -- port of `sqlLiteral`. `None`/`Null` -> `NULL`; boolean -> `TRUE`/
-/// `FALSE`; a finite double -> JS-`String()`-formatted (bypassing `describe_bson`'s canonical
-/// text, which forces a trailing ".0" that `sqlLiteral`'s own `Number()`/`String()` round-trip
-/// would strip); int/long/decimal -> the exact digit string via `describe_bson` if it looks
-/// clean, else `NULL`; everything else (string/objectId/date/object/array) -> a quoted, escaped
-/// display string.
+/// SQL literal for one cell: `None`/`Null` -> `NULL`; bool -> `TRUE`/`FALSE`; finite double -> JS-`String()`-formatted;
+/// int/long/decimal -> exact digits if clean else `NULL`; everything else -> quoted, escaped text.
 pub fn sql_literal(v: Option<&Bson>) -> String {
     match v {
         None | Some(Bson::Null) => "NULL".to_string(),
@@ -165,8 +149,7 @@ pub fn sql_literal(v: Option<&Bson>) -> String {
     }
 }
 
-/// Writes `CREATE TABLE ... (...);` plus the blank-line separator before the INSERT section --
-/// port of `toSql`'s `create` text plus the `""` element in `[create, "", ...inserts].join("\n")`.
+/// Writes `CREATE TABLE ... (...);` plus the blank-line separator before the INSERT section.
 pub fn write_create_table<W: Write>(
     w: &mut W,
     table: &str,
@@ -185,10 +168,7 @@ pub fn write_create_table<W: Write>(
     write!(w, "CREATE TABLE {table_q} (\n{create_cols}\n);\n\n")
 }
 
-/// Writes one `INSERT INTO ... VALUES (...);` line, preceded by `\n` unless `first`. Combined
-/// with `write_create_table`, N calls reproduce `[create, "", ...inserts].join("\n")` byte-for-
-/// byte. A `columns` entry missing from `doc` (schema drift between the export's two passes, or
-/// simply an optional field) renders as `NULL`.
+/// Writes one `INSERT INTO ... VALUES (...);` line, preceded by `\n` unless `first`; a `columns` entry missing from `doc` renders as `NULL`.
 pub fn write_insert<W: Write>(
     w: &mut W,
     table: &str,
@@ -242,9 +222,7 @@ mod tests {
 
     #[test]
     fn sql_literal_whole_number_double_has_no_trailing_dot_zero() {
-        // Unlike `describe_bson`'s canonical text (which forces "2.0"), sqlLiteral round-trips
-        // through JS Number()/String() semantics and drops the trailing ".0" -- ported here via
-        // Rust's own f64 Display, which agrees with JS in this range.
+        // Unlike describe_bson's canonical text (forces "2.0"), sql_literal drops the trailing ".0" (JS Number()/String() semantics).
         assert_eq!(sql_literal(Some(&Bson::Double(2.0))), "2");
     }
 

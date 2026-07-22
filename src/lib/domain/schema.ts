@@ -2,9 +2,7 @@
 import { describeValue, type BsonType } from "./extjson";
 import type { Doc } from "./doc";
 
-/** Read a value by pre-split path segments; returns undefined when a scalar or missing key is
- * hit mid-path. Array segments index by string key (e.g. "1" → element 1). Lets hot callers
- * split a reused path once instead of per call. */
+/** Reads a value by pre-split path segments (undefined on a scalar/missing key mid-path); array segments index by string key. */
 export function getBySegments(doc: Doc, segments: string[]): unknown {
   let cur: unknown = doc;
   for (const seg of segments) {
@@ -130,9 +128,7 @@ export function mergeColumns(schema: CollectionSchema | null, docs: Doc[]): Colu
   return [...base, ...extras.map((path) => ({ path }))];
 }
 
-/** Collapse columns deeper than `maxDepth` dot segments into their maxDepth-segment prefix
- * (synthetic prefix column gets type "object"); null = unlimited. Dedupes preserving
- * first-seen order — the first column at a path keeps its metadata. */
+/** Collapses columns deeper than `maxDepth` into their maxDepth-segment prefix (type "object"); null = unlimited, dedupes preserving first-seen order. */
 export function limitColumnsToDepth(cols: ColumnField[], maxDepth: number | null): ColumnField[] {
   if (maxDepth === null) return cols;
   const byPath = new Map<string, ColumnField>();

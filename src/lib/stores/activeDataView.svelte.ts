@@ -1,10 +1,4 @@
-/** Bridge to the currently-active data view (Data context tab, or the active Query tab's result
- *  grid) so the global toolbar can drive its actions (Edit/Delete/Export).
- *
- *  Query tabs stay mounted when hidden (only `active` toggles), so their handle is registered
- *  once for the tab's whole lifetime, keyed by tab id — not on every activate/deactivate. Which
- *  one is current is a single value (`setActiveQueryId`, driven by the app shell's active-tab
- *  state) instead of a register/unregister race between siblings switching in quick succession. */
+/** Bridge to the currently-active data view (Data tab or active Query tab's grid) so the global toolbar can drive Edit/Delete/Export. */
 export type DataViewHandle = {
   readonly canEdit: boolean;
   readonly canExport: boolean;

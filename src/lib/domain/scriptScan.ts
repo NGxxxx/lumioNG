@@ -37,9 +37,7 @@ const ALWAYS_CRITICAL = ["dropDatabase", "drop", "dropIndex", "dropIndexes"];
 /** Critical only when a literal empty filter is detected — a whole-collection write in disguise. */
 const CRITICAL_WHEN_EMPTY_FILTER = ["deleteMany", "updateMany", "remove"];
 
-/** True for `.name()` (no args) or `.name({})`/`.name({}, ...)` (a literal empty first-arg object) —
- *  best-effort like `scanDestructive`; a filter stored in a variable isn't statically resolvable
- *  and falls through to the warn tier instead. */
+/** True for `.name()` or `.name({})` (literal empty first-arg); best-effort like `scanDestructive` — a filter in a variable falls through to the warn tier. */
 function hasEmptyFilterCall(code: string, name: string): boolean {
   const zeroArgs = new RegExp(`\\.\\s*${name}\\s*\\(\\s*\\)`);
   const emptyObjectArg = new RegExp(`\\.\\s*${name}\\s*\\(\\s*\\{\\s*\\}\\s*[,)]`);

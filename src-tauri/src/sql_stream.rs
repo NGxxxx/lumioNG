@@ -1,11 +1,5 @@
-//! Streaming scanner for a SQL dump's statement boundaries. `SqlStatementReader` yields one
-//! top-level statement's raw text (the unit `sqlparser::Parser::parse_sql` expects) at a time by
-//! tracking quoted-string/identifier spans and comments — it does not validate SQL grammar beyond
-//! that, so a syntactically-invalid statement that still balances quotes/comments is still yielded
-//! as one unit (the caller's `sqlparser` call rejects it later). Byte-level comparisons against
-//! ASCII structural bytes (`;'"``, `-`, `/`, `*`) are UTF-8-safe: those bytes can never appear as
-//! a continuation byte of a multi-byte UTF-8 sequence (which always has the high bit set), so
-//! scanning raw bytes never splits a multi-byte character.
+//! Streaming scanner for a SQL dump's statement boundaries, tracking quoted-string/identifier spans and comments without
+//! validating SQL grammar (an invalid statement that still balances quotes/comments is yielded as one unit; the caller's `sqlparser` call rejects it later).
 use std::io::BufRead;
 
 fn peek_byte<R: BufRead>(r: &mut R) -> Result<Option<u8>, String> {
@@ -44,10 +38,8 @@ impl<R: BufRead> SqlStatementReader<R> {
         Self { reader, done: false }
     }
 
-    /// Returns the next statement's raw text (trailing `;` excluded, leading/trailing whitespace
-    /// trimmed), or `None` at EOF. A statement with no trailing `;` right before EOF is still
-    /// yielded once, leniently. A comment/whitespace-only region (including a fully empty or
-    /// comment-only file, or a run of consecutive `;;`) contributes no statement and is skipped.
+    /// Returns the next statement's raw text (trailing `;` excluded, trimmed), or `None` at EOF; a trailing statement with
+    /// no `;` is still yielded, and comment/whitespace-only regions contribute no statement.
     pub fn next_statement(&mut self) -> Result<Option<String>, String> {
         if self.done {
             return Ok(None);

@@ -32,18 +32,11 @@
     oncancel: () => void;
   } = $props();
 
-  // Source of truth: tree object, cloned from `initial` (edit doc, pre-filled insert, or empty).
-  // structuredClone (native) instead of the old JSON.parse(JSON.stringify(...)) round-trip — same
-  // deep-clone result, one pass instead of two.
-  // $state.snapshot first: `initial` comes from workTabs (a deep $state array), so it's a reactive Proxy — structuredClone throws DataCloneError on those directly.
-  // $state.raw (not $state): docValue is always reassigned wholesale (editTree.ts is fully
-  // immutable), so deep-proxying it only cost RAM — same fix as `docs` in collectionView.svelte.ts.
+  // Source of truth: tree object cloned from initial via structuredClone($state.snapshot(...)); $state.raw since docValue is always reassigned wholesale.
   let docValue = $state.raw<Doc>(
     untrack(() => structuredClone($state.snapshot(initial) ?? ({} as Doc))),
   );
-  // Raw JSON text is derived from docValue lazily (see toRaw/toTree) — never needed at all if the
-  // user stays on the Tree tab, and previously recomputed from scratch on every tab switch even
-  // when nothing had changed since.
+  // Raw JSON text is derived from docValue lazily — never needed if the user stays on the Tree tab; previously recomputed on every tab switch.
   let text = $state("");
   let textDirty = $state(true); // text hasn't been derived from docValue yet
   let treeDirty = $state(false); // docValue hasn't been derived from (edited) text yet
@@ -64,17 +57,12 @@
     if (gutterEl) gutterEl.scrollTop = (e.currentTarget as HTMLTextAreaElement).scrollTop;
   }
 
-  // Wrap mode makes one logical line span multiple visual rows; the gutter must repeat blank
-  // rows under a wrapped line's number to stay aligned. Measured via a hidden mirror div (one
-  // child per line) rather than a char-count heuristic, since the textarea wraps at word
-  // boundaries, not a fixed column.
+  // Wrap mode: the gutter repeats blank rows under a wrapped line's number, measured via a hidden mirror div (word-wrap isn't a fixed column count).
   let textareaEl = $state<HTMLTextAreaElement | null>(null);
   let mirrorEl = $state<HTMLDivElement | null>(null);
   let gutterLines = $state("1");
 
-  // Above this many lines, skip the wrap-aware measurement below (one getBoundingClientRect —
-  // a forced layout reflow — per line): for a huge document that's a hang, not a nicety. Gutter
-  // numbers stay simple/sequential instead of wrap-aligned past this size.
+  // Above this many lines, skip wrap-aware measurement (one reflow per line would hang) — gutter stays simple/sequential past this size.
   const GUTTER_WRAP_LINE_CAP = 3000;
 
   function recomputeGutterLines() {
@@ -103,9 +91,7 @@
     gutterLines = rows.join("\n");
   }
 
-  // Both the gutter's wrap-aware measurement and the plain-JSON validity check below scale with
-  // document size — debounced to settle 500ms after typing stops, rather than racing every
-  // keystroke, so a huge document's per-keystroke cost stays flat instead of growing with its size.
+  // Both the gutter measurement and JSON validity check scale with document size, so debounce 500ms after typing stops.
   const RECOMPUTE_DEBOUNCE_MS = 500;
   let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
 
