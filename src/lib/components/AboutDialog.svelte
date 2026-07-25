@@ -5,6 +5,7 @@
   import { backdropClose } from "../actions/backdropClose";
   import { getAppVersion } from "$lib/api/app";
   import { pushModal } from "$lib/stores/modalStack";
+  import { copyToClipboard } from "$lib/clipboard";
   import appIcon from "$lib/assets/app-icon.png";
   import * as m from "$lib/paraglide/messages";
 
@@ -23,12 +24,9 @@
       `${m.about_dialog_label_author()}: ${AUTHOR}`,
       `${m.about_dialog_label_built_with()}: ${BUILT_WITH}`,
     ];
-    try {
-      await navigator.clipboard.writeText(lines.join("\n"));
+    if (await copyToClipboard(lines.join("\n"))) {
       copied = true;
       setTimeout(() => (copied = false), 1500);
-    } catch {
-      /* clipboard unavailable */
     }
   }
 

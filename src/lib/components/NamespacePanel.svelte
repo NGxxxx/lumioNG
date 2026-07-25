@@ -11,6 +11,7 @@
   import ImportDialog from "./ImportDialog.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
   import { SEARCH_DEBOUNCE_MS } from "../domain/timing";
+  import { copyToClipboard } from "../clipboard";
   import * as m from "$lib/paraglide/messages";
   import type { Session } from "../stores/sessionManager.svelte";
 
@@ -38,14 +39,8 @@
     collapsedSessions = next;
   }
 
-  // try/catch matches ConsolePane/ExplainPane: some webviews (notably Linux WebKitGTK) reject
-  // clipboard writes outside a permission grant, and an unhandled rejection would otherwise surface.
   async function copyName(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      /* clipboard unavailable */
-    }
+    await copyToClipboard(text);
   }
 
   let menu = $state<(TreeMenuTarget & { sessionId: string }) | null>(null);

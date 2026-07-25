@@ -1,6 +1,7 @@
 /** Flattens a single editable document into virtualized tree rows, plus generic immutable path-based mutation. Pure: no Svelte, no Tauri. */
 import type { Doc } from "./doc";
 import { containerKind } from "./extjson";
+import { getBySegments } from "./schema";
 
 /** Path segment: an object key (string) or array index (number). */
 export type PathSegment = string | number;
@@ -137,12 +138,7 @@ export function ancestorPathsOf(path: string): string[] {
 
 /** Read the value at a segment path (undefined if any intermediate segment is missing/a scalar). */
 export function getAtPath(root: unknown, segments: readonly PathSegment[]): unknown {
-  let cur = root;
-  for (const seg of segments) {
-    if (cur === null || typeof cur !== "object") return undefined;
-    cur = (cur as Record<string, unknown>)[seg as string];
-  }
-  return cur;
+  return getBySegments(root, segments);
 }
 
 /** Existing keys of the object at `segments` (empty for a missing/non-object value or an array). */
@@ -151,57 +147,46 @@ export function existingKeysAt(root: unknown, segments: readonly PathSegment[]):
   return v !== null && typeof v === "object" && !Array.isArray(v) ? Object.keys(v as Record<string, unknown>) : [];
 }
 
-/** Immutably replace the value at `segments` (empty segments = replace the whole root). */
-export function setAtPath(root: unknown, segments: readonly PathSegment[], value: unknown): unknown {
-  if (segments.length === 0) return value;
+/** Immutably rebuilds `root` along `segments`, applying `atTarget` to whatever sits at that path
+ *  (the container/value itself, not its parent) once segments run out. Shared recursion for
+ *  setAtPath/removeAtPath/insertAtPath — they differ only in what `atTarget` does. */
+function rebuildAlong(root: unknown, segments: readonly PathSegment[], atTarget: (node: unknown) => unknown): unknown {
+  if (segments.length === 0) return atTarget(root);
   const [seg, ...rest] = segments;
   if (typeof seg === "number") {
     const arr = (root as unknown[]).slice();
-    arr[seg] = setAtPath(arr[seg], rest, value);
+    arr[seg] = rebuildAlong(arr[seg], rest, atTarget);
     return arr;
   }
   const obj = { ...(root as Record<string, unknown>) };
-  obj[seg] = setAtPath(obj[seg], rest, value);
+  obj[seg] = rebuildAlong(obj[seg], rest, atTarget);
   return obj;
+}
+
+/** Immutably replace the value at `segments` (empty segments = replace the whole root). */
+export function setAtPath(root: unknown, segments: readonly PathSegment[], value: unknown): unknown {
+  return rebuildAlong(root, segments, () => value);
 }
 
 /** Immutably remove the key/index addressed by `segments` (must be non-empty). */
 export function removeAtPath(root: unknown, segments: readonly PathSegment[]): unknown {
-  const [seg, ...rest] = segments;
-  if (rest.length === 0) {
-    if (typeof seg === "number") {
-      const arr = (root as unknown[]).slice();
-      arr.splice(seg, 1);
+  const last = segments[segments.length - 1];
+  return rebuildAlong(root, segments.slice(0, -1), (parent) => {
+    if (typeof last === "number") {
+      const arr = (parent as unknown[]).slice();
+      arr.splice(last, 1);
       return arr;
     }
-    const obj = { ...(root as Record<string, unknown>) };
-    delete obj[seg];
+    const obj = { ...(parent as Record<string, unknown>) };
+    delete obj[last];
     return obj;
-  }
-  if (typeof seg === "number") {
-    const arr = (root as unknown[]).slice();
-    arr[seg] = removeAtPath(arr[seg], rest);
-    return arr;
-  }
-  const obj = { ...(root as Record<string, unknown>) };
-  obj[seg] = removeAtPath(obj[seg], rest);
-  return obj;
+  });
 }
 
 /** Immutably insert into the container at `segments` (empty = root): a keyed field for an object
  *  (`key` non-null) or an appended item for an array (`key` null). */
 export function insertAtPath(root: unknown, segments: readonly PathSegment[], key: string | null, value: unknown): unknown {
-  if (segments.length === 0) {
-    if (key === null) return [...(root as unknown[]), value];
-    return { ...(root as Record<string, unknown>), [key]: value };
-  }
-  const [seg, ...rest] = segments;
-  if (typeof seg === "number") {
-    const arr = (root as unknown[]).slice();
-    arr[seg] = insertAtPath(arr[seg], rest, key, value);
-    return arr;
-  }
-  const obj = { ...(root as Record<string, unknown>) };
-  obj[seg] = insertAtPath(obj[seg], rest, key, value);
-  return obj;
+  return rebuildAlong(root, segments, (node) =>
+    key === null ? [...(node as unknown[]), value] : { ...(node as Record<string, unknown>), [key]: value },
+  );
 }

@@ -41,7 +41,7 @@
   import ToastHost from "$lib/components/ToastHost.svelte";
   import { toast } from "$lib/stores/toast.svelte";
   import { SHORTCUTS, type Command, type CommandId } from "$lib/domain/commands";
-  import { matchesEvent } from "$lib/domain/shortcuts";
+  import { matchesEvent, isDefaultWebviewAccelerator } from "$lib/domain/shortcuts";
   import { detectPlatform } from "$lib/stores/platform";
   import { isModalOpen } from "$lib/stores/modalStack";
 
@@ -306,17 +306,25 @@
 
 <svelte:window
   onkeydown={(e) => {
-    if (isModalOpen() || e.defaultPrevented) return;
-    for (const id of Object.keys(SHORTCUTS) as CommandId[]) {
-      const combo = SHORTCUTS[id];
-      if (!combo) continue;
-      const c = commands[id];
-      if (!c || c.disabled) continue;
-      if (matchesEvent(combo, e, plat)) {
-        e.preventDefault();
-        c.run();
-        return;
+    if (!isModalOpen() && !e.defaultPrevented) {
+      for (const id of Object.keys(SHORTCUTS) as CommandId[]) {
+        const combo = SHORTCUTS[id];
+        if (!combo) continue;
+        const c = commands[id];
+        if (!c || c.disabled) continue;
+        if (matchesEvent(combo, e, plat)) {
+          e.preventDefault();
+          c.run();
+          return;
+        }
       }
+    }
+    // Default webview accelerators (reload, find-on-page, print, devtools, zoom, history nav) are
+    // blocked unconditionally — even while a modal is open, and regardless of whether the app has
+    // its own shortcut on that key — since the app's own shortcut loop above always gets first
+    // refusal and already returned if it handled the key.
+    if (!e.defaultPrevented && isDefaultWebviewAccelerator(e, plat)) {
+      e.preventDefault();
     }
   }}
 />

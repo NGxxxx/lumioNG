@@ -2,7 +2,14 @@ use crate::bson_json::doc_to_canonical_string;
 use crate::error::AppError;
 use crate::state::AppState;
 use mongodb::bson::doc;
+use mongodb::Client;
 use tauri::State;
+
+/// Runs a single-field `{ <cmd_name>: 1 }` admin command and serializes the reply.
+async fn run_admin_command(client: &Client, cmd_name: &str) -> Result<String, AppError> {
+    let resp = client.database("admin").run_command(doc! { cmd_name: 1 }).await?;
+    doc_to_canonical_string(resp)
+}
 
 #[tauri::command]
 pub async fn server_status(
@@ -10,11 +17,7 @@ pub async fn server_status(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "serverStatus": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "serverStatus").await
 }
 
 #[tauri::command]
@@ -23,11 +26,7 @@ pub async fn build_info(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "buildInfo": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "buildInfo").await
 }
 
 #[tauri::command]
@@ -36,11 +35,7 @@ pub async fn host_info(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "hostInfo": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "hostInfo").await
 }
 
 #[tauri::command]
@@ -49,11 +44,7 @@ pub async fn current_ops(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "currentOp": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "currentOp").await
 }
 
 #[tauri::command]
@@ -77,11 +68,7 @@ pub async fn is_master(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "isMaster": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "isMaster").await
 }
 
 #[tauri::command]
@@ -90,11 +77,7 @@ pub async fn repl_set_status(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "replSetGetStatus": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "replSetGetStatus").await
 }
 
 #[tauri::command]
@@ -103,11 +86,7 @@ pub async fn list_shards(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "listShards": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "listShards").await
 }
 
 #[tauri::command]
@@ -116,9 +95,5 @@ pub async fn balancer_status(
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
     let client = state.client(&session_id).await?;
-    let resp = client
-        .database("admin")
-        .run_command(doc! { "balancerStatus": 1 })
-        .await?;
-    doc_to_canonical_string(resp)
+    run_admin_command(&client, "balancerStatus").await
 }

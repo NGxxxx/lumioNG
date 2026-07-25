@@ -23,6 +23,15 @@ pub struct ExportProgress {
     pub total: u64,
 }
 
+/// Shared setup for the `export_*` commands: create the parent directory if needed and open a buffered writer at `path`, truncating any existing file.
+fn create_output_writer(path: &std::path::Path) -> Result<std::io::BufWriter<std::fs::File>, AppError> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    let file = std::fs::File::create(path).map_err(|e| AppError::Io(e.to_string()))?;
+    Ok(std::io::BufWriter::new(file))
+}
+
 /// Shared setup for the `export_*` commands: open the sorted (optionally projected) cursor over matching documents and return it with the total match count.
 async fn open_export_cursor(
     state: State<'_, AppState>,
@@ -574,8 +583,7 @@ pub async fn export_json_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -583,11 +591,7 @@ pub async fn export_json_progress(
     .await?;
 
     let p = std::path::Path::new(&path);
-    if let Some(dir) = p.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
-    }
-    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
-    let mut w = std::io::BufWriter::new(file);
+    let mut w = create_output_writer(p)?;
 
     let count = cleanup_on_err(p, async {
         let mut count: u64 = 0;
@@ -625,8 +629,7 @@ pub async fn export_bson_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -634,11 +637,7 @@ pub async fn export_bson_progress(
     .await?;
 
     let p = std::path::Path::new(&path);
-    if let Some(dir) = p.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
-    }
-    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
-    let mut w = std::io::BufWriter::new(file);
+    let mut w = create_output_writer(p)?;
 
     let count = cleanup_on_err(p, async {
         let mut count: u64 = 0;
@@ -675,8 +674,7 @@ pub async fn export_csv_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id).await;
     let (mut scan_cursor, total) = open_export_cursor(
         state.clone(), &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -705,11 +703,7 @@ pub async fn export_csv_progress(
     .await?;
 
     let p = std::path::Path::new(&path);
-    if let Some(dir) = p.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
-    }
-    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
-    let mut w = std::io::BufWriter::new(file);
+    let mut w = create_output_writer(p)?;
 
     let count = cleanup_on_err(p, async {
         let mut count: u64 = 0;
@@ -748,8 +742,7 @@ pub async fn export_sql_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id).await;
     let (mut scan_cursor, total) = open_export_cursor(
         state.clone(), &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -778,11 +771,7 @@ pub async fn export_sql_progress(
     .await?;
 
     let p = std::path::Path::new(&path);
-    if let Some(dir) = p.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
-    }
-    let file = std::fs::File::create(p).map_err(|e| AppError::Io(e.to_string()))?;
-    let mut w = std::io::BufWriter::new(file);
+    let mut w = create_output_writer(p)?;
 
     let count = cleanup_on_err(p, async {
         let mut count: u64 = 0;
@@ -821,8 +810,7 @@ pub async fn export_query_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),

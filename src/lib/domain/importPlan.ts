@@ -4,14 +4,16 @@ export type SqlImportTargetPlan =
   | { kind: "existing"; coll: string }
   | { kind: "new"; collections: string[] };
 
-/** Mirrors sql_import.rs::resolve_target_collection: a single-table dump with a pre-selected coll lands there; otherwise one new collection per selected table. */
+/** Mirrors sql_import.rs::resolve_target_collection: a non-blank target collection takes every
+ *  selected table's rows; a blank one creates one new collection per selected table (named after
+ *  the table). The target is always user-editable — see `sqlImport.svelte.ts`'s `targetColl`. */
 export function describeSqlImportTargets(
-  totalTables: number,
   selected: string[],
   targetColl: string | null,
 ): SqlImportTargetPlan {
-  if (totalTables === 1 && targetColl !== null) {
-    return { kind: "existing", coll: targetColl };
+  const trimmed = targetColl?.trim() ?? "";
+  if (trimmed !== "") {
+    return { kind: "existing", coll: trimmed };
   }
   return { kind: "new", collections: selected };
 }

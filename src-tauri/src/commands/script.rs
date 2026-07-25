@@ -14,8 +14,7 @@ pub async fn run_script(
     state: State<'_, AppState>,
 ) -> Result<ScriptOutcome, AppError> {
     let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id).await;
     let read_only = state.read_only(&session_id).await?;
     let handle = tokio::runtime::Handle::current();
     let timeout = timeout_ms.unwrap_or(30_000);

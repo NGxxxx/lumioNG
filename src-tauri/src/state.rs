@@ -62,8 +62,11 @@ impl AppState {
         self.cancel_flag(session_id).await.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
-    pub async fn clear_cancel(&self, session_id: &str) {
-        self.cancel_flag(session_id).await.store(false, std::sync::atomic::Ordering::Relaxed);
+    /// Fetches the session's cancel flag and resets it to `false`, ready for a new cancellable op.
+    pub async fn begin_cancel(&self, session_id: &str) -> Arc<AtomicBool> {
+        let flag = self.cancel_flag(session_id).await;
+        flag.store(false, std::sync::atomic::Ordering::Relaxed);
+        flag
     }
 }
 
@@ -104,7 +107,15 @@ mod tests {
         assert!(!f.load(std::sync::atomic::Ordering::Relaxed));
         state.request_cancel("s1").await;
         assert!(state.cancel_flag("s1").await.load(std::sync::atomic::Ordering::Relaxed));
-        state.clear_cancel("s1").await;
+        state.begin_cancel("s1").await;
         assert!(!state.cancel_flag("s1").await.load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn begin_cancel_resets_a_previously_set_flag() {
+        let state = AppState::default();
+        state.request_cancel("s1").await;
+        let flag = state.begin_cancel("s1").await;
+        assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
     }
 }

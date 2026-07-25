@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { ConsoleEntry } from "../api/script";
+  import { copyToClipboard } from "../clipboard";
   import * as m from "$lib/paraglide/messages";
 
   let { entries, elapsedMs = null, onClear }:
@@ -16,7 +17,7 @@
   }
 
   async function copyLine(text: string) {
-    try { await navigator.clipboard.writeText(text); } catch { /* clipboard unavailable */ }
+    await copyToClipboard(text);
   }
 
   function shown(entry: ConsoleEntry, i: number): string {

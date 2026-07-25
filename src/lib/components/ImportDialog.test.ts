@@ -17,6 +17,7 @@ const openDialog = filesApi.openDialog as ReturnType<typeof vi.fn>;
 const importFileSize = filesApi.importFileSize as ReturnType<typeof vi.fn>;
 const importDocuments = documentsApi.importDocuments as ReturnType<typeof vi.fn>;
 const sqlImportPreview = sqlApi.sqlImportPreview as ReturnType<typeof vi.fn>;
+const sqlImportCommit = sqlApi.sqlImportCommit as ReturnType<typeof vi.fn>;
 const csvImportPreview = csvApi.csvImportPreview as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
@@ -66,6 +67,21 @@ describe("ImportDialog — setup stage", () => {
     expect(openDialog).toHaveBeenCalledWith([
       { name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] },
     ]);
+  });
+
+  it("collection-scoped import (coll set) shows an editable target-collection field pre-filled with coll, not a read-only row", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, {
+      props: { sessionId: "s", db: "d", coll: "users", existingCollections: ["users", "orders"], onclose: vi.fn() },
+    });
+    await fireEvent.click(screen.getByText("Browse…"));
+    const input = screen.getByLabelText("Target collection") as HTMLInputElement;
+    expect(input.value).toBe("users");
+    await fireEvent.input(input, { target: { value: "users_backup" } });
+    await fireEvent.click(screen.getByText("Import"));
+    await vi.waitFor(() =>
+      expect(importDocuments).toHaveBeenCalledWith("s", "d", "users_backup", "/tmp/data.json", "skipDuplicates", expect.any(Function)),
+    );
   });
 
   it("db-scoped import (coll=null) with a non-SQL file shows a target-collection field, not the read-only Collection row", async () => {
@@ -255,6 +271,46 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     const checkboxes = screen.getAllByRole("checkbox");
     await fireEvent.click(checkboxes[2]);
     expect(await screen.findByText("Will create 1 new collection(s): users.")).toBeTruthy();
+  });
+
+  it("typing a target collection while multiple tables are selected forces everything into that one collection", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/dump.sql");
+    sqlImportPreview.mockResolvedValueOnce([
+      { table: "users", columns: [{ name: "id", inferredType: "int" }], rowCount: 2 },
+      { table: "orders", columns: [{ name: "id", inferredType: "int" }], rowCount: 3 },
+    ]);
+    sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Import"));
+    await screen.findByText("Will create 2 new collection(s): users, orders.");
+    await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "everything" } });
+    expect(await screen.findByText("Will import into existing collection everything.")).toBeTruthy();
+    await fireEvent.click(screen.getByText("Import 2 table(s)"));
+    await vi.waitFor(() =>
+      expect(sqlImportCommit).toHaveBeenCalledWith(
+        "s", "d", "/tmp/dump.sql", ["users", "orders"], "everything", "skipDuplicates", expect.any(Function),
+      ),
+    );
+  });
+
+  it("clearing a single-table dump's pre-filled target reverts to creating a new collection", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/dump.sql");
+    sqlImportPreview.mockResolvedValueOnce([{ table: "movie", columns: [{ name: "id", inferredType: "int" }], rowCount: 5 }]);
+    sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "films", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Import"));
+    const input = await screen.findByLabelText("Target collection");
+    expect((input as HTMLInputElement).value).toBe("films");
+    await fireEvent.input(input, { target: { value: "" } });
+    expect(await screen.findByText("Will create 1 new collection(s): movie.")).toBeTruthy();
+    await fireEvent.click(screen.getByText("Import 1 table(s)"));
+    await vi.waitFor(() =>
+      expect(sqlImportCommit).toHaveBeenCalledWith(
+        "s", "d", "/tmp/dump.sql", ["movie"], null, "skipDuplicates", expect.any(Function),
+      ),
+    );
   });
 
   it("shows each table's per-column inferred types", async () => {

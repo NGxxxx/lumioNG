@@ -7,17 +7,16 @@ import {
 } from "./importPlan";
 
 describe("describeSqlImportTargets", () => {
-  it("single-table dump with a pre-selected coll always targets that coll", () => {
-    expect(describeSqlImportTargets(1, ["movie"], "films")).toEqual({ kind: "existing", coll: "films" });
+  it("a non-blank target collection takes every selected table, regardless of table count", () => {
+    expect(describeSqlImportTargets(["movie"], "films")).toEqual({ kind: "existing", coll: "films" });
+    expect(describeSqlImportTargets(["users", "orders"], "films")).toEqual({ kind: "existing", coll: "films" });
   });
-  it("single-table dump with no pre-selected coll creates one new collection", () => {
-    expect(describeSqlImportTargets(1, ["movie"], null)).toEqual({ kind: "new", collections: ["movie"] });
-  });
-  it("multi-table dump ignores targetColl and lists only the currently selected tables", () => {
-    expect(describeSqlImportTargets(3, ["users"], "films")).toEqual({ kind: "new", collections: ["users"] });
+  it("a blank/null target creates one new collection per selected table", () => {
+    expect(describeSqlImportTargets(["movie"], null)).toEqual({ kind: "new", collections: ["movie"] });
+    expect(describeSqlImportTargets(["users"], "   ")).toEqual({ kind: "new", collections: ["users"] });
   });
   it("reflects a selection change (pure function — called again with a different selected list)", () => {
-    expect(describeSqlImportTargets(3, ["users", "orders"], null))
+    expect(describeSqlImportTargets(["users", "orders"], null))
       .toEqual({ kind: "new", collections: ["users", "orders"] });
   });
 });

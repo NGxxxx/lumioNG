@@ -2,8 +2,8 @@
 import { describeValue, type BsonType } from "./extjson";
 import type { Doc } from "./doc";
 
-/** Reads a value by pre-split path segments (undefined on a scalar/missing key mid-path); array segments index by string key. */
-export function getBySegments(doc: Doc, segments: string[]): unknown {
+/** Reads a value by pre-split path segments (undefined on a scalar/missing key mid-path); a numeric segment indexes an array. */
+export function getBySegments(doc: unknown, segments: readonly (string | number)[]): unknown {
   let cur: unknown = doc;
   for (const seg of segments) {
     if (cur === null || typeof cur !== "object") return undefined;

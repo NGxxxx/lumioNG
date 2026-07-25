@@ -1,15 +1,17 @@
 import { untrack } from "svelte";
+import { copyToClipboard } from "../clipboard";
 import { runScript, cancelScript, type ConsoleEntry, type Provenance, type ExplainHint } from "../api/script";
 import { sampleDocuments, queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
 import { mergeColumns, inferSchema, getByPath, limitColumnsToDepth, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
-import { pageCount, clampPage } from "../domain/paging";
+import { pageCount, clampPage, SHOW_ALL_WARN_THRESHOLD } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { scanDestructive, scanCritical } from "../domain/scriptScan";
 import { matchingIndices } from "../domain/search";
 import { settings } from "./settings.svelte";
 import { createQuickSearch } from "./quickSearch.svelte";
+import { createEditBlurFlow } from "./cellEditBlur.svelte";
 import { updateOne, deleteMany } from "../api/documents";
 import { createIndex } from "../api/indexes";
 import { summarizeExplain, type ExplainSummary } from "../domain/explainPlan";
@@ -85,7 +87,6 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let pageReq = $state(1);
   let showingAll = $state(false);
   let totalCount = $state(0);
-  const SHOW_ALL_WARN_THRESHOLD = 5000;
   let showAllPending = $state<number | null>(null);
   // Guards against overlapping in-flight paged-mode fetches (double-click nextPage, fast page-jump typing, etc.), same pattern as collectionView.svelte.ts.
   let generation = 0;
@@ -500,6 +501,24 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   const firstPage = () => goToPage(1);
   const lastPage = () => goToPage(pgCount);
 
+  /** In-place reload of the current page (same recipe query): recount + refetch. Only meaningful
+   *  for a pure paged cursor result — a materialized/static result (script had .map()/writes/no
+   *  single query left to re-run) has nothing safe to re-fetch, so callers must gate on `recipe`. */
+  async function refreshResults() {
+    if (!recipe) return;
+    editing = null;
+    const r = recipe;
+    generation++;
+    if (r.fixedLimit === null) {
+      const gen = generation;
+      const total = await countPaged(r);
+      if (gen !== generation) return;
+      totalCount = total;
+      pageReq = clampPage(page, pageCount(totalCount, pageSize));
+    }
+    await loadPagedCurrentPage();
+  }
+
   async function setPageSize(n: number) {
     if (recipe && recipe.fixedLimit !== null) return;
     editing = null;
@@ -536,33 +555,24 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     editError = null;
   }
 
-  function cancelEdit() {
-    if (saving) return;
-    editing = null;
-    editError = null;
-  }
-
-  let editBlurPending = $state(false);
-
-  /** Blur discards silently when nothing changed; otherwise asks for confirmation before
-   *  saving (Enter still saves immediately, no confirmation). */
-  function onEditBlur() {
-    if (!editing || saving) return;
-    const doc = docs[editing.row];
-    const original = doc ? editTextOf(getByPath(doc, editing.key)) : "";
-    if (editText === original) cancelEdit();
-    else editBlurPending = true;
-  }
-
-  async function confirmBlurEdit() {
-    editBlurPending = false;
-    await commitEdit();
-  }
-
-  function discardBlurEdit() {
-    editBlurPending = false;
-    cancelEdit();
-  }
+  const editBlur = createEditBlurFlow({
+    getEditing: () => editing,
+    isSaving: () => saving,
+    clearEditing: () => {
+      editing = null;
+      editError = null;
+    },
+    getEditText: () => editText,
+    getOriginalText: (row, key) => {
+      const doc = docs[row];
+      return doc ? editTextOf(getByPath(doc, key)) : "";
+    },
+    commitEdit: () => commitEdit(),
+  });
+  const cancelEdit = editBlur.cancelEdit;
+  const onEditBlur = editBlur.onEditBlur;
+  const confirmBlurEdit = editBlur.confirmBlurEdit;
+  const discardBlurEdit = editBlur.discardBlurEdit;
 
   async function commitEdit() {
     if (!editing || saving || !provenance) return;
@@ -628,6 +638,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       items.push({ label: m.context_menu_open_document(), action: "open", disabled: !hasId || n !== 1 });
     }
     if (menu.source === "tree") items.push({ label: m.context_menu_expand_full_depth(), action: "expandFullDepth" });
+    items.push({ label: m.context_menu_refresh(), action: "refresh", disabled: !recipe });
     if (editable) {
       items.push({
         label: m.context_menu_edit_cell(), action: "editCell",
@@ -658,7 +669,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   async function copy(text: string) {
-    try { await navigator.clipboard.writeText(text); } catch { ioError = m.common_clipboard_failed(); }
+    if (!(await copyToClipboard(text))) ioError = m.common_clipboard_failed();
   }
 
   function onMenuSelect(action: string): { open: Doc } | { expandFullDepth: number } | null {
@@ -670,6 +681,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     switch (action) {
       case "open": menu = null; return doc ? { open: doc } : null;
       case "expandFullDepth": { const r = menu.row; menu = null; return { expandFullDepth: r }; }
+      case "refresh": refreshResults(); break;
       case "editCell": { const r = menu.row; const k = menu.key; menu = null; startEdit(r, k); return null; }
       case "copyValue": copy(clipboardTextOf(getByPath(doc, key))); break;
       case "copyPath": copy(key); break;
@@ -847,7 +859,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get editTextLoading() { return editTextLoading; },
     get editError() { return editError; },
     get saving() { return saving; },
-    get editBlurPending() { return editBlurPending; },
+    get editBlurPending() { return editBlur.editBlurPending; },
     onEditBlur,
     confirmBlurEdit,
     discardBlurEdit,

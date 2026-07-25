@@ -1,7 +1,8 @@
 /** Describe and display Canonical Extended JSON values; extract numeric wrapper values. */
 export type BsonType =
   | "objectId" | "date" | "int" | "long" | "double" | "decimal"
-  | "binary" | "string" | "bool" | "null" | "object" | "array" | "unknown";
+  | "binary" | "string" | "bool" | "null" | "object" | "array" | "unknown"
+  | "regex" | "timestamp" | "minKey" | "maxKey" | "code" | "symbol" | "dbPointer" | "undefined";
 
 export interface ValueInfo {
   type: BsonType;
@@ -54,7 +55,10 @@ export function containerKind(v: unknown): "array" | "object" | null {
   if (v === null || typeof v !== "object") return null;
   if (Array.isArray(v)) return "array";
   const o = v as Record<string, unknown>;
-  if ("$oid" in o || "$date" in o || "$numberInt" in o || "$numberLong" in o || "$numberDouble" in o || "$numberDecimal" in o || "$binary" in o) {
+  if (
+    "$oid" in o || "$date" in o || "$numberInt" in o || "$numberLong" in o || "$numberDouble" in o || "$numberDecimal" in o || "$binary" in o ||
+    "$regularExpression" in o || "$timestamp" in o || "$minKey" in o || "$maxKey" in o || "$code" in o || "$symbol" in o || "$dbPointer" in o || "$undefined" in o
+  ) {
     return null;
   }
   return "object";
@@ -93,6 +97,30 @@ export function describeValue(v: unknown): ValueInfo {
       const len = typeof b?.base64 === "string" ? (b.base64 as string).length : 0;
       return { type: "binary", display: `Binary(${len} b64 chars)` };
     }
+    if ("$regularExpression" in o) {
+      const r = o.$regularExpression as Record<string, unknown> | undefined;
+      return { type: "regex", display: `/${String(r?.pattern ?? "")}/${String(r?.options ?? "")}` };
+    }
+    if ("$timestamp" in o) {
+      const t = o.$timestamp as Record<string, unknown> | undefined;
+      return { type: "timestamp", display: `Timestamp(${String(t?.t ?? 0)}, ${String(t?.i ?? 0)})` };
+    }
+    if ("$minKey" in o) return { type: "minKey", display: "MinKey()" };
+    if ("$maxKey" in o) return { type: "maxKey", display: "MaxKey()" };
+    if ("$code" in o) {
+      const scope = "$scope" in o ? ` ${previewJson(o.$scope)}` : "";
+      return { type: "code", display: `${String(o.$code)}${scope}` };
+    }
+    if ("$symbol" in o) return { type: "symbol", display: String(o.$symbol) };
+    if ("$dbPointer" in o) {
+      const p = o.$dbPointer as Record<string, unknown> | undefined;
+      const id = p?.$id;
+      const idStr = id && typeof id === "object" && "$oid" in (id as object)
+        ? String((id as Record<string, unknown>).$oid)
+        : previewJson(id);
+      return { type: "dbPointer", display: `DBPointer(${String(p?.$ref ?? "")}, ${idStr})` };
+    }
+    if ("$undefined" in o) return { type: "undefined", display: "undefined" };
     return { type: "object", display: previewJson(o) };
   }
 

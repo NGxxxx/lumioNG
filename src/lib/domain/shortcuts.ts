@@ -42,6 +42,49 @@ const DISPLAY_KEY: Record<string, string> = {
   arrowright: "→",
 };
 
+/** Combos WebView2 (Windows)/WebKitGTK (Linux)/WKWebView (mac) handle as built-in "browser"
+ *  accelerators — reload, find-on-page, print, devtools, zoom, history navigation — meaningless
+ *  or actively disruptive in a borderless desktop app (F5/Ctrl+R would reload the whole SPA;
+ *  Alt+Left/Backspace would navigate the webview's history out from under the app). `Mod`
+ *  resolves per platform exactly like the app's own shortcuts, so this list behaves identically
+ *  on every OS the webview engine ships on. Entirely independent of the app's own keydown
+ *  dispatch (a plain JS `preventDefault()`, no native/OS API) — see `+page.svelte`'s combined
+ *  handler, which always lets the app's own `SHORTCUTS` run first on any overlapping key
+ *  (F5, Mod+F, F3, Mod+W, Mod+S, F1). */
+const WEBVIEW_ACCELERATOR_COMBOS = [
+  "F5", "Mod+R", "Mod+Shift+R", // reload
+  "F12", "Mod+Shift+I", "Mod+Shift+J", "Mod+Shift+C", "Mod+U", // devtools / view-source
+  "Mod+P", // print
+  "Mod+S", // save page
+  "Mod+O", // open file
+  "Mod+N", "Mod+Shift+N", // new window
+  "Mod+W", // close window/tab
+  "Mod+F", "F3", "Mod+G", "Mod+Shift+G", // find on page
+  "Alt+ArrowLeft", "Alt+ArrowRight", // history navigation
+  "Mod+D", "Mod+H", "Mod+J", "Mod+Shift+Delete", // bookmark / history / downloads / clear data
+];
+
+/** True when this keydown is a default webview/browser accelerator that should never reach the
+ *  OS webview control in this app (see `WEBVIEW_ACCELERATOR_COMBOS`). Zoom (`Mod` +/-/=/0) and
+ *  history-back `Backspace` are handled separately: zoom's "+" key reports as `"+"` or `"="`
+ *  depending on Shift, which the `Mod+key` combo grammar can't express (`+` is its own separator);
+ *  Backspace must still work as a delete key inside any editable field. */
+export function isDefaultWebviewAccelerator(e: KeyboardEvent, platform: Platform): boolean {
+  if (WEBVIEW_ACCELERATOR_COMBOS.some((combo) => matchesEvent(combo, e, platform))) return true;
+
+  const mod = platform === "mac" ? e.metaKey : e.ctrlKey;
+  if (mod && !e.altKey && (e.key === "=" || e.key === "+" || e.key === "-" || e.key === "0")) return true;
+
+  if (e.key === "Backspace" && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+    const el = e.target as HTMLElement | null;
+    const tag = el?.tagName;
+    const editable = tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable === true;
+    return !editable;
+  }
+
+  return false;
+}
+
 /** Display string for a combo, e.g. `"Mod+S"` → `"Ctrl+S"` (Windows/Linux) or `"⌘S"` (mac). */
 export function formatCombo(combo: string, platform: Platform): string {
   const mac = platform === "mac";

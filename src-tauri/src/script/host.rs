@@ -261,18 +261,12 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                     let step: Result<(), crate::error::AppError> = async {
                         match op {
                             WriteOp::InsertOne(doc) => {
-                                let r = c
-                                    .insert_one(doc)
-                                    .await
-                                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                                let r = c.insert_one(doc).await?;
                                 acc.inserted_count += 1;
                                 acc.inserted_ids.push(bson_to_canonical_string(&r.inserted_id)?);
                             }
                             WriteOp::InsertMany(docs) => {
-                                let r = c
-                                    .insert_many(docs)
-                                    .await
-                                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                                let r = c.insert_many(docs).await?;
                                 acc.inserted_count += r.inserted_ids.len() as u64;
                                 let mut entries: Vec<_> = r.inserted_ids.iter().collect();
                                 entries.sort_by_key(|(k, _)| **k);
@@ -283,11 +277,7 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                             WriteOp::UpdateOne { filter, update, upsert, array_filters } => {
                                 let mut o = UpdateOptions::builder().upsert(upsert).build();
                                 o.array_filters = array_filters;
-                                let r = c
-                                    .update_one(filter, update)
-                                    .with_options(o)
-                                    .await
-                                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                                let r = c.update_one(filter, update).with_options(o).await?;
                                 acc.matched_count += r.matched_count;
                                 acc.modified_count += r.modified_count;
                                 if let Some(id) = r.upserted_id {
@@ -298,11 +288,7 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                             WriteOp::UpdateMany { filter, update, upsert, array_filters } => {
                                 let mut o = UpdateOptions::builder().upsert(upsert).build();
                                 o.array_filters = array_filters;
-                                let r = c
-                                    .update_many(filter, update)
-                                    .with_options(o)
-                                    .await
-                                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                                let r = c.update_many(filter, update).with_options(o).await?;
                                 acc.matched_count += r.matched_count;
                                 acc.modified_count += r.modified_count;
                                 if let Some(id) = r.upserted_id {
@@ -312,11 +298,7 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                             }
                             WriteOp::ReplaceOne { filter, replacement, upsert } => {
                                 let o = ReplaceOptions::builder().upsert(upsert).build();
-                                let r = c
-                                    .replace_one(filter, replacement)
-                                    .with_options(o)
-                                    .await
-                                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                                let r = c.replace_one(filter, replacement).with_options(o).await?;
                                 acc.matched_count += r.matched_count;
                                 acc.modified_count += r.modified_count;
                                 if let Some(id) = r.upserted_id {
@@ -325,17 +307,11 @@ fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                                 }
                             }
                             WriteOp::DeleteOne(filter) => {
-                                let r = c
-                                    .delete_one(filter)
-                                    .await
-                                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                                let r = c.delete_one(filter).await?;
                                 acc.deleted_count += r.deleted_count;
                             }
                             WriteOp::DeleteMany(filter) => {
-                                let r = c
-                                    .delete_many(filter)
-                                    .await
-                                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                                let r = c.delete_many(filter).await?;
                                 acc.deleted_count += r.deleted_count;
                             }
                         }
@@ -429,11 +405,7 @@ fn bind_find(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                     }
                 }
 
-                let mut cursor = collection
-                    .find(filter)
-                    .with_options(find_opts)
-                    .await
-                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let mut cursor = collection.find(filter).with_options(find_opts).await?;
 
                 let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
                 // Drain the first batch on the owned cursor (never across the RefCell borrow via `.await`), bytes-capped so huge documents can't fill one giant batch.
@@ -514,11 +486,7 @@ fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                     }
                 }
 
-                let mut cursor = collection
-                    .aggregate(pipeline)
-                    .with_options(agg_opts)
-                    .await
-                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let mut cursor = collection.aggregate(pipeline).with_options(agg_opts).await?;
 
                 let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
                 // Drain on the owned cursor first (no RefCell across await), bytes-capped so huge documents can't fill one giant batch.
@@ -568,15 +536,10 @@ fn bind_count(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
             run_blocking(h.clone(), &ctx, async move {
                 let c = h.client.database(&db).collection::<Document>(&coll);
                 let n: i64 = match mode.as_str() {
-                    "estimated" => c
-                        .estimated_document_count()
-                        .await
-                        .map_err(|e| crate::error::AppError::Query(e.to_string()))? as i64,
+                    "estimated" => c.estimated_document_count().await? as i64,
                     _ => {
                         let f = crate::json_bson::canonical_string_to_doc(&filter_json)?;
-                        c.count_documents(f)
-                            .await
-                            .map_err(|e| crate::error::AppError::Query(e.to_string()))? as i64
+                        c.count_documents(f).await? as i64
                     }
                 };
                 Ok::<String, crate::error::AppError>(format!(r#"{{"$numberLong":"{n}"}}"#))
@@ -606,10 +569,7 @@ fn bind_distinct(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
 
                 let filter = crate::json_bson::canonical_string_to_doc(&filter_json)?;
                 let c = h.client.database(&db).collection::<Document>(&coll);
-                let values = c
-                    .distinct(&field, filter)
-                    .await
-                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let values = c.distinct(&field, filter).await?;
 
                 let parts: Result<Vec<String>, _> =
                     values.iter().map(bson_to_canonical_string).collect();
@@ -639,12 +599,7 @@ fn bind_run_command(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         "Connection is read-only".into(),
                     ));
                 }
-                let reply = h
-                    .client
-                    .database(&db)
-                    .run_command(cmd)
-                    .await
-                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let reply = h.client.database(&db).run_command(cmd).await?;
                 doc_to_canonical_string(reply)
             })
         },
@@ -671,12 +626,7 @@ fn bind_admin_command(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                         "Connection is read-only".into(),
                     ));
                 }
-                let reply = h
-                    .client
-                    .database("admin")
-                    .run_command(cmd)
-                    .await
-                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let reply = h.client.database("admin").run_command(cmd).await?;
                 doc_to_canonical_string(reply)
             })
         },
@@ -695,12 +645,7 @@ fn bind_list_collections(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
         move |ctx: Ctx<'_>, db: String| -> JsResult<String> {
             let h = h.clone();
             run_blocking(h.clone(), &ctx, async move {
-                let names: Vec<String> = h
-                    .client
-                    .database(&db)
-                    .list_collection_names()
-                    .await
-                    .map_err(|e| crate::error::AppError::Query(e.to_string()))?;
+                let names: Vec<String> = h.client.database(&db).list_collection_names().await?;
 
                 // Serialize as a JSON array; serde handles quotes, backslashes, control chars.
                 serde_json::to_string(&names)

@@ -8,12 +8,15 @@ import * as m from "$lib/paraglide/messages";
 
 export type SqlImportPhase = "loading" | "selecting" | "running" | "done";
 
-/** Drives ImportDialog's SQL flow: preview (list tables) → pick → commit, one collection per table. */
+/** Drives ImportDialog's SQL flow: preview (list tables) → pick → commit. `targetColl` decides
+ *  where the selected tables' rows land: blank creates one new collection per table (the
+ *  default for a multi-table dump); non-blank sends every selected table's rows into that one
+ *  existing collection instead — always user-editable via `setTargetColl`. */
 export function createSqlImport(
   sessionId: string,
   db: string,
   path: string,
-  targetColl: string | null,
+  preselectedColl: string | null,
   insertMode: InsertMode,
 ) {
   let phase = $state<SqlImportPhase>("loading");
@@ -23,6 +26,7 @@ export function createSqlImport(
   let progress = $state<{ table: string; done: number; total: number } | null>(null);
   let results = $state<SqlImportTableResult[]>([]);
   let cancelled = $state(false);
+  let targetColl = $state("");
 
   async function loadPreview() {
     phase = "loading";
@@ -30,12 +34,20 @@ export function createSqlImport(
     try {
       tables = await sqlImportPreview(path);
       selected = new Set(tables.map((t) => t.table));
+      // Preserve the old convenience default: a genuine single-table dump opened from a specific
+      // collection's context menu defaults to landing there; every other case defaults to one new
+      // collection per table. Either default is still fully user-editable below.
+      targetColl = tables.length === 1 && preselectedColl !== null ? preselectedColl : "";
     } catch (e) {
       error = errorMessage(e);
     } finally {
       // Always leave "loading" — on failure this shows the empty-state + error instead of a stuck spinner.
       phase = "selecting";
     }
+  }
+
+  function setTargetColl(v: string) {
+    targetColl = v;
   }
 
   function toggle(table: string) {
@@ -56,8 +68,9 @@ export function createSqlImport(
     const pickedTables = [...selected];
     activity.begin(m.common_running());
     try {
+      const target = targetColl.trim() || null;
       const result = await commandLog.pushTimed(sqlImportCmd(db, path, pickedTables), sessionId, () =>
-        sqlImportCommit(sessionId, db, path, pickedTables, targetColl, insertMode, (table, done, total) => {
+        sqlImportCommit(sessionId, db, path, pickedTables, target, insertMode, (table, done, total) => {
           progress = { table, done, total };
         }));
       results = result.tables;
@@ -83,6 +96,8 @@ export function createSqlImport(
     get progress() { return progress; },
     get results() { return results; },
     get cancelled() { return cancelled; },
+    get targetColl() { return targetColl; },
+    setTargetColl,
     loadPreview,
     toggle,
     toggleAll,

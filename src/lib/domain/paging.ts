@@ -1,5 +1,8 @@
 /** Pagination helpers: page count, page clamping, and skip offset. */
 
+/** Above this row count, "Show all" asks for confirmation before fetching the whole result set. */
+export const SHOW_ALL_WARN_THRESHOLD = 5000;
+
 /** Total page count for `total` records at page `size`; minimum 1 even when empty. */
 export function pageCount(total: number, size: number): number {
   if (size <= 0) return 1;

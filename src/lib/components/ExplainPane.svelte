@@ -2,6 +2,7 @@
   import type { ExplainSummary } from "../domain/explainPlan";
   import type { IndexSuggestion } from "../domain/indexAdvisor";
   import ConfirmDialog from "./ConfirmDialog.svelte";
+  import { copyToClipboard } from "../clipboard";
   import * as m from "$lib/paraglide/messages";
 
   let {
@@ -37,11 +38,7 @@
   }
 
   async function copySnippet(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      // clipboard unavailable — no-op, matches ConsolePane's copy-line behavior
-    }
+    await copyToClipboard(text);
   }
 </script>
 

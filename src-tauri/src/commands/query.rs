@@ -5,6 +5,9 @@ use crate::script::host::with_interrupt;
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Document};
+use mongodb::Client;
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tauri::State;
 
@@ -13,6 +16,17 @@ const DEFAULT_TIMEOUT_MS: u64 = 30_000;
 
 fn deadline_from(timeout_ms: Option<u64>) -> Instant {
     Instant::now() + Duration::from_millis(timeout_ms.unwrap_or(DEFAULT_TIMEOUT_MS))
+}
+
+/// Shared prologue for every cancellable query command: fetch the client, get a freshly-reset cancel flag, and compute the op deadline.
+async fn begin_query_op(
+    state: &State<'_, AppState>,
+    session_id: &str,
+    timeout_ms: Option<u64>,
+) -> Result<(Client, Arc<AtomicBool>, Instant), AppError> {
+    let client = state.client(session_id).await?;
+    let cancel = state.begin_cancel(session_id).await;
+    Ok((client, cancel, deadline_from(timeout_ms)))
 }
 
 /// Time remaining until `deadline` (`None` once passed); fed into `maxTimeMS` so a "cancelled" query also stops consuming server CPU/IO, not just the client's wait.
@@ -125,10 +139,7 @@ pub async fn aggregate(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
 
@@ -157,10 +168,7 @@ pub async fn aggregate_count(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let mut stages = parse_pipeline(&pipeline)?;
     stages.push(doc! { "$count": "n" });
@@ -192,10 +200,7 @@ pub async fn query_page(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
@@ -234,10 +239,7 @@ pub async fn sample_documents(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let user_filter = parse_user_filter(filter.as_deref())?;
     let pipeline = build_sample_pipeline(user_filter, size);
@@ -267,10 +269,7 @@ pub async fn count_documents(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let f = parse_user_filter(filter.as_deref())?;
 
@@ -295,10 +294,7 @@ pub async fn distinct(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<Vec<String>, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let f = parse_user_filter(filter.as_deref())?;
 
@@ -328,10 +324,7 @@ pub async fn explain_find(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
@@ -359,10 +352,7 @@ pub async fn explain_aggregate(
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let client = state.client(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
-    let deadline = deadline_from(timeout_ms);
+    let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
     let cmd = build_explain_aggregate_command(&coll, stages);

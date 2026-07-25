@@ -195,12 +195,11 @@ pub fn row_to_document(cols: &[String], row: &[Expr], opts: &InferOptions) -> Do
     d
 }
 
-/// Decides the target collection: single-table dumps use the caller's pre-selected `target_coll`; multi-table dumps keep each table's own name.
-pub fn resolve_target_collection(table_name: &str, is_single_table_dump: bool, target_coll: Option<&str>) -> String {
-    match (is_single_table_dump, target_coll) {
-        (true, Some(t)) => t.to_string(),
-        _ => table_name.to_string(),
-    }
+/// Decides the target collection: a caller-supplied `target_coll` takes every table's rows (the
+/// frontend's explicit "insert everything into this existing collection" choice); with none, each
+/// table keeps its own name (one new collection per table).
+pub fn resolve_target_collection(table_name: &str, target_coll: Option<&str>) -> String {
+    target_coll.map(str::to_string).unwrap_or_else(|| table_name.to_string())
 }
 
 #[cfg(test)]
@@ -419,10 +418,10 @@ mod tests {
     }
 
     #[test]
-    fn resolve_target_collection_uses_the_target_only_for_a_single_table_dump() {
-        assert_eq!(resolve_target_collection("movie", true, Some("films")), "films");
-        assert_eq!(resolve_target_collection("movie", false, Some("films")), "movie");
-        assert_eq!(resolve_target_collection("movie", true, None), "movie");
+    fn resolve_target_collection_uses_the_explicit_target_for_every_table_when_given() {
+        assert_eq!(resolve_target_collection("movie", Some("films")), "films");
+        assert_eq!(resolve_target_collection("orders", Some("films")), "films");
+        assert_eq!(resolve_target_collection("movie", None), "movie");
     }
 
     #[test]

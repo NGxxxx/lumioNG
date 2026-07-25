@@ -3,6 +3,7 @@ import { queryPage, sampleDocuments, deleteDocument, updateOne, fetchFullDoc, co
 import type { ExportWizardInput } from "../domain/exportPlan";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
+import { copyToClipboard } from "../clipboard";
 import { idJson } from "../domain/docid";
 import { clipboardTextOf } from "../domain/extjson";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
@@ -31,6 +32,8 @@ import { settings } from "./settings.svelte";
 import { findCmd, updateOneCmd, deleteOneCmd, deleteManyCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { createCollectionBulk } from "./collectionBulk.svelte";
 import { createQuickSearch } from "./quickSearch.svelte";
+import { createEditBlurFlow } from "./cellEditBlur.svelte";
+import { SHOW_ALL_WARN_THRESHOLD } from "../domain/paging";
 
 /** State and actions for one collection view: data, paging, inline edit, context menu, and delete. */
 export function createCollectionView(sessionId: string, db: string, coll: string) {
@@ -64,7 +67,6 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   let allShown = $state(false);
   let showAllPending = $state<number | null>(null);
-  const SHOW_ALL_WARN_THRESHOLD = 5000;
 
   let confirmDoc = $state<Doc | null>(null);
 
@@ -396,32 +398,21 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     editError = null;
   }
 
-  function cancelEdit() {
-    if (saving) return;
-    editing = null;
-    editError = null;
-  }
-
-  let editBlurPending = $state(false);
-
-  /** Blur (click elsewhere) discards silently when nothing changed; otherwise asks for
-   *  confirmation before saving (Enter still saves immediately, no confirmation). */
-  function onEditBlur() {
-    if (!editing || saving) return;
-    const original = editTextOf(getByPath(docs[editing.row], editing.key));
-    if (editText === original) cancelEdit();
-    else editBlurPending = true;
-  }
-
-  async function confirmBlurEdit() {
-    editBlurPending = false;
-    await commitEdit();
-  }
-
-  function discardBlurEdit() {
-    editBlurPending = false;
-    cancelEdit();
-  }
+  const editBlur = createEditBlurFlow({
+    getEditing: () => editing,
+    isSaving: () => saving,
+    clearEditing: () => {
+      editing = null;
+      editError = null;
+    },
+    getEditText: () => editText,
+    getOriginalText: (row, key) => editTextOf(getByPath(docs[row], key)),
+    commitEdit: () => commitEdit(),
+  });
+  const cancelEdit = editBlur.cancelEdit;
+  const onEditBlur = editBlur.onEditBlur;
+  const confirmBlurEdit = editBlur.confirmBlurEdit;
+  const discardBlurEdit = editBlur.discardBlurEdit;
 
   async function commitEdit() {
     if (!editing || saving) return;
@@ -512,6 +503,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const items: MenuItem[] = [];
     if (n === 1) items.push({ label: m.context_menu_open_document(), action: "open" });
     if (menu.source === "tree") items.push({ label: m.context_menu_expand_full_depth(), action: "expandFullDepth" });
+    items.push({ label: m.context_menu_refresh(), action: "refresh" });
     items.push({
       label: m.context_menu_edit_cell(),
       action: "editCell",
@@ -571,11 +563,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   }
 
   async function copy(text: string) {
-    try {
-      await navigator.clipboard.writeText(text);
-    } catch {
-      error = m.common_clipboard_failed();
-    }
+    if (!(await copyToClipboard(text))) error = m.common_clipboard_failed();
   }
 
   /** Returns the doc to open for "open", `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate,
@@ -593,6 +581,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       case "expandFullDepth":
         menu = null;
         return { expandFullDepth: row };
+      case "refresh":
+        reloadDocs();
+        break;
       case "copyValue":
         copy(clipboardTextOf(getByPath(doc, key)));
         break;
@@ -807,7 +798,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get editError() {
       return editError;
     },
-    get editBlurPending() { return editBlurPending; },
+    get editBlurPending() { return editBlur.editBlurPending; },
     onEditBlur,
     confirmBlurEdit,
     discardBlurEdit,

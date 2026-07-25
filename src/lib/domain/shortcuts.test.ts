@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesEvent, formatCombo } from "./shortcuts";
+import { matchesEvent, formatCombo, isDefaultWebviewAccelerator } from "./shortcuts";
 
 function evt(partial: {
   key: string;
@@ -7,14 +7,16 @@ function evt(partial: {
   metaKey?: boolean;
   shiftKey?: boolean;
   altKey?: boolean;
+  target?: EventTarget | null;
 }): KeyboardEvent {
   return {
     ctrlKey: false,
     metaKey: false,
     shiftKey: false,
     altKey: false,
+    target: null,
     ...partial,
-  } as KeyboardEvent;
+  } as unknown as KeyboardEvent;
 }
 
 describe("matchesEvent", () => {
@@ -51,6 +53,56 @@ describe("matchesEvent", () => {
     expect(matchesEvent("Insert", evt({ key: "Insert" }), "other")).toBe(true);
     expect(matchesEvent("Mod+Delete", evt({ key: "Delete", ctrlKey: true }), "other")).toBe(true);
     expect(matchesEvent("Escape", evt({ key: "Escape" }), "other")).toBe(true);
+  });
+});
+
+describe("isDefaultWebviewAccelerator", () => {
+  it("blocks reload, devtools, print, and find-on-page on Windows/Linux (Ctrl)", () => {
+    expect(isDefaultWebviewAccelerator(evt({ key: "F5" }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "r", ctrlKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "F12" }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "i", ctrlKey: true, shiftKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "p", ctrlKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "f", ctrlKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "F3" }), "other")).toBe(true);
+  });
+
+  it("resolves Mod to Cmd on mac, same as the app's own shortcuts", () => {
+    expect(isDefaultWebviewAccelerator(evt({ key: "r", ctrlKey: true }), "mac")).toBe(false);
+    expect(isDefaultWebviewAccelerator(evt({ key: "r", metaKey: true }), "mac")).toBe(true);
+  });
+
+  it("blocks history navigation (Alt+Left/Right)", () => {
+    expect(isDefaultWebviewAccelerator(evt({ key: "ArrowLeft", altKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "ArrowRight", altKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "ArrowLeft" }), "other")).toBe(false);
+  });
+
+  it("blocks zoom regardless of the exact +/- key reported (Shift changes '=' to '+')", () => {
+    expect(isDefaultWebviewAccelerator(evt({ key: "=", ctrlKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "+", ctrlKey: true, shiftKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "-", ctrlKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "0", ctrlKey: true }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "0", metaKey: true }), "other")).toBe(false); // wrong modifier for this platform
+  });
+
+  it("blocks plain Backspace outside an editable field (history-back), but never inside one", () => {
+    expect(isDefaultWebviewAccelerator(evt({ key: "Backspace" }), "other")).toBe(true);
+    expect(isDefaultWebviewAccelerator(evt({ key: "Backspace", target: document.createElement("input") }), "other")).toBe(false);
+    expect(isDefaultWebviewAccelerator(evt({ key: "Backspace", target: document.createElement("textarea") }), "other")).toBe(false);
+    const editableDiv = document.createElement("div");
+    Object.defineProperty(editableDiv, "isContentEditable", { value: true });
+    expect(isDefaultWebviewAccelerator(evt({ key: "Backspace", target: editableDiv }), "other")).toBe(false);
+  });
+
+  it("does not block Backspace combined with a modifier (not the plain history-back binding)", () => {
+    expect(isDefaultWebviewAccelerator(evt({ key: "Backspace", shiftKey: true }), "other")).toBe(false);
+  });
+
+  it("does not block ordinary typing/navigation keys", () => {
+    expect(isDefaultWebviewAccelerator(evt({ key: "a" }), "other")).toBe(false);
+    expect(isDefaultWebviewAccelerator(evt({ key: "Enter" }), "other")).toBe(false);
+    expect(isDefaultWebviewAccelerator(evt({ key: "s", ctrlKey: true, altKey: true }), "other")).toBe(false);
   });
 });
 

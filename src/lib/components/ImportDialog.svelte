@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
@@ -13,7 +13,13 @@
   import * as m from "$lib/paraglide/messages";
   import { msgKey } from "$lib/msgkey";
 
-  // File extension alone decides the flow (.sql -> multi-table SQL, .csv -> single-collection CSV); db-scoped non-.sql imports collect a target via needsTarget.
+  // File extension alone decides the flow (.sql -> multi-table SQL, .csv -> single-collection CSV).
+  // The target-collection field is always shown and always editable for non-SQL files (seeded
+  // from `coll` when the dialog was opened from a specific collection, blank otherwise) — the
+  // same free-text-plus-datalist input either lands docs in an existing collection (pick/type its
+  // name) or creates a new one (type a fresh name), regardless of which entry point opened this
+  // dialog. SQL's own per-table-vs-single-collection target lives in the table picker instead
+  // (see `sqlImport.svelte.ts`'s `targetColl`).
   let { sessionId, db, coll = null, existingCollections = [], onclose }: {
     sessionId: string;
     db: string;
@@ -23,7 +29,7 @@
   } = $props();
 
   let path = $state("");
-  let targetColl = $state("");
+  let targetColl = $state(untrack(() => coll ?? ""));
   let stage = $state<"setup" | "working">("setup");
   let insertMode = $state<InsertMode>("skipDuplicates");
   let fileSizeChecked = $state(false);
@@ -35,8 +41,13 @@
 
   const isSql = $derived(path.toLowerCase().endsWith(".sql"));
   const isCsv = $derived(path.toLowerCase().endsWith(".csv"));
-  const needsTarget = $derived(coll === null && !isSql && !!path);
-  const targetErrorMsg = $derived(needsTarget ? validateCollectionName(targetColl.trim()) : null);
+  const showTarget = $derived(!isSql && !!path);
+  const targetErrorMsg = $derived(showTarget ? validateCollectionName(targetColl.trim()) : null);
+  /** SQL's own target field (see sqlImport.svelte.ts) is only validated when non-blank — blank
+   *  means "one new collection per table", which needs no validation. */
+  const sqlTargetError = $derived(
+    sql && sql.targetColl.trim() ? validateCollectionName(sql.targetColl.trim()) : null,
+  );
   const fileName = $derived(path.replace(/^.*[\\/]/, ""));
   const percent = $derived(job && job.total > 0 ? Math.round((job.done / job.total) * 100) : 0);
   const canClose = $derived(
@@ -59,7 +70,7 @@
 
   async function startRun() {
     if (!path) return;
-    if (needsTarget && targetErrorMsg) return;
+    if (showTarget && targetErrorMsg) return;
     if (!fileSizeChecked) {
       const checkedPath = path;
       const size = await importFileSize(checkedPath);
@@ -72,7 +83,7 @@
       fileSizeChecked = true;
     }
     stage = "working";
-    const effectiveColl = coll ?? targetColl.trim();
+    const effectiveColl = targetColl.trim();
     if (isSql) {
       sql = createSqlImport(sessionId, db, path, coll, insertMode);
       sql.loadPreview();
@@ -101,15 +112,15 @@
       else if (path) startRun();
       return;
     }
-    if (isSql && sql!.phase === "selecting") { sql!.run(); return; }
+    if (isSql && sql!.phase === "selecting") { if (!sqlTargetError) sql!.run(); return; }
     if (isSql && sql!.phase === "running") return; // Cancel-only stage, no Enter action
     if (isCsv && csv!.phase === "config") { csv!.run(); return; }
     if (canClose) onclose();
   }
 
   function primaryEnterDisabled(): boolean {
-    if (stage === "setup") return pendingLargeFile ? false : (!path || (needsTarget && !!targetErrorMsg));
-    if (isSql && sql!.phase === "selecting") return sql!.selected.size === 0;
+    if (stage === "setup") return pendingLargeFile ? false : (!path || (showTarget && !!targetErrorMsg));
+    if (isSql && sql!.phase === "selecting") return sql!.selected.size === 0 || !!sqlTargetError;
     if (isSql && sql!.phase === "running") return true;
     if (isCsv && csv!.phase === "config") return csv!.columns.length === 0;
     return !canClose;
@@ -139,9 +150,7 @@
           <span class="path">{fileName || m.sql_import_no_file_chosen()}</span>
           <button type="button" onclick={browse}>{m.import_dialog_browse()}</button>
         </div>
-        {#if coll !== null}
-          <div class="file-row"><span class="label">{m.export_wizard_col_collection()}</span><span class="path">{coll}</span></div>
-        {:else if needsTarget}
+        {#if showTarget}
           <div class="file-row">
             <span class="label">{m.import_dialog_target_collection_label()}</span>
             <input
@@ -178,8 +187,24 @@
             {#if v.tables.length === 0}
               <div class="status">{m.sql_import_no_tables()}</div>
             {:else}
+              <div class="file-row">
+                <span class="label">{m.import_dialog_target_collection_label()}</span>
+                <input
+                  class="target-input"
+                  list="import-target-collections"
+                  placeholder={m.sql_import_target_placeholder()}
+                  value={v.targetColl}
+                  oninput={(e) => v.setTargetColl(e.currentTarget.value)}
+                  disabled={v.phase === "running"}
+                  aria-label={m.import_dialog_target_collection_label()}
+                />
+              </div>
+              <datalist id="import-target-collections">
+                {#each existingCollections as name (name)}<option value={name}></option>{/each}
+              </datalist>
+              {#if v.targetColl && sqlTargetError}<div class="error">{msgKey(sqlTargetError)}</div>{/if}
               {#if v.selected.size > 0}
-                {@const target = describeSqlImportTargets(v.tables.length, [...v.selected], coll)}
+                {@const target = describeSqlImportTargets([...v.selected], v.targetColl)}
                 <div class="notice">
                   {#if target.kind === "existing"}
                     {m.sql_import_target_existing({ coll: target.coll })}
@@ -307,11 +332,11 @@
           <button type="button" class="primary" onclick={confirmLargeFile}>{m.import_dialog_large_file_continue()}</button>
         {:else}
           <button type="button" onclick={onclose}>{m.common_cancel()}</button>
-          <button type="button" class="primary" disabled={!path || (needsTarget && !!targetErrorMsg)} onclick={startRun}>{m.import_dialog_run()}</button>
+          <button type="button" class="primary" disabled={!path || (showTarget && !!targetErrorMsg)} onclick={startRun}>{m.import_dialog_run()}</button>
         {/if}
       {:else if isSql && sql!.phase === "selecting"}
         <button type="button" onclick={onclose}>{m.common_cancel()}</button>
-        <button type="button" class="primary" disabled={sql!.selected.size === 0} onclick={() => sql!.run()}>{m.sql_import_run({ count: sql!.selected.size })}</button>
+        <button type="button" class="primary" disabled={sql!.selected.size === 0 || !!sqlTargetError} onclick={() => sql!.run()}>{m.sql_import_run({ count: sql!.selected.size })}</button>
       {:else if isSql && sql!.phase === "running"}
         <button type="button" onclick={() => sql!.cancel()}>{m.common_cancel()}</button>
       {:else if isCsv && csv!.phase === "config"}

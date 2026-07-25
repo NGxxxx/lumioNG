@@ -169,8 +169,7 @@ pub async fn sql_import_commit(
     state: State<'_, AppState>,
 ) -> Result<SqlImportCommitResult, AppError> {
     state.ensure_writable(&session_id).await?;
-    let cancel = state.cancel_flag(&session_id).await;
-    state.clear_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id).await;
 
     let schema_path = path.clone();
     let (schemas, columns_by_table) = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
@@ -190,7 +189,6 @@ pub async fn sql_import_commit(
 
     let client = state.client(&session_id).await?;
 
-    let is_single_table_dump = schemas.len() == 1;
     let totals: HashMap<String, u64> = schemas.iter().map(|s| (s.name.clone(), s.row_count)).collect();
     // Preserve the dump's first-seen table order, restricted to the selected tables — matches the
     // pre-rewrite output order and keeps a selected-but-empty table in the results (inserted: 0).
@@ -208,7 +206,7 @@ pub async fn sql_import_commit(
             break; // dropping rx here signals spawn_sql_producer's blocking_send to stop, same as `stop` below
         }
         let (table, batch) = msg?;
-        let coll_name = resolve_target_collection(&table, is_single_table_dump, target_coll.as_deref());
+        let coll_name = resolve_target_collection(&table, target_coll.as_deref());
         let collection = client.database(&db).collection::<Document>(&coll_name);
         let total = *totals.get(&table).unwrap_or(&0);
 

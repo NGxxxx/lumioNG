@@ -83,14 +83,41 @@ describe("createSqlImport", () => {
     expect(v.cancelled).toBe(false);
   });
 
-  it("run passes a pre-selected target collection through to the commit call", async () => {
+  it("a multi-table dump defaults targetColl to blank (one new collection per table), even with a pre-selected coll", async () => {
     sqlImportPreview.mockResolvedValueOnce(preview);
     sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
     const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", "movies", "skipDuplicates");
     await v.loadPreview();
+    expect(v.targetColl).toBe("");
     await v.run();
     expect(sqlImportCommit).toHaveBeenCalledWith(
-      "conn:1", "d", "/tmp/dump.sql", ["users", "orders"], "movies", "skipDuplicates", expect.any(Function),
+      "conn:1", "d", "/tmp/dump.sql", ["users", "orders"], null, "skipDuplicates", expect.any(Function),
+    );
+  });
+
+  it("a single-table dump defaults targetColl to the pre-selected coll, and it flows through to commit", async () => {
+    const single = [preview[0]];
+    sqlImportPreview.mockResolvedValueOnce(single);
+    sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", "movies", "skipDuplicates");
+    await v.loadPreview();
+    expect(v.targetColl).toBe("movies");
+    await v.run();
+    expect(sqlImportCommit).toHaveBeenCalledWith(
+      "conn:1", "d", "/tmp/dump.sql", ["users"], "movies", "skipDuplicates", expect.any(Function),
+    );
+  });
+
+  it("setTargetColl overrides the default in either direction", async () => {
+    sqlImportPreview.mockResolvedValueOnce(preview);
+    sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null, "skipDuplicates");
+    await v.loadPreview();
+    expect(v.targetColl).toBe(""); // multi-table, no pre-selected coll → defaults blank
+    v.setTargetColl("everything");
+    await v.run();
+    expect(sqlImportCommit).toHaveBeenCalledWith(
+      "conn:1", "d", "/tmp/dump.sql", ["users", "orders"], "everything", "skipDuplicates", expect.any(Function),
     );
   });
 

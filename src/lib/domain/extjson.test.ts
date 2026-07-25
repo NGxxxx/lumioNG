@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN, clipboardTextOf, nestedJsonPretty } from "./extjson";
+import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN, clipboardTextOf, nestedJsonPretty, containerKind } from "./extjson";
 
 describe("truncateForDisplay", () => {
   it("leaves short text unchanged", () => {
@@ -74,6 +74,42 @@ describe("describeValue", () => {
     const r = describeValue({ $binary: { base64: "AQIDBA==", subType: "00" } });
     expect(r.type).toBe("binary");
   });
+  it("identifies regex", () => {
+    const r = describeValue({ $regularExpression: { pattern: "^a.*z$", options: "im" } });
+    expect(r.type).toBe("regex");
+    expect(r.display).toBe("/^a.*z$/im");
+  });
+  it("identifies timestamp", () => {
+    const r = describeValue({ $timestamp: { t: 1700000000, i: 5 } });
+    expect(r.type).toBe("timestamp");
+    expect(r.display).toBe("Timestamp(1700000000, 5)");
+  });
+  it("identifies minKey and maxKey", () => {
+    expect(describeValue({ $minKey: 1 })).toEqual({ type: "minKey", display: "MinKey()" });
+    expect(describeValue({ $maxKey: 1 })).toEqual({ type: "maxKey", display: "MaxKey()" });
+  });
+  it("identifies JavaScript code, with and without scope", () => {
+    expect(describeValue({ $code: "function() {}" })).toEqual({ type: "code", display: "function() {}" });
+    const withScope = describeValue({ $code: "function() {}", $scope: { x: 1 } });
+    expect(withScope.type).toBe("code");
+    expect(withScope.display).toContain("function() {}");
+    expect(withScope.display).toContain('"x"');
+  });
+  it("identifies symbol", () => {
+    const r = describeValue({ $symbol: "mySymbol" });
+    expect(r.type).toBe("symbol");
+    expect(r.display).toBe("mySymbol");
+  });
+  it("identifies dbPointer", () => {
+    const r = describeValue({ $dbPointer: { $ref: "coll", $id: { $oid: "507f1f77bcf86cd799439011" } } });
+    expect(r.type).toBe("dbPointer");
+    expect(r.display).toBe("DBPointer(coll, 507f1f77bcf86cd799439011)");
+  });
+  it("identifies undefined", () => {
+    const r = describeValue({ $undefined: true });
+    expect(r.type).toBe("undefined");
+    expect(r.display).toBe("undefined");
+  });
   it("plain string", () => {
     const r = describeValue("hello");
     expect(r.type).toBe("string");
@@ -92,6 +128,26 @@ describe("describeValue", () => {
     const r = describeValue([1, 2, 3]);
     expect(r.type).toBe("array");
     expect(r.display.startsWith("[")).toBe(true);
+  });
+});
+
+describe("containerKind", () => {
+  it("treats every ExtJSON wrapper as a leaf, not a container", () => {
+    expect(containerKind({ $oid: "507f1f77bcf86cd799439011" })).toBeNull();
+    expect(containerKind({ $binary: { base64: "AQ==", subType: "00" } })).toBeNull();
+    expect(containerKind({ $regularExpression: { pattern: "a", options: "" } })).toBeNull();
+    expect(containerKind({ $timestamp: { t: 1, i: 1 } })).toBeNull();
+    expect(containerKind({ $minKey: 1 })).toBeNull();
+    expect(containerKind({ $maxKey: 1 })).toBeNull();
+    expect(containerKind({ $code: "function() {}" })).toBeNull();
+    expect(containerKind({ $symbol: "s" })).toBeNull();
+    expect(containerKind({ $dbPointer: { $ref: "c", $id: { $oid: "507f1f77bcf86cd799439011" } } })).toBeNull();
+    expect(containerKind({ $undefined: true })).toBeNull();
+  });
+  it("still recognizes plain objects and arrays as containers", () => {
+    expect(containerKind({ a: 1 })).toBe("object");
+    expect(containerKind([1, 2])).toBe("array");
+    expect(containerKind("hello")).toBeNull();
   });
 });
 
