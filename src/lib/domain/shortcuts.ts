@@ -21,6 +21,7 @@ function parseCombo(combo: string, platform: Platform): ParsedCombo {
 
 /** Does this keydown event match a combo string like `"Mod+Shift+F9"`? `Mod` resolves per platform. */
 export function matchesEvent(combo: string, e: KeyboardEvent, platform: Platform): boolean {
+  if (!e.key) return false;
   const p = parseCombo(combo, platform);
   if (e.key.toLowerCase() !== p.key) return false;
   if (e.ctrlKey !== p.ctrl) return false;

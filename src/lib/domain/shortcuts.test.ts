@@ -49,6 +49,12 @@ describe("matchesEvent", () => {
     expect(matchesEvent("Mod+S", evt({ key: "S", ctrlKey: true }), "other")).toBe(true);
   });
 
+  it("does not match when the event has no key (e.g. some IME-synthesized events)", () => {
+    expect(matchesEvent("Mod+S", evt({ key: undefined as unknown as string, ctrlKey: true }), "other")).toBe(
+      false,
+    );
+  });
+
   it("matches single-character keys like Insert/Delete/Escape by name", () => {
     expect(matchesEvent("Insert", evt({ key: "Insert" }), "other")).toBe(true);
     expect(matchesEvent("Mod+Delete", evt({ key: "Delete", ctrlKey: true }), "other")).toBe(true);

@@ -100,5 +100,3 @@ src-tauri/src/
 - Before reporting "done": run and verify **green** (never assume):
   - Frontend: `npm test` and `npm run check` (target **0 errors, 0 warnings**).
   - Backend: `cargo test --manifest-path src-tauri/Cargo.toml`.
-- Design docs live in `docs/superpowers/specs/`, plans in `docs/superpowers/plans/` (organized by
-  slice).

@@ -39,7 +39,7 @@
   --selected: color-mix(in srgb, var(--ctp-blue) 16%, var(--ctp-base));
   --mono: Consolas, "SF Mono", "Liberation Mono", monospace;
   --fs: 0.75rem;
-  /* tab + hàng */
+  /* tab + row */
   --tab-active-border: var(--ctp-blue);
   --tab-active-fg: var(--ctp-text);
   --tab-inactive-bg: var(--ctp-surface0);
@@ -49,7 +49,7 @@
   --menu-hover: var(--ctp-surface0);
   --zebra: var(--ctp-base);
   --zebra-alt: var(--ctp-mantle);
-  /* bảng */
+  /* table */
   --th-grad-top: var(--ctp-surface0);
   --th-grad-bottom: var(--ctp-surface1);
   --cell-border: var(--ctp-surface0);

@@ -72,7 +72,7 @@ describe("rebuildLeaf type errors", () => {
     expect(rebuildLeaf("objectId", "507f1f77bcf86cd7994390").ok).toBe(false);
   });
   it("invalid date string → ok:false", () => {
-    expect(rebuildLeaf("date", "không phải ngày").ok).toBe(false);
+    expect(rebuildLeaf("date", "not a date").ok).toBe(false);
   });
   it("date without YYYY-MM-DD prefix → ok:false", () => {
     expect(rebuildLeaf("date", "2024").ok).toBe(false);

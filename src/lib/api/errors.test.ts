@@ -3,8 +3,8 @@ import { errorMessage } from "./errors";
 
 describe("errorMessage", () => {
   it("AppError.Parse renders kind + message", () => {
-    expect(errorMessage({ kind: "Parse", message: "JSON không hợp lệ" })).toBe(
-      "Parse: JSON không hợp lệ",
+    expect(errorMessage({ kind: "Parse", message: "invalid JSON" })).toBe(
+      "Parse: invalid JSON",
     );
   });
 });
