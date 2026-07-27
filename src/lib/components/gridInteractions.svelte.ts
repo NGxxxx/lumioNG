@@ -1,4 +1,8 @@
-// NOTE: virtualizer wiring stays duplicated per grid component — mirroring its store into `$state` from a `.svelte.ts` module causes an infinite update loop. Don't retry that extraction.
+// NOTE: virtualizer create+resync wiring lives in rowVirtualizer.svelte.ts, not here — column-resize
+// (this file) and row-virtualization are unrelated concerns that happened to be extracted separately.
+// rowVirtualizer.svelte.ts keeps the virtualizer's own store as a store (never mirrored into
+// `$state`); an earlier attempt that mirrored it into `$state` fed back into the resync effect and
+// looped forever.
 import { rafThrottle } from "../domain/rafThrottle";
 
 export const GRID_ROW_H = 24;

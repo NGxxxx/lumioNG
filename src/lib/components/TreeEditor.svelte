@@ -1,12 +1,12 @@
 <script lang="ts">
   import { get } from "svelte/store";
   import { untrack } from "svelte";
-  import { createVirtualizer } from "@tanstack/svelte-virtual";
+  import { createRowVirtualizer } from "./rowVirtualizer.svelte";
   import type { Doc } from "../domain/doc";
   import { flattenEditableDoc, existingKeysAt, setAtPath, removeAtPath, insertAtPath, allExpandablePaths, findFieldMatches, ancestorPathsOf, type EditRow, type FieldMatch, type PathSegment } from "../domain/editTree";
   import { describeValue } from "../domain/extjson";
   import { hasInput, type LeafInputType } from "../domain/bsontree";
-  import { SEARCH_DEBOUNCE_MS } from "../domain/timing";
+  import { createDebouncer, SEARCH_DEBOUNCE_MS } from "../domain/timing";
   import TreeLeafInput from "./TreeLeafInput.svelte";
   import TreeAdderRow from "./TreeAdderRow.svelte";
   import * as m from "$lib/paraglide/messages";
@@ -81,23 +81,13 @@
   const OVERSCAN = 12;
   let scrollerEl = $state<HTMLDivElement | null>(null);
 
-  const rowVirtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
-    count: untrack(() => rows.length),
+  // pre: true — must resync count before the DOM re-renders shorter `rows`, or a stale virtualItems indexes past it and throws.
+  const rowVirtualizer = createRowVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: () => rows.length,
     getScrollElement: () => scrollerEl,
     estimateSize: () => ROW_EST,
     overscan: OVERSCAN,
-  });
-
-  // $effect.pre, not $effect: must resync count before the DOM re-renders shorter `rows`, or a stale virtualItems indexes past it and throws.
-  $effect.pre(() => {
-    const count = rows.length;
-    const el = scrollerEl;
-    get(rowVirtualizer).setOptions({
-      count,
-      getScrollElement: () => el,
-      estimateSize: () => ROW_EST,
-      overscan: OVERSCAN,
-    });
+    pre: true,
   });
 
   const virtualItems = $derived($rowVirtualizer.getVirtualItems());
@@ -116,15 +106,13 @@
   let matches = $state<FieldMatch[]>([]);
   let matchIndex = $state(0);
   let highlightPath = $state<string | null>(null);
-  let searchTimer: ReturnType<typeof setTimeout> | null = null;
+  const searchDebouncer = createDebouncer(SEARCH_DEBOUNCE_MS);
 
   function onSearchInput() {
-    if (searchTimer !== null) clearTimeout(searchTimer);
-    searchTimer = setTimeout(runSearch, SEARCH_DEBOUNCE_MS);
+    searchDebouncer.schedule(runSearch);
   }
 
   function runSearch() {
-    searchTimer = null;
     matches = findFieldMatches(value, searchQuery);
     matchIndex = 0;
     if (matches.length > 0) jumpToMatch(0);
@@ -155,7 +143,7 @@
 
   $effect(() => {
     return () => {
-      if (searchTimer !== null) clearTimeout(searchTimer);
+      searchDebouncer.cancel();
     };
   });
 </script>

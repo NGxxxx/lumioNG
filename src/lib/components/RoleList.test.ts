@@ -72,11 +72,12 @@ describe("RoleList", () => {
     const view = makeView({
       roles: [{ role: "reportViewer", db: "admin", isBuiltin: false, privileges: [{ actions: ["find"] }], roles: [{ role: "read", db: "shop" }] }],
     });
-    const { getByText, container } = render(RoleList, { props: { view, readOnly: false } });
+    const { getByText, baseElement } = render(RoleList, { props: { view, readOnly: false } });
     await fireEvent.click(getByText("Edit"));
     // CodeEditor has no form label; verify the pre-filled JSON rendered into the CodeMirror content.
-    expect(container.textContent).toContain('"actions":["find"]');
-    expect(container.textContent).toContain('"role":"read"');
+    // baseElement, not container: the shared Modal portals the dialog to document.body.
+    expect(baseElement.textContent).toContain('"actions":["find"]');
+    expect(baseElement.textContent).toContain('"role":"read"');
     await fireEvent.click(getByText("Save"));
     expect(view.updateRole).toHaveBeenCalledWith("admin", "reportViewer", '[{"actions":["find"]}]', '[{"role":"read","db":"shop"}]');
   });

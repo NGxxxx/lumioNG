@@ -1,16 +1,13 @@
 import * as m from "$lib/paraglide/messages";
-import { queryPage, sampleDocuments, deleteDocument, updateOne, fetchFullDoc, countDocuments, deleteMany, exportQueryProgress } from "../api/documents";
-import type { ExportWizardInput } from "../domain/exportPlan";
+import { queryPage, sampleDocuments, fetchFullDoc, countDocuments, exportQueryProgress } from "../api/documents";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
-import { copyToClipboard } from "../clipboard";
 import { idJson } from "../domain/docid";
 import { clipboardTextOf } from "../domain/extjson";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
-import { idInFilter, resolveIds, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
 import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, limitColumnsToDepth, type CollectionSchema, type ColumnField } from "../domain/schema";
-import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, seedModalEditText, commitModalValue, setByPath, buildSetUpdate } from "../domain/celledit";
+import { isInlineEditable, isModalEditable, editTextOf } from "../domain/celledit";
 import { parseFilter } from "../domain/filter";
 import { matchingIndices } from "../domain/search";
 import {
@@ -29,11 +26,17 @@ import type { MenuItem } from "../domain/gridView";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { settings } from "./settings.svelte";
-import { findCmd, updateOneCmd, deleteOneCmd, deleteManyCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
+import { findCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { createCollectionBulk } from "./collectionBulk.svelte";
 import { createQuickSearch } from "./quickSearch.svelte";
 import { createEditBlurFlow } from "./cellEditBlur.svelte";
-import { SHOW_ALL_WARN_THRESHOLD } from "../domain/paging";
+import { createCellEditEntry } from "./cellEditEntry.svelte";
+import { createShowAllFlow } from "./showAllFlow.svelte";
+import { createRowSelection } from "./rowSelection.svelte";
+import { createExportRequest } from "./exportRequest.svelte";
+import { createDeleteFlow } from "./deleteFlow.svelte";
+import { createCommitEditFlow } from "./commitEditFlow.svelte";
+import { createClipboardCopy } from "./clipboardCopy";
 
 /** State and actions for one collection view: data, paging, inline edit, context menu, and delete. */
 export function createCollectionView(sessionId: string, db: string, coll: string) {
@@ -66,30 +69,23 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const pgCount = $derived(pageCount(totalCount, pageSize));
 
   let allShown = $state(false);
-  let showAllPending = $state<number | null>(null);
 
-  let confirmDoc = $state<Doc | null>(null);
+  // Inline/modal cell edit (same factory as the Query tab's result grid).
+  const edit = createCellEditEntry();
 
-  // Inline cell edit
-  let editing = $state<{ row: number; key: string; kind: "inline" | "modal" } | null>(null);
-  let editText = $state("");
-  let editTextLoading = $state(false);
-  let editError = $state<string | null>(null);
-  let saving = $state(false);
+  /** Bump on every navigation/reload: in-flight loads captured the old value and bail out, and any
+   *  open cell edit is dropped — `editing.row` indexes the OLD `docs`, so leaving it open would
+   *  silently rebind the edit box (and the eventual $set) to whatever document lands on that row. */
+  function bumpGeneration(): number {
+    edit.clear();
+    return ++generation;
+  }
 
-  // Context menu
-  let menu = $state<{ x: number; y: number; row: number; key: string; source?: "grid" | "tree" } | null>(null);
-
-  // Row selection (indices into the current page `docs`)
-  let selected = $state<Set<number>>(new Set());
-  let anchor = $state<number | null>(null);
-  const selectedCount = $derived(selected.size);
-  let confirmSelectionDelete = $state<number | null>(null);
-
-  // Export / import I/O
-  let ioError = $state<string | null>(null);
-  let exportRequest = $state<{ kind: "filter" } | { kind: "selection"; count: number } | null>(null);
-  let pendingExportFilter: string | null = "{}";
+  // Row selection (indices into the current page `docs`) -- also owns the right-click context menu.
+  const selection = createRowSelection({
+    getDocs: () => docs,
+    getVisibleIndices: () => visibleIndices,
+  });
 
   // $state, not $derived: mergeColumns() rescans docs, but docs is reassigned on every cell edit too — recompute explicitly only when the doc set actually changes.
   let rawColumnFields = $state<ColumnField[]>([]);
@@ -183,7 +179,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       docs = batch;
       ensureColumns();
       ensureColWidths();
-      clearSelection();
+      selection.clearSelection();
     } catch (e) {
       if (gen !== generation) return;
       error = errorMessage(e);
@@ -214,7 +210,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   async function goToPage(n: number) {
     const target = clampPage(n, pgCount);
     currentPage = target;
-    generation++;
+    bumpGeneration();
     await loadPage();
   }
   const nextPage = () => goToPage(currentPage + 1);
@@ -222,29 +218,18 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const firstPage = () => goToPage(1);
   const lastPage = () => goToPage(pgCount);
 
-  /** Show ALL: totalCount is already kept fresh by refreshCount() on every filter/sort/mutation,
-   *  so gate off it directly instead of re-counting — avoids a redundant round-trip on click. */
-  function requestShowAll(): void | Promise<void> {
-    error = null;
-    if (totalCount > SHOW_ALL_WARN_THRESHOLD) {
-      generation++; // invalidate any other in-flight load — this supersedes it
-      showAllPending = totalCount;
-      return;
-    }
-    return confirmShowAll();
-  }
-
-  /** Fetch all matching docs into the grid (export_query); hides the pager. Self-guarding: bumps
-   *  `generation` so a second call (or any other in-flight load) discards a stale first call. */
-  async function confirmShowAll() {
-    showAllPending = null;
-    loading = true;
-    error = null;
-    generation++;
-    const gen = generation;
-    const startedAt = Date.now();
-    activity.begin(m.status_bar_loading());
-    try {
+  /** Show ALL: fetch every matching doc into the grid (export_query) and hide the pager. totalCount
+   *  is already kept fresh by refreshCount() on every filter/sort/mutation, so the shared flow gates
+   *  off it directly instead of re-counting — avoids a redundant round-trip on click. */
+  const showAll = createShowAllFlow({
+    getTotalCount: () => totalCount,
+    bumpGeneration,
+    currentGeneration: () => generation,
+    setError: (msg) => { error = msg; },
+    setLoading: (v) => { loading = v; },
+    activityLabel: () => m.status_bar_loading(),
+    load: async (stale) => {
+      const startedAt = Date.now();
       const all = await exportQueryProgress(
         sessionId,
         db,
@@ -254,7 +239,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         buildProjection(hidden),
         () => {},
       );
-      if (gen !== generation) return;
+      if (stale()) return;
       commandLog.push(
         findCmd({ coll, filter: appliedFilter, projection: buildProjection(hidden), sort: buildSort(sortKeys) }),
         sessionId,
@@ -263,24 +248,14 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       docs = all;
       ensureColumns();
       ensureColWidths();
-      clearSelection();
+      selection.clearSelection();
       allShown = true;
-    } catch (e) {
-      if (gen !== generation) return;
-      error = errorMessage(e);
-    } finally {
-      if (gen === generation) loading = false;
-      activity.end();
-    }
-  }
-
-  function cancelShowAll() {
-    showAllPending = null;
-  }
+    },
+  });
 
   /** In-place reload (same filter): refresh count and reload the current page (clamped). */
   async function reloadDocs() {
-    generation++;
+    bumpGeneration();
     await refreshCount();
     await loadPage();
   }
@@ -321,7 +296,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   /** Apply a new sortKeys set: reset to page 1 and reload (shared by header-click and dropdown). */
   async function applySortChange(next: SortKey[]) {
     sortKeys = next;
-    generation++;
+    bumpGeneration();
     currentPage = 1;
     await refreshCount();
     await loadPage();
@@ -348,7 +323,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   async function setPageSize(n: number) {
     pageSize = Math.max(1, Math.floor(n) || 50);
-    generation++;
+    bumpGeneration();
     currentPage = 1;
     await loadPage();
   }
@@ -362,7 +337,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     appliedFilter = r.json;
     filterError = null;
     schema = null;
-    generation++;
+    bumpGeneration();
     currentPage = 1;
     await loadSchema();
     await refreshCount();
@@ -371,134 +346,50 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   async function startEdit(row: number, key: string) {
     if (hidden.size > 0) {
+      // Same guard as every other awaiting flow here: a page/filter/sort change during the re-fetch
+      // makes `row` point at a different document, so drop this result instead of writing it back.
+      const gen = generation;
       const fullRow = await fullDocFor(docs[row]);
+      if (gen !== generation) return;
       if (fullRow !== docs[row]) {
         docs[row] = fullRow;
         docs = [...docs];
       }
     }
-    const value = getByPath(docs[row], key);
-    if (isInlineEditable(key, value)) {
-      editing = { row, key, kind: "inline" };
-      editText = editTextOf(value);
-    } else if (isModalEditable(key, value)) {
-      editing = { row, key, kind: "modal" };
-      // Seeding the modal text (stringify of a big nested value) can be slow; show the modal
-      // shell immediately with a loading state, then compute it on the next tick so it can paint first.
-      editText = "";
-      editTextLoading = true;
-      setTimeout(() => {
-        if (editing?.row !== row || editing.key !== key) return; // cancelled/changed before this ran
-        editText = seedModalEditText(value);
-        editTextLoading = false;
-      }, 0);
-    } else {
-      return;
-    }
-    editError = null;
+    edit.begin(row, key, getByPath(docs[row], key));
   }
 
   const editBlur = createEditBlurFlow({
-    getEditing: () => editing,
-    isSaving: () => saving,
-    clearEditing: () => {
-      editing = null;
-      editError = null;
+    getEditing: () => edit.editing,
+    isSaving: () => commitFlow.saving,
+    clearEditing: () => edit.clear(),
+    getEditText: () => edit.editText,
+    getOriginalText: (row, key) => {
+      const d = docs[row];
+      return d ? editTextOf(getByPath(d, key)) : "";
     },
-    getEditText: () => editText,
-    getOriginalText: (row, key) => editTextOf(getByPath(docs[row], key)),
-    commitEdit: () => commitEdit(),
+    commitEdit: () => commitFlow.commitEdit(),
   });
   const cancelEdit = editBlur.cancelEdit;
   const onEditBlur = editBlur.onEditBlur;
   const confirmBlurEdit = editBlur.confirmBlurEdit;
   const discardBlurEdit = editBlur.discardBlurEdit;
 
-  async function commitEdit() {
-    if (!editing || saving) return;
-    const { row, key, kind } = editing;
-    const original = getByPath(docs[row], key);
-    const r = kind === "modal" ? commitModalValue(original, editText) : rebuildValue(original, editText);
-    if (!r.ok) {
-      editError = r.error;
-      return;
-    }
-    const id = idJson(docs[row]);
-    if (id === null) {
-      editError = m.collection_view_no_id_update();
-      return;
-    }
-    // $set only the touched path — a full replaceDocument would re-send every other field too, including any huge untouched sibling.
-    const filter = `{"_id": ${id}}`;
-    const update = buildSetUpdate(key, r.value);
-    saving = true;
-    try {
-      await commandLog.pushTimed(updateOneCmd(coll, filter, update), sessionId, () =>
-        updateOne(sessionId, db, coll, filter, update, false));
-      docs[row] = setByPath(docs[row], key, r.value);
-      docs = [...docs];
-      editing = null;
-      editError = null;
-    } catch (e) {
-      editError = errorMessage(e);
-    } finally {
-      saving = false;
-    }
-  }
-
-  function openMenu(e: MouseEvent, row: number, key: string, source: "grid" | "tree" = "grid") {
-    e.preventDefault();
-    e.stopPropagation();
-    ({ selected, anchor } = selectForMenu({ selected, anchor }, row));
-    menu = { x: e.clientX, y: e.clientY, row, key, source };
-  }
-
-  function closeMenu() {
-    menu = null;
-  }
-
-  function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
-    ({ selected, anchor } = clickRowSelection({ selected, anchor }, row, mods, visibleIndices));
-  }
-
-  function selectAll() {
-    // Same reasoning as clickRow's shift-range: only select rows the search filter is showing.
-    selected = new Set(visibleIndices ?? docs.map((_, i) => i));
-    anchor = docs.length > 0 ? 0 : null;
-  }
-
-  function invertSelection() {
-    const universe = visibleIndices ?? docs.map((_, i) => i);
-    const next = new Set(universe.filter((i) => !selected.has(i)));
-    selected = next;
-    anchor = next.size > 0 ? [...next][0] : null;
-  }
-
-  function clearSelection() {
-    selected = new Set();
-    anchor = null;
-  }
-
-  /** Resolve selected rows to id ExtJSON; reports `missing` if any lacks _id. */
-  function selectedIds(): { ids: string[] } | { missing: true } {
-    return resolveIds(docs, selected);
-  }
-
-  /** Effective selection for right-click: the multi-select if the menu row is in it, else the menu row alone. */
-  function effectiveRows(): number[] {
-    return effectiveRowsOf(menu ? menu.row : null, selected);
-  }
-  function effectiveSelectionCount(): number {
-    return effectiveRows().length;
-  }
-  function effectiveIds(): { ids: string[] } | { missing: true } {
-    return resolveIds(docs, effectiveRows());
-  }
+  const commitFlow = createCommitEditFlow({
+    sessionId,
+    edit,
+    getDocs: () => docs,
+    setDocs: (next) => { docs = next; },
+    getTarget: () => ({ db, coll }),
+    noIdMessage: () => m.collection_view_no_id_update(),
+    currentGeneration: () => generation,
+  });
 
   function menuItems(): MenuItem[] {
+    const menu = selection.menu;
     if (!menu) return [];
     const value = getByPath(docs[menu.row], menu.key);
-    const n = effectiveSelectionCount();
+    const n = selection.effectiveSelectionCount();
     const hasId = idJson(docs[menu.row]) !== null;
     const items: MenuItem[] = [];
     if (n === 1) items.push({ label: m.context_menu_open_document(), action: "open" });
@@ -556,30 +447,29 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   }
 
   function duplicateSelected(): Doc | null {
-    const rows = [...selected];
+    const rows = [...selection.selected];
     if (rows.length !== 1) return null;
     const doc = docs[rows[0]];
     return doc ? duplicateForInsert(doc) : null;
   }
 
-  async function copy(text: string) {
-    if (!(await copyToClipboard(text))) error = m.common_clipboard_failed();
-  }
+  const copy = createClipboardCopy((msg) => { error = msg; });
 
   /** Returns the doc to open for "open", `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate,
    *  or `{ expandFullDepth }` (a tree doc index) for the Tree view's "Expand full depth". */
   function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { expandFullDepth: number } | null {
+    const menu = selection.menu;
     if (!menu) return null;
     const row = menu.row;
     const key = menu.key;
     const doc = docs[row];
-    // menu = null is set AFTER the switch so effectiveRows() (used by requestExport/copySelectedAs) can still read menu.row.
+    // closeMenu() is called AFTER the switch so effectiveRows() (used by requestExport/copySelectedAs) can still read menu.row.
     switch (action) {
       case "open":
-        menu = null;
+        selection.closeMenu();
         return { open: doc };
       case "expandFullDepth":
-        menu = null;
+        selection.closeMenu();
         return { expandFullDepth: row };
       case "refresh":
         reloadDocs();
@@ -600,10 +490,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         copySelectedAs("csv");
         break;
       case "exportSelected":
-        requestExport("selection");
+        exportFlow.requestExport("selection");
         break;
       case "exportFilter":
-        requestExport("filter");
+        exportFlow.requestExport("filter");
         break;
       case "updateSelected":
         bulk.openBulk("update", "selection");
@@ -618,120 +508,56 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         bulk.openBulk("delete", "filter");
         break;
       case "newDoc":
-        menu = null;
-        return { insert: buildSkeleton(rawColumnFields) };
+        selection.closeMenu();
+        return { insert: newDocument() };
       case "duplicate": {
         const dup = doc ? duplicateForInsert(doc) : null;
-        menu = null;
+        selection.closeMenu();
         return dup ? { insert: dup } : null;
       }
       case "editCell":
         startEdit(row, key);
         break;
     }
-    menu = null;
+    selection.closeMenu();
     return null;
   }
 
   const bulk = createCollectionBulk({
     sessionId, db, coll,
     getAppliedFilter: () => appliedFilter,
-    getSelectedIds: selectedIds,
+    getSelectedIds: selection.selectedIds,
     reload: reloadDocs,
   });
 
-  function requestExport(scope: "filter" | "selection") {
-    if (scope === "selection") {
-      const sel = effectiveIds();
-      if ("missing" in sel) { ioError = m.collection_view_selection_missing_id(); return; }
-      pendingExportFilter = idInFilter(sel.ids);
-      exportRequest = { kind: "selection", count: effectiveSelectionCount() };
-    } else {
-      pendingExportFilter = appliedFilter;
-      exportRequest = { kind: "filter" };
-    }
-  }
-  function cancelExport() { exportRequest = null; pendingExportFilter = "{}"; }
+  const exportFlow = createExportRequest({
+    db, coll,
+    getEffectiveIds: selection.effectiveIds,
+    getEffectiveSelectionCount: selection.effectiveSelectionCount,
+    getAppliedFilter: () => appliedFilter,
+    getSortKeys: () => sortKeys,
+    getRawColumnFields: () => rawColumnFields,
+    getHidden: () => hidden,
+  });
 
-  function exportInput(): ExportWizardInput | null {
-    const req = exportRequest;
-    if (!req || pendingExportFilter === null) return null; // defensive; requestExport guards the real case
-    const columns = rawColumnFields.map((c) => ({
-      path: c.path,
-      visible: !hidden.has(c.path) && ![...hidden].some((h) => c.path.startsWith(h + ".")),
-      type: c.type,
-    }));
-    const filter = pendingExportFilter;
-    const sort = req.kind === "filter" ? buildSort(sortKeys) : null;
-    const summary = req.kind === "selection"
-      ? (req.count === 1
-          ? m.export_dialog_summary_selection_one({ count: req.count })
-          : m.export_dialog_summary_selection_many({ count: req.count }))
-      : m.export_dialog_summary_filter();
-    return { mode: "scopedCollection", db, coll, filter, sort, columns, summary };
+  const deleteFlow = createDeleteFlow({
+    sessionId, db, coll,
+    getSelectedIds: selection.selectedIds,
+    setError: (msg) => { error = msg; },
+    setLoading: (v) => { loading = v; },
+    reload: reloadDocs,
+  });
+
+  /** Wraps deleteFlow's count-based confirm so the context menu / toolbar can call it with no args. */
+  function requestDeleteSelected() {
+    deleteFlow.requestDeleteSelected(selection.selectedCount);
   }
 
   async function copySelectedAs(format: "json" | "csv") {
-    const rows = effectiveRows();
+    const rows = selection.effectiveRows();
     const picked = rows.map((r) => docs[r]).filter(Boolean);
     const text = format === "json" ? toJsonArray(picked) : toCsv(picked);
     await copy(text);
-  }
-
-  function requestDeleteSelected() {
-    if (selected.size === 0) return;
-    confirmSelectionDelete = selected.size;
-  }
-
-  function cancelDeleteSelected() {
-    confirmSelectionDelete = null;
-  }
-
-  async function confirmDeleteSelected() {
-    confirmSelectionDelete = null;
-    const sel = selectedIds();
-    if ("missing" in sel) {
-      error = m.collection_view_selection_missing_id_delete();
-      return;
-    }
-    const filter = idInFilter(sel.ids);
-    loading = true;
-    try {
-      await commandLog.pushTimed(deleteManyCmd(coll, filter), sessionId, () =>
-        deleteMany(sessionId, db, coll, filter, false));
-      await reloadDocs(); // reloadDocs → loadPage → clearSelection (owns clearing `loading`)
-    } catch (e) {
-      error = errorMessage(e);
-      loading = false;
-    }
-  }
-
-  function requestDelete(doc: Doc) {
-    confirmDoc = doc;
-  }
-
-  function cancelDelete() {
-    confirmDoc = null;
-  }
-
-  async function confirmDelete() {
-    const d = confirmDoc;
-    confirmDoc = null;
-    if (!d) return;
-    const id = idJson(d);
-    if (id === null) {
-      error = m.collection_view_no_id_delete();
-      return;
-    }
-    loading = true;
-    try {
-      await commandLog.pushTimed(deleteOneCmd(coll, id), sessionId, () =>
-        deleteDocument(sessionId, db, coll, id));
-      await reloadDocs(); // owns clearing `loading`
-    } catch (e) {
-      error = errorMessage(e);
-      loading = false;
-    }
   }
 
   return {
@@ -754,10 +580,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get pageCount() { return pgCount; },
     get totalCount() { return totalCount; },
     get allShown() { return allShown; },
-    get showAllPending() { return showAllPending; },
-    requestShowAll,
-    confirmShowAll,
-    cancelShowAll,
+    get showAllPending() { return showAll.showAllPending; },
+    requestShowAll: showAll.requestShowAll,
+    confirmShowAll: showAll.confirmShowAll,
+    cancelShowAll: showAll.cancelShowAll,
     get filterText() {
       return filterText;
     },
@@ -781,44 +607,44 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       return visibleIndices;
     },
     get confirmDoc() {
-      return confirmDoc;
+      return deleteFlow.confirmDoc;
     },
     get editing() {
-      return editing;
+      return edit.editing;
     },
     get editText() {
-      return editText;
+      return edit.editText;
     },
     set editText(v: string) {
-      editText = v;
+      edit.editText = v;
     },
     get editTextLoading() {
-      return editTextLoading;
+      return edit.editTextLoading;
     },
     get editError() {
-      return editError;
+      return edit.editError;
     },
     get editBlurPending() { return editBlur.editBlurPending; },
     onEditBlur,
     confirmBlurEdit,
     discardBlurEdit,
     get saving() {
-      return saving;
+      return commitFlow.saving;
     },
     get menu() {
-      return menu;
+      return selection.menu;
     },
-    get selected() { return selected; },
-    get selectedCount() { return selectedCount; },
-    get confirmSelectionDelete() { return confirmSelectionDelete; },
-    clickRow,
-    selectAll,
-    invertSelection,
-    clearSelection,
-    selectedIds,
+    get selected() { return selection.selected; },
+    get selectedCount() { return selection.selectedCount; },
+    get confirmSelectionDelete() { return deleteFlow.confirmSelectionDelete; },
+    clickRow: selection.clickRow,
+    selectAll: selection.selectAll,
+    invertSelection: selection.invertSelection,
+    clearSelection: selection.clearSelection,
+    selectedIds: selection.selectedIds,
     requestDeleteSelected,
-    cancelDeleteSelected,
-    confirmDeleteSelected,
+    cancelDeleteSelected: deleteFlow.cancelDeleteSelected,
+    confirmDeleteSelected: deleteFlow.confirmDeleteSelected,
     get sortKeys() {
       return sortKeys;
     },
@@ -863,14 +689,14 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     init,
     startEdit,
     cancelEdit,
-    commitEdit,
-    openMenu,
-    closeMenu,
+    commitEdit: commitFlow.commitEdit,
+    openMenu: selection.openMenu,
+    closeMenu: selection.closeMenu,
     menuItems,
     onMenuSelect,
-    requestDelete,
-    cancelDelete,
-    confirmDelete,
+    requestDelete: deleteFlow.requestDelete,
+    cancelDelete: deleteFlow.cancelDelete,
+    confirmDelete: deleteFlow.confirmDelete,
     copy,
     get appliedFilter() { return appliedFilter; },
     get bulkMode() { return bulk.bulkMode; },
@@ -891,12 +717,12 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     closeBulk: bulk.closeBulk,
     countBulk: bulk.countBulk,
     runBulk: bulk.runBulk,
-    get ioError() { return ioError; },
-    get exportRequest() { return exportRequest; },
-    requestExport,
-    cancelExport,
-    exportInput,
-    effectiveSelectionCount,
+    get ioError() { return exportFlow.ioError; },
+    get exportRequest() { return exportFlow.exportRequest; },
+    requestExport: exportFlow.requestExport,
+    cancelExport: exportFlow.cancelExport,
+    exportInput: exportFlow.exportInput,
+    effectiveSelectionCount: selection.effectiveSelectionCount,
     copySelectedAs,
     newDocument,
     duplicateSelected,

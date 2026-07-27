@@ -9,17 +9,15 @@ import {
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { collStatsCmd, setValidatorCmd } from "../domain/mongosh";
+import { createAsyncGuard } from "./asyncGuard.svelte";
 
 /** State and loader for the collection Info tab. Components only render. */
 export function createCollectionInfo(sessionId: string, db: string, coll: string) {
   let stats = $state<CollStatsInfo | null>(null);
   let options = $state<CollOptionsInfo | null>(null);
-  let error = $state<string | null>(null);
-  let loading = $state(false);
   let validatorSaving = $state(false);
   let validatorError = $state<string | null>(null);
-  /** Bumped on every refresh() call so a slower, superseded call can't overwrite fresher state. */
-  let generation = 0;
+  const guard = createAsyncGuard();
 
   /** `validatorJson: "{}"` clears the validator. Reloads options on success so the read-only view reflects it immediately. */
   async function saveValidator(validatorJson: string, validationLevel: string, validationAction: string) {
@@ -42,20 +40,19 @@ export function createCollectionInfo(sessionId: string, db: string, coll: string
   }
 
   async function refresh() {
-    loading = true;
-    const gen = ++generation;
+    const gen = guard.begin();
     try {
       const [s, o] = await commandLog.pushTimed(collStatsCmd(coll), sessionId, () =>
         Promise.all([collStats(sessionId, db, coll), collOptions(sessionId, db, coll)]));
-      if (gen !== generation) return;
+      if (!guard.isCurrent(gen)) return;
       stats = parseCollStats(s);
       options = parseCollOptions(o);
-      error = null;
+      guard.setError(null);
     } catch (e) {
-      if (gen !== generation) return;
-      error = errorMessage(e);
+      if (!guard.isCurrent(gen)) return;
+      guard.setError(errorMessage(e));
     } finally {
-      if (gen === generation) loading = false;
+      guard.finish(gen);
     }
   }
 
@@ -67,10 +64,10 @@ export function createCollectionInfo(sessionId: string, db: string, coll: string
       return options;
     },
     get error() {
-      return error;
+      return guard.error;
     },
     get loading() {
-      return loading;
+      return guard.loading;
     },
     get validatorSaving() {
       return validatorSaving;

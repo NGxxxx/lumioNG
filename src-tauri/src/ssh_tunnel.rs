@@ -5,9 +5,16 @@ use russh::client::{self, Handle};
 use russh_keys::key::PublicKey;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
+
+/// `Mutex::lock` that recovers the guard from a poisoned lock. Every critical section here is a
+/// single assignment/push/drain that leaves no half-updated invariant behind, so a panic elsewhere
+/// must not permanently wedge the tunnel with `unwrap()` panics.
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// Frontend-supplied SSH tunnel config; secrets are plaintext on this wire (obfuscation only applies to the persisted registry copy).
 #[derive(Debug, Clone, Deserialize)]
@@ -52,7 +59,7 @@ impl client::Handler for ClientHandler {
         // A corrupt/unreadable store must fail closed (reject), not silently fall back to trusting
         // everything — that would defeat the whole point of pinning.
         let Ok(list) = known_hosts::load(&self.known_hosts_path) else {
-            *self.mismatch.lock().unwrap() = Some(HostKeyMismatch {
+            *lock(&self.mismatch) = Some(HostKeyMismatch {
                 previous_key_type: "?".into(),
                 previous_fingerprint: "(could not read known_hosts store)".into(),
                 presented_key_type: key_type,
@@ -71,7 +78,7 @@ impl client::Handler for ClientHandler {
                 Ok(true)
             }
             Verdict::Mismatch { previous_key_type, previous_fingerprint } => {
-                *self.mismatch.lock().unwrap() = Some(HostKeyMismatch {
+                *lock(&self.mismatch) = Some(HostKeyMismatch {
                     previous_key_type,
                     previous_fingerprint,
                     presented_key_type: key_type,
@@ -94,7 +101,7 @@ pub struct SshTunnelHandle {
 impl Drop for SshTunnelHandle {
     fn drop(&mut self) {
         self.task.abort();
-        for handle in self.forwards.lock().unwrap().drain(..) {
+        for handle in lock(&self.forwards).drain(..) {
             handle.abort();
         }
     }
@@ -116,7 +123,7 @@ pub async fn open(
     };
     let mut session = client::connect(config, (cfg.host.as_str(), cfg.port), handler)
         .await
-        .map_err(|e| match mismatch.lock().unwrap().take() {
+        .map_err(|e| match lock(&mismatch).take() {
             Some(m) => AppError::SshTunnel(format!(
                 "SSH host key for {}:{} does not match the previously trusted key (expected {} fingerprint {}, got {} fingerprint {}). This could mean the server was reinstalled, or that the connection is being intercepted. If you trust this host, use \"Forget host key\" in the connection settings and reconnect.",
                 cfg.host, cfg.port, m.previous_key_type, m.previous_fingerprint, m.presented_key_type, m.presented_fingerprint
@@ -178,7 +185,7 @@ pub async fn open(
                     eprintln!("ssh tunnel: forward to {remote_host}:{remote_port} failed: {e}");
                 }
             });
-            let mut guard = forwards_for_loop.lock().unwrap();
+            let mut guard = lock(&forwards_for_loop);
             guard.retain(|h| !h.is_finished());
             guard.push(handle);
         }
@@ -515,7 +522,7 @@ mod tests {
         conn.read_exact(&mut buf).await.unwrap();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
 
-        let n = tunnel.forwards.lock().unwrap().len();
+        let n = lock(&tunnel.forwards).len();
         assert!(n <= 1, "expected finished forward handles to be reaped, got {n} entries");
     }
 

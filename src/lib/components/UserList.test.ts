@@ -79,10 +79,11 @@ describe("UserList", () => {
     const view = makeView({
       users: [{ user: "alice", db: "admin", roles: [{ role: "read", db: "shop" }] }],
     });
-    const { getByText, container } = render(UserList, { props: { view, readOnly: false } });
+    const { getByText, baseElement } = render(UserList, { props: { view, readOnly: false } });
     await fireEvent.click(getByText("Edit roles"));
     // CodeEditor has no form label; verify the pre-filled JSON rendered into the CodeMirror content.
-    expect(container.textContent).toContain('"role":"read"');
+    // baseElement, not container: the shared Modal portals the dialog to document.body.
+    expect(baseElement.textContent).toContain('"role":"read"');
     await fireEvent.click(getByText("Save"));
     expect(view.updateUserRoles).toHaveBeenCalledWith("admin", "alice", '[{"role":"read","db":"shop"}]');
   });

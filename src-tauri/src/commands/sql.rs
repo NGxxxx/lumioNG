@@ -93,7 +93,13 @@ pub struct SqlImportCommitResult {
 
 const SQL_IMPORT_BATCH: usize = 1000;
 
-/// Streams the SQL file, buffering each table's rows across statements and flushing at `SQL_IMPORT_BATCH`.
+/// Rows buffered across *all* tables before every non-empty buffer is flushed. A dump with hundreds
+/// of small tables never reaches `SQL_IMPORT_BATCH` on any single table, so without this cap the
+/// whole dump would sit in memory until EOF.
+const SQL_IMPORT_MAX_BUFFERED_ROWS: usize = 5000;
+
+/// Streams the SQL file, buffering each table's rows across statements and flushing at `SQL_IMPORT_BATCH`
+/// per table or `SQL_IMPORT_MAX_BUFFERED_ROWS` in total.
 fn spawn_sql_producer(
     path: String,
     tables: Vec<String>,
@@ -111,6 +117,7 @@ fn spawn_sql_producer(
         };
         let mut scanner = SqlStatementReader::new(reader);
         let mut buffers: HashMap<String, Vec<Document>> = HashMap::new();
+        let mut buffered_total: usize = 0;
         loop {
             let text = match scanner.next_statement() {
                 Ok(Some(t)) => t,
@@ -133,9 +140,32 @@ fn spawn_sql_producer(
             let buffer = buffers.entry(table.clone()).or_default();
             for row in rows {
                 buffer.push(row_to_document(&cols, row, &infer_opts));
+                buffered_total += 1;
                 if buffer.len() >= SQL_IMPORT_BATCH {
-                    if tx.blocking_send(Ok((table.clone(), std::mem::take(buffer)))).is_err() {
+                    let batch = std::mem::take(buffer);
+                    buffered_total -= batch.len();
+                    if tx.blocking_send(Ok((table.clone(), batch))).is_err() {
                         return; // consumer dropped rx (StopOnFirstError-style early exit)
+                    }
+                }
+            }
+            // Bound total memory: flush the largest buffers first, down to a low-water mark (not
+            // every table) so a many-small-tables dump doesn't turn into tiny per-table inserts.
+            if buffered_total >= SQL_IMPORT_MAX_BUFFERED_ROWS {
+                let mut by_size: Vec<String> = buffers
+                    .iter()
+                    .filter(|(_, b)| !b.is_empty())
+                    .map(|(t, _)| t.clone())
+                    .collect();
+                by_size.sort_by_key(|t| std::cmp::Reverse(buffers[t].len()));
+                for buffered_table in by_size {
+                    if buffered_total < SQL_IMPORT_MAX_BUFFERED_ROWS / 2 {
+                        break;
+                    }
+                    let batch = std::mem::take(buffers.get_mut(&buffered_table).unwrap());
+                    buffered_total -= batch.len();
+                    if tx.blocking_send(Ok((buffered_table, batch))).is_err() {
+                        return;
                     }
                 }
             }
@@ -271,6 +301,69 @@ mod tests {
         }
         assert_eq!(total_docs, 5);
         assert_eq!(messages, 1, "5 single-row INSERT statements should coalesce into 1 batch, not 5 round trips");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// Many tables each below `SQL_IMPORT_BATCH` must still flush mid-scan, otherwise the whole
+    /// dump is resident before the first row reaches the consumer.
+    #[tokio::test]
+    async fn many_small_tables_flush_before_eof_instead_of_buffering_the_whole_dump() {
+        const TABLES: usize = 10;
+        const ROUNDS: usize = 6;
+        const ROWS_PER_STATEMENT: usize = 100;
+
+        let dir = std::env::temp_dir().join("monglumio_test_sql_producer_total_cap");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("dump.sql");
+
+        let mut sql = String::new();
+        for t in 0..TABLES {
+            sql.push_str(&format!("CREATE TABLE t{t} (a INT);\n"));
+        }
+        // Round-robin over the tables so no single table ever reaches SQL_IMPORT_BATCH (600 rows each).
+        for round in 0..ROUNDS {
+            for t in 0..TABLES {
+                let values: Vec<String> = (0..ROWS_PER_STATEMENT)
+                    .map(|i| format!("({})", round * ROWS_PER_STATEMENT + i))
+                    .collect();
+                sql.push_str(&format!("INSERT INTO t{t} (a) VALUES {};\n", values.join(", ")));
+            }
+        }
+        std::fs::write(&path, &sql).unwrap();
+
+        let mut columns_by_table = HashMap::new();
+        let tables: Vec<String> = (0..TABLES).map(|t| format!("t{t}")).collect();
+        for table in &tables {
+            columns_by_table.insert(table.clone(), vec!["a".to_string()]);
+        }
+        let infer_opts = InferOptions { parse_json_like: true, infer_scalars: true };
+        let mut rx = spawn_sql_producer(
+            path.to_string_lossy().to_string(),
+            tables.clone(),
+            columns_by_table,
+            infer_opts,
+        );
+
+        let mut messages = 0;
+        let mut total_docs = 0;
+        let mut t0_values: Vec<i64> = Vec::new();
+        while let Some(msg) = rx.recv().await {
+            let (table, batch) = msg.unwrap();
+            messages += 1;
+            total_docs += batch.len();
+            if table == "t0" {
+                t0_values.extend(batch.iter().map(|d| d.get_i64("a").unwrap()));
+            }
+        }
+
+        assert_eq!(total_docs, TABLES * ROUNDS * ROWS_PER_STATEMENT);
+        assert!(
+            messages > TABLES,
+            "expected at least one mid-scan flush per table beyond the final drain, got {messages} messages"
+        );
+        // A table split across flushes must still arrive in insert order.
+        assert_eq!(t0_values, (0..(ROUNDS * ROWS_PER_STATEMENT) as i64).collect::<Vec<_>>());
 
         let _ = std::fs::remove_file(&path);
     }

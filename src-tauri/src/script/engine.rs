@@ -152,7 +152,9 @@ pub fn classify(finalized_json: &str, console: Vec<ConsoleEntry>, cap: usize) ->
     ScriptOutcome { console, result, provenance, capped, error: None, explain_hint }
 }
 
-/// Run `script` on a dedicated OS thread with the given MongoDB client and Tokio handle, returning a `ScriptOutcome` regardless of success or failure.
+/// Run `script` synchronously with the given MongoDB client and Tokio handle, returning a `ScriptOutcome`
+/// regardless of success or failure. Blocking and `!Send` (QuickJS `Runtime`/`Context`), so callers must
+/// already be on a dedicated blocking thread -- `commands::script::run_script` uses `spawn_blocking`.
 pub fn run(
     client: Client,
     handle: Handle,
@@ -170,7 +172,9 @@ pub fn run(
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    let result = std::thread::spawn(move || {
+    // Runs inline on the caller's blocking thread; `catch_unwind` keeps a QuickJS panic from
+    // taking down that thread, the way the previous `thread::spawn(..).join()` did.
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let rt = Runtime::new().map_err(|e| e.to_string())?;
 
         // 256 MB memory limit
@@ -244,11 +248,8 @@ pub fn run(
                 }),
             }
         })
-    })
-    .join()
-    .unwrap_or_else(|_| {
-        Err("script thread panicked".to_string())
-    });
+    }))
+    .unwrap_or_else(|_| Err("script execution panicked".to_string()));
 
     result.unwrap_or_else(|msg| ScriptOutcome {
         console: vec![],

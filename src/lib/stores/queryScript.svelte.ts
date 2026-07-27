@@ -1,33 +1,37 @@
 import { untrack } from "svelte";
-import { copyToClipboard } from "../clipboard";
 import { runScript, cancelScript, type ConsoleEntry, type Provenance, type ExplainHint } from "../api/script";
 import { sampleDocuments, queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
 import { mergeColumns, inferSchema, getByPath, limitColumnsToDepth, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
-import { pageCount, clampPage, SHOW_ALL_WARN_THRESHOLD } from "../domain/paging";
+import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { scanDestructive, scanCritical } from "../domain/scriptScan";
 import { matchingIndices } from "../domain/search";
 import { settings } from "./settings.svelte";
 import { createQuickSearch } from "./quickSearch.svelte";
 import { createEditBlurFlow } from "./cellEditBlur.svelte";
-import { updateOne, deleteMany } from "../api/documents";
+import { createCellEditEntry } from "./cellEditEntry.svelte";
+import { createShowAllFlow } from "./showAllFlow.svelte";
+import { deleteMany } from "../api/documents";
 import { createIndex } from "../api/indexes";
 import { summarizeExplain, type ExplainSummary } from "../domain/explainPlan";
 import { suggestIndex } from "../domain/indexAdvisor";
 import { idJson } from "../domain/docid";
 import { clipboardTextOf } from "../domain/extjson";
-import { isInlineEditable, isModalEditable, editTextOf, rebuildValue, seedModalEditText, commitModalValue, buildSetUpdate, setByPath } from "../domain/celledit";
+import { isInlineEditable, isModalEditable, editTextOf, setByPath } from "../domain/celledit";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { updateOneCmd, deleteManyCmd } from "../domain/mongosh";
+import { deleteManyCmd } from "../domain/mongosh";
 import * as m from "$lib/paraglide/messages";
-import { idInFilter, effectiveRows as effectiveRowsOf, clickRowSelection, selectForMenu } from "../domain/selection";
+import { idInFilter } from "../domain/selection";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import type { MenuItem } from "../domain/gridView";
+import { createRowSelection } from "./rowSelection.svelte";
+import { createCommitEditFlow } from "./commitEditFlow.svelte";
+import { createClipboardCopy } from "./clipboardCopy";
 
 /** Per-tab state for one QuickJS Query tab: run script + client-side paging + column widths. */
 export function createQueryScript(sessionId: string, initialStatement: string) {
@@ -87,7 +91,6 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let pageReq = $state(1);
   let showingAll = $state(false);
   let totalCount = $state(0);
-  let showAllPending = $state<number | null>(null);
   // Guards against overlapping in-flight paged-mode fetches (double-click nextPage, fast page-jump typing, etc.), same pattern as collectionView.svelte.ts.
   let generation = 0;
 
@@ -97,17 +100,24 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let criticalConfirm = $state<{ ops: string[] } | null>(null);
   let pending: { db: string; script: string } | null = null;
 
-  // Inline cell edit (row index is relative to the CURRENT PAGE's `docs`, in both modes).
-  let editing = $state<{ row: number; key: string; kind: "inline" | "modal" } | null>(null);
-  let editText = $state("");
-  let editTextLoading = $state(false);
-  let editError = $state<string | null>(null);
-  let saving = $state(false);
+  // Inline/modal cell edit (row index is relative to the CURRENT PAGE's `docs`, in both modes);
+  // same factory as the collection grid.
+  const edit = createCellEditEntry();
 
-  // Row selection (indices into the current page's `docs`).
-  let selected = $state<Set<number>>(new Set());
-  let anchor: number | null = null;
-  let menu = $state<{ x: number; y: number; row: number; key: string; source?: "grid" | "tree" } | null>(null);
+  /** Bump on every run/navigation/reload: in-flight fetches captured the old value and bail out, and
+   *  any open cell edit is dropped — `editing.row` indexes the OLD page's `docs`, so leaving it open
+   *  would silently rebind the edit box (and the eventual $set) to a different document. */
+  function bumpGeneration(): number {
+    edit.clear();
+    return ++generation;
+  }
+
+  // Row selection (indices into the current page's `docs`) — shared with collectionView.svelte.ts's
+  // Data tab; also owns the right-click context menu.
+  const selection = createRowSelection({
+    getDocs: () => docs,
+    getVisibleIndices: () => visibleIndices,
+  });
   let ioError = $state<string | null>(null);
   let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
   let exportRequest = $state<{ rows: Doc[] } | null>(null);
@@ -278,10 +288,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   async function execute(db: string, script: string) {
     running = true;
     error = null;
-    selected = new Set();
-    anchor = null;
-    menu = null;
-    editing = null;
+    selection.clearSelection();
+    selection.closeMenu();
     showingAll = false;
     pageReq = 1;
     recipe = null;
@@ -291,8 +299,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     explainPrevSummary = null;
     explainLoading = false;
     explainError = null;
-    showAllPending = null;
-    generation++; // invalidate any still in-flight paged fetch from before this fresh run
+    showAll.cancelShowAll();
+    bumpGeneration(); // invalidate any still in-flight paged fetch (and drop any open cell edit) from before this fresh run
     const startedAt = Date.now();
     activity.begin(m.status_bar_running_query());
     try {
@@ -442,57 +450,36 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   /** Show ALL: totalCount is already fetched right after execute() (both "paged" and "static"
-   *  modes), so gate off it directly instead of re-counting — avoids a redundant round-trip. */
-  function requestShowAll(): void | Promise<void> {
-    if (recipe && recipe.fixedLimit !== null) return; // fixed-limit results have no show-all
-    editing = null;
-    error = null;
-    if (totalCount > SHOW_ALL_WARN_THRESHOLD) {
-      generation++; // invalidate any other in-flight load — this supersedes it
-      showAllPending = totalCount;
-      return;
-    }
-    return confirmShowAll();
-  }
-
-  /** Self-guarding: bumps `generation` so a second call (or any other in-flight load) discards
-   *  a stale first call. */
-  async function confirmShowAll() {
-    showAllPending = null;
-    editing = null;
-    showingAll = true;
-    if (recipe) {
-      const r = recipe;
-      generation++;
-      const gen = generation;
-      loading = true;
-      try {
-        const result = await fetchPagedPage(r, r.baseSkip, totalCount);
-        if (gen !== generation) return;
-        docs = result;
-        fullDocs = docs;
-      } catch (e) {
-        if (gen !== generation) return;
-        error = errorMessage(e);
-        showingAll = false;
-      } finally {
-        if (gen === generation) loading = false;
+   *  modes), so the shared flow gates off it directly instead of re-counting — avoids a redundant
+   *  round-trip. `showingAll` only flips once the rows are actually in hand, so a superseded or
+   *  failed fetch leaves the pager exactly as it was. */
+  const showAll = createShowAllFlow({
+    getTotalCount: () => totalCount,
+    bumpGeneration,
+    currentGeneration: () => generation,
+    canShowAll: () => !(recipe && recipe.fixedLimit !== null), // fixed-limit results have no show-all
+    setError: (msg) => { error = msg; },
+    setLoading: (v) => { loading = v; },
+    load: async (stale) => {
+      if (!recipe) {
+        docs = fullDocs; // already fully materialized (static mode) — instant, no round-trip
+        showingAll = true;
+        return;
       }
-    } else {
-      docs = fullDocs; // already fully materialized (static mode) — instant, no round-trip
-    }
-  }
-
-  function cancelShowAll() {
-    showAllPending = null;
-  }
+      const r = recipe;
+      const result = await fetchPagedPage(r, r.baseSkip, totalCount);
+      if (stale()) return;
+      docs = result;
+      fullDocs = docs;
+      showingAll = true;
+    },
+  });
 
   async function goToPage(p: number) {
     if (recipe && recipe.fixedLimit !== null) return; // fixed-limit results have no pager
-    editing = null;
     showingAll = false; // every page-navigation action unconditionally exits show-all mode
     pageReq = clampPage(p, pgCount);
-    generation++;
+    bumpGeneration();
     if (recipe) await loadPagedCurrentPage();
     else docs = fullDocs.slice((page - 1) * pageSize, (page - 1) * pageSize + pageSize);
   }
@@ -506,11 +493,9 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
    *  single query left to re-run) has nothing safe to re-fetch, so callers must gate on `recipe`. */
   async function refreshResults() {
     if (!recipe) return;
-    editing = null;
     const r = recipe;
-    generation++;
+    const gen = bumpGeneration();
     if (r.fixedLimit === null) {
-      const gen = generation;
       const total = await countPaged(r);
       if (gen !== generation) return;
       totalCount = total;
@@ -521,11 +506,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
 
   async function setPageSize(n: number) {
     if (recipe && recipe.fixedLimit !== null) return;
-    editing = null;
     showingAll = false; // changing page size always exits show-all mode
     pageSize = Math.max(1, Math.floor(n) || 50);
     pageReq = 1;
-    generation++;
+    bumpGeneration();
     if (recipe) await loadPagedCurrentPage();
     else docs = fullDocs.slice(0, pageSize);
   }
@@ -534,105 +518,53 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     if (!isEditable()) return;
     const doc = docs[row];
     if (!doc || idJson(doc) === null) return;
-    const value = getByPath(doc, key);
-    if (isInlineEditable(key, value)) {
-      editing = { row, key, kind: "inline" };
-      editText = editTextOf(value);
-    } else if (isModalEditable(key, value)) {
-      editing = { row, key, kind: "modal" };
-      // Seeding the modal text (stringify of a big nested value) can be slow; show the modal
-      // shell immediately with a loading state, then compute it on the next tick so it can paint first.
-      editText = "";
-      editTextLoading = true;
-      setTimeout(() => {
-        if (editing?.row !== row || editing.key !== key) return; // cancelled/changed before this ran
-        editText = seedModalEditText(value);
-        editTextLoading = false;
-      }, 0);
-    } else {
-      return;
-    }
-    editError = null;
+    edit.begin(row, key, getByPath(doc, key));
   }
 
   const editBlur = createEditBlurFlow({
-    getEditing: () => editing,
-    isSaving: () => saving,
-    clearEditing: () => {
-      editing = null;
-      editError = null;
-    },
-    getEditText: () => editText,
+    getEditing: () => edit.editing,
+    isSaving: () => commitFlow.saving,
+    clearEditing: () => edit.clear(),
+    getEditText: () => edit.editText,
     getOriginalText: (row, key) => {
       const doc = docs[row];
       return doc ? editTextOf(getByPath(doc, key)) : "";
     },
-    commitEdit: () => commitEdit(),
+    commitEdit: () => commitFlow.commitEdit(),
   });
   const cancelEdit = editBlur.cancelEdit;
   const onEditBlur = editBlur.onEditBlur;
   const confirmBlurEdit = editBlur.confirmBlurEdit;
   const discardBlurEdit = editBlur.discardBlurEdit;
 
-  async function commitEdit() {
-    if (!editing || saving || !provenance) return;
-    const prov = provenance;
-    const { row, key, kind } = editing;
-    const doc = docs[row];
-    if (!doc) { editing = null; return; }
-    const original = getByPath(doc, key);
-    const r = kind === "modal" ? commitModalValue(original, editText) : rebuildValue(original, editText);
-    if (!r.ok) { editError = r.error; return; }
-    const id = idJson(doc);
-    if (id === null) { editError = m.query_run_selection_missing_id(); return; }
-    const filter = `{"_id": ${id}}`;
-    const update = buildSetUpdate(key, r.value);
-    saving = true;
-    try {
-      await commandLog.pushTimed(updateOneCmd(prov.coll, filter, update), sessionId, () =>
-        updateOne(sessionId, prov.db, prov.coll, filter, update, false));
-      docs[row] = setByPath(docs[row], key, r.value);
-      docs = [...docs];
-      if (!recipe) fullDocs = fullDocs.map((d) => (idJson(d) === id ? setByPath(d, key, r.value) : d));
-      editing = null;
-      editError = null;
-    } catch (e) {
-      editError = errorMessage(e);
-    } finally {
-      saving = false;
-    }
-  }
-
-  function clickRow(row: number, mods: { ctrl: boolean; shift: boolean }) {
-    ({ selected, anchor } = clickRowSelection({ selected, anchor }, row, mods, visibleIndices));
-  }
-
-  function invertSelection() {
-    const universe = visibleIndices ?? docs.map((_, i) => i);
-    const next = new Set(universe.filter((i) => !selected.has(i)));
-    selected = next;
-    anchor = next.size > 0 ? [...next][0] : null;
-  }
-
-  function openMenu(e: MouseEvent, row: number, key: string, source: "grid" | "tree" = "grid") {
-    e.preventDefault(); e.stopPropagation();
-    ({ selected, anchor } = selectForMenu({ selected, anchor }, row));
-    menu = { x: e.clientX, y: e.clientY, row, key, source };
-  }
-
-  function closeMenu() { menu = null; }
-
-  function effectiveRows(): number[] {
-    return effectiveRowsOf(menu ? menu.row : null, selected);
-  }
+  const commitFlow = createCommitEditFlow({
+    sessionId,
+    edit,
+    getDocs: () => docs,
+    setDocs: (next) => { docs = next; },
+    getTarget: () => (provenance ? { db: provenance.db, coll: provenance.coll } : null),
+    noIdMessage: () => m.query_run_selection_missing_id(),
+    currentGeneration: () => generation,
+    // Static ("materialized") mode keeps a second copy of the full result in `fullDocs`, of which
+    // `docs` is just a page slice (or the same array when `showingAll`) -- patch it by the same
+    // index instead of a linear idJson() scan over the whole result set on every edit.
+    onCommitted: (row, key, value) => {
+      if (recipe) return;
+      const idx = showingAll ? row : (page - 1) * pageSize + row;
+      if (idx < 0 || idx >= fullDocs.length) return;
+      fullDocs[idx] = setByPath(fullDocs[idx], key, value);
+      fullDocs = [...fullDocs];
+    },
+  });
 
   function menuItems(): MenuItem[] {
+    const menu = selection.menu;
     if (!menu) return [];
     const doc = docs[menu.row];
-    const n = effectiveRows().length;
+    const n = selection.effectiveRows().length;
     const hasId = doc ? idJson(doc) !== null : false;
     const editable = isEditable();
-    const allHaveId = effectiveRows().every((r) => { const d = docs[r]; return d ? idJson(d) !== null : false; });
+    const allHaveId = selection.effectiveRows().every((r) => { const d = docs[r]; return d ? idJson(d) !== null : false; });
     const items: MenuItem[] = [];
     if (editable) {
       items.push({ label: m.context_menu_open_document(), action: "open", disabled: !hasId || n !== 1 });
@@ -668,21 +600,20 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     return items;
   }
 
-  async function copy(text: string) {
-    if (!(await copyToClipboard(text))) ioError = m.common_clipboard_failed();
-  }
+  const copy = createClipboardCopy((msg) => { ioError = msg; });
 
   function onMenuSelect(action: string): { open: Doc } | { expandFullDepth: number } | null {
+    const menu = selection.menu;
     if (!menu) return null;
     const doc = docs[menu.row];
     const key = menu.key;
-    const rows = effectiveRows();
+    const rows = selection.effectiveRows();
     const picked = rows.map((r) => docs[r]).filter(Boolean) as Doc[];
     switch (action) {
-      case "open": menu = null; return doc ? { open: doc } : null;
-      case "expandFullDepth": { const r = menu.row; menu = null; return { expandFullDepth: r }; }
+      case "open": selection.closeMenu(); return doc ? { open: doc } : null;
+      case "expandFullDepth": { const r = menu.row; selection.closeMenu(); return { expandFullDepth: r }; }
       case "refresh": refreshResults(); break;
-      case "editCell": { const r = menu.row; const k = menu.key; menu = null; startEdit(r, k); return null; }
+      case "editCell": { const r = menu.row; const k = menu.key; selection.closeMenu(); startEdit(r, k); return null; }
       case "copyValue": copy(clipboardTextOf(getByPath(doc, key))); break;
       case "copyPath": copy(key); break;
       case "copyId": copy(idJson(doc) ?? ""); break;
@@ -692,7 +623,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       case "exportAll": exportRequest = { rows: docs }; break;
       case "deleteSelected": requestDelete(picked); break;
     }
-    menu = null;
+    selection.closeMenu();
     return null;
   }
 
@@ -712,21 +643,21 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   /** The single selected row's doc, editable only when the result is a live grid-editable
    *  cursor (has a real db/coll `provenance`) and the doc carries an `_id`. */
   function getSelectedForEdit(): Doc | null {
-    if (!isEditable() || selected.size !== 1) return null;
-    const d = docs[[...selected][0]];
+    if (!isEditable() || selection.selected.size !== 1) return null;
+    const d = docs[[...selection.selected][0]];
     return d && idJson(d) !== null ? d : null;
   }
 
   function requestDeleteSelected() {
     if (!isEditable()) return;
-    const picked = [...selected].map((r) => docs[r]).filter(Boolean) as Doc[];
+    const picked = [...selection.selected].map((r) => docs[r]).filter(Boolean) as Doc[];
     requestDelete(picked);
   }
 
   /** Exports the selection if any, else every currently loaded row (matches the "Export" ->
    *  "All results" context-menu action). */
   function requestExportCurrent() {
-    const picked = [...selected].map((r) => docs[r]).filter(Boolean) as Doc[];
+    const picked = [...selection.selected].map((r) => docs[r]).filter(Boolean) as Doc[];
     exportRequest = { rows: picked.length > 0 ? picked : docs };
   }
 
@@ -744,13 +675,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     try {
       await commandLog.pushTimed(deleteManyCmd(prov.coll, filter), sessionId, () =>
         deleteMany(sessionId, prov.db, prov.coll, filter, false));
-      selected = new Set();
-      anchor = null;
-      editing = null;
+      selection.clearSelection();
+      edit.clear();
       if (recipe) {
         const r = recipe;
-        generation++;
-        const gen = generation;
+        const gen = bumpGeneration();
         if (r.fixedLimit === null) {
           const total = await countPaged(r);
           if (gen !== generation) return;
@@ -847,31 +776,31 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     firstPage,
     lastPage,
     setPageSize,
-    requestShowAll,
-    confirmShowAll,
-    cancelShowAll,
-    get showAllPending() { return showAllPending; },
+    requestShowAll: showAll.requestShowAll,
+    confirmShowAll: showAll.confirmShowAll,
+    cancelShowAll: showAll.cancelShowAll,
+    get showAllPending() { return showAll.showAllPending; },
     setColWidth: (path: string, px: number) => { colWidths = { ...colWidths, [path]: clampWidth(px) }; },
     resetColWidth: (path: string) => { colWidths = { ...colWidths, [path]: defaultColWidths[path] ?? 160 }; },
-    get editing() { return editing; },
-    get editText() { return editText; },
-    set editText(v: string) { editText = v; },
-    get editTextLoading() { return editTextLoading; },
-    get editError() { return editError; },
-    get saving() { return saving; },
+    get editing() { return edit.editing; },
+    get editText() { return edit.editText; },
+    set editText(v: string) { edit.editText = v; },
+    get editTextLoading() { return edit.editTextLoading; },
+    get editError() { return edit.editError; },
+    get saving() { return commitFlow.saving; },
     get editBlurPending() { return editBlur.editBlurPending; },
     onEditBlur,
     confirmBlurEdit,
     discardBlurEdit,
     startEdit,
-    commitEdit,
+    commitEdit: commitFlow.commitEdit,
     cancelEdit,
-    get selected() { return selected; },
-    get menu() { return menu; },
-    clickRow,
-    invertSelection,
-    openMenu,
-    closeMenu,
+    get selected() { return selection.selected; },
+    get menu() { return selection.menu; },
+    clickRow: selection.clickRow,
+    invertSelection: selection.invertSelection,
+    openMenu: selection.openMenu,
+    closeMenu: selection.closeMenu,
     menuItems,
     onMenuSelect,
     get ioError() { return ioError; },
@@ -883,8 +812,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     exportInput,
     get canEditSelected() { return getSelectedForEdit() !== null; },
     get canDeleteSelected() {
-      return isEditable() && selected.size > 0 &&
-        [...selected].every((r) => { const d = docs[r]; return d ? idJson(d) !== null : false; });
+      return isEditable() && selection.selected.size > 0 &&
+        [...selection.selected].every((r) => { const d = docs[r]; return d ? idJson(d) !== null : false; });
     },
     getSelectedForEdit,
     requestDeleteSelected,

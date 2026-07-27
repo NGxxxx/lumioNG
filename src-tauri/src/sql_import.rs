@@ -63,6 +63,8 @@ pub struct SqlSchemaAccumulator {
     sample_types: bool,
     opts: InferOptions,
     columns_by_table: HashMap<String, Vec<String>>,
+    /// Membership half of `order` -- O(1) dedupe instead of a linear scan per statement (same shape as `csv_export::ColumnAccumulator`).
+    seen: HashSet<String>,
     order: Vec<String>,
     counts: HashMap<String, u64>,
     sampled_tables: HashSet<String>,
@@ -76,6 +78,7 @@ impl SqlSchemaAccumulator {
             sample_types,
             opts,
             columns_by_table: HashMap::new(),
+            seen: HashSet::new(),
             order: Vec::new(),
             counts: HashMap::new(),
             sampled_tables: HashSet::new(),
@@ -87,7 +90,7 @@ impl SqlSchemaAccumulator {
         match stmt {
             Statement::CreateTable(ct) => {
                 let name = table_ident(&ct.name);
-                if !self.order.contains(&name) {
+                if self.seen.insert(name.clone()) {
                     self.order.push(name.clone());
                 }
                 let cols: Vec<String> = ct.columns.iter().map(|c| c.name.value.clone()).collect();
@@ -99,7 +102,7 @@ impl SqlSchemaAccumulator {
                 if cols.is_empty() {
                     return;
                 }
-                if !self.order.contains(&table) {
+                if self.seen.insert(table.clone()) {
                     self.order.push(table.clone());
                 }
                 let Some(rows) = insert_values_rows(insert) else { return };

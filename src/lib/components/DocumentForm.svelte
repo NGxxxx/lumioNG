@@ -7,6 +7,7 @@
   import { idJson } from "../domain/docid";
   import type { Doc } from "../domain/doc";
   import { parseDocumentText } from "../domain/docparse";
+  import { createDebouncer } from "../domain/timing";
   import { commandLog } from "../stores/commandLog.svelte";
   import { insertCmd, replaceCmd } from "../domain/mongosh";
   import TreeEditor from "./TreeEditor.svelte";
@@ -93,28 +94,22 @@
 
   // Both the gutter measurement and JSON validity check scale with document size, so debounce 500ms after typing stops.
   const RECOMPUTE_DEBOUNCE_MS = 500;
-  let recomputeTimer: ReturnType<typeof setTimeout> | null = null;
+  const recomputeDebouncer = createDebouncer(RECOMPUTE_DEBOUNCE_MS);
 
   function recomputeNow() {
-    if (recomputeTimer !== null) {
-      clearTimeout(recomputeTimer);
-      recomputeTimer = null;
-    }
+    recomputeDebouncer.cancel();
     recomputeGutterLines();
     jsonValid = view === "raw" ? parseDocumentText(text).ok : true;
   }
 
   function scheduleRecompute() {
-    if (recomputeTimer !== null) clearTimeout(recomputeTimer);
-    recomputeTimer = setTimeout(recomputeNow, RECOMPUTE_DEBOUNCE_MS);
+    recomputeDebouncer.schedule(recomputeNow);
   }
 
   // Cancel a pending debounced recompute if the form is closed (Cancel/Save) mid-debounce —
   // otherwise it fires ~500ms later against a form that's already gone.
   $effect(() => {
-    return () => {
-      if (recomputeTimer !== null) clearTimeout(recomputeTimer);
-    };
+    return () => recomputeDebouncer.cancel();
   });
 
   // Wrap is a discrete toggle (Toolbar's Wrap button), not a fast-repeating stream like keystrokes

@@ -915,7 +915,7 @@ var sh = {
 //       `capped` is the source of truth for whether the result was truncated (row OR byte cap).
 
 // Scans a Canonical-ExtJSON aggregation pipeline (plain JS array of stage objects) for a
-// top-level $out/$merge stage. Mirrors host.rs's own pipeline_writes check: the recipe bypass
+// top-level $out/$merge stage. Mirrors host/mod.rs's own pipeline_writes check: the recipe bypass
 // re-runs the pipeline on every count and every page turn, so a write stage must never take
 // this path (it would re-run the write as a side effect of browsing results).
 function _hasWriteStage(pipeline) {

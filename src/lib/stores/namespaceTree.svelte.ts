@@ -34,14 +34,20 @@ const defaultNav: NavLike = {
 export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav) {
   let databases = $state<DbInfo[]>([]);
   let error = $state<string | null>(null);
+  /** Bumped on every refresh() call so a slower, superseded call can't overwrite fresher state. */
+  let generation = 0;
 
   async function refresh() {
+    const gen = ++generation;
     activity.begin(m.common_running());
     try {
-      databases = await commandLog.pushTimed(listDatabasesCmd(), sessionId, () =>
+      const list = await commandLog.pushTimed(listDatabasesCmd(), sessionId, () =>
         listNamespaces(sessionId, settings.showSystemDatabases));
+      if (gen !== generation) return;
+      databases = list;
       error = null;
     } catch (e) {
+      if (gen !== generation) return;
       error = errorMessage(e);
     } finally {
       activity.end();
@@ -140,6 +146,7 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
 
   /** Drop all cached namespaces (e.g. on disconnect) so the sidebar shows no stale DBs. */
   function clear() {
+    generation++; // an in-flight refresh must not repopulate the sidebar after a disconnect
     databases = [];
     error = null;
   }

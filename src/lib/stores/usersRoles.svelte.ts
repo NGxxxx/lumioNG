@@ -48,31 +48,41 @@ export function createUsersRolesView(sessionId: string) {
   let rolesError = $state<string | null>(null);
   let rolesLoading = $state(false);
   let rolesDb = $state(DEFAULT_ROLES_DB);
+  /** Bumped on every loadRoles() call so a slower, superseded call can't overwrite fresher state. */
+  let rolesGeneration = 0;
+  /** Bumped on every loadUsers() call so a slower, superseded call can't overwrite fresher state. */
+  let usersGeneration = 0;
 
   async function loadUsers() {
     usersLoading = true;
+    const gen = ++usersGeneration;
     try {
       const raw = await commandLog.pushTimed(listUsersCmd(), sessionId, () => listUsers(sessionId));
+      if (gen !== usersGeneration) return;
       users = parseUserList(raw);
       usersError = null;
     } catch (e) {
+      if (gen !== usersGeneration) return;
       usersError = errorMessage(e);
     } finally {
-      usersLoading = false;
+      if (gen === usersGeneration) usersLoading = false;
     }
   }
 
   async function loadRoles(db: string) {
     rolesLoading = true;
+    const gen = ++rolesGeneration;
     try {
       const raw = await commandLog.pushTimed(listRolesCmd(db), sessionId, () => listRoles(sessionId, db));
+      if (gen !== rolesGeneration) return;
       roles = parseRoleList(raw);
       rolesDb = db;
       rolesError = null;
     } catch (e) {
+      if (gen !== rolesGeneration) return;
       rolesError = errorMessage(e);
     } finally {
-      rolesLoading = false;
+      if (gen === rolesGeneration) rolesLoading = false;
     }
   }
 

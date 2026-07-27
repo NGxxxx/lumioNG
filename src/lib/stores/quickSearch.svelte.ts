@@ -1,11 +1,11 @@
 import { compileSearch } from "../domain/search";
-import { SEARCH_DEBOUNCE_MS } from "../domain/timing";
+import { createDebouncer, SEARCH_DEBOUNCE_MS } from "../domain/timing";
 
 /** Client-side quick search (HeidiSQL-style): filters loaded rows in place, no server round-trip; debounced since it rescans every doc/column. */
 export function createQuickSearch() {
   let searchTerm = $state("");
   let searchApplied = $state("");
-  let searchDebounce: ReturnType<typeof setTimeout> | undefined;
+  const debouncer = createDebouncer(SEARCH_DEBOUNCE_MS);
 
   const searchRegex = $derived(compileSearch(searchTerm));
   const searchInvalid = $derived(searchTerm !== "" && searchRegex === null);
@@ -13,9 +13,12 @@ export function createQuickSearch() {
 
   function setSearchTerm(v: string) {
     searchTerm = v;
-    clearTimeout(searchDebounce);
-    if (v === "") searchApplied = "";
-    else searchDebounce = setTimeout(() => { searchApplied = v; }, SEARCH_DEBOUNCE_MS);
+    if (v === "") {
+      debouncer.cancel();
+      searchApplied = "";
+    } else {
+      debouncer.schedule(() => { searchApplied = v; });
+    }
   }
 
   return {

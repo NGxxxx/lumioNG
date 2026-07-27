@@ -1,8 +1,6 @@
 <script lang="ts">
-  import { untrack } from "svelte";
-  import { get } from "svelte/store";
-  import { createVirtualizer } from "@tanstack/svelte-virtual";
   import { createColumnResize, GRID_ROW_H } from "./gridInteractions.svelte";
+  import { createRowVirtualizer } from "./rowVirtualizer.svelte";
   import { getByPath } from "../domain/schema";
   import { statusPill, jsonValueColor, bsonValueKind } from "../domain/theme";
   import { describeValue, truncateForDisplay } from "../domain/extjson";
@@ -37,19 +35,11 @@
   /** Maps a display position to the real index into `v.docs` (identity when unfiltered). */
   const rowAt = (i: number) => (v.visibleIndices ? v.visibleIndices[i] : i);
 
-  const rowVirtualizer = createVirtualizer<HTMLDivElement, HTMLTableRowElement>({
-    count: untrack(() => rowCount),
+  const rowVirtualizer = createRowVirtualizer<HTMLDivElement, HTMLTableRowElement>({
+    count: () => rowCount,
     getScrollElement: () => scrollerEl,
     estimateSize: () => GRID_ROW_H,
     overscan: OVERSCAN,
-  });
-
-  $effect(() => {
-    const count = rowCount;
-    const el = scrollerEl;
-    get(rowVirtualizer).setOptions({
-      count, getScrollElement: () => el, estimateSize: () => GRID_ROW_H, overscan: OVERSCAN,
-    });
   });
 
   const virtualItems = $derived($rowVirtualizer.getVirtualItems());
@@ -73,9 +63,8 @@
   async function commitAndAdvance(row: number, key: string) {
     await v.commitEdit();
     if (v.editing !== null) return; // commit failed; stay put
-    const universe = v.visibleIndices ?? v.docs.map((_, i) => i);
-    const pos = universe.indexOf(row);
-    if (pos !== -1 && pos + 1 < universe.length) v.startEdit(universe[pos + 1], key);
+    const pos = v.visibleIndices ? v.visibleIndices.indexOf(row) : row;
+    if (pos !== -1 && pos + 1 < rowCount) v.startEdit(rowAt(pos + 1), key);
   }
 
   function onEditKey(e: KeyboardEvent) {

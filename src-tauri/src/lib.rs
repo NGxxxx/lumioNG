@@ -1,10 +1,12 @@
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+mod bson_import;
 mod bson_json;
 mod commands;
 mod csv_export;
 mod csv_import;
 mod error;
 mod json_bson;
+mod json_import;
 mod json_stream;
 mod known_hosts;
 mod query_library;

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { get } from "svelte/store";
-  import { createVirtualizer } from "@tanstack/svelte-virtual";
+  import { createRowVirtualizer } from "./rowVirtualizer.svelte";
   import type { Doc } from "../domain/doc";
   import { flattenDocs, fieldPath, fullDepthPaths, type TreeRow } from "../domain/treeFlatten";
   import { describeValue, truncateForDisplay } from "../domain/extjson";
@@ -101,22 +101,12 @@
   const OVERSCAN = 10;
   let scrollerEl = $state<HTMLDivElement | null>(null);
 
-  const rowVirtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
-    count: untrack(() => rows.length),
+  const rowVirtualizer = createRowVirtualizer<HTMLDivElement, HTMLDivElement>({
+    count: () => rows.length,
     getScrollElement: () => scrollerEl,
     estimateSize: () => ROW_EST,
     overscan: OVERSCAN,
-  });
-
-  $effect(() => {
-    const count = rows.length;
-    const el = scrollerEl;
-    get(rowVirtualizer).setOptions({
-      count,
-      getScrollElement: () => el,
-      estimateSize: () => ROW_EST,
-      overscan: OVERSCAN,
-    });
+    pre: true, // collapsing a node shrinks `rows`; same stale-index hazard TreeEditor guards against
   });
 
   const virtualItems = $derived($rowVirtualizer.getVirtualItems());

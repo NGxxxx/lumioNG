@@ -1,11 +1,8 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { idJson } from "$lib/domain/docid";
-  import { rafThrottle } from "$lib/domain/rafThrottle";
   import { aggregateTemplate } from "$lib/domain/queryStatement";
-  import { inferSchema } from "$lib/domain/schema";
-  import { buildSkeleton } from "$lib/domain/skeleton";
-  import { sampleDocuments } from "$lib/api/documents";
+  import { buildInsertSkeleton } from "$lib/api/insertSkeleton";
   import { cancelScript } from "$lib/api/script";
   import { sessionManager } from "$lib/stores/sessionManager.svelte";
   import { getQueryRun } from "$lib/stores/queryRuns.svelte";
@@ -28,10 +25,9 @@
   import ResultTable from "$lib/components/ResultTable.svelte";
   import DocumentForm from "$lib/components/DocumentForm.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
-  import CollectionTab from "$lib/components/CollectionTab.svelte";
   import DatabaseCollectionsPanel from "$lib/components/DatabaseCollectionsPanel.svelte";
-  import HostTab from "$lib/components/HostTab.svelte";
-  import QueryTab from "$lib/components/QueryTab.svelte";
+  import { createAxisDrag } from "$lib/components/axisDrag";
+  import { lazyComponent } from "$lib/components/lazyComponent.svelte";
   import TitleBar from "$lib/components/TitleBar.svelte";
   import MenuBar from "$lib/components/MenuBar.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
@@ -52,6 +48,15 @@
     data: "Data",
   };
   // Note: CONTEXT_LABEL uses English literals intentionally — structural keys, not in i18n scope.
+
+  // The three heavy tab panes are the only reachers of CodeEditor (QueryTab's editor, HostTab's
+  // user/role JSON editors, CollectionTab's index partial-filter/collation editors), so all three
+  // must be dynamic for the ~300kB @codemirror stack to stay out of the eager startup chunk —
+  // a single static importer anywhere would pull it back in. Same reasoning as CodeEditor's own
+  // lazy `js-beautify` import; each pane is already mounted only while it is the active tab.
+  const queryTabChunk = lazyComponent(() => import("$lib/components/QueryTab.svelte"));
+  const hostTabChunk = lazyComponent(() => import("$lib/components/HostTab.svelte"));
+  const collectionTabChunk = lazyComponent(() => import("$lib/components/CollectionTab.svelte"));
 
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
@@ -180,36 +185,17 @@
     sm.openQuery(q.statement, q.id);
   }
 
-  // Vertical splitter above the Saved Queries panel (mirrors startLogDrag).
-  function startSavedQueriesDrag(e: PointerEvent) {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startH = shell.savedQueriesHeight;
-    // Pointer capture: keeps pointermove/pointerup routed here (and auto-releases on pointerup)
-    // even if the drag exits the window bounds, so `up()` always fires.
-    (e.target as Element).setPointerCapture(e.pointerId);
-    // rAF-throttled: coalesce raw pointermove ticks to at most one panel re-layout per frame.
-    const move = rafThrottle((ev: PointerEvent) => {
-      shell.setSavedQueriesHeight(startH + (startY - ev.clientY));
-    });
-    function up() {
-      move.cancel();
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    }
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }
+  // Shell splitters. The sidebar's dragged edge leads the pointer (sign 1); the two bottom-anchored
+  // panels grow as the pointer moves back up the axis (sign -1). Clamping lives in shell's setters.
+  const startSavedQueriesDrag = createAxisDrag("y", () => shell.savedQueriesHeight, (px) => shell.setSavedQueriesHeight(px), -1);
+  const startSidebarDrag = createAxisDrag("x", () => shell.sidebarWidth, (px) => shell.setSidebarWidth(px));
+  const startLogDrag = createAxisDrag("y", () => shell.logHeight, (px) => shell.setLogHeight(px), -1);
 
   async function newDocActive() {
     const s = nav?.selection;
     if (!s?.coll) return;
     // Pre-fill all known fields (sampled schema) so the user only fills values; blank on failure.
-    let initial: Doc | null = null;
-    try {
-      const sample = await sampleDocuments(sm.active?.id ?? "", s.db, s.coll, "{}", 100);
-      initial = buildSkeleton(inferSchema(sample).fields);
-    } catch { /* fall back to an empty form */ }
+    const initial = await buildInsertSkeleton(sm.active?.id ?? "", s.db, s.coll);
     openDocument(s.db, s.coll, initial, "insert");
   }
 
@@ -220,48 +206,6 @@
     const idx = active?.zone === "work" ? tabs.findIndex((t) => t.id === active.id) : -1;
     const next = idx === -1 ? 0 : (idx + dir + tabs.length) % tabs.length;
     sm.activateWork(tabs[next].id);
-  }
-
-  // Horizontal splitter for the sidebar.
-  function startSidebarDrag(e: PointerEvent) {
-    e.preventDefault();
-    const startX = e.clientX;
-    const startW = shell.sidebarWidth;
-    // Pointer capture: keeps pointermove/pointerup routed here (and auto-releases on pointerup)
-    // even if the drag exits the window bounds, so `up()` always fires.
-    (e.target as Element).setPointerCapture(e.pointerId);
-    // rAF-throttled: coalesce raw pointermove ticks to at most one sidebar re-layout per frame.
-    const move = rafThrottle((ev: PointerEvent) => {
-      shell.setSidebarWidth(startW + (ev.clientX - startX));
-    });
-    function up() {
-      move.cancel();
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    }
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  }
-
-  // Vertical splitter for the command log panel.
-  function startLogDrag(e: PointerEvent) {
-    e.preventDefault();
-    const startY = e.clientY;
-    const startH = shell.logHeight;
-    // Pointer capture: keeps pointermove/pointerup routed here (and auto-releases on pointerup)
-    // even if the drag exits the window bounds, so `up()` always fires.
-    (e.target as Element).setPointerCapture(e.pointerId);
-    // rAF-throttled: coalesce raw pointermove ticks to at most one log-panel re-layout per frame.
-    const move = rafThrottle((ev: PointerEvent) => {
-      shell.setLogHeight(startH + (startY - ev.clientY));
-    });
-    function up() {
-      move.cancel();
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    }
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
   }
 
   const plat = detectPlatform();
@@ -409,10 +353,15 @@
       <div class="panes">
         <!-- Mount only the active context pane (lazy): eager mounting fired every pane's queries at once on each switch, wedging the connection. -->
         {#if active?.zone === "context" && active.kind === "host"}
+          {@const HostTabView = hostTabChunk.value}
           <div class="tabpane">
-            {#key sm.activeId}
-              <HostTab connection={shell.connection} />
-            {/key}
+            {#if HostTabView}
+              {#key sm.activeId}
+                <HostTabView connection={shell.connection} />
+              {/key}
+            {:else}
+              <div class="empty">{m.status_bar_loading()}</div>
+            {/if}
           </div>
         {/if}
         {#if active?.zone === "context" && active.kind === "database" && sel}
@@ -426,10 +375,15 @@
         {#if active?.zone === "context" && active.kind === "collection" && sel?.coll}
           {@const db = sel.db}
           {@const coll = sel.coll}
+          {@const CollectionTabView = collectionTabChunk.value}
           <div class="tabpane">
-            {#key `${db}/${coll}#${nav?.collectionVersion(db, coll) ?? 0}`}
-              <CollectionTab {db} {coll} />
-            {/key}
+            {#if CollectionTabView}
+              {#key `${db}/${coll}#${nav?.collectionVersion(db, coll) ?? 0}`}
+                <CollectionTabView {db} {coll} />
+              {/key}
+            {:else}
+              <div class="empty">{m.status_bar_loading()}</div>
+            {/if}
           </div>
         {/if}
         {#if active?.zone === "context" && active.kind === "data" && sel?.coll}
@@ -446,9 +400,14 @@
           {@const isActiveTab = active?.zone === "work" && active.id === tab.id}
           <div class="tabpane" hidden={!isActiveTab}>
             {#if tab.kind === "query"}
-              <QueryTab id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement}
-                currentDb={dbForSession(tab.sessionId)} active={isActiveTab}
-                onopendocument={(doc, db, coll) => openDocument(db, coll, doc, "edit")} />
+              {@const QueryTabView = queryTabChunk.value}
+              {#if QueryTabView}
+                <QueryTabView id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement}
+                  currentDb={dbForSession(tab.sessionId)} active={isActiveTab}
+                  onopendocument={(doc: Doc, db: string, coll: string) => openDocument(db, coll, doc, "edit")} />
+              {:else}
+                <div class="empty">{m.status_bar_loading()}</div>
+              {/if}
             {:else}
               <DocumentForm
                 mode={tab.mode}

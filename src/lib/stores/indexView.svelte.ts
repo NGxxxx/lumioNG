@@ -5,30 +5,27 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import * as m from "$lib/paraglide/messages";
 import { createIndexCmd, dropIndexCmd, listIndexesCmd } from "../domain/mongosh";
+import { createAsyncGuard } from "./asyncGuard.svelte";
 
 /** State and actions for the Indexes tab of a collection; parse/build/validate logic lives in domain. */
 export function createIndexView(sessionId: string, db: string, coll: string) {
   let indexes = $state<IndexInfo[]>([]);
-  let error = $state<string | null>(null);
-  let loading = $state(false);
-  /** Bumped on every refresh() call so a slower, superseded call can't overwrite fresher state. */
-  let generation = 0;
+  const guard = createAsyncGuard();
 
   async function refresh() {
-    loading = true;
-    const gen = ++generation;
+    const gen = guard.begin();
     activity.begin(m.common_running());
     try {
       const raw = await commandLog.pushTimed(listIndexesCmd(coll), sessionId, () =>
         listIndexes(sessionId, db, coll));
-      if (gen !== generation) return;
+      if (!guard.isCurrent(gen)) return;
       indexes = parseIndexList(raw);
-      error = null;
+      guard.setError(null);
     } catch (e) {
-      if (gen !== generation) return;
-      error = errorMessage(e);
+      if (!guard.isCurrent(gen)) return;
+      guard.setError(errorMessage(e));
     } finally {
-      if (gen === generation) loading = false;
+      guard.finish(gen);
       activity.end();
     }
   }
@@ -75,7 +72,7 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
         dropIndex(sessionId, db, coll, name));
       await refresh();
     } catch (e) {
-      error = errorMessage(e);
+      guard.setError(errorMessage(e));
     } finally {
       activity.end();
     }
@@ -86,10 +83,10 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
       return indexes;
     },
     get error() {
-      return error;
+      return guard.error;
     },
     get loading() {
-      return loading;
+      return guard.loading;
     },
     init: refresh,
     refresh,
