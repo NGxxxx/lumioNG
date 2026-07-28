@@ -154,8 +154,9 @@
     importDialog = { sessionId, db, coll };
   }
 
-  /** Toolbar entry point (mirrors the tree row's right-click Import) for the currently selected collection. */
-  export function startImport(sessionId: string, db: string, coll: string) {
+  /** File menu / Toolbar / Ctrl+Alt+I entry point (mirrors the tree row's right-click Import).
+   *  `coll === null` opens a database-scoped import, matching the tree's database-node menu. */
+  export function startImport(sessionId: string, db: string, coll: string | null) {
     openImportDialog(sessionId, db, coll);
   }
 

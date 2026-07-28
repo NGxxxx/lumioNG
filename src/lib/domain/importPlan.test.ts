@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   describeSqlImportTargets,
+  describeImportTarget,
   isLargeImportFile,
   formatFileSize,
   LARGE_IMPORT_FILE_BYTES,
@@ -35,5 +36,24 @@ describe("formatFileSize", () => {
     expect(formatFileSize(200 * 1024 * 1024)).toBe("200.0 MB");
     expect(formatFileSize(1024 * 1024)).toBe("1.0 MB");
     expect(formatFileSize(1536 * 1024)).toBe("1.5 MB");
+  });
+});
+
+describe("describeImportTarget", () => {
+  it("blank input is unset — no notice to show", () => {
+    expect(describeImportTarget("", ["users"])).toEqual({ kind: "unset" });
+    expect(describeImportTarget("   ", ["users"])).toEqual({ kind: "unset" });
+  });
+  it("a name matching an existing collection is 'existing'", () => {
+    expect(describeImportTarget("users", ["users", "orders"])).toEqual({ kind: "existing", coll: "users" });
+  });
+  it("a name not in the existing list is 'new'", () => {
+    expect(describeImportTarget("users_backup", ["users", "orders"])).toEqual({ kind: "new", coll: "users_backup" });
+  });
+  it("trims surrounding whitespace before comparing", () => {
+    expect(describeImportTarget("  users  ", ["users"])).toEqual({ kind: "existing", coll: "users" });
+  });
+  it("trims whitespace on the 'new' path too, not just when matching an existing name", () => {
+    expect(describeImportTarget("  new_coll  ", ["users"])).toEqual({ kind: "new", coll: "new_coll" });
   });
 });

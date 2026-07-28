@@ -110,4 +110,17 @@ describe("createCsvImport", () => {
     expect(entry.tookMs).toBeGreaterThanOrEqual(0);
     expect(entry.text).toContain("users");
   });
+
+  it("setInsertMode overrides the mode captured at construction, and it flows through to commit", async () => {
+    csvImportPreview.mockResolvedValueOnce(preview);
+    csvImportCommit.mockResolvedValueOnce({ inserted: 2, failed: 0, errors: [] });
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
+    await v.loadPreview();
+    v.setInsertMode("upsertById");
+    await v.run();
+    expect(csvImportCommit).toHaveBeenCalledWith(
+      "conn:1", "d", "users", "/tmp/data.csv", "comma",
+      { parseJsonLike: true, inferScalars: true }, "upsertById", expect.any(Function),
+    );
+  });
 });

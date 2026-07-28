@@ -14,7 +14,7 @@ export function createCsvImport(
   db: string,
   coll: string,
   path: string,
-  insertMode: InsertMode,
+  initialInsertMode: InsertMode,
 ) {
   let phase = $state<CsvImportPhase>("loading");
   let delimiter = $state<CsvDelimiter>("comma");
@@ -24,6 +24,7 @@ export function createCsvImport(
   let error = $state<string | null>(null);
   let progress = $state<{ done: number; total: number } | null>(null);
   let result = $state<ImportResult | null>(null);
+  let insertMode = $state(initialInsertMode);
 
   async function loadPreview() {
     phase = "loading";
@@ -51,6 +52,10 @@ export function createCsvImport(
   async function toggleInferScalars() {
     inferScalars = !inferScalars;
     await loadPreview();
+  }
+
+  function setInsertMode(m: InsertMode) {
+    insertMode = m;
   }
 
   async function run() {
@@ -85,6 +90,7 @@ export function createCsvImport(
     setDelimiter,
     toggleParseJsonLike,
     toggleInferScalars,
+    setInsertMode,
     run,
   };
 }

@@ -17,7 +17,7 @@ export function createSqlImport(
   db: string,
   path: string,
   preselectedColl: string | null,
-  insertMode: InsertMode,
+  initialInsertMode: InsertMode,
 ) {
   let phase = $state<SqlImportPhase>("loading");
   let tables = $state<SqlTablePreview[]>([]);
@@ -27,6 +27,7 @@ export function createSqlImport(
   let results = $state<SqlImportTableResult[]>([]);
   let cancelled = $state(false);
   let targetColl = $state("");
+  let insertMode = $state(initialInsertMode);
 
   async function loadPreview() {
     phase = "loading";
@@ -48,6 +49,10 @@ export function createSqlImport(
 
   function setTargetColl(v: string) {
     targetColl = v;
+  }
+
+  function setInsertMode(m: InsertMode) {
+    insertMode = m;
   }
 
   function toggle(table: string) {
@@ -98,6 +103,7 @@ export function createSqlImport(
     get cancelled() { return cancelled; },
     get targetColl() { return targetColl; },
     setTargetColl,
+    setInsertMode,
     loadPreview,
     toggle,
     toggleAll,

@@ -216,8 +216,8 @@
     "file.newQuery": { disabled: shell.connection === null, run: () => sm.openQuery(aggregateTemplate("")) },
     "file.newDocument": { disabled: !(sel?.coll != null && !readOnly), run: newDocActive },
     "file.import": {
-      disabled: !(sel?.coll != null && !readOnly),
-      run: () => { if (sel?.coll && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); },
+      disabled: !(sel?.db != null && !readOnly),
+      run: () => { if (sel?.db && sm.activeId) namespacePanelRef?.startImport(sm.activeId, sel.db, sel.coll); },
     },
     "file.export": {
       disabled: !(canUseDataView ? (activeDataView.handle?.canExport ?? false) : false),

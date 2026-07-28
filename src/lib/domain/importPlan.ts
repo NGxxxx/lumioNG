@@ -18,6 +18,26 @@ export function describeSqlImportTargets(
   return { kind: "new", collections: selected };
 }
 
+export type ImportTargetPlan =
+  | { kind: "existing"; coll: string }
+  | { kind: "new"; coll: string }
+  | { kind: "unset" };
+
+/** Single-target formats (JSON/JSONL/BSON/CSV): blank means no target chosen yet ("unset", no
+ *  notice to show); a name matching an existing collection writes into it; any other non-blank
+ *  name creates a new collection. Mirrors describeSqlImportTargets' existing/new split, but for
+ *  exactly one target instead of a multi-table plan. */
+export function describeImportTarget(
+  targetColl: string,
+  existingCollections: string[],
+): ImportTargetPlan {
+  const trimmed = targetColl.trim();
+  if (trimmed === "") return { kind: "unset" };
+  return existingCollections.includes(trimmed)
+    ? { kind: "existing", coll: trimmed }
+    : { kind: "new", coll: trimmed };
+}
+
 /** Not user-configurable (see the parent design spec) — a coarse gate before any import path
  *  starts parsing, not a RAM-usage guarantee. */
 export const LARGE_IMPORT_FILE_BYTES = 200 * 1024 * 1024;

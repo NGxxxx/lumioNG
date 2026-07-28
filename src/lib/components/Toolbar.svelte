@@ -217,7 +217,7 @@
     </button>
   </span>
 
-  <!-- Import (enabled when a collection is selected and session is not read-only; imports from a JSON/JSONL/BSON/SQL file) -->
+  <!-- Import (enabled when a database or collection is selected and session is not read-only; imports from a JSON/JSONL/BSON/SQL/CSV file) -->
   <span class="tt" use:tooltip={tt("file.import", m.toolbar_import())}>
     <button aria-label={m.toolbar_import()} class="btn-icon" disabled={disabledOf("file.import")} onclick={runOf("file.import")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">

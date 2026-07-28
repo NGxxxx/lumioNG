@@ -174,4 +174,16 @@ describe("createSqlImport", () => {
     v.cancel();
     expect(cancelSqlImport).not.toHaveBeenCalled();
   });
+
+  it("setInsertMode overrides the mode captured at construction, and it flows through to commit", async () => {
+    sqlImportPreview.mockResolvedValueOnce(preview);
+    sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
+    const v = createSqlImport("conn:1", "d", "/tmp/dump.sql", null, "skipDuplicates");
+    await v.loadPreview();
+    v.setInsertMode("upsertById");
+    await v.run();
+    expect(sqlImportCommit).toHaveBeenCalledWith(
+      "conn:1", "d", "/tmp/dump.sql", ["users", "orders"], null, "upsertById", expect.any(Function),
+    );
+  });
 });
