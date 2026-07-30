@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/svelte";
+import { render, fireEvent, within } from "@testing-library/svelte";
 import { commandLog } from "../stores/commandLog.svelte";
 import { activeDataView } from "../stores/activeDataView.svelte";
 
@@ -148,17 +148,19 @@ describe("QueryTab", () => {
   });
 
   it("shows Grid, Tree and Console view toggle buttons in the result tab", () => {
-    const { getByText } = render(QueryTab, { props });
-    expect(getByText("Grid")).toBeTruthy();
-    expect(getByText("Tree")).toBeTruthy();
-    expect(getByText("Console")).toBeTruthy();
+    const { container } = render(QueryTab, { props });
+    const viewToggle = within(container.querySelector(".view-toggle")!);
+    expect(viewToggle.getByText("Grid")).toBeTruthy();
+    expect(viewToggle.getByText("Tree")).toBeTruthy();
+    expect(viewToggle.getByText("Console")).toBeTruthy();
   });
 
   it("switches to the tree view and renders docs as a virtualized tree", async () => {
     activeStub = editableStub as unknown as typeof stub;
     try {
-      const { getByText, container } = render(QueryTab, { props });
-      await fireEvent.click(getByText("Tree"));
+      const { container } = render(QueryTab, { props });
+      const viewToggle = within(container.querySelector(".view-toggle")!);
+      await fireEvent.click(viewToggle.getByText("Tree"));
       expect(container.querySelector(".tree-scroller")).toBeTruthy();
     } finally {
       activeStub = stub;
@@ -173,8 +175,9 @@ describe("QueryTab", () => {
     };
     activeStub = menuStub as unknown as typeof stub;
     try {
-      const { getByText } = render(QueryTab, { props });
-      await fireEvent.click(getByText("Tree"));
+      const { getByText, container } = render(QueryTab, { props });
+      const viewToggle = within(container.querySelector(".view-toggle")!);
+      await fireEvent.click(viewToggle.getByText("Tree"));
       expect(getByText("Open document")).toBeTruthy();
     } finally {
       activeStub = stub;

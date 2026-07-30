@@ -1,6 +1,8 @@
 <script lang="ts">
   import { untrack, tick } from "svelte";
   import { getQueryRun } from "../stores/queryRuns.svelte";
+  import { getPipelineTree } from "../stores/pipelineTreeRuns.svelte";
+  import PipelineTreeEditor from "./PipelineTreeEditor.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
   import ResultGrid from "./ResultGrid.svelte";
@@ -32,10 +34,22 @@
       onopendocument?: (doc: Doc, db: string, coll: string, mode: "edit") => void } = $props();
 
   const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
+  const tree = untrack(() =>
+    getPipelineTree(id, sessionManager.active?.id ?? "", {
+      get: () => v.statementText,
+      set: (s) => { v.statementText = s; },
+    }),
+  );
+  let editorMode = $state<"script" | "tree">("script");
+
+  function selectTreeMode() {
+    tree.syncFromScript();
+    editorMode = "tree";
+  }
   let bottomTab = $state<"result" | "log">("result");
   let resultView = $state<ResultViewMode>("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
-  let editorRef: CodeEditor | undefined;
+  let editorRef: CodeEditor | undefined = $state();
   let treeRef: ResultTree | undefined = $state();
   let editorEl = $state<HTMLDivElement | null>(null);
   let searchInputEl = $state<HTMLInputElement | null>(null);
@@ -175,6 +189,11 @@
     <QuerySettingsPopover />
   </div>
 
+  <div class="editor-tabs">
+    <button class:active={editorMode === "script"} onclick={() => (editorMode = "script")}>{m.query_tab_editor_mode_script()}</button>
+    <button class:active={editorMode === "tree"} onclick={selectTreeMode}>{m.query_tab_editor_mode_tree()}</button>
+  </div>
+
   <div
     class="editor"
     role="none"
@@ -182,15 +201,19 @@
     bind:this={editorEl}
     style={settings.queryEditorHeightPx !== null ? `height:${settings.queryEditorHeightPx}px` : undefined}
   >
-    <CodeEditor
-      bind:this={editorRef}
-      value={v.statementText}
-      onChange={(t) => (v.statementText = t)}
-      onSelectionChange={v.setSelection}
-      onRun={runQuery}
-      onRunSelection={runSelectionQuery}
-      onExplain={explainFromMenu}
-      complete={completionSource} />
+    {#if editorMode === "script"}
+      <CodeEditor
+        bind:this={editorRef}
+        value={v.statementText}
+        onChange={(t) => (v.statementText = t)}
+        onSelectionChange={v.setSelection}
+        onRun={runQuery}
+        onRunSelection={runSelectionQuery}
+        onExplain={explainFromMenu}
+        complete={completionSource} />
+    {:else}
+      <PipelineTreeEditor {tree} db={currentDb ?? ""} />
+    {/if}
   </div>
 
   <div
@@ -397,4 +420,7 @@
   .cancel-btn { font-size: var(--fs); cursor: pointer; border: none; background: none; color: var(--link); }
   .value-display { height: 100%; box-sizing: border-box; overflow: auto; padding: 0.5rem 0.75rem; }
   .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: var(--fs); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
+  .editor-tabs { display: flex; gap: 0.125rem; height: 1.375rem; flex: none; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 0.375rem; }
+  .editor-tabs > button { height: 1.125rem; padding: 0 0.625rem; font-size: var(--fs); border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
+  .editor-tabs > button.active { background: var(--panel); color: var(--tab-active-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--tab-active-border); }
 </style>

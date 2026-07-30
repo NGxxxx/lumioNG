@@ -10,6 +10,7 @@ import { commandLog } from "./commandLog.svelte";
 import { connectCmd } from "../domain/mongosh";
 import { maskUri } from "../domain/uri";
 import { disposeQueryRun } from "./queryRuns.svelte";
+import { disposePipelineTree } from "./pipelineTreeRuns.svelte";
 import { disposeCollectionViews } from "./collectionViews.svelte";
 
 export type SessionStatus = "connecting" | "connected" | "error";
@@ -139,7 +140,10 @@ export function createSessionManager() {
 
   async function closeSession(id: string) {
     await disconnect(id).catch(() => {});
-    for (const t of workTabs.filter((t) => t.sessionId === id)) disposeQueryRun(t.id);
+    for (const t of workTabs.filter((t) => t.sessionId === id)) {
+      disposeQueryRun(t.id);
+      disposePipelineTree(t.id);
+    }
     disposeCollectionViews(id);
     workTabs = workTabs.filter((t) => t.sessionId !== id);
     sessions = sessions.filter((s) => s.id !== id);
@@ -190,9 +194,10 @@ export function createSessionManager() {
     if (idx === -1) return;
     const wasActive = zone?.zone === "work" && zone.id === tabId;
     workTabs = workTabs.filter((t) => t.id !== tabId);
-    // A no-op for document tabs (never in the query-run cache); centralized here so no future
-    // close path can forget it and leak a query tab's run/console state in the cache.
+    // A no-op for document tabs (never in either per-tab cache); centralized here so no future
+    // close path can forget it and leak a query tab's run/console/tree state in the cache.
     disposeQueryRun(tabId);
+    disposePipelineTree(tabId);
     if (wasActive) {
       const neighbor = workTabs[idx - 1] ?? workTabs[idx] ?? null;
       if (neighbor) { activeId = neighbor.sessionId; zone = { zone: "work", id: neighbor.id }; }

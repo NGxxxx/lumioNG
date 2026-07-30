@@ -16,13 +16,13 @@
     value,
     onchange,
     onvalidchange,
+    lockedKeys = ["_id"],
   }: {
     value: Doc;
     onchange: (v: Doc) => void;
     onvalidchange: (valid: boolean) => void;
+    lockedKeys?: string[];
   } = $props();
-
-  const LOCKED_KEYS = ["_id"];
 
   // Persists across edits (value changes on every keystroke) — only reset by remounting
   // TreeEditor itself (a new document/tab), never by editing the current one.
@@ -30,10 +30,10 @@
 
   // Debounced, not $derived: a plain $derived would re-walk every OPEN row on every keystroke; only this display list lags, no edit is lost (TreeLeafInput's own buffer).
   const ROWS_DEBOUNCE_MS = 120;
-  let rows = $state<EditRow[]>(untrack(() => flattenEditableDoc(value, open, LOCKED_KEYS)));
+  let rows = $state<EditRow[]>(untrack(() => flattenEditableDoc(value, open, lockedKeys)));
   $effect(() => {
     const v = value, o = open;
-    const timer = setTimeout(() => { rows = flattenEditableDoc(v, o, LOCKED_KEYS); }, ROWS_DEBOUNCE_MS);
+    const timer = setTimeout(() => { rows = flattenEditableDoc(v, o, lockedKeys); }, ROWS_DEBOUNCE_MS);
     return () => clearTimeout(timer);
   });
 
@@ -129,7 +129,7 @@
     open = next;
     allExpanded = false;
     highlightPath = m.path;
-    rows = flattenEditableDoc(value, open, LOCKED_KEYS); // bypass the debounce — this is a deliberate jump, not a keystroke burst
+    rows = flattenEditableDoc(value, open, lockedKeys); // bypass the debounce — this is a deliberate jump, not a keystroke burst
     const rowIdx = rows.findIndex((r) => r.path === m.path);
     if (rowIdx !== -1) get(rowVirtualizer).scrollToIndex(rowIdx, { align: "center" });
   }
