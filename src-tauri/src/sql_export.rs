@@ -64,12 +64,11 @@ impl SqlSchemaAccumulator {
         for (k, v) in doc.iter() {
             if self.seen.insert(k.clone()) {
                 self.order.push(k.clone());
-                self.flags.insert(k.clone(), TypeFlags::default());
             }
             if matches!(v, Bson::Null) {
                 continue;
             }
-            let f = self.flags.get_mut(k).expect("just inserted above");
+            let f = self.flags.entry(k.clone()).or_default();
             match v {
                 Bson::Boolean(_) => f.bool_ = true,
                 Bson::Int32(_) | Bson::Int64(_) => f.number = true,

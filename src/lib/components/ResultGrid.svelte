@@ -81,6 +81,7 @@
     }
   }
   function onGridKey(e: KeyboardEvent) {
+    if (v.editing?.kind === "inline") return; // let the input's native copy/paste through
     const mod = e.ctrlKey || e.metaKey;
     if (mod && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
@@ -344,7 +345,7 @@
   .cell-editing-modal { box-shadow: inset 0 0 0 2px var(--focus-ring); }
 
   /* ── Object/array modal editor ── */
-  .modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
+  .modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
   .modal-editor { background: var(--panel); width: 34rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; display: flex; flex-direction: column; }
   .modal-editor header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); font-size: 0.8125rem; }
   .modal-textarea {

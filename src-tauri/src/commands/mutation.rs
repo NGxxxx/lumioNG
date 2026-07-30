@@ -3,7 +3,7 @@ use crate::error::AppError;
 use crate::json_bson::{canonical_string_to_bson, canonical_string_to_doc, canonical_string_to_doc_array};
 use crate::state::AppState;
 use mongodb::bson::{doc, Document};
-use mongodb::{Client, Collection};
+use mongodb::Collection;
 use tauri::State;
 
 use super::query::parse_user_filter;
@@ -63,20 +63,11 @@ async fn resolve_write_target(
     filter: Option<&str>,
     allow_all: bool,
 ) -> Result<(Collection<Document>, Document), AppError> {
-    let client = resolve_writable_client(state, session_id).await?;
+    let client = state.writable_client(session_id).await?;
     let collection = client.database(db).collection::<Document>(coll);
     let f = parse_user_filter(filter)?;
     ensure_filter_allowed(&f, allow_all)?;
     Ok((collection, f))
-}
-
-/// Shared prefix of every single-document write command: fetch the client and enforce the
-/// read-only guard. Single-document commands target a specific `_id` rather than a user filter,
-/// so they don't need `resolve_write_target`'s filter-gate step.
-async fn resolve_writable_client(state: &AppState, session_id: &str) -> Result<Client, AppError> {
-    let client = state.client(session_id).await?;
-    state.ensure_writable(session_id).await?;
-    Ok(client)
 }
 
 #[tauri::command]
@@ -87,7 +78,7 @@ pub async fn insert_document(
     doc_json: String,
     state: State<'_, AppState>,
 ) -> Result<String, AppError> {
-    let client = resolve_writable_client(&state, &session_id).await?;
+    let client = state.writable_client(&session_id).await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
@@ -104,7 +95,7 @@ pub async fn replace_document(
     doc_json: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = resolve_writable_client(&state, &session_id).await?;
+    let client = state.writable_client(&session_id).await?;
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let id_bson = canonical_string_to_bson(&id_json)?;
@@ -130,7 +121,7 @@ pub async fn delete_document(
     id_json: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = resolve_writable_client(&state, &session_id).await?;
+    let client = state.writable_client(&session_id).await?;
 
     let id_bson = canonical_string_to_bson(&id_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
@@ -184,8 +175,7 @@ pub async fn insert_many(
     docs_json: String,
     state: State<'_, AppState>,
 ) -> Result<InsertManyResult, AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let docs = parse_doc_array(&docs_json)?;
     if docs.is_empty() {
         return Err(AppError::Query("insertMany requires at least one document".into()));

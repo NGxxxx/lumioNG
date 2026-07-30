@@ -402,7 +402,7 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .3); display: flex; align-items: center; justify-content: center; z-index: 1000; }
+  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .3); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; }
   .modal { background: var(--panel); width: 30rem; max-width: 94vw; border-radius: 0.375rem; overflow: hidden; box-shadow: 0 10px 40px rgba(0, 0, 0, .25); }
   .modal-sql { width: 32rem; max-height: 85vh; display: flex; flex-direction: column; }
   header { padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--bg); flex: none; }

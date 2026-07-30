@@ -48,8 +48,7 @@ pub async fn create_index(
     collation: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let keys_doc = canonical_string_to_doc(&keys)?;
     let partial_filter_doc = partial_filter
         .as_deref()
@@ -88,8 +87,7 @@ pub async fn drop_index(
     name: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     client
         .database(&db)
         .collection::<Document>(&coll)

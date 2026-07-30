@@ -162,7 +162,8 @@ fn spawn_sql_producer(
                     if buffered_total < SQL_IMPORT_MAX_BUFFERED_ROWS / 2 {
                         break;
                     }
-                    let batch = std::mem::take(buffers.get_mut(&buffered_table).unwrap());
+                    let Some(buf) = buffers.get_mut(&buffered_table) else { continue };
+                    let batch = std::mem::take(buf);
                     buffered_total -= batch.len();
                     if tx.blocking_send(Ok((buffered_table, batch))).is_err() {
                         return;

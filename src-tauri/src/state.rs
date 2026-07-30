@@ -52,6 +52,13 @@ impl AppState {
         crate::error::ensure_writable(self.read_only(session_id).await?)
     }
 
+    /// Client fetch + write guard, combined.
+    pub async fn writable_client(&self, session_id: &str) -> Result<Client, AppError> {
+        let client = self.client(session_id).await?;
+        self.ensure_writable(session_id).await?;
+        Ok(client)
+    }
+
     /// Returns the session's cancel flag, creating a fresh (false) one on first access.
     pub async fn cancel_flag(&self, session_id: &str) -> Arc<AtomicBool> {
         let mut g = self.cancels.lock().await;

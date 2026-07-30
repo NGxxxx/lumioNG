@@ -67,19 +67,11 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
     }
   }
 
+  /** A database only exists once it has a first collection. */
   async function createDatabase(db: string, coll: string) {
     const dbMsg = validateDatabaseName(db);
     if (dbMsg) throw dbMsg;
-    const collMsg = validateCollectionName(coll);
-    if (collMsg) throw collMsg;
-    activity.begin(m.common_running());
-    try {
-      await commandLog.pushTimed(createCollectionCmd(coll), sessionId, () =>
-        admin.createCollection(sessionId, db, coll));
-      await refresh();
-    } finally {
-      activity.end();
-    }
+    await createCollection(db, coll);
   }
 
   async function dropCollection(db: string, coll: string) {

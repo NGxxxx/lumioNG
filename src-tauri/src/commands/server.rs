@@ -53,8 +53,7 @@ pub async fn kill_op(
     opid: i64,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     client
         .database("admin")
         .run_command(doc! { "killOp": 1, "op": opid })

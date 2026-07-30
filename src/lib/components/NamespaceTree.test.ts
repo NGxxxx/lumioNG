@@ -63,6 +63,14 @@ describe("NamespaceTree", () => {
     expect(getByText("2 databases · 3 collections")).toBeTruthy();
   });
 
+  it("double-click collection → ondblselect", async () => {
+    const ondblselect = vi.fn();
+    const { getByText } = render(NamespaceTree, { props: { databases, ondblselect } });
+    await fireEvent.click(getByText("shop")); // expand — collections are collapsed by default
+    await fireEvent.doubleClick(getByText("users"));
+    expect(ondblselect).toHaveBeenCalledWith({ db: "shop", coll: "users" });
+  });
+
   it("left-click db → onselectdb (still toggles collapse/expand)", async () => {
     const onselectdb = vi.fn();
     const { getByText } = render(NamespaceTree, { props: { databases, onselectdb } });

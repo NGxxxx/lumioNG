@@ -65,7 +65,8 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
+  /* overflow-y: auto — lets the backdrop scroll if a dialog is taller than the window */
+  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
   .modal { background: var(--panel); border-radius: 0.375rem; overflow: hidden; }
   header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
   .body { padding: 0.875rem; font-size: 0.8125rem; }

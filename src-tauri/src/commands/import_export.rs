@@ -384,12 +384,15 @@ fn spawn_jsonl_producer(path: String) -> mpsc::Receiver<Result<Vec<ImportItem>, 
     use std::io::BufRead as _;
     let mut lines: Option<std::io::Lines<std::io::BufReader<std::fs::File>>> = None;
     spawn_batched_producer(move || {
-        if lines.is_none() {
-            let file = std::fs::File::open(&path).map_err(|e| AppError::Io(e.to_string()))?;
-            lines = Some(std::io::BufReader::new(file).lines());
-        }
+        let it = match &mut lines {
+            Some(it) => it,
+            None => {
+                let file = std::fs::File::open(&path).map_err(|e| AppError::Io(e.to_string()))?;
+                lines.insert(std::io::BufReader::new(file).lines())
+            }
+        };
         loop {
-            match lines.as_mut().unwrap().next() {
+            match it.next() {
                 Some(Ok(line)) => {
                     if let Some(item) = parse_jsonl_line(&line) {
                         return Ok(Some(item));
@@ -407,12 +410,16 @@ fn spawn_jsonl_producer(path: String) -> mpsc::Receiver<Result<Vec<ImportItem>, 
 fn spawn_json_array_producer(path: String) -> mpsc::Receiver<Result<Vec<ImportItem>, AppError>> {
     let mut elements: Option<crate::json_stream::ArrayElementReader<std::io::BufReader<std::fs::File>>> = None;
     spawn_batched_producer(move || {
-        if elements.is_none() {
-            let file = std::fs::File::open(&path).map_err(|e| AppError::Io(e.to_string()))?;
-            let reader = std::io::BufReader::new(file);
-            elements = Some(crate::json_stream::ArrayElementReader::new(reader).map_err(AppError::Parse)?);
-        }
-        match elements.as_mut().unwrap().next_element() {
+        let it = match &mut elements {
+            Some(it) => it,
+            None => {
+                let file = std::fs::File::open(&path).map_err(|e| AppError::Io(e.to_string()))?;
+                let reader = std::io::BufReader::new(file);
+                let reader = crate::json_stream::ArrayElementReader::new(reader).map_err(AppError::Parse)?;
+                elements.insert(reader)
+            }
+        };
+        match it.next_element() {
             Ok(Some(text)) => Ok(Some(parse_array_element(&text))),
             Ok(None) => Ok(None),
             Err(e) => Err(AppError::Parse(e)),
@@ -426,15 +433,18 @@ fn spawn_bson_producer(path: String, total: u64) -> mpsc::Receiver<Result<Vec<Im
     let mut reader: Option<std::io::BufReader<std::fs::File>> = None;
     let mut remaining = total;
     spawn_batched_producer(move || {
-        if reader.is_none() {
-            let file = std::fs::File::open(&path).map_err(|e| AppError::Io(e.to_string()))?;
-            reader = Some(std::io::BufReader::new(file));
-        }
+        let r = match &mut reader {
+            Some(r) => r,
+            None => {
+                let file = std::fs::File::open(&path).map_err(|e| AppError::Io(e.to_string()))?;
+                reader.insert(std::io::BufReader::new(file))
+            }
+        };
         if remaining == 0 {
             return Ok(None);
         }
         remaining -= 1;
-        match Document::from_reader(reader.as_mut().unwrap()) {
+        match Document::from_reader(r) {
             Ok(d) => Ok(Some(Ok(d))),
             Err(e) => Err(AppError::Parse(e.to_string())),
         }

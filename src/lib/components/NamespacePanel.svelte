@@ -258,6 +258,7 @@
         forceExpand={appliedQuery ? filtered.expand : null}
         selected={sess.nav.selection}
         onselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); onselect?.(d); }}
+        ondblselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); sessionManager.showContext("data"); onselect?.(d); }}
         onselectdb={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectDatabase(d.db); onselectdb?.(d); }}
         onmenu={(t) => (menu = { ...t, sessionId: sess.id })}
       />

@@ -17,6 +17,7 @@
     forceExpand = null,
     onselect,
     onselectdb,
+    ondblselect,
     onmenu,
   }: {
     databases?: DbInfo[];
@@ -24,6 +25,7 @@
     forceExpand?: Set<string> | null;
     onselect?: (d: { db: string; coll: string }) => void;
     onselectdb?: (d: { db: string }) => void;
+    ondblselect?: (d: { db: string; coll: string }) => void;
     onmenu?: (t: TreeMenuTarget) => void;
   } = $props();
 
@@ -89,6 +91,7 @@
           class="coll"
           class:active={selected?.db === d.name && selected?.coll === c}
           onclick={() => onselect?.({ db: d.name, coll: c })}
+          ondblclick={() => ondblselect?.({ db: d.name, coll: c })}
           oncontextmenu={(e) => collMenu(e, d.name, c)}
         >
           <!-- Yellow table icon -->

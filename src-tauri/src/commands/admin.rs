@@ -12,8 +12,7 @@ pub async fn create_collection(
     coll: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     client.database(&db).create_collection(&coll).await?;
     Ok(())
 }
@@ -25,8 +24,7 @@ pub async fn drop_collection(
     coll: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     client
         .database(&db)
         .collection::<Document>(&coll)
@@ -43,8 +41,7 @@ pub async fn duplicate_collection(
     target: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let database = client.database(&db);
     // `$out` silently overwrites an existing target collection, so reject up front instead.
     if database.list_collection_names().await?.iter().any(|n| n == &target) {
@@ -67,8 +64,7 @@ pub async fn rename_collection(
     to: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     // renameCollection must run against the "admin" db; renames within the same DB only.
     client
         .database("admin")
@@ -87,8 +83,7 @@ pub async fn drop_database(
     db: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     client.database(&db).drop().await?;
     Ok(())
 }
@@ -104,8 +99,7 @@ pub async fn set_collection_validator(
     validation_action: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let validator = canonical_string_to_doc(&validator_json)?;
     client
         .database(&db)
@@ -126,8 +120,7 @@ pub async fn truncate_collection(
     coll: String,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let res = client
         .database(&db)
         .collection::<Document>(&coll)

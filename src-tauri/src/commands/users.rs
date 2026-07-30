@@ -38,8 +38,7 @@ pub async fn create_user(
     roles: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let roles_docs = parse_role_refs(&roles)?;
     client
         .database(&db)
@@ -60,8 +59,7 @@ pub async fn update_user_roles(
     roles: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let roles_docs = parse_role_refs(&roles)?;
     client
         .database(&db)
@@ -81,8 +79,7 @@ pub async fn change_user_password(
     password: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     // Separate command from update_user_roles: overwriting roles and changing a password are
     // independent operations, and this keeps the UI from ever needing to round-trip a password.
     client
@@ -102,8 +99,7 @@ pub async fn drop_user(
     username: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     client
         .database(&db)
         .run_command(doc! { "dropUser": &username })
@@ -149,8 +145,7 @@ pub async fn create_role(
     roles: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let priv_docs = parse_privileges(&privileges)?;
     let roles_docs = parse_role_refs(&roles)?;
     client
@@ -173,8 +168,7 @@ pub async fn update_role(
     roles: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     let priv_docs = parse_privileges(&privileges)?;
     let roles_docs = parse_role_refs(&roles)?;
     client
@@ -195,8 +189,7 @@ pub async fn drop_role(
     role_name: String,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let client = state.client(&session_id).await?;
-    state.ensure_writable(&session_id).await?;
+    let client = state.writable_client(&session_id).await?;
     client
         .database(&db)
         .run_command(doc! { "dropRole": &role_name })

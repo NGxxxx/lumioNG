@@ -22,7 +22,7 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; }
+  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
   .modal { background: var(--panel); width: 34rem; max-width: 90vw; max-height: 80vh; border-radius: 0.375rem; overflow: hidden; display: flex; flex-direction: column; }
   header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); flex: none; }
   .body { padding: 0.875rem; overflow: auto; min-height: 0; }

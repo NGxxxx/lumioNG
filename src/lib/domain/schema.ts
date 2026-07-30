@@ -1,5 +1,5 @@
 /** Infer schema (types, presence) from a document sample and merge it with display columns. */
-import { describeValue, type BsonType } from "./extjson";
+import { describeValue, containerKind, type BsonType } from "./extjson";
 import type { Doc } from "./doc";
 
 /** Reads a value by pre-split path segments (undefined on a scalar/missing key mid-path); a numeric segment indexes an array. */
@@ -38,11 +38,9 @@ export interface ColumnField {
   presence?: number;
 }
 
-/** True for a plain object with keys, none starting with `$` — recurse into children. */
+/** True for a non-empty plain object (not an ExtJSON wrapper like `{$oid:...}`) — recurse into children. */
 function isContainer(v: unknown): v is Record<string, unknown> {
-  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
-  const keys = Object.keys(v as Record<string, unknown>);
-  return keys.length > 0 && keys.every((k) => !k.startsWith("$"));
+  return containerKind(v) === "object" && Object.keys(v as Record<string, unknown>).length > 0;
 }
 
 /** Call cb(path, value) for every leaf dot-path in a document (depth-first). */

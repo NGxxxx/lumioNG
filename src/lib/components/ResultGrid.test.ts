@@ -132,6 +132,18 @@ describe("ResultGrid keyboard shortcuts", () => {
     expect(v.copySelectedAsJson).toHaveBeenCalled();
   });
 
+  it("Ctrl+C while inline-editing does not call copySelectedAsJson", async () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const v = baseView(docs, {
+      editing: { row: 0, key: "name", kind: "inline" },
+      editText: "x",
+      copySelectedAsJson: vi.fn(),
+    });
+    const { container } = render(ResultGrid, { props: { v } });
+    await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "c", ctrlKey: true });
+    expect(v.copySelectedAsJson).not.toHaveBeenCalled();
+  });
+
   it("Ctrl+F focuses the active data view's search box", async () => {
     const docs = [{ _id: { $oid: "a" }, name: "x" }];
     const v = baseView(docs);

@@ -49,8 +49,9 @@ export function clickRowSelection(
 ): RowSelection {
   if (mods.shift && current.anchor !== null) {
     const range = rangeBetween(current.anchor, row);
-    const selected = new Set(visible ? range.filter((i) => visible.includes(i)) : range);
-    return { selected, anchor: current.anchor };
+    if (!visible) return { selected: new Set(range), anchor: current.anchor };
+    const visibleSet = new Set(visible);
+    return { selected: new Set(range.filter((i) => visibleSet.has(i))), anchor: current.anchor };
   }
   if (mods.ctrl) {
     const next = new Set(current.selected);

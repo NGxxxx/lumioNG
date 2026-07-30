@@ -98,6 +98,23 @@ export function createSessionManager() {
     return { id, label, color, status: "connecting", connId, uri, readOnly, ssh, connectedAt: null, nav, tree, host: createHostStatus(id) };
   }
 
+  /** Shared connect flow for both a new session and a reconnect. */
+  async function performConnect(s: Session): Promise<boolean> {
+    try {
+      await commandLog.pushTimed(connectCmd(maskUri(s.uri)), s.id, () =>
+        connect(s.id, s.uri, s.readOnly, s.ssh));
+      s.nav.setConnected(true);
+      patchSession(s.id, { status: "connected", connectedAt: Date.now() });
+      if (s.connId != null) touchConnection(s.connId).catch(() => {}); // non-critical metadata; never blocks connect
+      await s.tree.refresh();
+      s.host.load(); // fire-and-forget; feeds Host tab + status bar
+      return true;
+    } catch {
+      patchSession(s.id, { status: "error" });
+      return false;
+    }
+  }
+
   async function focusOrOpen(p: { connId: number | null; uri: string; label: string; readOnly?: boolean; ssh?: SshConnectInput | null }): Promise<boolean> {
     const id = p.connId != null ? savedSessionId(p.connId) : adhocSessionId(++adhocSeq);
     const existing = sessions.find((s) => s.id === id);
@@ -106,36 +123,14 @@ export function createSessionManager() {
     const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null);
     sessions = [...sessions, s];
     activeId = id;
-    try {
-      await commandLog.pushTimed(connectCmd(maskUri(p.uri)), id, () =>
-        connect(id, p.uri, p.readOnly ?? false, p.ssh ?? null));
-      s.nav.setConnected(true);
-      patchSession(id, { status: "connected", connectedAt: Date.now() });
-      if (p.connId != null) touchConnection(p.connId).catch(() => {}); // non-critical metadata; never blocks connect
-      await s.tree.refresh();
-      s.host.load(); // fire-and-forget; feeds Host tab + status bar
-      return true;
-    } catch {
-      patchSession(id, { status: "error" });
-      return false;
-    }
+    return performConnect(s);
   }
 
   async function reconnect(id: string) {
     const s = sessions.find((x) => x.id === id);
     if (!s) return;
     patchSession(id, { status: "connecting" });
-    try {
-      await commandLog.pushTimed(connectCmd(maskUri(s.uri)), id, () =>
-        connect(id, s.uri, s.readOnly, s.ssh));
-      s.nav.setConnected(true);
-      patchSession(id, { status: "connected", connectedAt: Date.now() });
-      if (s.connId != null) touchConnection(s.connId).catch(() => {}); // non-critical metadata; never blocks connect
-      await s.tree.refresh();
-      s.host.load(); // fire-and-forget; feeds Host tab + status bar
-    } catch {
-      patchSession(id, { status: "error" });
-    }
+    await performConnect(s);
   }
 
   function focusSession(id: string) {
