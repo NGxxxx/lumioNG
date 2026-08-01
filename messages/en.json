@@ -667,5 +667,21 @@
   "context_menu_delete_selected_n": "Delete selected ({count})",
   "context_menu_delete_all_filter": "All matching filter…",
   "context_menu_new_document": "New document…",
-  "context_menu_duplicate_document": "Duplicate document…"
+  "context_menu_duplicate_document": "Duplicate document…",
+  "gridfs_file_count": "{count} files",
+  "gridfs_search_placeholder": "Search filename…",
+  "gridfs_col_filename": "Filename",
+  "gridfs_col_length": "Size",
+  "gridfs_col_content_type": "Type",
+  "gridfs_col_upload_date": "Uploaded",
+  "gridfs_preview_button": "Preview",
+  "gridfs_download_button": "Download",
+  "gridfs_preview_cap_message": "File exceeds the 5MB preview limit — download it to view.",
+  "gridfs_preview_loading": "Loading preview…",
+  "gridfs_preview_error": "Preview failed: {error}",
+  "gridfs_preview_unsupported": "This file type can't be previewed.",
+  "gridfs_download_progress": "{done} / {total}",
+  "gridfs_download_cancel": "Cancel",
+  "gridfs_download_error": "Download failed: {error}",
+  "gridfs_download_cancelled": "Download cancelled"
 }

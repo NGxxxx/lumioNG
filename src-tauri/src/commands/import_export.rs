@@ -49,7 +49,7 @@ pub struct ExportProgress {
 }
 
 /// Shared setup for the `export_*` commands: create the parent directory if needed and open a buffered writer at `path`, truncating any existing file.
-fn create_output_writer(path: &std::path::Path) -> Result<std::io::BufWriter<std::fs::File>, AppError> {
+pub(crate) fn create_output_writer(path: &std::path::Path) -> Result<std::io::BufWriter<std::fs::File>, AppError> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
     }
@@ -81,7 +81,7 @@ async fn open_export_cursor(
 }
 
 /// Checks the per-session cancel flag; returns an error to unwind the export/import loop once the user requests cancellation.
-fn check_cancelled(cancel: &std::sync::atomic::AtomicBool) -> Result<(), AppError> {
+pub(crate) fn check_cancelled(cancel: &std::sync::atomic::AtomicBool) -> Result<(), AppError> {
     if cancel.load(Ordering::Relaxed) {
         return Err(AppError::Query("Export cancelled".into()));
     }
@@ -110,7 +110,7 @@ async fn open_write_cursor(
 
 /// Runs `fut`; on error, best-effort deletes the (already-created) partial output file at `path`
 /// before propagating, so a mid-export I/O failure or cancellation doesn't leave a truncated file.
-async fn cleanup_on_err<T>(
+pub(crate) async fn cleanup_on_err<T>(
     path: &std::path::Path,
     fut: impl std::future::Future<Output = Result<T, AppError>>,
 ) -> Result<T, AppError> {

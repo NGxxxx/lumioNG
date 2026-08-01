@@ -24,6 +24,19 @@ export function numFromExt(v: unknown): number | null {
   return null;
 }
 
+/** Resolve an ExtJSON $date (string form or { $date: { $numberLong } } form) to an ISO string; null if not $date-shaped. */
+export function dateIsoFromExt(v: unknown): string | null {
+  if (v && typeof v === "object" && "$date" in (v as object)) {
+    const d = (v as Record<string, unknown>).$date;
+    if (typeof d === "string") return d;
+    if (d && typeof d === "object" && "$numberLong" in (d as object)) {
+      const ms = Number((d as Record<string, unknown>).$numberLong);
+      return Number.isNaN(ms) ? null : new Date(ms).toISOString();
+    }
+  }
+  return null;
+}
+
 function previewJson(v: unknown, max = 160): string {
   const s = JSON.stringify(v);
   return s.length > max ? s.slice(0, max - 1) + "…" : s;

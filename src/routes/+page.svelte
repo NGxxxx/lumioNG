@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { idJson } from "$lib/domain/docid";
+  import { detectGridFsBucket } from "$lib/domain/gridfsBucket";
   import { aggregateTemplate } from "$lib/domain/queryStatement";
   import { buildInsertSkeleton } from "$lib/api/insertSkeleton";
   import { cancelScript } from "$lib/api/script";
@@ -23,6 +24,7 @@
   import SavedQueriesPanel from "$lib/components/SavedQueriesPanel.svelte";
   import SaveQueryDialog from "$lib/components/SaveQueryDialog.svelte";
   import ResultTable from "$lib/components/ResultTable.svelte";
+  import GridFsFilesPanel from "$lib/components/GridFsFilesPanel.svelte";
   import DocumentForm from "$lib/components/DocumentForm.svelte";
   import TabBar from "$lib/components/TabBar.svelte";
   import DatabaseCollectionsPanel from "$lib/components/DatabaseCollectionsPanel.svelte";
@@ -390,9 +392,15 @@
           {@const db = sel.db}
           {@const coll = sel.coll}
           {@const version = nav?.collectionVersion(db, coll) ?? 0}
+          {@const siblingCollections = tree?.databases.find((d) => d.name === db)?.collections ?? []}
+          {@const bucket = detectGridFsBucket(siblingCollections, coll)}
           <div class="tabpane">
             {#key `${sm.activeId}/${db}/${coll}#${version}`}
-              <ResultTable {db} {coll} {version} onopendocument={(doc, mode) => openDocument(db, coll, doc, mode)} />
+              {#if bucket}
+                <GridFsFilesPanel {db} {bucket} {version} />
+              {:else}
+                <ResultTable {db} {coll} {version} onopendocument={(doc, mode) => openDocument(db, coll, doc, mode)} />
+              {/if}
             {/key}
           </div>
         {/if}

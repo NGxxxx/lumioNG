@@ -59,6 +59,8 @@ pub fn run() {
             commands::import_export::export_sql_progress,
             commands::import_export::export_query_progress,
             commands::import_export::cancel_export,
+            commands::gridfs::gridfs_preview_bytes,
+            commands::gridfs::gridfs_download,
             commands::import_export::import_bson,
             commands::import_export::import_file_size,
             commands::sql::sql_import_preview,

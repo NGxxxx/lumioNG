@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { describeValue, numFromExt, truncateForDisplay, MAX_DISPLAY_LEN, clipboardTextOf, nestedJsonPretty, containerKind } from "./extjson";
+import { describeValue, numFromExt, dateIsoFromExt, truncateForDisplay, MAX_DISPLAY_LEN, clipboardTextOf, nestedJsonPretty, containerKind } from "./extjson";
 
 describe("truncateForDisplay", () => {
   it("leaves short text unchanged", () => {
@@ -32,6 +32,25 @@ describe("numFromExt", () => {
   it("ExtJSON parse ra NaN → null (guard)", () => {
     expect(numFromExt({ $numberInt: "abc" })).toBeNull();
     expect(numFromExt({ $numberDouble: "x" })).toBeNull();
+  });
+});
+
+describe("dateIsoFromExt", () => {
+  it("resolves the canonical { $date: { $numberLong } } form", () => {
+    expect(dateIsoFromExt({ $date: { $numberLong: "1700000000000" } })).toBe(
+      new Date(1700000000000).toISOString(),
+    );
+  });
+  it("resolves the relaxed { $date: <ISO string> } form", () => {
+    expect(dateIsoFromExt({ $date: "2024-01-15T09:30:00.000Z" })).toBe("2024-01-15T09:30:00.000Z");
+  });
+  it("returns null for a non-$date value", () => {
+    expect(dateIsoFromExt({ foo: 1 })).toBeNull();
+    expect(dateIsoFromExt(null)).toBeNull();
+    expect(dateIsoFromExt("not a date")).toBeNull();
+  });
+  it("returns null for an unparseable $numberLong", () => {
+    expect(dateIsoFromExt({ $date: { $numberLong: "not-a-number" } })).toBeNull();
   });
 });
 

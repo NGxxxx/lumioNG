@@ -192,9 +192,9 @@ export async function deleteOne(
   return await invoke<number>("delete_one", { sessionId, db, coll, filter, allowAll });
 }
 
-type ProgressCb = (done: number, total: number) => void;
+export type ProgressCb = (done: number, total: number) => void;
 
-function progressChannel(onProgress: ProgressCb): Channel<{ done: number; total: number }> {
+export function progressChannel(onProgress: ProgressCb): Channel<{ done: number; total: number }> {
   const ch = new Channel<{ done: number; total: number }>();
   ch.onmessage = (m) => onProgress(m.done, m.total);
   return ch;

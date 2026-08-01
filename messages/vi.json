@@ -667,5 +667,21 @@
   "context_menu_delete_selected_n": "Xóa đã chọn ({count})",
   "context_menu_delete_all_filter": "Toàn bộ theo filter…",
   "context_menu_new_document": "Document mới…",
-  "context_menu_duplicate_document": "Nhân bản document…"
+  "context_menu_duplicate_document": "Nhân bản document…",
+  "gridfs_file_count": "{count} tệp",
+  "gridfs_search_placeholder": "Tìm theo tên tệp…",
+  "gridfs_col_filename": "Tên tệp",
+  "gridfs_col_length": "Kích thước",
+  "gridfs_col_content_type": "Loại",
+  "gridfs_col_upload_date": "Ngày tải lên",
+  "gridfs_preview_button": "Xem trước",
+  "gridfs_download_button": "Tải xuống",
+  "gridfs_preview_cap_message": "Tệp vượt quá giới hạn xem trước 5MB — hãy tải xuống để xem.",
+  "gridfs_preview_loading": "Đang tải xem trước…",
+  "gridfs_preview_error": "Xem trước lỗi: {error}",
+  "gridfs_preview_unsupported": "Loại tệp này không thể xem trước.",
+  "gridfs_download_progress": "{done} / {total}",
+  "gridfs_download_cancel": "Hủy",
+  "gridfs_download_error": "Tải xuống lỗi: {error}",
+  "gridfs_download_cancelled": "Đã hủy tải xuống"
 }

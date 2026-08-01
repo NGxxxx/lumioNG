@@ -1,5 +1,5 @@
 /** Parse serverStatus/buildInfo/hostInfo into a curated HostInfo structure for the Host tab. */
-import { numFromExt } from "./extjson";
+import { numFromExt, dateIsoFromExt } from "./extjson";
 
 export interface HostInfo {
   version: string | null;
@@ -18,19 +18,6 @@ export interface HostInfo {
 
 function str(v: unknown): string | null {
   return typeof v === "string" ? v : null;
-}
-
-/** Resolve an ExtJSON $date (string or { $date: { $numberLong } }) to an ISO string. */
-function dateIso(v: unknown): string | null {
-  if (v && typeof v === "object" && "$date" in (v as object)) {
-    const d = (v as Record<string, unknown>).$date;
-    if (typeof d === "string") return d;
-    if (d && typeof d === "object" && "$numberLong" in (d as object)) {
-      const ms = Number((d as Record<string, unknown>).$numberLong);
-      return Number.isNaN(ms) ? null : new Date(ms).toISOString();
-    }
-  }
-  return null;
 }
 
 const obj = (v: unknown): Record<string, unknown> =>
@@ -64,7 +51,7 @@ export function parseHostInfo(
     version: str(ss.version) ?? str(bi.version),
     storageEngine: str(storage.name),
     uptimeSeconds: numFromExt(ss.uptime),
-    localTimeIso: dateIso(ss.localTime),
+    localTimeIso: dateIsoFromExt(ss.localTime),
     connectionsCurrent: numFromExt(conn.current),
     connectionsAvailable: numFromExt(conn.available),
     memResidentMb: numFromExt(mem.resident),

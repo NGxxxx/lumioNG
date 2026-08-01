@@ -31,6 +31,7 @@ futures = "0.3"
 rquickjs = { version = "0.9", features = ["loader"] }
 sqlparser = "0.52"
 csv = "1"
+base64 = "0.22"
 
 [dev-dependencies]
 # `macros` enables `#[tokio::test]` for the ssh_tunnel in-process server/client tests.

@@ -12,6 +12,7 @@ import { maskUri } from "../domain/uri";
 import { disposeQueryRun } from "./queryRuns.svelte";
 import { disposePipelineTree } from "./pipelineTreeRuns.svelte";
 import { disposeCollectionViews } from "./collectionViews.svelte";
+import { disposeGridfsFiles } from "./gridfsFilesCache.svelte";
 
 export type SessionStatus = "connecting" | "connected" | "error";
 export type Session = {
@@ -145,6 +146,7 @@ export function createSessionManager() {
       disposePipelineTree(t.id);
     }
     disposeCollectionViews(id);
+    disposeGridfsFiles(id);
     workTabs = workTabs.filter((t) => t.sessionId !== id);
     sessions = sessions.filter((s) => s.id !== id);
     if (activeId === id) {
