@@ -37,10 +37,11 @@ describe("methodHeadAt", () => {
     expect(methodHeadAt("db.c.", 5)).toBeNull();
     expect(methodHeadAt("not a statement", 5)).toBeNull();
   });
-  it("still resolves coll/method through a getSiblingDB(...).getCollection(...) chain (start may point mid-expression here)", () => {
+  it("resolves coll/method/start through a getSiblingDB(...).getCollection(...) chain", () => {
     const t = 'db.getSiblingDB("o").getCollection("c").aggregate([{ "$ma';
     const h = methodHeadAt(t, t.length);
     expect(h!.method).toBe("aggregate");
     expect(h!.coll).toBe("c");
+    expect(h!.start).toBe(0); // the whole chain, including the getSiblingDB(...) hop, is one match
   });
 });

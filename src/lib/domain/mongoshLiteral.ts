@@ -17,8 +17,19 @@ export interface LiteralParseFailure {
 
 const IDENT_START = /[A-Za-z_$]/;
 const IDENT_PART = /[A-Za-z0-9_$]/;
-const CONSTRUCTORS = new Set(["ObjectId", "ISODate", "NumberLong", "NumberDecimal", "NumberInt"]);
+const CONSTRUCTORS = new Set([
+  "ObjectId", "ISODate", "NumberLong", "NumberDecimal", "NumberInt",
+  "Timestamp", "MinKey", "MaxKey", "UUID", "BinData",
+]);
 const KEYWORD = /^(true|false|null)(?![A-Za-z0-9_$])/;
+
+/** Hex string (even length) -> base64, for UUID's `$binary` representation — no Buffer dependency,
+ *  matches how `prelude.js`'s `UUID()` shim builds the same `$binary` shape. */
+function hexToBase64(hex: string): string {
+  let bin = "";
+  for (let i = 0; i < hex.length; i += 2) bin += String.fromCharCode(parseInt(hex.slice(i, i + 2), 16));
+  return btoa(bin);
+}
 
 class Cursor {
   pos: number;
@@ -97,36 +108,77 @@ function parseIdentifier(c: Cursor): string | null {
   return c.text.slice(start, c.pos);
 }
 
+/** Parses a comma-separated argument list up to (not including) the closing ")". */
+function parseArgList(c: Cursor): unknown[] | undefined {
+  const args: unknown[] = [];
+  c.skipWs();
+  if (c.peek() === ")") return args;
+  for (;;) {
+    const v = parseValue(c);
+    if (v === undefined) return undefined;
+    args.push(v);
+    c.skipWs();
+    if (c.peek() === ",") {
+      c.pos++;
+      c.skipWs();
+      continue;
+    }
+    break;
+  }
+  return args;
+}
+
 function parseConstructorCall(c: Cursor, name: string): unknown {
   c.pos++; // consume "("
+  const args = parseArgList(c);
+  if (args === undefined) return undefined;
   c.skipWs();
-  let arg: unknown;
-  if (c.peek() !== ")") {
-    arg = parseValue(c);
-    if (arg === undefined) return undefined;
-    c.skipWs();
-  }
   if (c.peek() !== ")") return undefined;
   c.pos++; // consume ")"
+  const arg = args[0];
 
   switch (name) {
     case "ObjectId": {
-      if (typeof arg !== "string" || !/^[0-9a-fA-F]{24}$/.test(arg)) return undefined;
+      if (args.length !== 1 || typeof arg !== "string" || !/^[0-9a-fA-F]{24}$/.test(arg)) return undefined;
       return { $oid: arg };
     }
     case "ISODate": {
-      if (arg !== undefined && typeof arg !== "string") return undefined;
+      if (args.length > 1 || (arg !== undefined && typeof arg !== "string")) return undefined;
       const ms = Date.parse((arg as string | undefined) ?? new Date().toISOString());
       return Number.isNaN(ms) ? undefined : { $date: { $numberLong: String(ms) } };
     }
     case "NumberLong":
-      return typeof arg === "string" || typeof arg === "number" ? { $numberLong: String(arg) } : undefined;
+      return args.length === 1 && (typeof arg === "string" || typeof arg === "number") ? { $numberLong: String(arg) } : undefined;
     case "NumberDecimal":
-      return typeof arg === "string" || typeof arg === "number" ? { $numberDecimal: String(arg) } : undefined;
+      return args.length === 1 && (typeof arg === "string" || typeof arg === "number") ? { $numberDecimal: String(arg) } : undefined;
     case "NumberInt": {
-      if (typeof arg !== "string" && typeof arg !== "number") return undefined;
+      if (args.length !== 1 || (typeof arg !== "string" && typeof arg !== "number")) return undefined;
       const n = Math.trunc(Number(arg));
       return Number.isNaN(n) ? undefined : { $numberInt: String(n) };
+    }
+    case "Timestamp": {
+      // mirrors prelude.js's Timestamp(t, i): both args default to 0 when omitted.
+      if (args.length > 2) return undefined;
+      const [t, i] = args;
+      if ((t !== undefined && typeof t !== "number") || (i !== undefined && typeof i !== "number")) return undefined;
+      return { $timestamp: { t: (t as number | undefined) ?? 0, i: (i as number | undefined) ?? 0 } };
+    }
+    case "MinKey":
+      return args.length === 0 ? { $minKey: 1 } : undefined;
+    case "MaxKey":
+      return args.length === 0 ? { $maxKey: 1 } : undefined;
+    case "UUID": {
+      if (args.length !== 1 || typeof arg !== "string") return undefined;
+      const clean = arg.replace(/-/g, "").toLowerCase();
+      if (!/^[0-9a-f]{32}$/.test(clean)) return undefined;
+      return { $binary: { base64: hexToBase64(clean), subType: "04" } };
+    }
+    case "BinData": {
+      const [subtype, base64] = args;
+      if (args.length !== 2 || typeof subtype !== "number" || typeof base64 !== "string") return undefined;
+      const sub = Math.trunc(subtype);
+      if (sub < 0 || sub > 255) return undefined;
+      return { $binary: { base64, subType: sub.toString(16).padStart(2, "0") } };
     }
     default:
       return undefined;
@@ -201,6 +253,46 @@ function parseArray(c: Cursor): unknown[] | undefined {
   }
 }
 
+/** Parses a `/pattern/flags` regex literal — one of the most common `$match` idioms — into the
+ *  canonical ExtJSON `$regularExpression` shape (the same shape `describeValue` in extjson.ts
+ *  recognizes). `/` inside an (unescaped) character class doesn't end the literal; a raw newline
+ *  before the closing `/` means this wasn't a regex literal after all. */
+function parseRegexLiteral(c: Cursor): unknown {
+  const start = c.pos;
+  c.pos++; // consume leading "/"
+  let pattern = "";
+  let inClass = false;
+  while (!c.atEnd()) {
+    const ch = c.peek();
+    if (ch === "\n") {
+      c.pos = start;
+      return undefined;
+    }
+    if (ch === "\\") {
+      pattern += ch;
+      c.pos++;
+      if (c.atEnd()) break;
+      pattern += c.peek();
+      c.pos++;
+      continue;
+    }
+    if (ch === "[") inClass = true;
+    else if (ch === "]") inClass = false;
+    else if (ch === "/" && !inClass) break;
+    pattern += ch;
+    c.pos++;
+  }
+  if (c.peek() !== "/") {
+    c.pos = start;
+    return undefined;
+  }
+  c.pos++; // consume closing "/"
+  const flagsStart = c.pos;
+  while (!c.atEnd() && /[A-Za-z]/.test(c.peek())) c.pos++;
+  const flags = c.text.slice(flagsStart, c.pos);
+  return { $regularExpression: { pattern, options: flags } };
+}
+
 /** Parses one value at the cursor. Returns the sentinel `undefined` on failure — distinguishable
  *  from a real parsed `null`, which is the JS value `null`, never `undefined`. */
 function parseValue(c: Cursor): unknown {
@@ -209,6 +301,7 @@ function parseValue(c: Cursor): unknown {
   if (ch === "{") return parseObject(c);
   if (ch === "[") return parseArray(c);
   if (ch === '"' || ch === "'") return parseStringLiteral(c);
+  if (ch === "/") return parseRegexLiteral(c);
   if (ch === "-" || /[0-9]/.test(ch)) return parseNumberLiteral(c);
 
   const kw = KEYWORD.exec(c.text.slice(c.pos));

@@ -1,6 +1,5 @@
 <!-- src/lib/components/PipelineStageCard.svelte -->
 <script lang="ts">
-  import { untrack } from "svelte";
   import type { PipelineTree } from "../stores/pipelineTree.svelte";
   import { PIPELINE_STAGES } from "../domain/mongoOps";
   import { stageBodyKind } from "../domain/pipelineStages";
@@ -19,11 +18,14 @@
   const leafType = $derived(kind === "leaf" ? (describeValue(stage.body).type as LeafInputType) : null);
   const preview = $derived(tree.previewFor(stage.id));
 
-  // Runs once at card creation (Svelte's <script> body executes once per component instance) so an
-  // already-parsed stage shows a preview immediately, without requiring an edit first. untrack: a
-  // deliberate one-shot read, not a reactive dependency — re-running on every stage/db change would
-  // duplicate what onBodyChange's own requestPreview call already does.
-  untrack(() => tree.requestPreview(stage.id, db));
+  // Runs once at card creation (so an already-parsed stage shows a preview immediately, without
+  // requiring an edit first) AND again whenever `db` changes for this same already-rendered card —
+  // otherwise a card mounted under one db would keep showing a preview fetched against a since-
+  // abandoned database. Re-running when `stage` itself changes (e.g. after onBodyChange) is
+  // harmless/redundant: requestPreview is debounced per stage id.
+  $effect(() => {
+    tree.requestPreview(stage.id, db);
+  });
 
   function onBodyChange(v: unknown) {
     tree.updateStageBody(index, v);
@@ -66,7 +68,7 @@
 
   <div class="stage-body">
     {#if kind === "object"}
-      <TreeEditor value={stage.body as Doc} onchange={onBodyChange} onvalidchange={() => {}} lockedKeys={[]} />
+      <TreeEditor value={stage.body as Doc} onchange={onBodyChange} onvalidchange={() => {}} lockedKeys={[]} compact />
     {:else if kind === "leaf" && leafType && hasInput(leafType)}
       <TreeLeafInput type={leafType} value={stage.body} onchange={onBodyChange} onerror={() => {}} />
     {:else}

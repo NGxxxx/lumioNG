@@ -6,9 +6,12 @@ export function aggregateTemplate(coll: string): string {
   return `db.getCollection("${coll}").aggregate([\n  { "$match": {} }\n])`;
 }
 
-// db.getCollection("X").<m>(   OR   db.X.<m>(   — countDocuments before count so the longer wins.
+// db.getCollection("X").<m>(   OR   db.X.<m>(   OR   db.getSiblingDB("d").getCollection("X").<m>( —
+// the optional getSiblingDB(...) hop is consumed as part of the SAME match (not left dangling
+// before it) so `start` is the true beginning of the whole chain, not a point mid-expression.
+// countDocuments before count so the longer wins.
 const HEAD =
-  /(?:(?:\bdb\s*\.\s*)?getCollection\(\s*["']([^"']*)["']\s*\)|\bdb\s*\.\s*([A-Za-z0-9_$.]+))\s*\.\s*(aggregate|find|countDocuments|count|distinct|insertOne|insertMany|updateOne|updateMany|replaceOne|deleteOne|deleteMany)\s*\(/;
+  /\bdb\b(?:\s*\.\s*getSiblingDB\(\s*["'][^"']*["']\s*\))*\s*\.\s*(?:getCollection\(\s*["']([^"']*)["']\s*\)|([A-Za-z0-9_$.]+))\s*\.\s*(aggregate|find|countDocuments|count|distinct|insertOne|insertMany|updateOne|updateMany|replaceOne|deleteOne|deleteMany)\s*\(/;
 
 /** Locate the supported method call governing the cursor: the last `db.<coll>.<method>(` whose `(` is at or before `pos`, so multi-statement editors classify the right statement; null if none. */
 export function methodHeadAt(

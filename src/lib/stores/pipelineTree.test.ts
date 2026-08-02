@@ -84,9 +84,34 @@ describe("createPipelineTree", () => {
     const id = tree.stages[1].id;
     await tree.runPreview(id, "mydb");
     expect(aggregateMock).toHaveBeenCalledWith(
-      "conn:1", "mydb", "orders", JSON.stringify([{ $match: { a: 1 } }, { $limit: 5 }]), 0, 20, null,
+      "conn:1", "mydb", "orders", JSON.stringify([{ $match: { a: 1 } }, { $limit: 5 }]), 0, 20, 30000,
     );
     expect(tree.previewFor(id)).toMatchObject({ docs: [{ _id: 1 }], loading: false, error: null, hasRun: true });
+  });
+
+  it("discards a stale preview response that resolves after a fresher one for the same stage", async () => {
+    const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])');
+    const tree = createPipelineTree("conn:1", script);
+    tree.syncFromScript();
+    const id = tree.stages[0].id;
+
+    let resolveFirst!: (docs: { _id: number }[]) => void;
+    let resolveSecond!: (docs: { _id: number }[]) => void;
+    aggregateMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+
+    const firstCall = tree.runPreview(id, "mydb");
+    const secondCall = tree.runPreview(id, "mydb");
+
+    // Second (fresher) call's response arrives first...
+    resolveSecond([{ _id: 2 }]);
+    await secondCall;
+    // ...then the stale first call's response arrives late — it must not overwrite the fresher one.
+    resolveFirst([{ _id: 1 }]);
+    await firstCall;
+
+    expect(tree.previewFor(id).docs).toEqual([{ _id: 2 }]);
   });
 
   it("invalidates downstream stage previews when an earlier stage is edited", async () => {
@@ -110,12 +135,35 @@ describe("createPipelineTree", () => {
     expect(aggregateMock).not.toHaveBeenCalled();
   });
 
+  it("debounces the regenerate() triggered by updateStageBody, collapsing rapid keystroke-driven edits into one script.set()", () => {
+    vi.useFakeTimers();
+    let current = 'db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])';
+    const setSpy = vi.fn((s: string) => { current = s; });
+    const binding = { get: () => current, set: setSpy };
+    const tree = createPipelineTree("conn:1", binding);
+    tree.syncFromScript();
+
+    tree.updateStageBody(0, { a: 2 });
+    tree.updateStageBody(0, { a: 3 });
+    tree.updateStageBody(0, { a: 4 });
+    expect(setSpy).not.toHaveBeenCalled(); // no synchronous regenerate() per call
+
+    vi.advanceTimersByTime(120);
+    expect(setSpy).toHaveBeenCalledTimes(1); // coalesced into a single regenerate()
+    expect(current).toContain('"a": 4');
+    vi.useRealTimers();
+  });
+
+  it("defaults autoPreview to off", () => {
+    const tree = createPipelineTree("conn:1", scriptBinding('db.getCollection("orders").aggregate([])'));
+    expect(tree.autoPreview).toBe(false);
+  });
+
   it("requestPreview no-ops when autoPreview is off", () => {
     vi.useFakeTimers();
     const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])');
     const tree = createPipelineTree("conn:1", script);
     tree.syncFromScript();
-    tree.setAutoPreview(false);
     const id = tree.stages[0].id;
     tree.requestPreview(id, "mydb");
     vi.advanceTimersByTime(1000);

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
+import { flushSync } from "svelte";
 import PipelineStageCard from "./PipelineStageCard.svelte";
 import type { StageEntry } from "../domain/pipelineStages";
 
@@ -34,6 +35,17 @@ describe("PipelineStageCard", () => {
     const tree = fakeTree([{ id: "s1", name: "$match", body: { a: 1 } }]);
     render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
     expect(tree.requestPreview).toHaveBeenCalledWith("s1", "mydb");
+  });
+
+  it("re-requests the preview against the new db when db changes for an already-mounted card", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: { a: 1 } }]);
+    const { rerender } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    expect(tree.requestPreview).toHaveBeenCalledWith("s1", "mydb");
+    tree.requestPreview.mockClear();
+
+    await rerender({ tree: tree as never, index: 0, db: "otherdb" });
+    flushSync();
+    expect(tree.requestPreview).toHaveBeenCalledWith("s1", "otherdb");
   });
 
   it("calls removeStage with this card's index when the remove button is clicked", async () => {

@@ -4,6 +4,8 @@ import {
   parsePipelineFromScript, stagesToScript, defaultStageBody, newStageId, type StageEntry,
 } from "../domain/pipelineStages";
 import type { Doc } from "../domain/doc";
+import { createAsyncGuard } from "./asyncGuard.svelte";
+import { settings } from "./settings.svelte";
 
 export interface PreviewState {
   docs: Doc[];
@@ -22,18 +24,30 @@ export interface ScriptBinding {
 const PREVIEW_DEBOUNCE_MS = 450;
 const PREVIEW_SAMPLE_SIZE = 20;
 
+/** Stage operators that write to a collection instead of just shaping the output — previewing a
+ *  pipeline that reaches one of these would silently execute the write, so it's blocked client-side. */
+const WRITE_STAGES = new Set(["$out", "$merge"]);
+
 /** Per-Query-tab store backing the "Tree" sub-tab: keeps a stage list synced with the tab's
  *  script text (via `script`), plus a debounced live preview per stage. */
 export function createPipelineTree(sessionId: string, script: ScriptBinding) {
   let stages = $state.raw<StageEntry[]>([]);
   let coll = $state("");
   let parseError = $state<string | null>(null);
-  let autoPreview = $state(true);
+  let autoPreview = $state(false);
   let previews = $state.raw<Record<string, PreviewState>>({});
 
   let lastSyncedScript: string | null = null;
   let selfGeneratedScript: string | null = null;
   const debouncers = new Map<string, ReturnType<typeof createDebouncer>>();
+
+  // Matches TreeEditor.svelte's own ROWS_DEBOUNCE_MS: `updateStageBody` fires on every keystroke
+  // from TreeLeafInput (no debounce of its own there — it's a shared component other callers rely
+  // on committing synchronously, e.g. DocumentForm's Save reads the just-typed value immediately).
+  // Debouncing HERE instead — the full-pipeline JSON.stringify + script.set() is the expensive part
+  // — gets the same "no regenerate() per character" outcome without changing that shared contract.
+  const REGENERATE_DEBOUNCE_MS = 120;
+  const regenerateDebouncer = createDebouncer(REGENERATE_DEBOUNCE_MS);
 
   function regenerate(): void {
     const text = stagesToScript(coll, stages);
@@ -106,10 +120,12 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     regenerate();
   }
 
+  /** Debounced regenerate: called on every keystroke (via TreeLeafInput's onchange), so the
+   *  expensive full-pipeline stringify+script.set() is coalesced instead of running per character. */
   function updateStageBody(index: number, body: unknown): void {
     stages = stages.map((s, i) => (i === index ? { ...s, body } : s));
     invalidatePreviewsFrom(index);
-    regenerate();
+    regenerateDebouncer.schedule(regenerate);
   }
 
   function setPreview(id: string, patch: Partial<PreviewState>): void {
@@ -117,22 +133,42 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     previews = { ...previews, [id]: { ...current, ...patch } };
   }
 
-  const WRITE_STAGES = new Set(["$out", "$merge"]);
+  // One asyncGuard per stage id: two edits to the same stage fired far apart can have their preview
+  // responses resolve out of order; the generation token lets a stale response be discarded instead
+  // of overwriting a fresher one. Created lazily, never removed (bounded by the stage count).
+  const previewGuards = new Map<string, ReturnType<typeof createAsyncGuard>>();
+  function guardFor(id: string): ReturnType<typeof createAsyncGuard> {
+    let g = previewGuards.get(id);
+    if (!g) {
+      g = createAsyncGuard();
+      previewGuards.set(id, g);
+    }
+    return g;
+  }
 
   async function runPreview(id: string, db: string): Promise<void> {
     const idx = stages.findIndex((s) => s.id === id);
     if (idx === -1 || !coll) return;
     const pipeline = stages.slice(0, idx + 1);
+    const guard = guardFor(id);
+    const gen = guard.begin();
     if (pipeline.some((s) => WRITE_STAGES.has(s.name))) {
-      setPreview(id, { loading: false, error: "pipeline_tree_preview_write_stage_blocked", hasRun: true });
+      if (guard.isCurrent(gen)) setPreview(id, { loading: false, error: "pipeline_tree_preview_write_stage_blocked", hasRun: true });
+      guard.finish(gen);
       return;
     }
     setPreview(id, { loading: true, error: null });
     try {
-      const docs = await aggregate(sessionId, db, coll, JSON.stringify(pipeline.map((s) => ({ [s.name]: s.body }))), 0, PREVIEW_SAMPLE_SIZE, null);
-      setPreview(id, { docs, loading: false, hasRun: true });
+      const docs = await aggregate(
+        sessionId, db, coll,
+        JSON.stringify(pipeline.map((s) => ({ [s.name]: s.body }))),
+        0, PREVIEW_SAMPLE_SIZE, settings.queryTimeoutMs,
+      );
+      if (guard.isCurrent(gen)) setPreview(id, { docs, loading: false, hasRun: true });
     } catch (e) {
-      setPreview(id, { loading: false, error: e instanceof Error ? e.message : String(e), hasRun: true });
+      if (guard.isCurrent(gen)) setPreview(id, { loading: false, error: e instanceof Error ? e.message : String(e), hasRun: true });
+    } finally {
+      guard.finish(gen);
     }
   }
 

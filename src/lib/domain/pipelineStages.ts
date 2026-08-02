@@ -102,7 +102,7 @@ export function defaultStageBody(name: string): unknown {
     case "$sample":
       return { size: 10 };
     case "$out":
-      return "collectionName";
+      return "REPLACE_WITH_COLLECTION_NAME";
     case "$replaceRoot":
       return { newRoot: "$field" };
     default:

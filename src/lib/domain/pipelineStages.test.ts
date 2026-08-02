@@ -23,6 +23,16 @@ describe("parsePipelineFromScript", () => {
     if (r.ok) expect(r.stages[0].body).toEqual({ _id: { $oid: "507f191e810c19729de860ea" } });
   });
 
+  it("parses a getSiblingDB(...).getCollection(...) chain, matching what autocomplete already accepts", () => {
+    const script = 'db.getSiblingDB("other").getCollection("orders").aggregate([{ "$match": { "a": 1 } }])';
+    const r = parsePipelineFromScript(script);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.coll).toBe("orders");
+      expect(r.stages.map((s) => [s.name, s.body])).toEqual([["$match", { a: 1 }]]);
+    }
+  });
+
   it("fails for a non-aggregate script", () => {
     expect(parsePipelineFromScript('db.c.find({ "a": 1 })').ok).toBe(false);
   });
@@ -85,5 +95,8 @@ describe("defaultStageBody", () => {
   });
   it("seeds an empty object for object-bodied stages", () => {
     expect(defaultStageBody("$match")).toEqual({});
+  });
+  it("seeds an unambiguous placeholder for $out, not a plausible real collection name", () => {
+    expect(defaultStageBody("$out")).toBe("REPLACE_WITH_COLLECTION_NAME");
   });
 });
