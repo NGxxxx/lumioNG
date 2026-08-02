@@ -1,6 +1,6 @@
 [package]
 name = "lumio-ng-app"
-version = "0.4.1"
+version = "0.5.0"
 description = "LumioNG — a fast, table-first MongoDB GUI"
 authors = ["you"]
 edition = "2021"
