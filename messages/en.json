@@ -224,7 +224,7 @@
   "query_tab_view_console": "Console",
   "query_tab_view_tree": "Tree",
   "query_tab_editor_mode_script": "Script",
-  "query_tab_editor_mode_tree": "Tree",
+  "query_tab_editor_mode_builder": "Builder",
   "explain_pane_loading": "Running explain…",
   "explain_pane_verdict_collscan": "⚠ Collection scan — no index used",
   "explain_pane_verdict_ixscan": "✓ Using index {name}",
@@ -681,7 +681,9 @@
   "gridfs_preview_error": "Preview failed: {error}",
   "gridfs_preview_unsupported": "This file type can't be previewed.",
   "gridfs_download_progress": "{done} / {total}",
+  "gridfs_download_progress_indeterminate": "{done} bytes downloaded…",
   "gridfs_download_cancel": "Cancel",
   "gridfs_download_error": "Download failed: {error}",
-  "gridfs_download_cancelled": "Download cancelled"
+  "gridfs_download_cancelled": "Download cancelled",
+  "gridfs_pdf_fallback_link": "PDF not displaying? Open/download it directly"
 }

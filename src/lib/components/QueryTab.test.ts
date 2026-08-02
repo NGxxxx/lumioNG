@@ -147,6 +147,26 @@ describe("QueryTab", () => {
     expect(getByText(/Edit the statement/)).toBeTruthy();
   });
 
+  it("shows the Builder button next to Script when the statement is an aggregate() call", () => {
+    const { container } = render(QueryTab, { props });
+    const modeToggle = within(container.querySelector(".mode-toggle")!);
+    expect(modeToggle.getByText("Script", { exact: false })).toBeTruthy();
+    expect(modeToggle.getByText("Builder", { exact: false })).toBeTruthy();
+  });
+
+  it("hides the Builder button when the statement isn't an aggregate() call", () => {
+    const findStub = { ...stub, get statementText() { return 'db.getCollection("x").find({})'; } };
+    activeStub = findStub as unknown as typeof stub;
+    try {
+      const { container } = render(QueryTab, { props });
+      const modeToggle = within(container.querySelector(".mode-toggle")!);
+      expect(modeToggle.getByText("Script", { exact: false })).toBeTruthy();
+      expect(modeToggle.queryByText("Builder", { exact: false })).toBeNull();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
   it("shows Grid, Tree and Console view toggle buttons in the result tab", () => {
     const { container } = render(QueryTab, { props });
     const viewToggle = within(container.querySelector(".view-toggle")!);

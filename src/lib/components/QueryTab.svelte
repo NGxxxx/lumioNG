@@ -41,11 +41,21 @@
     }),
   );
   let editorMode = $state<"script" | "tree">("script");
+  const isAggregateStatement = $derived(
+    methodHeadAt(v.statementText, v.statementText.length)?.method === "aggregate",
+  );
 
   function selectTreeMode() {
     tree.syncFromScript();
     editorMode = "tree";
   }
+
+  // Builder only makes sense for an aggregate() pipeline (it edits a stage list) — if the script
+  // is edited into something else (e.g. find()) while Builder is open, fall back to Script rather
+  // than leave the tab showing the generic "can't display this script visually" banner.
+  $effect(() => {
+    if (editorMode === "tree" && !isAggregateStatement) editorMode = "script";
+  });
   let bottomTab = $state<"result" | "log">("result");
   let resultView = $state<ResultViewMode>("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
@@ -186,12 +196,13 @@
       <span class="readonly-badge" title={m.session_manager_readonly_enable()}>{m.query_tab_readonly()}</span>
     {/if}
     <div class="bar-spacer"></div>
+    <div class="mode-toggle">
+      <button class:active={editorMode === "script"} onclick={() => (editorMode = "script")}>⌨ {m.query_tab_editor_mode_script()}</button>
+      {#if isAggregateStatement}
+        <button class:active={editorMode === "tree"} onclick={selectTreeMode}>⚒ {m.query_tab_editor_mode_builder()}</button>
+      {/if}
+    </div>
     <QuerySettingsPopover />
-  </div>
-
-  <div class="editor-tabs">
-    <button class:active={editorMode === "script"} onclick={() => (editorMode = "script")}>{m.query_tab_editor_mode_script()}</button>
-    <button class:active={editorMode === "tree"} onclick={selectTreeMode}>{m.query_tab_editor_mode_tree()}</button>
   </div>
 
   <div
@@ -398,7 +409,7 @@
   .readonly-badge { font-size: 0.6875rem; color: var(--warn-fg); background: var(--warn-bg2); border: 1px solid var(--warn-fg); border-radius: 0.1875rem; padding: 0 0.375rem; line-height: 1.4; }
   .db { color: var(--gray-77); font-size: var(--fs); }
   .bar-spacer { flex: 1; }
-  .editor { height: 34%; flex: none; box-sizing: border-box; overflow: hidden; }
+  .editor { height: 34%; flex: none; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
   .pane-divider { flex: none; height: 5px; cursor: row-resize; position: relative; border-bottom: 1px solid var(--gray-cf); }
   .pane-divider:hover { background: var(--tab-active-border); opacity: 0.5; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
@@ -408,9 +419,9 @@
   .bottom-tabs > button { height: 1.25rem; padding: 0 0.625rem; font-size: var(--fs); border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
   .bottom-tabs > button.active { background: var(--panel); color: var(--tab-active-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--tab-active-border); }
   .right-tools { margin-left: auto; display: flex; align-items: center; gap: 0.375rem; }
-  .view-toggle { display: flex; gap: 0.0625rem; }
-  .view-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
-  .view-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
+  .view-toggle, .mode-toggle { display: flex; gap: 0.0625rem; }
+  .view-toggle button, .mode-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
+  .view-toggle button.active, .mode-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
   .search-input { width: 8rem; height: 1.25rem; background: var(--panel); border: 1px solid var(--gray-c4); border-radius: 0.125rem; padding: 0 0.5rem; font-family: Consolas, monospace; font-size: 0.6875rem; box-sizing: border-box; }
   .search-invalid { border-color: var(--error); color: var(--error); }
   .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
@@ -420,7 +431,4 @@
   .cancel-btn { font-size: var(--fs); cursor: pointer; border: none; background: none; color: var(--link); }
   .value-display { height: 100%; box-sizing: border-box; overflow: auto; padding: 0.5rem 0.75rem; }
   .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: var(--fs); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
-  .editor-tabs { display: flex; gap: 0.125rem; height: 1.375rem; flex: none; background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 0.375rem; }
-  .editor-tabs > button { height: 1.125rem; padding: 0 0.625rem; font-size: var(--fs); border: 1px solid transparent; background: none; cursor: pointer; color: var(--th-fg); border-radius: 0.1875rem 0.1875rem 0 0; }
-  .editor-tabs > button.active { background: var(--panel); color: var(--tab-active-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--tab-active-border); }
 </style>

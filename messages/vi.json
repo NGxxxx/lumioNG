@@ -224,7 +224,7 @@
   "query_tab_view_console": "Console",
   "query_tab_view_tree": "Cây",
   "query_tab_editor_mode_script": "Script",
-  "query_tab_editor_mode_tree": "Cây",
+  "query_tab_editor_mode_builder": "Builder",
   "explain_pane_loading": "Đang chạy explain…",
   "explain_pane_verdict_collscan": "⚠ Quét toàn bộ collection — không dùng index",
   "explain_pane_verdict_ixscan": "✓ Đang dùng index {name}",
@@ -681,7 +681,9 @@
   "gridfs_preview_error": "Xem trước lỗi: {error}",
   "gridfs_preview_unsupported": "Loại tệp này không thể xem trước.",
   "gridfs_download_progress": "{done} / {total}",
+  "gridfs_download_progress_indeterminate": "Đã tải {done} byte…",
   "gridfs_download_cancel": "Hủy",
   "gridfs_download_error": "Tải xuống lỗi: {error}",
-  "gridfs_download_cancelled": "Đã hủy tải xuống"
+  "gridfs_download_cancelled": "Đã hủy tải xuống",
+  "gridfs_pdf_fallback_link": "PDF không hiển thị? Mở/tải xuống trực tiếp"
 }

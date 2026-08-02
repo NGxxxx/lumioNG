@@ -108,6 +108,15 @@ describe("TreeEditor", () => {
     expect(onchange).toHaveBeenCalledWith({ name: "Ann", age: "" });
   });
 
+  it("compact mode hides the find-field search box and expand/collapse-all button", () => {
+    const { container, queryByPlaceholderText, queryByText } = render(TreeEditor, {
+      props: { value: { a: 1 }, onchange: vi.fn(), onvalidchange: vi.fn(), compact: true },
+    });
+    expect(container.querySelector(".tree-toolbar")).toBeNull();
+    expect(queryByPlaceholderText("Find field…")).toBeNull();
+    expect(queryByText("Expand all")).toBeNull();
+  });
+
   it("Expand all button opens every nested container at every depth", async () => {
     const doc = { address: { city: "Hue", geo: { lat: 1, lng: 2 } }, tags: ["a"] };
     const { container, getByText } = setup(doc);

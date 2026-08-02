@@ -17,11 +17,15 @@
     onchange,
     onvalidchange,
     lockedKeys = ["_id"],
+    compact = false,
   }: {
     value: Doc;
     onchange: (v: Doc) => void;
     onvalidchange: (valid: boolean) => void;
     lockedKeys?: string[];
+    /** Hides the find-field-by-name search box and expand/collapse-all button — for small bodies
+     *  (e.g. a Pipeline Builder stage) where that toolbar is pure clutter, not for full documents. */
+    compact?: boolean;
   } = $props();
 
   // Persists across edits (value changes on every keystroke) — only reset by remounting
@@ -149,32 +153,34 @@
 </script>
 
 <div class="tree-wrap">
-  <div class="tree-toolbar">
-    <div class="tree-search">
-      <input
-        class="tree-search-input"
-        type="text"
-        placeholder={m.tree_search_placeholder()}
-        bind:value={searchQuery}
-        oninput={onSearchInput}
-        onkeydown={(e) => {
-          if (e.key !== "Enter") return;
-          e.preventDefault();
-          if (e.shiftKey) prevMatch(); else nextMatch();
-        }}
-      />
-      {#if searchQuery.trim()}
-        <span class="tree-search-count">
-          {matches.length === 0 ? m.tree_search_no_results() : m.tree_search_count({ index: matchIndex + 1, total: matches.length })}
-        </span>
-        <button class="tree-toolbar-btn" onclick={prevMatch} disabled={matches.length === 0} aria-label={m.tree_search_prev()}>▲</button>
-        <button class="tree-toolbar-btn" onclick={nextMatch} disabled={matches.length === 0} aria-label={m.tree_search_next()}>▼</button>
-      {/if}
+  {#if !compact}
+    <div class="tree-toolbar">
+      <div class="tree-search">
+        <input
+          class="tree-search-input"
+          type="text"
+          placeholder={m.tree_search_placeholder()}
+          bind:value={searchQuery}
+          oninput={onSearchInput}
+          onkeydown={(e) => {
+            if (e.key !== "Enter") return;
+            e.preventDefault();
+            if (e.shiftKey) prevMatch(); else nextMatch();
+          }}
+        />
+        {#if searchQuery.trim()}
+          <span class="tree-search-count">
+            {matches.length === 0 ? m.tree_search_no_results() : m.tree_search_count({ index: matchIndex + 1, total: matches.length })}
+          </span>
+          <button class="tree-toolbar-btn" onclick={prevMatch} disabled={matches.length === 0} aria-label={m.tree_search_prev()}>▲</button>
+          <button class="tree-toolbar-btn" onclick={nextMatch} disabled={matches.length === 0} aria-label={m.tree_search_next()}>▼</button>
+        {/if}
+      </div>
+      <button class="tree-toolbar-btn" onclick={toggleExpandAll}>
+        {allExpanded ? m.result_tree_collapse_all() : m.result_tree_expand_all()}
+      </button>
     </div>
-    <button class="tree-toolbar-btn" onclick={toggleExpandAll}>
-      {allExpanded ? m.result_tree_collapse_all() : m.result_tree_expand_all()}
-    </button>
-  </div>
+  {/if}
   <div class="tree-scroller" bind:this={scrollerEl} role="tree">
     <div class="tree-sizer" style="height:{totalSize}px">
       {#each virtualItems as vi (rows[vi.index].path)}
