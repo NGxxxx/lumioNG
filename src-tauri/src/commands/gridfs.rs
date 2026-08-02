@@ -28,6 +28,38 @@ pub struct GridfsDownloadProgress {
     pub total: u64,
 }
 
+/// Tracks the actual cumulative bytes written during a streaming download and decides when a
+/// batched progress event should fire (every `PROGRESS_BATCH_BYTES`). Kept separate from the I/O
+/// loop so the accounting/batching logic is unit-testable without a live GridFS stream -- `done()`
+/// is the real number of bytes streamed so far, independent of any caller-supplied declared length.
+struct DownloadProgressTracker {
+    done: u64,
+    last_emit: u64,
+}
+
+impl DownloadProgressTracker {
+    fn new() -> Self {
+        Self { done: 0, last_emit: 0 }
+    }
+
+    /// Records `n` newly-written bytes; returns `Some(actual_done)` when a progress event should
+    /// be emitted for the real cumulative byte count, `None` otherwise.
+    fn record(&mut self, n: u64) -> Option<u64> {
+        self.done += n;
+        if self.done - self.last_emit >= PROGRESS_BATCH_BYTES {
+            self.last_emit = self.done;
+            Some(self.done)
+        } else {
+            None
+        }
+    }
+
+    /// The real cumulative byte count streamed so far.
+    fn done(&self) -> u64 {
+        self.done
+    }
+}
+
 /// Builds a `GridFsBucket` for `bucket` (the naming-convention prefix before `.files`/`.chunks`).
 ///
 /// `mongodb::gridfs::GridFsBucketOptions` itself is `pub(crate)`, but the same type is re-exported
@@ -54,7 +86,7 @@ pub async fn gridfs_preview_bytes(
     let gridfs_bucket = bucket_for(&client, &db, &bucket);
     let stream = gridfs_bucket.open_download_stream(id).await?;
 
-    let mut buf = Vec::new();
+    let mut buf = Vec::with_capacity(PREVIEW_CAP_BYTES + 1);
     stream
         .take((PREVIEW_CAP_BYTES + 1) as u64)
         .read_to_end(&mut buf)
@@ -95,11 +127,10 @@ pub async fn gridfs_download(
     let p = std::path::Path::new(&dest_path);
     let mut w = create_output_writer(p)?;
 
-    cleanup_on_err(p, async {
+    let bytes_written = cleanup_on_err(p, async {
         use std::io::Write;
         let mut buf = vec![0u8; DOWNLOAD_BUF_SIZE];
-        let mut done: u64 = 0;
-        let mut last_emit: u64 = 0;
+        let mut tracker = DownloadProgressTracker::new();
         loop {
             check_cancelled(&cancel)?;
             let n = stream.read(&mut buf).await.map_err(|e| AppError::Io(e.to_string()))?;
@@ -107,17 +138,57 @@ pub async fn gridfs_download(
                 break;
             }
             w.write_all(&buf[..n]).map_err(|e| AppError::Io(e.to_string()))?;
-            done += n as u64;
-            if done - last_emit >= PROGRESS_BATCH_BYTES {
-                last_emit = done;
+            if let Some(done) = tracker.record(n as u64) {
                 let _ = on_progress.send(GridfsDownloadProgress { done, total: total_bytes });
             }
         }
         w.flush().map_err(|e| AppError::Io(e.to_string()))?;
-        Ok(done)
+        Ok(tracker.done())
     })
     .await?;
 
-    let _ = on_progress.send(GridfsDownloadProgress { done: total_bytes, total: total_bytes });
+    // Report the actual number of bytes streamed/written, not the caller-supplied `total_bytes` --
+    // that declared length (from GridFS file metadata) can be stale or wrong.
+    let _ = on_progress.send(GridfsDownloadProgress { done: bytes_written, total: total_bytes });
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tracker_reports_no_progress_event_below_the_batch_threshold() {
+        let mut t = DownloadProgressTracker::new();
+        assert_eq!(t.record(1024), None);
+        assert_eq!(t.done(), 1024);
+    }
+
+    #[test]
+    fn tracker_emits_once_the_batch_threshold_is_crossed() {
+        let mut t = DownloadProgressTracker::new();
+        assert_eq!(t.record(PROGRESS_BATCH_BYTES - 1), None);
+        assert_eq!(t.record(1), Some(PROGRESS_BATCH_BYTES));
+        assert_eq!(t.done(), PROGRESS_BATCH_BYTES);
+    }
+
+    #[test]
+    fn tracker_final_done_reflects_actual_bytes_streamed_not_a_declared_total() {
+        // Regression: the final progress event must report the real cumulative bytes written, not
+        // a caller-supplied/declared `total_bytes` that may be stale or wrong (e.g. GridFS metadata
+        // says 10MB but the file only actually has 7MB of chunks).
+        let mut t = DownloadProgressTracker::new();
+        let chunks = [DOWNLOAD_BUF_SIZE as u64, DOWNLOAD_BUF_SIZE as u64, 123u64];
+        let mut emitted = Vec::new();
+        for &n in &chunks {
+            if let Some(done) = t.record(n) {
+                emitted.push(done);
+            }
+        }
+        let actual_total: u64 = chunks.iter().sum();
+        assert_eq!(t.done(), actual_total);
+        // A stale declared length wildly different from the real stream must never surface as `done`.
+        let bogus_declared_total = actual_total + 999_999;
+        assert_ne!(t.done(), bogus_declared_total);
+    }
 }

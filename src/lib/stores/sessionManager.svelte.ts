@@ -13,6 +13,7 @@ import { disposeQueryRun } from "./queryRuns.svelte";
 import { disposePipelineTree } from "./pipelineTreeRuns.svelte";
 import { disposeCollectionViews } from "./collectionViews.svelte";
 import { disposeGridfsFiles } from "./gridfsFilesCache.svelte";
+import { disposeGridfsBucketProbes } from "./gridfsBucketProbe.svelte";
 
 export type SessionStatus = "connecting" | "connected" | "error";
 export type Session = {
@@ -147,6 +148,7 @@ export function createSessionManager() {
     }
     disposeCollectionViews(id);
     disposeGridfsFiles(id);
+    disposeGridfsBucketProbes(id);
     workTabs = workTabs.filter((t) => t.sessionId !== id);
     sessions = sessions.filter((s) => s.id !== id);
     if (activeId === id) {

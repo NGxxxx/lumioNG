@@ -31,7 +31,16 @@
   onMount(() => pushModal({ onEscape: onclose }));
 
   $effect(() => {
-    if (overCap || kind === "unknown") return;
+    // Reset stale state from a previous `row` before (re-)fetching -- currently unreachable in the
+    // UI (the fixed backdrop blocks other clicks while a preview is open), but kept so a future
+    // next/prev navigation feature can't leak the old file's preview/error while the new one loads.
+    base64 = null;
+    error = null;
+    if (overCap || kind === "unknown") {
+      loading = false;
+      return;
+    }
+    loading = true;
     let cancelled = false;
     gridfsPreviewBytes(sessionId, db, bucket, row.doc)
       .then((b64) => {
@@ -80,7 +89,14 @@
       {:else if kind === "image" && dataUrl}
         <img src={dataUrl} alt={row.filename ?? ""} />
       {:else if kind === "pdf" && dataUrl}
-        <embed type="application/pdf" src={dataUrl} />
+        <div class="gridfs-pdf-preview">
+          <embed type="application/pdf" src={dataUrl} />
+          <!-- Inline PDF rendering depends on the OS webview (WebView2/WKWebView/WebKitGTK) and
+               can silently fail to render; always offer a working escape hatch alongside it. -->
+          <p class="gridfs-pdf-fallback">
+            <a href={dataUrl} download={row.filename ?? "download.pdf"}>{m.gridfs_pdf_fallback_link()}</a>
+          </p>
+        </div>
       {:else if kind === "text" && textContent !== null}
         <pre>{textContent}</pre>
       {:else}
@@ -92,7 +108,13 @@
         {m.gridfs_download_button()}
       </button>
       {#if download.status === "running"}
-        <span>{m.gridfs_download_progress({ done: download.done, total: download.total })}</span>
+        {#if download.total > 0}
+          <span>{m.gridfs_download_progress({ done: download.done, total: download.total })}</span>
+        {:else}
+          <!-- Unknown/zero declared length (missing or malformed GridFS metadata) -- show bytes
+               downloaded so far instead of a bogus "X / 0" fraction. -->
+          <span>{m.gridfs_download_progress_indeterminate({ done: download.done })}</span>
+        {/if}
         <button onclick={download.cancel}>{m.gridfs_download_cancel()}</button>
       {:else if download.status === "error"}
         <span class="gridfs-error">{m.gridfs_download_error({ error: download.error ?? "" })}</span>
@@ -142,6 +164,15 @@
   .gridfs-preview-body embed {
     width: 100%;
     height: 60vh;
+  }
+  .gridfs-pdf-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+  }
+  .gridfs-pdf-fallback {
+    text-align: center;
+    font-size: var(--fs);
   }
   .gridfs-preview-body pre {
     white-space: pre-wrap;

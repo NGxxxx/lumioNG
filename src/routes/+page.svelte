@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import { idJson } from "$lib/domain/docid";
   import { detectGridFsBucket } from "$lib/domain/gridfsBucket";
+  import { isGridfsFilesEmpty } from "$lib/stores/gridfsBucketProbe.svelte";
   import { aggregateTemplate } from "$lib/domain/queryStatement";
   import { buildInsertSkeleton } from "$lib/api/insertSkeleton";
   import { cancelScript } from "$lib/api/script";
@@ -393,7 +394,9 @@
           {@const coll = sel.coll}
           {@const version = nav?.collectionVersion(db, coll) ?? 0}
           {@const siblingCollections = tree?.databases.find((d) => d.name === db)?.collections ?? []}
-          {@const bucket = detectGridFsBucket(siblingCollections, coll)}
+          {@const chunksSiblingMissing = coll.endsWith(".files") && !siblingCollections.includes(`${coll.slice(0, -".files".length)}.chunks`)}
+          {@const filesIsEmpty = chunksSiblingMissing ? (isGridfsFilesEmpty(sm.activeId ?? "", db, coll) ?? false) : false}
+          {@const bucket = detectGridFsBucket(siblingCollections, coll, filesIsEmpty)}
           <div class="tabpane">
             {#key `${sm.activeId}/${db}/${coll}#${version}`}
               {#if bucket}

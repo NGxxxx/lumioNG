@@ -19,6 +19,7 @@ export function getGridfsFiles(sessionId: string, db: string, bucket: string, ve
   const k = key(sessionId, db, bucket);
   const hit = cache.get(k);
   if (hit && hit.version === version) return hit.store;
+  if (hit) evict(k); // stale entry at the same key (e.g. manual refresh version bump) -- dispose before overwrite
   const prefix = `${sessionId}:`;
   for (const other of cache.keys()) if (other.startsWith(prefix) && other !== k) evict(other);
   let store!: ReturnType<typeof createGridfsFiles>;
