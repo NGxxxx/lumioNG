@@ -185,6 +185,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
   return {
     get stages() { return stages; },
     get coll() { return coll; },
+    get sessionId() { return sessionId; },
     get parseError() { return parseError; },
     get autoPreview() { return autoPreview; },
     setAutoPreview(v: boolean) { autoPreview = v; },

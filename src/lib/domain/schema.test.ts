@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getByPath, getBySegments, flattenPaths, inferSchema, mergeColumns, limitColumnsToDepth } from "./schema";
+import { getByPath, getBySegments, flattenPaths, inferSchema, mergeColumns, limitColumnsToDepth, topLevelFieldNames } from "./schema";
 
 describe("getByPath", () => {
   it("reads a top-level field", () => {
@@ -156,5 +156,31 @@ describe("limitColumnsToDepth", () => {
   it("mixed shape: the first column seen at a path keeps its metadata", () => {
     const cols = [{ path: "a", type: "string" as const, mixed: true, presence: 0.5 }, { path: "a.b" }];
     expect(limitColumnsToDepth(cols, 1)).toEqual([{ path: "a", type: "string", mixed: true, presence: 0.5 }]);
+  });
+});
+
+describe("topLevelFieldNames", () => {
+  it("returns paths as-is when none are dotted", () => {
+    expect(topLevelFieldNames(["name", "age"])).toEqual(["name", "age"]);
+  });
+
+  it("drops any path containing a dot", () => {
+    expect(topLevelFieldNames(["name", "customer.address.city", "age"])).toEqual(["name", "age"]);
+  });
+
+  it("returns an empty array when every path is dotted", () => {
+    expect(topLevelFieldNames(["customer.address.city", "a.b"])).toEqual([]);
+  });
+
+  it("returns an empty array for empty input", () => {
+    expect(topLevelFieldNames([])).toEqual([]);
+  });
+
+  it("defaults exclude to [] so existing no-argument call sites are unaffected", () => {
+    expect(topLevelFieldNames(["_id", "name"])).toEqual(["_id", "name"]);
+  });
+
+  it("drops names given in exclude, alongside the dotted-path filter", () => {
+    expect(topLevelFieldNames(["_id", "name", "customer.address.city"], ["_id"])).toEqual(["name"]);
   });
 });

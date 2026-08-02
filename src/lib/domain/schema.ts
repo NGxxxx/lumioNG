@@ -75,6 +75,14 @@ export function flattenPaths(docs: Doc[]): string[] {
   return idFirst(order);
 }
 
+/** Filters a leaf dot-path list down to genuine top-level field names (no "." in them) — dotted
+ *  paths like "customer.address.city" are valid keys in a query/aggregation filter, but would be
+ *  misleading as a literal new field name in an actual document (see design spec). `exclude` drops
+ *  any of the given names too (e.g. "_id", which is never a valid name for a NEW field). */
+export function topLevelFieldNames(paths: string[], exclude: string[] = []): string[] {
+  return paths.filter((p) => !p.includes(".") && !exclude.includes(p));
+}
+
 /** Infer schema from a document sample: dominant type, mixed flag, and presence ratio per leaf dot-path. */
 export function inferSchema(docs: Doc[]): CollectionSchema {
   const order: string[] = [];

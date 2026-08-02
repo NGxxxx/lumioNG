@@ -1,14 +1,15 @@
 import { untrack } from "svelte";
 import { runScript, cancelScript, type ConsoleEntry, type Provenance, type ExplainHint } from "../api/script";
-import { sampleDocuments, queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
+import { queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
-import { mergeColumns, inferSchema, getByPath, limitColumnsToDepth, type ColumnField } from "../domain/schema";
+import { mergeColumns, getByPath, limitColumnsToDepth, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { scanDestructive, scanCritical } from "../domain/scriptScan";
 import { matchingIndices } from "../domain/search";
 import { settings } from "./settings.svelte";
+import { fieldsFor as sharedFieldsFor } from "./fieldSuggestions";
 import { createQuickSearch } from "./quickSearch.svelte";
 import { createEditBlurFlow } from "./cellEditBlur.svelte";
 import { createCellEditEntry } from "./cellEditEntry.svelte";
@@ -127,30 +128,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     return displayModeVal === "grid-editable" && provenance !== null;
   }
 
-  // Autocomplete field cache: one sample() per (db, coll) for this tab's lifetime.
-  const fieldCache = new Map<string, string[]>();
-  const fieldInflight = new Map<string, Promise<string[]>>();
-
-  async function fieldsFor(db: string, coll: string): Promise<string[]> {
-    const key = `${db} ${coll}`;
-    const cached = fieldCache.get(key);
-    if (cached) return cached;
-    const pending = fieldInflight.get(key);
-    if (pending) return pending;
-    const p = (async () => {
-      try {
-        const sampledDocs = await sampleDocuments(sessionId, db, coll, "{}", 50, settings.queryTimeoutMs);
-        const paths = inferSchema(sampledDocs).fields.map((f) => f.path);
-        fieldCache.set(key, paths);
-        return paths;
-      } catch {
-        return []; // autocomplete degrades silently; never throw into the editor
-      } finally {
-        fieldInflight.delete(key);
-      }
-    })();
-    fieldInflight.set(key, p);
-    return p;
+  // Delegates to the shared, session-keyed cache in stores/fieldSuggestions.ts (also used by the
+  // Pipeline Builder and Document form) so the same collection is never re-sampled redundantly.
+  function fieldsFor(db: string, coll: string): Promise<string[]> {
+    return sharedFieldsFor(sessionId, db, coll);
   }
 
   // Editor selection range (chars into statementText), kept in sync by the textarea; enables "Run selection".

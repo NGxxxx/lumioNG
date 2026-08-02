@@ -154,6 +154,11 @@ describe("createPipelineTree", () => {
     vi.useRealTimers();
   });
 
+  it("exposes the sessionId it was created with", () => {
+    const tree = createPipelineTree("conn:42", scriptBinding('db.getCollection("orders").aggregate([])'));
+    expect(tree.sessionId).toBe("conn:42");
+  });
+
   it("defaults autoPreview to off", () => {
     const tree = createPipelineTree("conn:1", scriptBinding('db.getCollection("orders").aggregate([])'));
     expect(tree.autoPreview).toBe(false);

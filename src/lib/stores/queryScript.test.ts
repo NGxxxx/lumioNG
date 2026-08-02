@@ -27,6 +27,7 @@ import { runScript, cancelScript } from "../api/script";
 import * as docsApi from "../api/documents";
 import * as indexApi from "../api/indexes";
 import { createQueryScript } from "./queryScript.svelte";
+import { disposeFieldSuggestions } from "./fieldSuggestions";
 import { settings } from "./settings.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -183,7 +184,10 @@ describe("createQueryScript", () => {
 });
 
 describe("fieldsFor", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    disposeFieldSuggestions("sess");
+  });
 
   it("samples once and infers field paths", async () => {
     sampleDocuments.mockResolvedValueOnce([{ _id: { $oid: "1" }, name: "A", age: 30 }]);
