@@ -1,18 +1,20 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
-import { render, fireEvent } from "@testing-library/svelte";
+import { render, fireEvent, waitFor } from "@testing-library/svelte";
 import DocumentForm from "./DocumentForm.svelte";
 import * as documents from "../api/documents";
 import { proxiedDoc } from "./DocumentForm.test-helpers.svelte";
+import { disposeFieldSuggestions } from "../stores/fieldSuggestions";
 
 vi.mock("../api/documents", () => ({
   insertDocument: vi.fn(),
   replaceDocument: vi.fn(),
+  sampleDocuments: vi.fn(async () => []),
 }));
 vi.mock("../domain/docid", () => ({
   idJson: vi.fn(() => '{"$oid":"abc"}'),
 }));
 vi.mock("../stores/sessionManager.svelte", () => ({
-  sessionManager: { active: null },
+  sessionManager: { active: { id: "sess1" } },
 }));
 
 // The Tree tab's virtualizer needs a non-zero container size to mount any rows (jsdom is 0 by default).
@@ -25,6 +27,11 @@ beforeAll(() => {
   };
 });
 afterAll(() => restoreOffsetHeight?.());
+
+// The shared fieldSuggestions cache is module-level (keyed by session:db.coll) — every test here
+// mounts DocumentForm against the same mocked "sess1"/"d"/"c", so a stale cache entry from an
+// earlier test would silently make a later test's sampleDocuments mock never get called.
+beforeEach(() => disposeFieldSuggestions("sess1"));
 
 describe("DocumentForm — Raw JSON view", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -55,7 +62,7 @@ describe("DocumentForm — Raw JSON view", () => {
     await fireEvent.input(textarea, { target: { value: '{"a":1}' } });
     await fireEvent.click(getByText("Save"));
 
-    expect(documents.insertDocument).toHaveBeenCalledWith("", "d", "c", '{"a":1}');
+    expect(documents.insertDocument).toHaveBeenCalledWith("sess1", "d", "c", '{"a":1}');
   });
 
   it("valid JSON in edit mode → calls replaceDocument with _id and updated JSON", async () => {
@@ -77,7 +84,7 @@ describe("DocumentForm — Raw JSON view", () => {
     await fireEvent.click(getByText("Save"));
 
     expect(documents.replaceDocument).toHaveBeenCalledWith(
-      "",
+      "sess1",
       "d",
       "c",
       '{"$oid":"abc"}',
@@ -124,6 +131,24 @@ describe("DocumentForm — Raw JSON view", () => {
   });
 });
 
+describe("DocumentForm — field suggestions", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("fetches top-level-only field suggestions and forwards them to TreeEditor's add-field row", async () => {
+    (documents.sampleDocuments as ReturnType<typeof vi.fn>).mockResolvedValueOnce([
+      { _id: { $oid: "1" }, name: "Ann", address: { city: "Hue" } },
+    ]);
+    const { container } = render(DocumentForm, {
+      props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved: () => {}, oncancel: () => {} },
+    });
+    await waitFor(() => expect(container.querySelector("input.name")?.getAttribute("list")).toBeTruthy());
+    const input = container.querySelector("input.name") as HTMLInputElement;
+    const listId = input.getAttribute("list");
+    const options = Array.from(container.querySelectorAll(`datalist#${listId} option`)).map((o) => o.getAttribute("value"));
+    expect(options).toEqual(["name"]); // "address.city" is dropped: dotted paths aren't valid top-level document keys
+  });
+});
+
 describe("DocumentForm — Tree view", () => {
   beforeEach(() => vi.clearAllMocks());
 
@@ -160,7 +185,7 @@ describe("DocumentForm — Tree view", () => {
     await fireEvent.click(getByText("Save"));
 
     expect(documents.replaceDocument).toHaveBeenCalledWith(
-      "",
+      "sess1",
       "d",
       "c",
       '{"$oid":"abc"}',

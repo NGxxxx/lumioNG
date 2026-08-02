@@ -1,4 +1,8 @@
 <!-- src/lib/components/TreeAdderRow.svelte -->
+<script module>
+  let uidCounter = 0;
+</script>
+
 <script lang="ts">
   import { emptyValue, validateNewFieldName, ADDABLE_TYPES, type AddableType } from "../domain/bsontree";
   import * as m from "$lib/paraglide/messages";
@@ -10,11 +14,19 @@
     isArray,
     existingKeys,
     onadd,
+    fieldSuggestions = [],
   }: {
     isArray: boolean;
     existingKeys: string[];
     onadd: (name: string | null, value: unknown) => void;
+    /** Field names sampled from the collection, offered via a native <datalist> on the name input. */
+    fieldSuggestions?: string[];
   } = $props();
+
+  const datalistId = `tree-adder-suggestions-${++uidCounter}`;
+
+  // Already-existing keys are a dead end: validateNewFieldName() below rejects them as duplicates.
+  const usableSuggestions = $derived(fieldSuggestions.filter((n) => !existingKeys.includes(n)));
 
   let newName = $state("");
   let newType = $state<AddableType>("string");
@@ -38,7 +50,17 @@
 
 <div class="add">
   {#if !isArray}
-    <input class="name" placeholder={m.tree_node_field_name_placeholder()} bind:value={newName} />
+    <input
+      class="name"
+      placeholder={m.tree_node_field_name_placeholder()}
+      bind:value={newName}
+      list={usableSuggestions.length > 0 ? datalistId : undefined}
+    />
+    {#if usableSuggestions.length > 0}
+      <datalist id={datalistId}>
+        {#each usableSuggestions as name (name)}<option value={name}></option>{/each}
+      </datalist>
+    {/if}
   {/if}
   <select bind:value={newType}>
     {#each ADDABLE_TYPES as t}<option value={t}>{t}</option>{/each}

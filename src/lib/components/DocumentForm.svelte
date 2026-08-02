@@ -10,6 +10,8 @@
   import { createDebouncer } from "../domain/timing";
   import { commandLog } from "../stores/commandLog.svelte";
   import { insertCmd, replaceCmd } from "../domain/mongosh";
+  import { fieldsFor } from "../stores/fieldSuggestions";
+  import { topLevelFieldNames } from "../domain/schema";
   import TreeEditor from "./TreeEditor.svelte";
   import { settings } from "../stores/settings.svelte";
   import * as m from "$lib/paraglide/messages";
@@ -48,6 +50,15 @@
   const idText = $derived(mode === "edit" && initial ? idJson(initial) : null);
 
   const fieldCount = $derived(Object.keys(docValue).length);
+  // db/coll are immutable for this component's instance lifetime (a new DocumentForm is mounted
+  // rather than reused across a different document/collection), so this fetch runs once at
+  // creation, no $effect needed.
+  let fieldSuggestions = $state<string[]>([]);
+  untrack(() => fieldsFor(sessionManager.active?.id ?? "", db, coll)).then((paths) => {
+    // "_id" is always locked (see TreeEditor's default lockedKeys) — never worth offering as a
+    // name for a NEW field.
+    fieldSuggestions = topLevelFieldNames(paths, ["_id"]);
+  });
   // Debounced rather than a plain $derived (see scheduleRecompute below) — a full JSON.parse on
   // every keystroke scales with document size; 500ms of typing pause is a fine trade for a huge doc.
   let jsonValid = $state(true);
@@ -239,6 +250,7 @@
         value={docValue}
         onchange={(v) => { docValue = v; textDirty = true; }}
         onvalidchange={(valid) => (treeValid = valid)}
+        {fieldSuggestions}
       />
     {:else}
       <div class="json-area">

@@ -18,6 +18,7 @@
     onvalidchange,
     lockedKeys = ["_id"],
     compact = false,
+    fieldSuggestions = [],
   }: {
     value: Doc;
     onchange: (v: Doc) => void;
@@ -26,6 +27,8 @@
     /** Hides the find-field-by-name search box and expand/collapse-all button — for small bodies
      *  (e.g. a Pipeline Builder stage) where that toolbar is pure clutter, not for full documents. */
     compact?: boolean;
+    /** Field names sampled from the collection, forwarded only to the root-level "add field" row. */
+    fieldSuggestions?: string[];
   } = $props();
 
   // Persists across edits (value changes on every keystroke) — only reset by remounting
@@ -201,6 +204,7 @@
               isArray={row.isArray}
               existingKeys={row.isArray ? [] : existingKeysAt(value, row.segments)}
               onadd={(name, v) => handleAdd(row.segments, name, v)}
+              fieldSuggestions={row.segments.length === 0 ? fieldSuggestions : []}
             />
           {:else if row.expandable}
             <!-- No describeValue() here on purpose: it would JSON.stringify the whole container just

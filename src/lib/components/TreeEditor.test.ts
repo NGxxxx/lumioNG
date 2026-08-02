@@ -108,6 +108,74 @@ describe("TreeEditor", () => {
     expect(onchange).toHaveBeenCalledWith({ name: "Ann", age: "" });
   });
 
+  it("offers fieldSuggestions via a native datalist on the root add-field input, none when not passed", () => {
+    const withSuggestions = render(TreeEditor, {
+      props: {
+        value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn(),
+        fieldSuggestions: ["age", "email"],
+      },
+    });
+    const input = withSuggestions.container.querySelector("input.name") as HTMLInputElement;
+    const listId = input.getAttribute("list");
+    expect(listId).toBeTruthy();
+    const datalist = withSuggestions.container.querySelector(`datalist#${listId}`)!;
+    expect(Array.from(datalist.querySelectorAll("option")).map((o) => o.getAttribute("value"))).toEqual(["age", "email"]);
+
+    const withoutSuggestions = render(TreeEditor, {
+      props: { value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn() },
+    });
+    const plainInput = withoutSuggestions.container.querySelector("input.name") as HTMLInputElement;
+    expect(plainInput.getAttribute("list")).toBeNull();
+    expect(withoutSuggestions.container.querySelector("datalist")).toBeNull();
+  });
+
+  it("filters out fieldSuggestions the document already has (they'd only trigger a duplicate-name error)", () => {
+    const { container } = render(TreeEditor, {
+      props: {
+        value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn(),
+        fieldSuggestions: ["name", "age"], // "name" already exists on the document
+      },
+    });
+    const input = container.querySelector("input.name") as HTMLInputElement;
+    const listId = input.getAttribute("list")!;
+    expect(listId).toBeTruthy();
+    const options = Array.from(container.querySelectorAll(`datalist#${listId} option`)).map((o) => o.getAttribute("value"));
+    expect(options).toEqual(["age"]); // "name" dropped, "age" kept
+  });
+
+  it("hides the datalist entirely when every suggestion is already an existing key", () => {
+    const { container } = render(TreeEditor, {
+      props: {
+        value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn(),
+        fieldSuggestions: ["name"], // the only suggestion is already an existing key
+      },
+    });
+    const input = container.querySelector("input.name") as HTMLInputElement;
+    expect(input.getAttribute("list")).toBeNull();
+    expect(container.querySelector("datalist")).toBeNull();
+  });
+
+  it("does not leak the root's fieldSuggestions into a nested container's own adder row", async () => {
+    const { container } = render(TreeEditor, {
+      props: {
+        value: { a: { b: 1 } }, onchange: vi.fn(), onvalidchange: vi.fn(),
+        fieldSuggestions: ["x", "y"],
+      },
+    });
+    const aLabel = Array.from(container.querySelectorAll(".label")).find((el) => el.textContent === "a")!;
+    await fireEvent.click(aLabel);
+    await waitForRows();
+
+    // Two adder rows now exist: the nested "a" container's own (mounted first, since it's nested
+    // just below "a"'s children) and the document's root-level one (always last, per
+    // flattenEditableDoc's doc comment).
+    const nameInputs = Array.from(container.querySelectorAll(".add .name")) as HTMLInputElement[];
+    expect(nameInputs.length).toBe(2);
+    const [nestedInput, rootInput] = nameInputs;
+    expect(nestedInput.getAttribute("list")).toBeNull(); // nested adder gets [] regardless of the root's fieldSuggestions
+    expect(rootInput.getAttribute("list")).toBeTruthy(); // root adder still gets them
+  });
+
   it("compact mode hides the find-field search box and expand/collapse-all button", () => {
     const { container, queryByPlaceholderText, queryByText } = render(TreeEditor, {
       props: { value: { a: 1 }, onchange: vi.fn(), onvalidchange: vi.fn(), compact: true },

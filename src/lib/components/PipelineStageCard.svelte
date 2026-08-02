@@ -1,6 +1,8 @@
 <!-- src/lib/components/PipelineStageCard.svelte -->
 <script lang="ts">
   import type { PipelineTree } from "../stores/pipelineTree.svelte";
+  import { fieldsFor } from "../stores/fieldSuggestions";
+  import { createAsyncGuard } from "../stores/asyncGuard.svelte";
   import { PIPELINE_STAGES } from "../domain/mongoOps";
   import { stageBodyKind } from "../domain/pipelineStages";
   import { describeValue } from "../domain/extjson";
@@ -25,6 +27,19 @@
   // harmless/redundant: requestPreview is debounced per stage id.
   $effect(() => {
     tree.requestPreview(stage.id, db);
+  });
+
+  // Guards against a stale response overwriting a fresher one (e.g. db switched A→B→A quickly) —
+  // same generation-token pattern pipelineTree.svelte.ts uses for its own preview fetches.
+  let fieldSuggestions = $state<string[]>([]);
+  const fieldSuggestionsGuard = createAsyncGuard();
+  $effect(() => {
+    const gen = fieldSuggestionsGuard.begin();
+    fieldsFor(tree.sessionId, db, tree.coll)
+      .then((f) => {
+        if (fieldSuggestionsGuard.isCurrent(gen)) fieldSuggestions = f;
+      })
+      .finally(() => fieldSuggestionsGuard.finish(gen));
   });
 
   function onBodyChange(v: unknown) {
@@ -68,7 +83,7 @@
 
   <div class="stage-body">
     {#if kind === "object"}
-      <TreeEditor value={stage.body as Doc} onchange={onBodyChange} onvalidchange={() => {}} lockedKeys={[]} compact />
+      <TreeEditor value={stage.body as Doc} onchange={onBodyChange} onvalidchange={() => {}} lockedKeys={[]} compact {fieldSuggestions} />
     {:else if kind === "leaf" && leafType && hasInput(leafType)}
       <TreeLeafInput type={leafType} value={stage.body} onchange={onBodyChange} onerror={() => {}} />
     {:else}

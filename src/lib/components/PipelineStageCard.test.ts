@@ -1,12 +1,32 @@
-import { describe, it, expect, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/svelte";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { render, fireEvent, waitFor } from "@testing-library/svelte";
 import { flushSync } from "svelte";
 import PipelineStageCard from "./PipelineStageCard.svelte";
 import type { StageEntry } from "../domain/pipelineStages";
 
+vi.mock("../stores/fieldSuggestions", () => ({
+  fieldsFor: vi.fn(async () => ["status", "customer"]),
+}));
+
+import { fieldsFor } from "../stores/fieldSuggestions";
+const fieldsForMock = fieldsFor as ReturnType<typeof vi.fn>;
+
+// TreeEditor's virtualizer needs a non-zero container size to mount any rows (jsdom is 0 by default).
+let restoreOffsetHeight: (() => void) | undefined;
+beforeAll(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
+  restoreOffsetHeight = () => {
+    if (descriptor) Object.defineProperty(HTMLElement.prototype, "offsetHeight", descriptor);
+  };
+});
+afterAll(() => restoreOffsetHeight?.());
+
 function fakeTree(stages: StageEntry[]) {
   return {
     stages,
+    coll: "orders",
+    sessionId: "sess1",
     autoPreview: true,
     previewFor: vi.fn(() => ({ docs: [], loading: false, error: null, hasRun: false })),
     updateStageBody: vi.fn(),
@@ -61,5 +81,40 @@ describe("PipelineStageCard", () => {
     const select = container.querySelector("select.stage-name") as HTMLSelectElement;
     await fireEvent.change(select, { target: { value: "$limit" } });
     expect(tree.renameStage).toHaveBeenCalledWith(0, "$limit");
+  });
+
+  it("fetches field suggestions for the stage's collection and forwards them to TreeEditor", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: { a: 1 } }]);
+    render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    await waitFor(() => expect(fieldsForMock).toHaveBeenCalledWith("sess1", "mydb", "orders"));
+  });
+
+  it("discards a stale fieldSuggestions response that resolves after a fresher one (e.g. db switched quickly)", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: { a: 1 } }]);
+    let resolveFirst!: (f: string[]) => void;
+    let resolveSecond!: (f: string[]) => void;
+    fieldsForMock
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveSecond = resolve; }));
+
+    const { container, rerender } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    await rerender({ tree: tree as never, index: 0, db: "otherdb" });
+    flushSync();
+
+    // Second (fresher) call's response — for the newer db — arrives first.
+    resolveSecond(["fresh"]);
+    await waitFor(() => {
+      const input = container.querySelector("input.name") as HTMLInputElement | null;
+      expect(input?.getAttribute("list")).toBeTruthy();
+    });
+
+    // ...then the stale first call's response arrives late — it must not overwrite the fresher one.
+    resolveFirst(["stale"]);
+    await new Promise((r) => setTimeout(r, 0));
+
+    const input = container.querySelector("input.name") as HTMLInputElement;
+    const listId = input.getAttribute("list")!;
+    const options = Array.from(container.querySelectorAll(`datalist#${listId} option`)).map((o) => o.getAttribute("value"));
+    expect(options).toEqual(["fresh"]);
   });
 });
