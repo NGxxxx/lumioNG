@@ -56,6 +56,10 @@ const stub = {
   get indexSuggestion() { return null; },
   get explainRequestSeq() { return 0; },
   ensureExplain: vi.fn(), runExplain: vi.fn(), createSuggestedIndex: vi.fn(),
+  explainAfterRun: vi.fn(),
+  get sessionId() { return "sess1"; },
+  get pendingSessionSwitch() { return null; },
+  confirmSessionSwitch: vi.fn(), cancelSessionSwitch: vi.fn(),
 };
 
 const editableStub = {
@@ -82,61 +86,30 @@ vi.mock("../stores/queryRuns.svelte", () => ({
 import QueryTab from "./QueryTab.svelte";
 
 describe("QueryTab", () => {
-  const props = { id: 1, seq: 1, initialStatement: "x", currentDb: "shop", active: true };
+  const props = { id: 1, seq: 1, initialStatement: "x", sessionId: "sess1", currentDb: "shop", active: true };
 
   it("has no in-tab Run button", () => {
     const { queryByText } = render(QueryTab, { props });
     expect(queryByText("▶ Run")).toBeNull();
   });
 
-  it("right-clicking the editor shows a Run item that runs against the current db", async () => {
+  it("right-clicking the editor shows a Run item that runs against the current db and session", async () => {
     const { container, getByText } = render(QueryTab, { props });
     const editor = container.querySelector(".editor")!;
     await fireEvent.contextMenu(editor);
     await fireEvent.click(getByText("Run"));
-    expect(run).toHaveBeenCalledWith("shop");
+    expect(run).toHaveBeenCalledWith("shop", "sess1");
   });
 
-  it("right-click menu's Explain item runs the query first when not yet explainable, then shows the Explain view", async () => {
-    let canExplainNow = false;
-    const runSpy = vi.fn(async () => { canExplainNow = true; });
-    const ensureExplainSpy = vi.fn();
-    activeStub = {
-      ...stub,
-      get canExplain() { return canExplainNow; },
-      run: runSpy,
-      ensureExplain: ensureExplainSpy,
-    } as unknown as typeof stub;
+  it("right-click menu's Explain item delegates to the store's explainAfterRun with the current db and session (run-if-needed + view-switch live inside the store)", async () => {
+    const explainAfterRunSpy = vi.fn();
+    activeStub = { ...stub, explainAfterRun: explainAfterRunSpy } as unknown as typeof stub;
     try {
       const { container, getByText } = render(QueryTab, { props });
       const editor = container.querySelector(".editor")!;
       await fireEvent.contextMenu(editor);
       await fireEvent.click(getByText("Explain"));
-      expect(runSpy).toHaveBeenCalledWith("shop");
-      expect(ensureExplainSpy).toHaveBeenCalledOnce();
-      expect(container.querySelector(".explain-pane")).toBeTruthy();
-    } finally {
-      activeStub = stub;
-    }
-  });
-
-  it("right-click menu's Explain item does not re-run when the store is already explainable", async () => {
-    const runSpy = vi.fn();
-    const ensureExplainSpy = vi.fn();
-    activeStub = {
-      ...stub,
-      get canExplain() { return true; },
-      run: runSpy,
-      ensureExplain: ensureExplainSpy,
-    } as unknown as typeof stub;
-    try {
-      const { container, getByText } = render(QueryTab, { props });
-      const editor = container.querySelector(".editor")!;
-      await fireEvent.contextMenu(editor);
-      await fireEvent.click(getByText("Explain"));
-      expect(runSpy).not.toHaveBeenCalled();
-      expect(ensureExplainSpy).toHaveBeenCalledOnce();
-      expect(container.querySelector(".explain-pane")).toBeTruthy();
+      expect(explainAfterRunSpy).toHaveBeenCalledWith("shop", "sess1");
     } finally {
       activeStub = stub;
     }
@@ -285,20 +258,21 @@ describe("QueryTab", () => {
     expect(getByText(/Edit the statement/)).toBeTruthy();
   });
 
-  it("registers a logOpen/toggleLog bridge on activeDataView so the shared toolbar button can drive this tab's own Command log sub-tab", async () => {
+  it("registers a logOpen/toggleLog bridge on activeDataView that collapses/expands the whole bottom pane", async () => {
     const { getByText, queryByText } = render(QueryTab, { props });
     // Normally set by the app shell (+page.svelte) as the active-tab tracking follows which
     // query tab is focused; this test stands in for that since QueryTab is rendered standalone.
     activeDataView.setActiveQueryId(props.id);
+    expect(activeDataView.handle?.logOpen).toBe(true); // expanded by default
+    expect(getByText("Result")).toBeTruthy();
+    activeDataView.handle?.toggleLog?.();
+    await Promise.resolve();
     expect(activeDataView.handle?.logOpen).toBe(false);
+    expect(queryByText("Result")).toBeNull(); // whole bottom pane collapsed, editor takes full height
     activeDataView.handle?.toggleLog?.();
     await Promise.resolve();
     expect(activeDataView.handle?.logOpen).toBe(true);
-    expect(getByText("Clear")).toBeTruthy(); // Command log sub-tab's own Clear button now showing
-    activeDataView.handle?.toggleLog?.();
-    await Promise.resolve();
-    expect(activeDataView.handle?.logOpen).toBe(false);
-    expect(queryByText("Clear")).toBeNull();
+    expect(getByText("Result")).toBeTruthy();
     activeDataView.setActiveQueryId(null);
   });
 
@@ -359,7 +333,7 @@ describe("QueryTab", () => {
 });
 
 describe("QueryTab activeDataView bridge", () => {
-  const props = { id: 1, seq: 1, initialStatement: "x", currentDb: "shop" };
+  const props = { id: 1, seq: 1, initialStatement: "x", sessionId: "sess1", currentDb: "shop" };
   const bridgeStub = {
     ...editableStub,
     canEditSelected: true,

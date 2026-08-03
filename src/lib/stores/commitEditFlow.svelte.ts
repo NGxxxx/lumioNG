@@ -13,7 +13,9 @@ import type { CellEdit } from "./cellEditEntry.svelte";
  *  the current page in place, and drops the result if a navigation/reload superseded it while the
  *  write was in flight. */
 export function createCommitEditFlow(args: {
-  sessionId: string;
+  /** Getter (not a plain value) so a store that later rebinds to a different session — see
+   *  queryScript.svelte.ts's `rebindSession` — is picked up on the next commit without recreating this flow. */
+  getSessionId: () => string;
   edit: {
     editing: CellEdit | null;
     editText: string;
@@ -59,9 +61,10 @@ export function createCommitEditFlow(args: {
     const update = buildSetUpdate(key, r.value);
     const gen = args.currentGeneration();
     saving = true;
+    const sessionId = args.getSessionId();
     try {
-      await commandLog.pushTimed(updateOneCmd(target.coll, filter, update), args.sessionId, () =>
-        updateOne(args.sessionId, target.db, target.coll, filter, update, false));
+      await commandLog.pushTimed(updateOneCmd(target.coll, filter, update), sessionId, () =>
+        updateOne(sessionId, target.db, target.coll, filter, update, false));
       // The write itself targeted `_id`, so it always landed on the right document; only the local
       // patch is index-based, so skip it when a reload during the round-trip repopulated `docs`.
       // A stale generation means a newer edit may already own `edit`'s state — leave it alone.

@@ -6,13 +6,12 @@
   import * as m from "$lib/paraglide/messages";
 
   let {
-    summary, prevSummary, rawJson, loading, error, suggestion, coll, oncreateindex, onrefresh,
+    summary, prevSummary, rawJson, loading, suggestion, coll, oncreateindex, onrefresh,
   }: {
     summary: ExplainSummary | null;
     prevSummary: ExplainSummary | null;
     rawJson: string | null;
     loading: boolean;
-    error: string | null;
     suggestion: IndexSuggestion | null;
     coll: string;
     oncreateindex: () => void;
@@ -69,8 +68,6 @@
 <div class="explain-pane">
   {#if loading}
     <div class="status">{m.explain_pane_loading()}</div>
-  {:else if error}
-    <div class="error">{error}</div>
   {:else if summary}
     {@const max = maxDocsExamined(summary.stages)}
     {@render banner(summary)}
@@ -156,7 +153,6 @@
 <style>
   .explain-pane { flex: 1; min-height: 0; overflow: auto; padding: 0.5rem 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
   .status { color: var(--muted); font-size: var(--fs); }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
   .banner { display: flex; align-items: center; justify-content: space-between; padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: 0.8125rem; background: var(--panel); }
   .banner.warn { background: var(--warn-bg2); color: var(--warn-fg); }
   .banner.caution { background: var(--warn-bg); color: var(--warn-fg); }

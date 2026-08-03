@@ -4,6 +4,7 @@ import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { csvImportCmd } from "../domain/mongosh";
+import { restoreCollectionMetadata } from "./metadataRestore";
 import * as m from "$lib/paraglide/messages";
 
 export type CsvImportPhase = "loading" | "config" | "running" | "done";
@@ -24,6 +25,7 @@ export function createCsvImport(
   let error = $state<string | null>(null);
   let progress = $state<{ done: number; total: number } | null>(null);
   let result = $state<ImportResult | null>(null);
+  let metadataError = $state<string | null>(null);
   let insertMode = $state(initialInsertMode);
 
   async function loadPreview() {
@@ -58,7 +60,7 @@ export function createCsvImport(
     insertMode = m;
   }
 
-  async function run() {
+  async function run(restoreMetadataBundle?: string | null) {
     if (phase === "running") return;
     phase = "running";
     error = null;
@@ -68,6 +70,9 @@ export function createCsvImport(
         csvImportCommit(sessionId, db, coll, path, delimiter, { parseJsonLike, inferScalars }, insertMode, (done, total) => {
           progress = { done, total };
         }));
+      if (restoreMetadataBundle) {
+        metadataError = await restoreCollectionMetadata(sessionId, db, coll, restoreMetadataBundle);
+      }
       phase = "done";
     } catch (e) {
       error = errorMessage(e);
@@ -86,6 +91,7 @@ export function createCsvImport(
     get error() { return error; },
     get progress() { return progress; },
     get result() { return result; },
+    get metadataError() { return metadataError; },
     loadPreview,
     setDelimiter,
     toggleParseJsonLike,

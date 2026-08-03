@@ -101,6 +101,39 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let criticalConfirm = $state<{ ops: string[] } | null>(null);
   let pending: { db: string; script: string } | null = null;
 
+  /** A query tab's session isn't fixed for its lifetime — the caller may pass a different
+   *  `intendedSessionId` into run/runSelection/explainAfterRun once the user has navigated to
+   *  another session in the sidebar. Reassigning this parameter (legal — function params aren't
+   *  const) is deliberate: every other function below reads the closed-over `sessionId` fresh on
+   *  each call, so this single assignment retargets the whole store without threading a getter
+   *  through each call site. */
+  function rebindSession(newSessionId: string): void {
+    sessionId = newSessionId;
+  }
+
+  let pendingSessionSwitch = $state<{ fromSessionId: string; toSessionId: string; retry: () => Promise<void> } | null>(null);
+
+  /** Gate for run/runSelection/explainAfterRun: when the caller's intended session differs from
+   *  the one this store is currently bound to, stash the retry and surface a confirm dialog instead
+   *  of silently running against the wrong session. Returns true if the caller should stop here. */
+  function guardSessionSwitch(intendedSessionId: string | undefined, retry: () => Promise<void>): boolean {
+    if (!intendedSessionId || intendedSessionId === sessionId) return false;
+    pendingSessionSwitch = { fromSessionId: sessionId, toSessionId: intendedSessionId, retry };
+    return true;
+  }
+
+  async function confirmSessionSwitch(): Promise<void> {
+    const p = pendingSessionSwitch;
+    pendingSessionSwitch = null;
+    if (!p) return;
+    rebindSession(p.toSessionId);
+    await p.retry();
+  }
+
+  function cancelSessionSwitch(): void {
+    pendingSessionSwitch = null;
+  }
+
   // Inline/modal cell edit (row index is relative to the CURRENT PAGE's `docs`, in both modes);
   // same factory as the collection grid.
   const edit = createCellEditEntry();
@@ -240,9 +273,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   /** Explain, running the query first if needed (the recipe it needs only exists after a run); if it still isn't a pure cursor afterward, this quietly does nothing further. */
-  async function explainAfterRun(db: string | null): Promise<void> {
+  async function explainAfterRun(db: string | null, intendedSessionId?: string): Promise<void> {
+    if (guardSessionSwitch(intendedSessionId, () => explainAfterRun(db, intendedSessionId))) return;
     if (!isExplainable()) {
-      await run(db);
+      await run(db, undefined, intendedSessionId);
     }
     if (explainHint) {
       showExplain();
@@ -371,7 +405,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     consoleEntries = [];
   }
 
-  async function run(db: string | null, script: string = statementText) {
+  async function run(db: string | null, script: string = statementText, intendedSessionId?: string) {
+    if (guardSessionSwitch(intendedSessionId, () => run(db, script, intendedSessionId))) return;
     if (!db) {
       error = "Select a database first.";
       return;
@@ -425,9 +460,9 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   /** Run only the highlighted text (falls back to the whole statement if nothing is selected). */
-  function runSelection(db: string | null) {
+  function runSelection(db: string | null, intendedSessionId?: string) {
     const stmt = hasSelection ? statementText.slice(selStart, selEnd) : statementText;
-    return run(db, stmt);
+    return run(db, stmt, intendedSessionId);
   }
 
   /** Show ALL: totalCount is already fetched right after execute() (both "paged" and "static"
@@ -519,7 +554,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   const discardBlurEdit = editBlur.discardBlurEdit;
 
   const commitFlow = createCommitEditFlow({
-    sessionId,
+    getSessionId: () => sessionId,
     edit,
     getDocs: () => docs,
     setDocs: (next) => { docs = next; },
@@ -740,7 +775,12 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     createSuggestedIndex,
     get destructiveConfirm() { return destructiveConfirm; },
     get criticalConfirm() { return criticalConfirm; },
-    run: (db: string | null) => run(db),
+    get sessionId() { return sessionId; },
+    get pendingSessionSwitch() { return pendingSessionSwitch; },
+    confirmSessionSwitch,
+    cancelSessionSwitch,
+    rebindSession,
+    run: (db: string | null, intendedSessionId?: string) => run(db, undefined, intendedSessionId),
     confirmRun,
     cancelConfirm,
     dontAskAgain,

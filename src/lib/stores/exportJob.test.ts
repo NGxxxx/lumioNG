@@ -8,6 +8,8 @@ const api = vi.hoisted(() => ({
   cancelExportProgress: vi.fn(),
 }));
 const files = vi.hoisted(() => ({ writeTextFile: vi.fn() }));
+const indexesApi = vi.hoisted(() => ({ listIndexes: vi.fn() }));
+const statsApi = vi.hoisted(() => ({ collOptions: vi.fn() }));
 const cmdlog = vi.hoisted(() => ({
   push: vi.fn(),
   pushTimed: vi.fn(async (text: string, sessionId: string, fn: () => Promise<unknown>) => {
@@ -18,6 +20,8 @@ const cmdlog = vi.hoisted(() => ({
 }));
 vi.mock("../api/documents", () => api);
 vi.mock("../api/files", () => files);
+vi.mock("../api/indexes", () => indexesApi);
+vi.mock("../api/stats", () => statsApi);
 vi.mock("./commandLog.svelte", () => ({ commandLog: cmdlog }));
 
 import { createExportJob } from "./exportJob.svelte";
@@ -30,6 +34,8 @@ beforeEach(() => {
   api.exportSqlProgress.mockReset().mockResolvedValue(1);
   api.cancelExportProgress.mockReset().mockResolvedValue(undefined);
   files.writeTextFile.mockReset().mockResolvedValue(undefined);
+  indexesApi.listIndexes.mockReset().mockResolvedValue([]);
+  statsApi.collOptions.mockReset().mockResolvedValue("{}");
   cmdlog.push.mockReset();
 });
 
@@ -173,6 +179,44 @@ it("run reports busy for the whole batch, not per-file", async () => {
   await job.run();
   expect(sawBusyDuringFirst).toBe(true);
   expect(activity.busy).toBe(false);
+});
+
+it("includeMetadata: writes a companion metadata sidecar after a successful export", async () => {
+  indexesApi.listIndexes.mockResolvedValueOnce(['{"key":{"_id":1},"name":"_id_"}']);
+  statsApi.collOptions.mockResolvedValueOnce(JSON.stringify({ name: "users", options: {} }));
+  const job = createExportJob("conn:1", {
+    format: "json", dir: "/out", includeMetadata: true,
+    targets: [{ db: "shop", coll: "users", source: qSource }],
+  });
+  await job.run();
+  expect(indexesApi.listIndexes).toHaveBeenCalledWith("conn:1", "shop", "users");
+  expect(statsApi.collOptions).toHaveBeenCalledWith("conn:1", "shop", "users");
+  const [metaPath, metaContent] = files.writeTextFile.mock.calls[0];
+  expect(metaPath).toBe("/out/shop.users.metadata.json");
+  expect(JSON.parse(metaContent).indexes).toEqual([{ key: { _id: 1 }, name: "_id_" }]);
+  expect(job.rows[0].status).toBe("done");
+  expect(job.rows[0].error).toBeNull();
+});
+
+it("includeMetadata: a metadata failure doesn't overturn an already-successful data export", async () => {
+  statsApi.collOptions.mockRejectedValueOnce(new Error("no perms"));
+  const job = createExportJob("conn:1", {
+    format: "json", dir: "/out", includeMetadata: true,
+    targets: [{ db: "shop", coll: "users", source: qSource }],
+  });
+  await job.run();
+  expect(job.rows[0].status).toBe("done");
+  expect(job.rows[0].error).toContain("no perms");
+});
+
+it("includeMetadata is skipped for memory-sourced targets", async () => {
+  const job = createExportJob("conn:1", {
+    format: "json", filePath: "/out/r.json", includeMetadata: true,
+    targets: [{ db: "", coll: "results", source: { kind: "memory", docs: [{ a: 1 }] } }],
+  });
+  await job.run();
+  expect(indexesApi.listIndexes).not.toHaveBeenCalled();
+  expect(statsApi.collOptions).not.toHaveBeenCalled();
 });
 
 it("live progress: onProg callback updates done/total", async () => {

@@ -21,6 +21,12 @@ export async function writeTextFile(path: string, contents: string): Promise<voi
   await invoke("write_text_file", { path, contents });
 }
 
+/** Reads a text file's contents, or `null` if it doesn't exist — used to detect a companion
+ *  `.metadata.json` sidecar next to a chosen import file. */
+export async function readTextFileIfExists(path: string): Promise<string | null> {
+  return await invoke<string | null>("read_text_file_if_exists", { path });
+}
+
 /** Opens a directory-picker dialog; returns the chosen folder path or null if cancelled. */
 export async function openDirDialog(): Promise<string | null> {
   const result = await open({ multiple: false, directory: true });

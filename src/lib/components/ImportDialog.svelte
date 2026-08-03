@@ -3,7 +3,8 @@
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "$lib/stores/modalStack";
-  import { openDialog, importFileSize } from "../api/files";
+  import { openDialog, importFileSize, readTextFileIfExists } from "../api/files";
+  import { metadataPathFor } from "../domain/collectionMetadata";
   import { describeSqlImportTargets, describeImportTarget, isLargeImportFile, formatFileSize } from "../domain/importPlan";
   import { validateCollectionName } from "../domain/namespaces";
   import { createImportJob } from "../stores/importJob.svelte";
@@ -40,6 +41,10 @@
   let job = $state<ReturnType<typeof createImportJob> | null>(null);
   let sql = $state<ReturnType<typeof createSqlImport> | null>(null);
   let csv = $state<ReturnType<typeof createCsvImport> | null>(null);
+  // Companion `.metadata.json` sidecar next to the chosen file, if any (JSON/JSONL/BSON/CSV only —
+  // a multi-table SQL dump has no single collection to apply one bundle's indexes/validator to).
+  let metadataBundle = $state<string | null>(null);
+  let restoreMetadata = $state(true);
   /** What `sql`/`csv` were last built for — lets a Back-then-Next round trip (no file/target change)
    *  reuse the live store instead of reconstructing it and losing table selection / delimiter /
    *  toggles. Only `targetColl` needs tracking for CSV (its `coll` is a constructor argument); SQL's
@@ -94,12 +99,20 @@
       : m.sql_import_target_new({ n: target.collections.length, names: target.collections.join(", ") });
   }
 
+  async function checkMetadata(p: string) {
+    metadataBundle = null;
+    if (p.toLowerCase().endsWith(".sql")) return;
+    const text = await readTextFileIfExists(metadataPathFor(p));
+    if (path === p) metadataBundle = text; // ignore a stale check if the user picked another file meanwhile
+  }
+
   async function browse() {
     const filters = [{ name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] }];
     const p = await openDialog(filters);
     if (p) {
       path = p;
       fileSizeChecked = false;
+      void checkMetadata(p);
     }
   }
 
@@ -161,9 +174,12 @@
     } else if (isCsv) {
       if (csv!.columns.length === 0 || csv!.phase === "loading") return;
       csv!.setInsertMode(insertMode);
-      csv!.run();
+      csv!.run(restoreMetadata ? metadataBundle : null);
     } else {
-      job = createImportJob({ sessionId, db, coll: targetColl.trim(), path, insertMode });
+      job = createImportJob({
+        sessionId, db, coll: targetColl.trim(), path, insertMode,
+        restoreMetadataBundle: restoreMetadata ? metadataBundle : null,
+      });
       job.run();
     }
     stage = "run";
@@ -245,6 +261,13 @@
           <label><input type="radio" name="insert-mode" checked={insertMode === "upsertById"} onchange={() => (insertMode = "upsertById")} /> {m.import_dialog_insert_mode_upsert()}</label>
           <label><input type="radio" name="insert-mode" checked={insertMode === "stopOnFirstError"} onchange={() => (insertMode = "stopOnFirstError")} /> {m.import_dialog_insert_mode_stop()}</label>
         </div>
+
+        {#if metadataBundle}
+          <label class="metadata-toggle">
+            <input type="checkbox" bind:checked={restoreMetadata} />
+            {m.import_dialog_restore_metadata({ file: metadataPathFor(path).replace(/^.*[\\/]/, "") })}
+          </label>
+        {/if}
 
         {#if isSql}
           {@const v = sql!}
@@ -354,6 +377,7 @@
             <ImportResultSummary inserted={r.inserted} failed={r.failed} errors={r.errors} />
           {/if}
           {#if v.error}<div class="error">{v.error}</div>{/if}
+          {#if v.metadataError}<div class="notice">{m.import_dialog_metadata_error({ error: v.metadataError })}</div>{/if}
         {:else}
           {@const j = job!}
           {#if j.total > 0}
@@ -367,6 +391,7 @@
             {@const r = j.result}
             <ImportResultSummary inserted={r.inserted} failed={r.failed} errors={r.errors} />
           {/if}
+          {#if j.metadataError}<div class="notice">{m.import_dialog_metadata_error({ error: j.metadataError })}</div>{/if}
         {/if}
       {/if}
     </div>
@@ -419,6 +444,7 @@
   .insert-mode-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: var(--fs); margin-bottom: 0.75rem; }
   .insert-mode-group .label { color: var(--gray-77); }
   .insert-mode-group label { display: flex; align-items: center; gap: 0.25rem; cursor: pointer; }
+  .metadata-toggle { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; font-size: var(--fs); margin-bottom: 0.75rem; }
   .status { color: var(--gray-77); }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; border-radius: 0.1875rem; }
   .result-row { display: flex; flex-direction: column; gap: 0.125rem; margin-bottom: 0.5rem; }

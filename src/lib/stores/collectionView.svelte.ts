@@ -376,7 +376,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const discardBlurEdit = editBlur.discardBlurEdit;
 
   const commitFlow = createCommitEditFlow({
-    sessionId,
+    getSessionId: () => sessionId,
     edit,
     getDocs: () => docs,
     setDocs: (next) => { docs = next; },

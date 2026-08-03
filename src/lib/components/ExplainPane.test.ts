@@ -16,7 +16,7 @@ const ixscan: ExplainSummary = {
 };
 
 const base = {
-  summary: null, prevSummary: null, rawJson: null, loading: false, error: null,
+  summary: null, prevSummary: null, rawJson: null, loading: false,
   suggestion: null, coll: "orders", oncreateindex: vi.fn(), onrefresh: vi.fn(),
 };
 
@@ -24,11 +24,6 @@ describe("ExplainPane", () => {
   it("shows the loading status while loading", () => {
     const { getByText } = render(ExplainPane, { props: { ...base, loading: true } });
     expect(getByText("Running explain…")).toBeTruthy();
-  });
-
-  it("shows the error message instead of the banner when explain failed", () => {
-    const { getByText } = render(ExplainPane, { props: { ...base, error: "boom" } });
-    expect(getByText("boom")).toBeTruthy();
   });
 
   it("shows the collscan warning banner and the stage table", () => {

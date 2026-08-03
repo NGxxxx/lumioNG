@@ -29,13 +29,13 @@
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
   import type { Doc } from "../domain/doc";
 
-  let { id, seq, initialStatement, currentDb, active, onopendocument }:
-    { id: number; seq: number; initialStatement: string; currentDb: string | null; active: boolean;
+  let { id, seq, initialStatement, sessionId, currentDb, active, onopendocument }:
+    { id: number; seq: number; initialStatement: string; sessionId: string; currentDb: string | null; active: boolean;
       onopendocument?: (doc: Doc, db: string, coll: string, mode: "edit") => void } = $props();
 
-  const v = untrack(() => getQueryRun(id, sessionManager.active?.id ?? "", initialStatement));
+  const v = untrack(() => getQueryRun(id, sessionId, initialStatement));
   const tree = untrack(() =>
-    getPipelineTree(id, sessionManager.active?.id ?? "", {
+    getPipelineTree(id, sessionId, {
       get: () => v.statementText,
       set: (s) => { v.statementText = s; },
     }),
@@ -57,6 +57,7 @@
     if (editorMode === "tree" && !isAggregateStatement) editorMode = "script";
   });
   let bottomTab = $state<"result" | "log">("result");
+  let bottomCollapsed = $state(false);
   let resultView = $state<ResultViewMode>("grid");
   let menu = $state<{ x: number; y: number } | null>(null);
   let editorRef: CodeEditor | undefined = $state();
@@ -83,30 +84,30 @@
     if (v.explainRequestSeq !== lastExplainRequestSeq) {
       lastExplainRequestSeq = v.explainRequestSeq;
       bottomTab = "result";
+      bottomCollapsed = false;
       resultView = "explain";
     }
   });
 
   async function runQuery() {
     bottomTab = "result";
-    await v.run(currentDb);
+    bottomCollapsed = false;
+    await v.run(currentDb, sessionId);
     applyPostRunView();
   }
 
   async function runSelectionQuery() {
     bottomTab = "result";
-    await v.runSelection(currentDb);
+    bottomCollapsed = false;
+    await v.runSelection(currentDb, sessionId);
     applyPostRunView();
   }
 
-  /** Explain entry point from the editor's own right-click menu — runs the query first if needed, then sets the view directly. */
+  /** Explain entry point from the editor's own right-click menu — runs the query first if needed (matching the global toolbar's Explain path), then sets the view directly via the explainRequestSeq effect below. */
   async function explainFromMenu() {
     bottomTab = "result";
-    if (!v.canExplain) await v.run(currentDb);
-    if (v.canExplain) {
-      resultView = "explain";
-      v.ensureExplain();
-    }
+    bottomCollapsed = false;
+    await v.explainAfterRun(currentDb, sessionId);
   }
 
   function onMenu(action: string) {
@@ -175,12 +176,13 @@
     // Search box only renders in the "result" tab's Grid view, so switch there first.
     async focusSearch() {
       bottomTab = "result";
+      bottomCollapsed = false;
       if (resultView !== "grid") resultView = "grid";
       await tick();
       searchInputEl?.focus();
     },
-    get logOpen() { return bottomTab === "log"; },
-    toggleLog() { bottomTab = bottomTab === "log" ? "result" : "log"; },
+    get logOpen() { return !bottomCollapsed; },
+    toggleLog() { bottomCollapsed = !bottomCollapsed; },
   };
   $effect(() => {
     activeDataView.registerQuery(id, dataViewHandle);
@@ -207,10 +209,11 @@
 
   <div
     class="editor"
+    class:collapsed={bottomCollapsed}
     role="none"
     oncontextmenu={openMenu}
     bind:this={editorEl}
-    style={settings.queryEditorHeightPx !== null ? `height:${settings.queryEditorHeightPx}px` : undefined}
+    style={bottomCollapsed || settings.queryEditorHeightPx === null ? undefined : `height:${settings.queryEditorHeightPx}px`}
   >
     {#if editorMode === "script"}
       <CodeEditor
@@ -227,18 +230,23 @@
     {/if}
   </div>
 
-  <div
-    class="pane-divider"
-    role="presentation"
-    onpointerdown={(e) => editorEl && bottomEl && paneResize.start(e, editorEl, bottomEl)}
-    ondblclick={() => settings.resetQueryEditorHeight()}
-  ></div>
+  {#if !bottomCollapsed}
+    <div
+      class="pane-divider"
+      role="presentation"
+      onpointerdown={(e) => editorEl && bottomEl && paneResize.start(e, editorEl, bottomEl)}
+      ondblclick={() => settings.resetQueryEditorHeight()}
+    ></div>
+  {/if}
 
-  {#if v.error}<div class="error">{v.error}</div>{/if}
+  {#if v.error || (resultView === "explain" && v.explainError)}
+    <div class="error">{v.error || v.explainError}</div>
+  {/if}
   {#if v.capped}
     <div class="cap">{m.query_tab_capped_notice({ cap: settings.queryResultCap })}</div>
   {/if}
 
+  {#if !bottomCollapsed}
   <div class="bottom" bind:this={bottomEl}>
     <div class="bottom-tabs">
       <button class:active={bottomTab === "result"} onclick={() => (bottomTab = "result")}>{m.query_tab_result()}</button>
@@ -293,7 +301,6 @@
           prevSummary={v.explainPrevSummary}
           rawJson={v.explainRawJson}
           loading={v.explainLoading}
-          error={v.explainError}
           suggestion={v.indexSuggestion}
           coll={v.provenance?.coll ?? ""}
           oncreateindex={() => v.createSuggestedIndex()}
@@ -319,6 +326,7 @@
       {/if}
     {/if}
   </div>
+  {/if}
 </div>
 
 {#if menu}
@@ -368,6 +376,25 @@
   />
 {/if}
 
+{#if v.pendingSessionSwitch}
+  {@const p = v.pendingSessionSwitch}
+  <ConfirmDialog
+    title={m.query_tab_session_switch_title()}
+    message={m.query_tab_session_switch_message({
+      from: sessionManager.sessions.find((s) => s.id === p.fromSessionId)?.label ?? p.fromSessionId,
+      to: sessionManager.sessions.find((s) => s.id === p.toSessionId)?.label ?? p.toSessionId,
+    })}
+    confirmLabel={m.query_tab_session_switch_confirm({
+      to: sessionManager.sessions.find((s) => s.id === p.toSessionId)?.label ?? p.toSessionId,
+    })}
+    onconfirm={async () => {
+      await v.confirmSessionSwitch();
+      tree.rebindSession(sessionId);
+      applyPostRunView();
+    }}
+    oncancel={() => v.cancelSessionSwitch()} />
+{/if}
+
 {#if v.editBlurPending}
   <ConfirmDialog
     title={m.result_table_unsaved_edit_title()}
@@ -410,6 +437,7 @@
   .db { color: var(--gray-77); font-size: var(--fs); }
   .bar-spacer { flex: 1; }
   .editor { height: 34%; flex: none; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
+  .editor.collapsed { height: auto; flex: 1; }
   .pane-divider { flex: none; height: 5px; cursor: row-resize; position: relative; border-bottom: 1px solid var(--gray-cf); }
   .pane-divider:hover { background: var(--tab-active-border); opacity: 0.5; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }

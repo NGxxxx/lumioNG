@@ -137,8 +137,21 @@ export function createSessionManager() {
     await performConnect(s);
   }
 
+  /** Focusing a different session while a Query tab is the open work item re-binds that tab to
+   *  follow it too — mirrors how the tab's DB already follows whichever database is selected within
+   *  its bound session. Actually running/explaining against the new session still needs confirming
+   *  (see queryScript.svelte.ts's session-switch gate); this only updates which session the tab
+   *  displays/targets next. */
   function focusSession(id: string) {
-    if (sessions.some((s) => s.id === id)) activeId = id;
+    if (!sessions.some((s) => s.id === id)) return;
+    activeId = id;
+    const activeWorkId = zone?.zone === "work" ? zone.id : null;
+    if (activeWorkId !== null) {
+      const t = workTabs.find((w) => w.id === activeWorkId);
+      if (t && t.kind === "query" && t.sessionId !== id) {
+        workTabs = workTabs.map((w) => (w.id === t.id ? { ...w, sessionId: id } : w));
+      }
+    }
   }
 
   async function closeSession(id: string) {

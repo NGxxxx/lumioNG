@@ -110,9 +110,9 @@
           <button class="x" onclick={() => onCloseWork(t.id)} aria-label={m.tab_bar_close()}>×</button>
         </div>
       {/each}
-      <button class="tab newq" onclick={onNewQuery} title={m.tab_bar_new_query()}>+</button>
     </div>
   </div>
+  <button class="tab newq" onclick={onNewQuery} title={m.tab_bar_new_query()}>+</button>
 </div>
 
 <style>
@@ -232,7 +232,7 @@
     color: var(--fg);
   }
 
-  .newq { align-self: flex-start; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; border: none; background: none; }
+  .newq { flex: none; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; border: none; background: none; }
   .newq:hover { background: var(--panel); }
 
   .session-dot {

@@ -1333,3 +1333,67 @@ describe("grid depth limit", () => {
     expect(s.columnFields.map((c) => c.path)).toEqual(["_id", "addr.city", "addr.geo.lat"]);
   });
 });
+
+describe("session switch gate", () => {
+  beforeEach(() => {
+    (runScript as any).mockClear();
+    explainQueryMock.mockReset();
+  });
+
+  it("passing the store's own session runs immediately, no confirm needed", async () => {
+    run.mockResolvedValueOnce(ok([], null));
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    await s.run("mydb", "sess");
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", expect.anything(), expect.anything());
+    expect(s.pendingSessionSwitch).toBeNull();
+  });
+
+  it("a different intended session defers the run and surfaces a confirm instead", async () => {
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    await s.run("mydb", "other-sess");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.pendingSessionSwitch?.fromSessionId).toBe("sess");
+    expect(s.pendingSessionSwitch?.toSessionId).toBe("other-sess");
+    expect(s.sessionId).toBe("sess"); // not rebound yet
+  });
+
+  it("confirmSessionSwitch rebinds the store and retries the run against the new session", async () => {
+    run.mockResolvedValueOnce(ok([], null));
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    await s.run("mydb", "other-sess");
+    await s.confirmSessionSwitch();
+    expect(s.sessionId).toBe("other-sess");
+    expect(runScript).toHaveBeenCalledWith("other-sess", "mydb", expect.anything(), expect.anything());
+    expect(s.pendingSessionSwitch).toBeNull();
+  });
+
+  it("cancelSessionSwitch drops the pending switch without running or rebinding", async () => {
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    await s.run("mydb", "other-sess");
+    s.cancelSessionSwitch();
+    expect(s.pendingSessionSwitch).toBeNull();
+    expect(s.sessionId).toBe("sess");
+    expect(runScript).not.toHaveBeenCalled();
+  });
+
+  it("runSelection gates the same way as run", async () => {
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    s.setSelection(0, 5);
+    await s.runSelection("mydb", "other-sess");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.pendingSessionSwitch?.toSessionId).toBe("other-sess");
+  });
+
+  it("explainAfterRun gates before running the query it needs", async () => {
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    await s.explainAfterRun("mydb", "other-sess");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.pendingSessionSwitch?.toSessionId).toBe("other-sess");
+  });
+
+  it("rebindSession updates the store's own sessionId directly", () => {
+    const s = createQueryScript("sess", "db.c.find({}).toArray()");
+    s.rebindSession("new-sess");
+    expect(s.sessionId).toBe("new-sess");
+  });
+});

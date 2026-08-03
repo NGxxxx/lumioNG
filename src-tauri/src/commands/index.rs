@@ -1,6 +1,6 @@
 use crate::bson_json::doc_to_canonical_string;
 use crate::error::AppError;
-use crate::json_bson::canonical_string_to_doc;
+use crate::json_bson::{canonical_string_to_doc, canonical_string_to_doc_array};
 use crate::state::AppState;
 use mongodb::bson::{doc, Document};
 use mongodb::options::{Collation, IndexOptions};
@@ -75,6 +75,37 @@ pub async fn create_index(
         .database(&db)
         .collection::<Document>(&coll)
         .create_index(model)
+        .await?;
+    Ok(())
+}
+
+/// Recreates indexes from their raw `listIndexes` documents (as produced by `list_indexes`) —
+/// used to restore a collection's indexes from an exported metadata sidecar. Passed through to
+/// `createIndexes` largely as-is (server ignores/regenerates fields like `v`); the default `_id_`
+/// index is skipped since every collection already has one.
+#[tauri::command]
+pub async fn create_indexes_raw(
+    session_id: String,
+    db: String,
+    coll: String,
+    indexes_json: String,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let client = state.writable_client(&session_id).await?;
+    let specs: Vec<Document> = canonical_string_to_doc_array(
+        &indexes_json,
+        "expected a JSON array of index documents",
+        "each index must be a JSON document",
+    )?
+    .into_iter()
+    .filter(|d| d.get_str("name").ok() != Some("_id_"))
+    .collect();
+    if specs.is_empty() {
+        return Ok(());
+    }
+    client
+        .database(&db)
+        .run_command(doc! { "createIndexes": &coll, "indexes": specs })
         .await?;
     Ok(())
 }

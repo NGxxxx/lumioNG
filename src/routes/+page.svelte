@@ -227,10 +227,10 @@
       run: () => (canUseDataView ? activeDataView.handle?.exportCurrent() : undefined),
     },
     "file.quit": { disabled: false, run: requestQuit },
-    "query.run": { disabled: activeQueryRun == null, run: () => activeQueryRun?.run(sel?.db ?? null) },
-    "query.runSelection": { disabled: !(activeQueryRun?.hasSelection ?? false), run: () => activeQueryRun?.runSelection(sel?.db ?? null) },
+    "query.run": { disabled: activeQueryRun == null, run: () => activeQueryRun?.run(sel?.db ?? null, activeQueryTab?.sessionId) },
+    "query.runSelection": { disabled: !(activeQueryRun?.hasSelection ?? false), run: () => activeQueryRun?.runSelection(sel?.db ?? null, activeQueryTab?.sessionId) },
     "query.stop": { disabled: !(activeQueryRun?.running ?? false), run: () => { if (sm.activeId) cancelScript(sm.activeId); } },
-    "query.explain": { disabled: activeQueryRun == null, run: () => activeQueryRun?.explainAfterRun(sel?.db ?? null) },
+    "query.explain": { disabled: activeQueryRun == null, run: () => activeQueryRun?.explainAfterRun(sel?.db ?? null, activeQueryTab?.sessionId) },
     "query.aggregate": { disabled: !(sel?.coll != null), run: () => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); } },
     "query.save": {
       disabled: !(activeQueryTab ? !queryLibrary.blocked : (activeDocumentForm.handle?.canSave ?? false)),
@@ -414,7 +414,7 @@
               {@const QueryTabView = queryTabChunk.value}
               {#if QueryTabView}
                 <QueryTabView id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement}
-                  currentDb={dbForSession(tab.sessionId)} active={isActiveTab}
+                  sessionId={tab.sessionId} currentDb={dbForSession(tab.sessionId)} active={isActiveTab}
                   onopendocument={(doc: Doc, db: string, coll: string) => openDocument(db, coll, doc, "edit")} />
               {:else}
                 <div class="empty">{m.status_bar_loading()}</div>

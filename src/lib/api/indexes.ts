@@ -24,3 +24,14 @@ export async function createIndex(
 export async function dropIndex(sessionId: string, db: string, coll: string, name: string): Promise<void> {
   await invoke("drop_index", { sessionId, db, coll, name });
 }
+
+/** Recreates indexes from their raw `listIndexes` documents (as returned by `listIndexes` above) —
+ *  used to restore a collection's indexes from an exported metadata sidecar. */
+export async function createIndexesRaw(
+  sessionId: string,
+  db: string,
+  coll: string,
+  indexesJson: string,
+): Promise<void> {
+  await invoke("create_indexes_raw", { sessionId, db, coll, indexesJson });
+}

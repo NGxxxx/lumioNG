@@ -55,6 +55,44 @@ describe("sessionManager", () => {
     expect(sm.activeId).toBe("conn:1");
   });
 
+  it("focusSession rebinds the focused query tab to follow, like its DB already does", async () => {
+    await sm.focusOrOpen({ connId: 1, uri: "u1", label: "a" });
+    sm.openQuery(""); // zone = work/tab1, tab1.sessionId = conn:1
+    const tab = sm.workTabs.at(-1)!;
+    await sm.focusOrOpen({ connId: 2, uri: "u2", label: "b" }); // zone still work/tab1 (openQuery/focusOrOpen don't touch zone)
+    sm.activateWork(tab.id); // refocus tab1 so it's the active work item again
+    expect(sm.activeId).toBe("conn:1");
+
+    sm.focusSession("conn:2");
+
+    expect(sm.activeId).toBe("conn:2");
+    expect((sm.workTabs.find((t) => t.id === tab.id))!.sessionId).toBe("conn:2");
+  });
+
+  it("focusSession does not rebind a tab that isn't the focused work item", async () => {
+    await sm.focusOrOpen({ connId: 1, uri: "u1", label: "a" });
+    sm.openQuery("");
+    const tab = sm.workTabs.at(-1)!;
+    await sm.focusOrOpen({ connId: 2, uri: "u2", label: "b" });
+    sm.showContext("host"); // zone is now context, not this work tab
+
+    sm.focusSession("conn:1");
+
+    expect((sm.workTabs.find((t) => t.id === tab.id))!.sessionId).toBe("conn:1"); // unchanged
+  });
+
+  it("focusSession does not touch document tabs", async () => {
+    await sm.focusOrOpen({ connId: 1, uri: "u1", label: "a" });
+    sm.openDocument({ kind: "document", db: "d", coll: "c", mode: "insert", initial: null, idText: null });
+    const tab = sm.workTabs.at(-1)!;
+    await sm.focusOrOpen({ connId: 2, uri: "u2", label: "b" });
+    sm.activateWork(tab.id);
+
+    sm.focusSession("conn:2");
+
+    expect((sm.workTabs.find((t) => t.id === tab.id))!.sessionId).toBe("conn:1"); // document tabs stay put
+  });
+
   it("closing a session drops its tabs", async () => {
     await sm.focusOrOpen({ connId: 1, uri: "u1", label: "a" });
     sm.openQuery("");

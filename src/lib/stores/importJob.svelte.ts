@@ -3,6 +3,7 @@ import { importCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { errorMessage } from "../api/errors";
+import { restoreCollectionMetadata } from "./metadataRestore";
 import * as m from "$lib/paraglide/messages";
 
 export interface ImportJobConfig {
@@ -11,6 +12,8 @@ export interface ImportJobConfig {
   coll: string;
   path: string;
   insertMode: InsertMode;
+  /** Companion `.metadata.json` sidecar content, applied after a successful document import. */
+  restoreMetadataBundle?: string | null;
 }
 
 /** Drives a single import (JSON/JSONL or BSON) with live done/total progress, for ImportDialog. */
@@ -21,6 +24,7 @@ export function createImportJob(config: ImportJobConfig) {
   let finished = $state(false);
   let result = $state<ImportResult | null>(null);
   let error = $state<string | null>(null);
+  let metadataError = $state<string | null>(null);
 
   async function run() {
     if (running || finished) return;
@@ -40,6 +44,9 @@ export function createImportJob(config: ImportJobConfig) {
             ? importBson(config.sessionId, config.db, config.coll, config.path, config.insertMode, onProgress)
             : importDocuments(config.sessionId, config.db, config.coll, config.path, config.insertMode, onProgress),
       );
+      if (config.restoreMetadataBundle) {
+        metadataError = await restoreCollectionMetadata(config.sessionId, config.db, config.coll, config.restoreMetadataBundle);
+      }
     } catch (e) {
       error = errorMessage(e);
     } finally {
@@ -67,6 +74,9 @@ export function createImportJob(config: ImportJobConfig) {
     },
     get error() {
       return error;
+    },
+    get metadataError() {
+      return metadataError;
     },
     run,
   };

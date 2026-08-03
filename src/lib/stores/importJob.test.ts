@@ -12,8 +12,10 @@ const cmdlog = vi.hoisted(() => ({
     return result;
   }),
 }));
+const metadataRestore = vi.hoisted(() => ({ restoreCollectionMetadata: vi.fn() }));
 vi.mock("../api/documents", () => api);
 vi.mock("./commandLog.svelte", () => ({ commandLog: cmdlog }));
+vi.mock("./metadataRestore", () => metadataRestore);
 
 import { createImportJob } from "./importJob.svelte";
 import { activity } from "./activity.svelte";
@@ -21,6 +23,7 @@ import { activity } from "./activity.svelte";
 beforeEach(() => {
   api.importDocuments.mockReset().mockResolvedValue({ inserted: 3, failed: 0, errors: [] });
   api.importBson.mockReset().mockResolvedValue({ inserted: 2, failed: 0, errors: [] });
+  metadataRestore.restoreCollectionMetadata.mockReset().mockResolvedValue(null);
   cmdlog.push.mockReset();
 });
 
@@ -86,5 +89,32 @@ describe("createImportJob", () => {
     await job.run();
     await job.run();
     expect(api.importDocuments).toHaveBeenCalledTimes(1);
+  });
+
+  it("restores metadata after a successful import when a bundle is provided", async () => {
+    const job = createImportJob({
+      sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json", insertMode: "skipDuplicates",
+      restoreMetadataBundle: '{"indexes":[]}',
+    });
+    await job.run();
+    expect(metadataRestore.restoreCollectionMetadata).toHaveBeenCalledWith("conn:1", "shop", "users", '{"indexes":[]}');
+    expect(job.metadataError).toBeNull();
+  });
+
+  it("does not attempt metadata restore when no bundle is provided", async () => {
+    const job = createImportJob({ sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json", insertMode: "skipDuplicates" });
+    await job.run();
+    expect(metadataRestore.restoreCollectionMetadata).not.toHaveBeenCalled();
+  });
+
+  it("surfaces a metadata restore failure without touching the document import result", async () => {
+    metadataRestore.restoreCollectionMetadata.mockResolvedValueOnce("no perms");
+    const job = createImportJob({
+      sessionId: "conn:1", db: "shop", coll: "users", path: "/in/users.json", insertMode: "skipDuplicates",
+      restoreMetadataBundle: '{"indexes":[]}',
+    });
+    await job.run();
+    expect(job.result).toEqual({ inserted: 3, failed: 0, errors: [] });
+    expect(job.metadataError).toBe("no perms");
   });
 });

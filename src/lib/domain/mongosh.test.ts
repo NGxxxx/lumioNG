@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { updateOneCmd, listIndexesCmd, listDatabasesCmd, findOneByIdCmd, setValidatorCmd, sqlImportCmd } from "./mongosh";
+import { updateOneCmd, listIndexesCmd, createIndexesCmd, listDatabasesCmd, findOneByIdCmd, setValidatorCmd, sqlImportCmd } from "./mongosh";
 
 describe("write command-log helpers", () => {
   it("updateOneCmd", () => {
@@ -12,6 +12,11 @@ describe("write command-log helpers", () => {
 describe("read command-log helpers", () => {
   it("listIndexesCmd", () => {
     expect(listIndexesCmd("orders")).toBe('db.getCollection("orders").getIndexes()');
+  });
+  it("createIndexesCmd", () => {
+    expect(createIndexesCmd("orders", '[{"key":{"a":1},"name":"a_1"}]')).toBe(
+      'db.runCommand({ "createIndexes": "orders", "indexes": [{"key":{"a":1},"name":"a_1"}] })',
+    );
   });
   it("listDatabasesCmd", () => {
     expect(listDatabasesCmd()).toBe("show dbs");

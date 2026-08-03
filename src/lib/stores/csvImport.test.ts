@@ -4,13 +4,16 @@ vi.mock("../api/csv", () => ({
   csvImportPreview: vi.fn(),
   csvImportCommit: vi.fn(),
 }));
+vi.mock("./metadataRestore", () => ({ restoreCollectionMetadata: vi.fn() }));
 
 import * as api from "../api/csv";
 import { createCsvImport } from "./csvImport.svelte";
 import { commandLog } from "./commandLog.svelte";
+import { restoreCollectionMetadata } from "./metadataRestore";
 
 const csvImportPreview = api.csvImportPreview as ReturnType<typeof vi.fn>;
 const csvImportCommit = api.csvImportCommit as ReturnType<typeof vi.fn>;
+const restoreMetadata = restoreCollectionMetadata as ReturnType<typeof vi.fn>;
 
 const preview = [
   { path: "id", inferredType: "int", samples: ["1", "2"] },
@@ -20,6 +23,7 @@ const preview = [
 describe("createCsvImport", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    restoreMetadata.mockResolvedValue(null);
     commandLog.clear();
   });
 
@@ -122,5 +126,24 @@ describe("createCsvImport", () => {
       "conn:1", "d", "users", "/tmp/data.csv", "comma",
       { parseJsonLike: true, inferScalars: true }, "upsertById", expect.any(Function),
     );
+  });
+
+  it("run(bundle) restores metadata after a successful commit", async () => {
+    csvImportPreview.mockResolvedValueOnce(preview);
+    csvImportCommit.mockResolvedValueOnce({ inserted: 2, failed: 0, errors: [] });
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
+    await v.loadPreview();
+    await v.run('{"indexes":[]}');
+    expect(restoreMetadata).toHaveBeenCalledWith("conn:1", "d", "users", '{"indexes":[]}');
+    expect(v.metadataError).toBeNull();
+  });
+
+  it("run() without a bundle does not attempt metadata restore", async () => {
+    csvImportPreview.mockResolvedValueOnce(preview);
+    csvImportCommit.mockResolvedValueOnce({ inserted: 2, failed: 0, errors: [] });
+    const v = createCsvImport("conn:1", "d", "users", "/tmp/data.csv", "skipDuplicates");
+    await v.loadPreview();
+    await v.run();
+    expect(restoreMetadata).not.toHaveBeenCalled();
   });
 });

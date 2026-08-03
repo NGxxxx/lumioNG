@@ -469,6 +469,17 @@ pub fn import_file_size(path: String) -> Result<u64, AppError> {
         .map_err(|e| AppError::Io(e.to_string()))
 }
 
+/// Reads a text file if it exists, `None` if it doesn't — used to detect a companion
+/// `.metadata.json` sidecar next to a chosen import file without treating "missing" as an error.
+#[tauri::command]
+pub fn read_text_file_if_exists(path: String) -> Result<Option<String>, AppError> {
+    match std::fs::read_to_string(&path) {
+        Ok(s) => Ok(Some(s)),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(AppError::Io(e.to_string())),
+    }
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn import_documents(
@@ -918,6 +929,31 @@ mod tests {
             import_file_size(path.to_string_lossy().to_string()),
             Err(AppError::Io(_))
         ));
+    }
+
+    #[test]
+    fn read_text_file_if_exists_returns_none_for_a_missing_path() {
+        let dir = std::env::temp_dir().join("monglumio_test_read_if_exists_missing");
+        let _ = std::fs::remove_dir_all(&dir);
+        let path = dir.join("nope.metadata.json");
+        assert_eq!(
+            read_text_file_if_exists(path.to_string_lossy().to_string()).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn read_text_file_if_exists_returns_contents_when_present() {
+        let dir = std::env::temp_dir().join("monglumio_test_read_if_exists_present");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.metadata.json");
+        std::fs::write(&path, "{}").unwrap();
+        assert_eq!(
+            read_text_file_if_exists(path.to_string_lossy().to_string()).unwrap(),
+            Some("{}".to_string())
+        );
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

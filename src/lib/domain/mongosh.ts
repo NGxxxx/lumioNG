@@ -92,6 +92,9 @@ export const sampleCmd = (coll: string, size: number) =>
 
 export const listIndexesCmd = (coll: string) => `${c(coll)}.getIndexes()`;
 
+export const createIndexesCmd = (coll: string, indexesJson: string) =>
+  `db.runCommand({ "createIndexes": "${coll}", "indexes": ${indexesJson} })`;
+
 export const listDatabasesCmd = () => "show dbs";
 
 export const findOneByIdCmd = (coll: string, idJson: string) =>

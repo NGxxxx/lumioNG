@@ -1,8 +1,11 @@
 import { exportJsonProgress, exportBsonProgress, exportCsvProgress, exportSqlProgress, cancelExportProgress } from "../api/documents";
 import { writeTextFile } from "../api/files";
+import { listIndexes } from "../api/indexes";
+import { collOptions } from "../api/stats";
 import { toCsv, toJsonArray, toSql } from "../domain/exporter";
 import { exportFileName, aggregateProgress } from "../domain/exportPlan";
-import { findCmd, exportBsonCmd } from "../domain/mongosh";
+import { metadataPathFor, buildMetadataBundle } from "../domain/collectionMetadata";
+import { findCmd, exportBsonCmd, listIndexesCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import * as m from "$lib/paraglide/messages";
@@ -39,6 +42,8 @@ export interface ExportJobConfig {
   dir?: string;
   /** Scoped mode: single explicit output file. */
   filePath?: string;
+  /** Also write a `<file>.metadata.json` sidecar (indexes + validator/options) per target. */
+  includeMetadata?: boolean;
 }
 
 export function createExportJob(sessionId: string, config: ExportJobConfig) {
@@ -95,6 +100,16 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
         const n = await commandLog.pushTimed(findCmd({ coll: t.coll, filter, sort, projection }), sessionId, () =>
           exportSqlProgress(sessionId, t.db, t.coll, filter, sort, projection, path, onProg));
         update(i, { status: "done", done: n, total: n });
+      }
+      if (config.includeMetadata) {
+        try {
+          const indexes = await commandLog.pushTimed(listIndexesCmd(t.coll), sessionId, () =>
+            listIndexes(sessionId, t.db, t.coll));
+          const options = await collOptions(sessionId, t.db, t.coll);
+          await writeTextFile(metadataPathFor(path), buildMetadataBundle(indexes, options));
+        } catch (e) {
+          update(i, { error: m.export_wizard_metadata_error({ error: errorMessage(e) }) });
+        }
       }
     } catch (e) {
       update(i, { status: "error", error: errorMessage(e) });

@@ -182,10 +182,17 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     d.schedule(() => void runPreview(id, db));
   }
 
+  /** Retargets live preview requests to a different session — called alongside the query script's
+   *  own `rebindSession` when the user confirms a session switch for this tab (see QueryTab.svelte). */
+  function rebindSession(newSessionId: string): void {
+    sessionId = newSessionId;
+  }
+
   return {
     get stages() { return stages; },
     get coll() { return coll; },
     get sessionId() { return sessionId; },
+    rebindSession,
     get parseError() { return parseError; },
     get autoPreview() { return autoPreview; },
     setAutoPreview(v: boolean) { autoPreview = v; },

@@ -13,6 +13,7 @@
   let { input, onclose }: { input: ExportWizardInput; onclose: () => void } = $props();
 
   let format = $state<ExportFormat>("json");
+  let includeMetadata = $state(false);
   let dir = $state<string | null>(null);
   let error = $state<string | null>(null);
   let job = $state<ReturnType<typeof createExportJob> | null>(null);
@@ -96,7 +97,7 @@
         db: t.db, coll: t.coll,
         source: { kind: "query", filter: "{}", sort: null, projection: null },
       }));
-      job = createExportJob(sessionManager.active!.id, { targets: exTargets, format, dir: dir! });
+      job = createExportJob(sessionManager.active!.id, { targets: exTargets, format, dir: dir!, includeMetadata });
       await job.run();
       return;
     }
@@ -115,7 +116,10 @@
         source: { kind: "query", filter: input.filter, sort: input.sort, projection: buildExportProjection(allPaths, selectedPaths) },
       };
     }
-    job = createExportJob(sessionManager.active!.id, { targets: [target], format, filePath: path });
+    job = createExportJob(sessionManager.active!.id, {
+      targets: [target], format, filePath: path,
+      includeMetadata: input.mode === "scopedCollection" && includeMetadata,
+    });
     await job.run();
   }
 
@@ -212,6 +216,13 @@
                 <p class="dir" title={dir ?? ""}>{dir ? m.export_wizard_folder_label({ dir }) : m.export_wizard_no_folder()}</p>
               </fieldset>
             {/if}
+
+            {#if !isMemory}
+              <label class="metadata-toggle">
+                <input type="checkbox" bind:checked={includeMetadata} />
+                {m.export_wizard_include_metadata()}
+              </label>
+            {/if}
           </div>
         </div>
 
@@ -289,6 +300,7 @@
   fieldset button[type="button"]:not(.link):hover { background: var(--bg); }
   legend { font-size: var(--fs); color: var(--gray-77); padding: 0 0.25rem; }
   .options label { display: block; padding: 0.125rem 0; }
+  .metadata-toggle { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; }
   .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: var(--fs); margin: 0 0 0.625rem; }
   .dir { margin: 0.375rem 0 0; color: var(--th-fg); font-size: var(--fs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

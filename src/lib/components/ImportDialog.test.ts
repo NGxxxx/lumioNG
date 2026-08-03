@@ -2,10 +2,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/svelte";
 import { handleModalKeydown } from "$lib/stores/modalStack";
 
-vi.mock("../api/files", () => ({ openDialog: vi.fn(), importFileSize: vi.fn() }));
+vi.mock("../api/files", () => ({ openDialog: vi.fn(), importFileSize: vi.fn(), readTextFileIfExists: vi.fn() }));
 vi.mock("../api/documents", () => ({ importDocuments: vi.fn(), importBson: vi.fn() }));
 vi.mock("../api/sql", () => ({ sqlImportPreview: vi.fn(), sqlImportCommit: vi.fn() }));
 vi.mock("../api/csv", () => ({ csvImportPreview: vi.fn(), csvImportCommit: vi.fn() }));
+vi.mock("../stores/metadataRestore", () => ({ restoreCollectionMetadata: vi.fn() }));
 
 import * as filesApi from "../api/files";
 import * as documentsApi from "../api/documents";
@@ -15,6 +16,7 @@ import ImportDialog from "./ImportDialog.svelte";
 
 const openDialog = filesApi.openDialog as ReturnType<typeof vi.fn>;
 const importFileSize = filesApi.importFileSize as ReturnType<typeof vi.fn>;
+const readTextFileIfExists = filesApi.readTextFileIfExists as ReturnType<typeof vi.fn>;
 const importDocuments = documentsApi.importDocuments as ReturnType<typeof vi.fn>;
 const importBson = documentsApi.importBson as ReturnType<typeof vi.fn>;
 const sqlImportPreview = sqlApi.sqlImportPreview as ReturnType<typeof vi.fn>;
@@ -25,6 +27,7 @@ const csvImportCommit = csvApi.csvImportCommit as ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.clearAllMocks();
   importFileSize.mockResolvedValue(0);
+  readTextFileIfExists.mockResolvedValue(null);
   importDocuments.mockResolvedValue({ inserted: 1, failed: 0, errors: [] });
   importBson.mockResolvedValue({ inserted: 1, failed: 0, errors: [] });
   sqlImportPreview.mockResolvedValue([]);
@@ -575,6 +578,51 @@ describe("ImportDialog — run-stage retry path (Finding 3)", () => {
     expect(await screen.findByText("id")).toBeTruthy(); // column preview still there
     expect(screen.queryByText("No file chosen")).toBeNull();
     expect(csvImportPreview).toHaveBeenCalledTimes(1); // did not reconstruct the store / re-parse the file
+  });
+});
+
+describe("ImportDialog — metadata sidecar restore", () => {
+  it("shows no restore checkbox when no companion metadata file exists", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Next"));
+    expect(screen.queryByText(/Restore indexes/)).toBeNull();
+  });
+
+  it("shows a checked-by-default restore checkbox when a companion metadata file exists, and restores it on import", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    readTextFileIfExists.mockResolvedValueOnce('{"indexes":[]}');
+    const { restoreCollectionMetadata } = await import("../stores/metadataRestore");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Next"));
+    expect(await screen.findByText(/Restore indexes & metadata from data\.metadata\.json/)).toBeTruthy();
+    await fireEvent.click(screen.getByText("Import"));
+    await vi.waitFor(() =>
+      expect(restoreCollectionMetadata).toHaveBeenCalledWith("s", "d", "users", '{"indexes":[]}'),
+    );
+  });
+
+  it("unchecking the restore checkbox skips metadata restore", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    readTextFileIfExists.mockResolvedValueOnce('{"indexes":[]}');
+    const { restoreCollectionMetadata } = await import("../stores/metadataRestore");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Next"));
+    const checkbox = await screen.findByText(/Restore indexes/);
+    await fireEvent.click(checkbox.closest("label")!.querySelector("input")!);
+    await fireEvent.click(screen.getByText("Import"));
+    await vi.waitFor(() => expect(importDocuments).toHaveBeenCalled());
+    expect(restoreCollectionMetadata).not.toHaveBeenCalled();
+  });
+
+  it("does not check for a companion metadata file for a .sql import", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/dump.sql");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    expect(readTextFileIfExists).not.toHaveBeenCalled();
   });
 });
 
