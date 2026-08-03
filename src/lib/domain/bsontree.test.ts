@@ -79,6 +79,15 @@ describe("rebuildLeaf type errors", () => {
   });
 });
 
+describe("rebuildLeaf preferBare (double only)", () => {
+  it("keeps a bare number when preferBare is set", () => {
+    expect(rebuildLeaf("double", "1", { preferBare: true })).toEqual({ ok: true, value: 1 });
+  });
+  it("still wraps when preferBare is not set", () => {
+    expect(rebuildLeaf("double", "1")).toEqual({ ok: true, value: { $numberDouble: "1" } });
+  });
+});
+
 describe("emptyValue", () => {
   it("creates typed empty values", () => {
     expect(emptyValue("string")).toBe("");

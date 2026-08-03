@@ -91,6 +91,13 @@ describe("TreeEditor", () => {
     expect(onchange).toHaveBeenCalledWith({ name: "Bob" });
   });
 
+  it("editing a bare-number leaf (e.g. a Pipeline Builder mongosh literal) keeps it bare, not wrapped", async () => {
+    const { container, onchange } = setup({ count: 1 }); // bare JS number, as parseMongoshValue would produce
+    const input = container.querySelector<HTMLInputElement>(".leaf")!;
+    await fireEvent.input(input, { target: { value: "2" } });
+    expect(onchange).toHaveBeenCalledWith({ count: 2 }); // bare 2, not { $numberDouble: "2" }
+  });
+
   it("removing a top-level field calls onchange without it", async () => {
     const { container, onchange } = setup({ name: "Ann", age: 30 });
     const rows = Array.from(container.querySelectorAll(".tree-row"));

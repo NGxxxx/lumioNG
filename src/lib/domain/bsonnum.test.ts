@@ -41,4 +41,17 @@ describe("rebuildNumber", () => {
   it("decimal bad format → error", () => {
     expect(rebuildNumber("decimal", "1.2.3")).toEqual({ ok: false, error: "err_number_decimal_invalid" });
   });
+
+  it("double with preferBare:true keeps a bare JS number instead of wrapping", () => {
+    expect(rebuildNumber("double", "1", { preferBare: true })).toEqual({ ok: true, value: 1 });
+    expect(rebuildNumber("double", "3.14", { preferBare: true })).toEqual({ ok: true, value: 3.14 });
+  });
+  it("double without preferBare still wraps (unchanged default behavior)", () => {
+    expect(rebuildNumber("double", "1")).toEqual({ ok: true, value: { $numberDouble: "1" } });
+  });
+  it("int/long/decimal ignore preferBare — always wrapped", () => {
+    expect(rebuildNumber("int", "5", { preferBare: true })).toEqual({ ok: true, value: { $numberInt: "5" } });
+    expect(rebuildNumber("long", "5", { preferBare: true })).toEqual({ ok: true, value: { $numberLong: "5" } });
+    expect(rebuildNumber("decimal", "5", { preferBare: true })).toEqual({ ok: true, value: { $numberDecimal: "5" } });
+  });
 });

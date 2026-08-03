@@ -54,7 +54,7 @@ export function editTextOf(value: unknown): string {
 }
 
 /** Rebuild an ExtJSON value of the given `type` from user-entered text; intentionally overlaps with celledit.rebuildValue but is a superset that also handles date/objectId. */
-export function rebuildLeaf(type: LeafInputType, text: string): RebuildResult {
+export function rebuildLeaf(type: LeafInputType, text: string, opts?: { preferBare?: boolean }): RebuildResult {
   const t = text.trim();
   switch (type) {
     case "string":
@@ -67,7 +67,7 @@ export function rebuildLeaf(type: LeafInputType, text: string): RebuildResult {
     case "long":
     case "double":
     case "decimal":
-      return rebuildNumber(type, t);
+      return rebuildNumber(type, t, opts);
     case "date": {
       if (!/^\d{4}-\d{2}-\d{2}/.test(t)) return { ok: false, error: "err_date_invalid" };
       const ms = Date.parse(t);

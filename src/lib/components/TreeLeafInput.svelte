@@ -38,7 +38,7 @@
 
   function onLeafInput() {
     dirty = true;
-    const r = rebuildLeaf(type, editText);
+    const r = rebuildLeaf(type, editText, { preferBare: typeof value === "number" });
     if (r.ok) {
       editError = null;
       onerror(false);

@@ -4,8 +4,17 @@ import type { RebuildResult } from "./celledit";
 /** BSON numeric kinds that share validation rules across inline-edit and the tree. */
 export type NumericKind = "int" | "long" | "double" | "decimal";
 
+export interface RebuildNumberOptions {
+  /** When true and `kind === "double"`, keep the result as a bare JS number instead of wrapping
+   *  it in `{ $numberDouble }` — used by the Pipeline Builder to avoid ratcheting a bare mongosh
+   *  numeric literal (e.g. `{ $sum: 1 }`) into wrapped form on every edit. Document-grid editing
+   *  never sets this: values arriving from the backend are always already wrapped, so there is no
+   *  bare case to preserve there. */
+  preferBare?: boolean;
+}
+
 /** Validate and build an ExtJSON value for a BSON numeric kind from raw text; shared error keys and behavior match celledit and bsontree. */
-export function rebuildNumber(kind: NumericKind, t: string): RebuildResult {
+export function rebuildNumber(kind: NumericKind, t: string, opts?: RebuildNumberOptions): RebuildResult {
   switch (kind) {
     case "int": {
       const n = Number(t);
@@ -23,6 +32,7 @@ export function rebuildNumber(kind: NumericKind, t: string): RebuildResult {
     case "double": {
       const n = Number(t);
       if (t === "" || !Number.isFinite(n)) return { ok: false, error: "err_number_invalid" };
+      if (opts?.preferBare) return { ok: true, value: n };
       return { ok: true, value: { $numberDouble: t } };
     }
     case "decimal":
