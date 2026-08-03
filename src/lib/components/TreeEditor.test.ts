@@ -192,6 +192,15 @@ describe("TreeEditor", () => {
     expect(queryByText("Expand all")).toBeNull();
   });
 
+  it("compact mode expands every container by default (no click needed)", () => {
+    const doc = { a: { b: 1 }, c: 2 };
+    const { container } = render(TreeEditor, {
+      props: { value: doc, onchange: vi.fn(), onvalidchange: vi.fn(), compact: true },
+    });
+    const labels = Array.from(container.querySelectorAll(".label")).map((el) => el.textContent);
+    expect(labels).toEqual(["a", "b", "c"]); // "b" visible without any click — "a" starts expanded
+  });
+
   it("Expand all button opens every nested container at every depth", async () => {
     const doc = { address: { city: "Hue", geo: { lat: 1, lng: 2 } }, tags: ["a"] };
     const { container, getByText } = setup(doc);

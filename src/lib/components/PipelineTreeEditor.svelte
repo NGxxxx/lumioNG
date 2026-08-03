@@ -30,7 +30,7 @@
       </label>
       <div class="spacer"></div>
       <select class="add-stage-picker" bind:value={addPicker} aria-label={m.pipeline_tree_stage_picker_label()}>
-        {#each PIPELINE_STAGES as s (s.label)}<option value={s.label}>{s.label}</option>{/each}
+        {#each PIPELINE_STAGES as s (s.label)}<option value={s.label} title={s.detail}>{s.label}</option>{/each}
       </select>
       <button onclick={addStage}>{m.pipeline_tree_add_stage()}</button>
     </div>

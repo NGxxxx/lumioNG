@@ -33,7 +33,11 @@
 
   // Persists across edits (value changes on every keystroke) — only reset by remounting
   // TreeEditor itself (a new document/tab), never by editing the current one.
-  let open = $state<Set<string>>(new Set());
+  // In compact mode (Pipeline Builder stage bodies — always small) everything starts expanded, so
+  // the user doesn't have to click into every field manually. Full document editing (compact
+  // false) keeps collapsed-by-default: those documents can be large/deep, and auto-expanding them
+  // would be a real performance regression (see $state.raw usage elsewhere in this file).
+  let open = $state<Set<string>>(untrack(() => (compact ? allExpandablePaths(value) : new Set())));
 
   // Debounced, not $derived: a plain $derived would re-walk every OPEN row on every keystroke; only this display list lags, no edit is lost (TreeLeafInput's own buffer).
   const ROWS_DEBOUNCE_MS = 120;
@@ -53,7 +57,7 @@
   }
 
   // Best-effort flag, not a derived "is everything open" check — that would re-walk the whole doc on every render.
-  let allExpanded = $state(false);
+  let allExpanded = $state(untrack(() => compact));
   function toggleExpandAll() {
     if (allExpanded) {
       open = new Set();

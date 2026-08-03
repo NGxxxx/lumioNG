@@ -109,3 +109,11 @@ export function defaultStageBody(name: string): unknown {
       return {};
   }
 }
+
+/** Whether `body` is still exactly the freshly-added default for stage `name` — true right after
+ *  a stage is added or its operator changed, false as soon as the user edits anything. Used to
+ *  decide whether changing a stage's operator needs a confirm dialog (nothing to lose vs. real
+ *  content about to be discarded). */
+export function isDefaultStageBody(name: string, body: unknown): boolean {
+  return JSON.stringify(body) === JSON.stringify(defaultStageBody(name));
+}

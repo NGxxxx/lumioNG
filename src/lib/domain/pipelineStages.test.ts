@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parsePipelineFromScript, stagesToScript, stageBodyKind, defaultStageBody, type StageEntry } from "./pipelineStages";
+import { parsePipelineFromScript, stagesToScript, stageBodyKind, defaultStageBody, isDefaultStageBody, type StageEntry } from "./pipelineStages";
 
 describe("parsePipelineFromScript", () => {
   it("parses a pure aggregate() call into coll + stage entries", () => {
@@ -98,5 +98,17 @@ describe("defaultStageBody", () => {
   });
   it("seeds an unambiguous placeholder for $out, not a plausible real collection name", () => {
     expect(defaultStageBody("$out")).toBe("REPLACE_WITH_COLLECTION_NAME");
+  });
+});
+
+describe("isDefaultStageBody", () => {
+  it("true for a body identical to the stage's own default", () => {
+    expect(isDefaultStageBody("$match", {})).toBe(true);
+    expect(isDefaultStageBody("$limit", 10)).toBe(true);
+    expect(isDefaultStageBody("$sample", { size: 10 })).toBe(true);
+  });
+  it("false once the body has been edited away from the default", () => {
+    expect(isDefaultStageBody("$match", { status: "shipped" })).toBe(false);
+    expect(isDefaultStageBody("$limit", 25)).toBe(false);
   });
 });

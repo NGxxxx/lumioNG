@@ -83,6 +83,42 @@ describe("PipelineStageCard", () => {
     expect(tree.renameStage).toHaveBeenCalledWith(0, "$limit");
   });
 
+  it("changing the operator with a non-default body shows a confirm dialog before renaming", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: { status: "shipped" } }]);
+    const { container, getByText } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    const select = container.querySelector("select.stage-name") as HTMLSelectElement;
+    await fireEvent.change(select, { target: { value: "$limit" } });
+    expect(tree.renameStage).not.toHaveBeenCalled();
+    await fireEvent.click(getByText("Change stage type"));
+    expect(tree.renameStage).toHaveBeenCalledWith(0, "$limit");
+  });
+
+  it("changing the operator with a still-default body renames immediately, no confirm dialog", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: {} }]); // {} is $match's own default body
+    const { container, queryByText } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    const select = container.querySelector("select.stage-name") as HTMLSelectElement;
+    await fireEvent.change(select, { target: { value: "$limit" } });
+    expect(tree.renameStage).toHaveBeenCalledWith(0, "$limit");
+    expect(queryByText("Change stage type")).toBeNull();
+  });
+
+  it("cancelling the confirm dialog does not rename and reverts the select to the current operator", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: { status: "shipped" } }]);
+    const { container, getByText } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    const select = container.querySelector("select.stage-name") as HTMLSelectElement;
+    await fireEvent.change(select, { target: { value: "$limit" } });
+    await fireEvent.click(getByText("Cancel"));
+    expect(tree.renameStage).not.toHaveBeenCalled();
+    expect(select.value).toBe("$match");
+  });
+
+  it("draggable starts only from the drag handle, not the whole card", () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: {} }]);
+    const { container } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    expect(container.querySelector(".stage-card")?.getAttribute("draggable")).toBeNull();
+    expect(container.querySelector(".drag-handle")?.getAttribute("draggable")).toBe("true");
+  });
+
   it("fetches field suggestions for the stage's collection and forwards them to TreeEditor", async () => {
     const tree = fakeTree([{ id: "s1", name: "$match", body: { a: 1 } }]);
     render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });

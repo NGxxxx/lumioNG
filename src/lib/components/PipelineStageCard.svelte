@@ -4,9 +4,10 @@
   import { fieldsFor } from "../stores/fieldSuggestions";
   import { createAsyncGuard } from "../stores/asyncGuard.svelte";
   import { PIPELINE_STAGES } from "../domain/mongoOps";
-  import { stageBodyKind } from "../domain/pipelineStages";
+  import { stageBodyKind, isDefaultStageBody } from "../domain/pipelineStages";
   import { describeValue } from "../domain/extjson";
   import { hasInput, type LeafInputType } from "../domain/bsontree";
+  import ConfirmDialog from "./ConfirmDialog.svelte";
   import TreeEditor from "./TreeEditor.svelte";
   import TreeLeafInput from "./TreeLeafInput.svelte";
   import ResultTree from "./ResultTree.svelte";
@@ -42,9 +43,25 @@
       .finally(() => fieldSuggestionsGuard.finish(gen));
   });
 
+  let pendingRename = $state<string | null>(null);
+  let selectEl = $state<HTMLSelectElement | null>(null);
+
   function onBodyChange(v: unknown) {
     tree.updateStageBody(index, v);
     tree.requestPreview(stage.id, db);
+  }
+
+  function onOperatorChange(name: string) {
+    if (isDefaultStageBody(stage.name, stage.body)) {
+      tree.renameStage(index, name);
+    } else {
+      pendingRename = name;
+    }
+  }
+
+  function cancelRename() {
+    if (selectEl) selectEl.value = stage.name;
+    pendingRename = null;
   }
 
   function onDragStart(e: DragEvent) {
@@ -60,20 +77,19 @@
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
   class="stage-card"
-  draggable="true"
-  ondragstart={onDragStart}
   ondragover={(e) => e.preventDefault()}
   ondrop={onDrop}
 >
   <div class="stage-head">
-    <span class="drag-handle" aria-hidden="true">⠿</span>
+    <span class="drag-handle" aria-hidden="true" draggable="true" ondragstart={onDragStart}>⠿</span>
     <select
+      bind:this={selectEl}
       class="stage-name"
       value={stage.name}
       aria-label={m.pipeline_tree_stage_picker_label()}
-      onchange={(e) => tree.renameStage(index, (e.currentTarget as HTMLSelectElement).value)}
+      onchange={(e) => onOperatorChange((e.currentTarget as HTMLSelectElement).value)}
     >
-      {#each PIPELINE_STAGES as s (s.label)}<option value={s.label}>{s.label}</option>{/each}
+      {#each PIPELINE_STAGES as s (s.label)}<option value={s.label} title={s.detail}>{s.label}</option>{/each}
     </select>
     <div class="spacer"></div>
     <button onclick={() => tree.reorderStage(index, index - 1)} disabled={index === 0} aria-label={m.pipeline_tree_move_up()}>▲</button>
@@ -108,6 +124,17 @@
     {/if}
   </div>
 </div>
+
+{#if pendingRename !== null}
+  <ConfirmDialog
+    title={m.pipeline_tree_confirm_rename_title()}
+    message={m.pipeline_tree_confirm_rename_message({ name: pendingRename })}
+    confirmLabel={m.pipeline_tree_confirm_rename_confirm()}
+    danger
+    onconfirm={() => { tree.renameStage(index, pendingRename!); pendingRename = null; }}
+    oncancel={cancelRename}
+  />
+{/if}
 
 <style>
   .stage-card { border: 1px solid var(--gray-c4); border-radius: 0.1875rem; margin-bottom: 0.5rem; background: var(--panel); }
