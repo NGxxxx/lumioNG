@@ -134,8 +134,12 @@
     height: 2.25rem;
   }
   /* Horizontal scrollbars render at an element's bottom edge, colliding with bottom-anchored tabs — flip the scroller so the scrollbar lands on top, then flip the inner row back. */
+  /* flex-grow:0 so this only takes the width of its own tabs — not the whole row — so the "+" button
+     sits right after the last tab instead of pinned to the far right with a big empty gap when there
+     are only a few tabs open. flex-shrink:1 + min-width:0 keep the "shrink to fit, then scroll
+     internally" behavior once there are enough tabs to fill the available space. */
   .work-tabs {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 0;
     height: 2.25rem;
     overflow-x: auto;

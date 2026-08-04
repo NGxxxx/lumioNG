@@ -24,6 +24,7 @@
   } = $props();
 
   let inputEl = $state<HTMLInputElement | null>(null);
+  let listEl = $state<HTMLUListElement | null>(null);
   let open = $state(false);
   let activeIndex = $state(-1);
   let rect = $state<{ left: number; top: number; width: number } | null>(null);
@@ -77,10 +78,16 @@
   // Ancestor scroll (e.g. TreeAdderRow living inside TreeEditor's virtualized, overflow:auto row
   // list) must close the popup — a position:fixed popup anchored to a stale rect would otherwise
   // visibly detach from its input. `scroll` doesn't bubble, so this needs capture:true to see
-  // scroll events from inner scrollable containers, not just window-level scrolling.
+  // scroll events from inner scrollable containers, not just window-level scrolling. That same
+  // capture-all reach also catches the popup's own internal `overflow-y:auto` scrolling (mouse
+  // wheel or scrollbar-drag over a long suggestion list) — excluded via the listEl.contains check,
+  // otherwise scrolling the list closes it before the user can reach anything below the fold.
   $effect(() => {
     if (!open) return;
-    const onScroll = () => closePopup();
+    const onScroll = (e: Event) => {
+      if (listEl && e.target instanceof Node && listEl.contains(e.target)) return;
+      closePopup();
+    };
     window.addEventListener("scroll", onScroll, true);
     return () => window.removeEventListener("scroll", onScroll, true);
   });
@@ -106,7 +113,7 @@
   onkeydown={onKeydown}
 />
 {#if open && filtered.length > 0 && rect}
-  <ul class="suggest-list" use:portal id={listId} role="listbox" style="left:{rect.left}px; top:{rect.top}px; width:{rect.width}px">
+  <ul bind:this={listEl} class="suggest-list" use:portal id={listId} role="listbox" style="left:{rect.left}px; top:{rect.top}px; width:{rect.width}px">
     {#each filtered as s, i (s.label)}
       <li role="option" aria-selected={i === activeIndex}>
         <button

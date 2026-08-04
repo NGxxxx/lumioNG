@@ -101,6 +101,23 @@ describe("SuggestInput", () => {
     wrapper.remove();
   });
 
+  it("scrolling inside the popup's own list does not close it (only an ancestor/window scroll should)", async () => {
+    const many = Array.from({ length: 20 }, (_, i) => ({ label: `$op${i}` }));
+    render(SuggestInput, { props: { value: "", suggestions: many, onInput: vi.fn() } });
+    await fireEvent.focus(screen.getByRole("combobox"));
+    const list = document.querySelector(".suggest-list")!;
+    await fireEvent.scroll(list);
+    expect(document.querySelector(".suggest-list")).not.toBeNull();
+  });
+
+  it("scrolling an ancestor of the input still closes the popup (stale anchored position)", async () => {
+    render(SuggestInput, { props: { value: "", suggestions: [{ label: "$gt" }], onInput: vi.fn() } });
+    await fireEvent.focus(screen.getByRole("combobox"));
+    expect(document.querySelector(".suggest-list")).not.toBeNull();
+    await fireEvent.scroll(window);
+    expect(document.querySelector(".suggest-list")).toBeNull();
+  });
+
   it("forwards id and class to the input for label association and caller styling", () => {
     render(SuggestInput, { props: { value: "", suggestions: [], onInput: vi.fn(), id: "my-id", class: "my-class" } });
     const input = screen.getByRole("combobox");
