@@ -144,9 +144,9 @@ describe("DocumentForm — field suggestions", () => {
     const input = container.querySelector("input.name") as HTMLInputElement;
     await waitFor(async () => {
       await fireEvent.focus(input);
-      expect(container.querySelectorAll(".suggest-option").length).toBeGreaterThan(0);
+      expect(document.querySelectorAll(".suggest-option").length).toBeGreaterThan(0);
     });
-    const options = Array.from(container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    const options = Array.from(document.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
     expect(options).toEqual(["name"]); // "address.city" is dropped: dotted paths aren't valid top-level document keys
   });
 });

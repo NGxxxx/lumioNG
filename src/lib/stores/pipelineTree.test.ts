@@ -125,6 +125,17 @@ describe("createPipelineTree", () => {
     expect(tree.previewFor(limitId).hasRun).toBe(false);
   });
 
+  it("invalidates downstream stage previews when a new stage is inserted before them", async () => {
+    const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])');
+    const tree = createPipelineTree("conn:1", script);
+    tree.syncFromScript();
+    const matchId = tree.stages[0].id;
+    await tree.runPreview(matchId, "mydb");
+    expect(tree.previewFor(matchId).hasRun).toBe(true);
+    tree.addStage("$limit", 0); // inserted before $match, whose composed pipeline is now different
+    expect(tree.previewFor(matchId).hasRun).toBe(false);
+  });
+
   it("blocks preview client-side when the truncated pipeline contains a write stage", async () => {
     const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }, { "$out": "archive" }])');
     const tree = createPipelineTree("conn:1", script);

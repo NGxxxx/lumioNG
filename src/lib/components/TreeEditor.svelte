@@ -34,7 +34,7 @@
     /** Maps a tree depth (0 = stage-body root) to extra operator suggestions for the adder row's
      *  name input — only meaningful for the Pipeline Builder (see PipelineStageCard.svelte); plain
      *  document editing never passes this. */
-    operatorSuggestionsFor?: (depth: number) => OpEntry[];
+    operatorSuggestionsFor?: (depth: number) => readonly OpEntry[];
   } = $props();
 
   // Persists across edits (value changes on every keystroke) — only reset by remounting

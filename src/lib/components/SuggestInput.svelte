@@ -1,6 +1,7 @@
 <!-- src/lib/components/SuggestInput.svelte -->
 <script lang="ts">
   import type { OpEntry } from "../domain/mongoOps";
+  import { portal } from "../actions/portal";
 
   /** Shared type-ahead input: a controlled text field plus a floating, keyboard-navigable
    *  suggestion listbox. Replaces every native `<datalist>` in the project — a datalist can't show
@@ -13,7 +14,6 @@
     placeholder = "",
     id,
     class: className = "",
-    disabled = false,
   }: {
     value: string;
     suggestions: OpEntry[];
@@ -21,7 +21,6 @@
     placeholder?: string;
     id?: string;
     class?: string;
-    disabled?: boolean;
   } = $props();
 
   let inputEl = $state<HTMLInputElement | null>(null);
@@ -100,7 +99,6 @@
   aria-autocomplete="list"
   autocomplete="off"
   {placeholder}
-  {disabled}
   {value}
   oninput={(e) => { onInput((e.currentTarget as HTMLInputElement).value); openPopup(); }}
   onfocus={openPopup}
@@ -108,7 +106,7 @@
   onkeydown={onKeydown}
 />
 {#if open && filtered.length > 0 && rect}
-  <ul class="suggest-list" id={listId} role="listbox" style="left:{rect.left}px; top:{rect.top}px; width:{rect.width}px">
+  <ul class="suggest-list" use:portal id={listId} role="listbox" style="left:{rect.left}px; top:{rect.top}px; width:{rect.width}px">
     {#each filtered as s, i (s.label)}
       <li role="option" aria-selected={i === activeIndex}>
         <button

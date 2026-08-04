@@ -92,6 +92,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     const next = stages.slice();
     next.splice(atIndex, 0, { id: newStageId(), name, body: defaultStageBody(name) });
     stages = next;
+    invalidatePreviewsFrom(atIndex);
     regenerate();
   }
 
@@ -137,6 +138,9 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
   function cutStage(index: number): void {
     const removed = stages[index];
     if (!removed) return;
+    // body is shared by reference with the clipboard, not deep-cloned — safe only because every
+    // mutation path here treats a stage's body as immutable (updateStageBody replaces the whole
+    // object; stages is $state.raw). Don't start mutating body in place without revisiting this.
     clipboard = { name: removed.name, body: removed.body };
     removeStage(index);
   }
@@ -144,6 +148,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
   function copyStage(index: number): void {
     const s = stages[index];
     if (!s) return;
+    // body is shared by reference, not deep-cloned — see the invariant note in cutStage above.
     clipboard = { name: s.name, body: s.body };
   }
 

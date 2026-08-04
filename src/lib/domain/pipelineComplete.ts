@@ -14,9 +14,9 @@ const QUERY_OPERATOR_STAGES = new Set(["$match"]);
 /** Stages whose nested expression objects use aggregation expression operators ($sum, $avg, …). */
 const EXPR_OPERATOR_STAGES = new Set(["$group", "$project", "$addFields", "$set", "$bucket", "$replaceRoot"]);
 
-export function operatorSuggestionsFor(stageName: string, depth: number): OpEntry[] {
+export function operatorSuggestionsFor(stageName: string, depth: number): readonly OpEntry[] {
   if (depth === 0) return stageName === "$match" ? ROOT_MATCH_OPERATORS : [];
-  if (QUERY_OPERATOR_STAGES.has(stageName)) return [...QUERY_OPERATORS];
-  if (EXPR_OPERATOR_STAGES.has(stageName)) return [...EXPR_OPERATORS];
+  if (QUERY_OPERATOR_STAGES.has(stageName)) return QUERY_OPERATORS;
+  if (EXPR_OPERATOR_STAGES.has(stageName)) return EXPR_OPERATORS;
   return [];
 }

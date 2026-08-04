@@ -85,6 +85,22 @@ describe("SuggestInput", () => {
     expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("new");
   });
 
+  it("portals the popup to document.body so it escapes a transformed/clipping ancestor", async () => {
+    const wrapper = document.createElement("div");
+    wrapper.style.overflow = "hidden";
+    wrapper.style.transform = "translateY(0px)";
+    document.body.appendChild(wrapper);
+    render(SuggestInput, {
+      props: { value: "", suggestions: [{ label: "$gt" }], onInput: vi.fn() },
+      target: wrapper,
+    });
+    await fireEvent.focus(screen.getByRole("combobox"));
+    const list = document.querySelector(".suggest-list")!;
+    expect(list.parentElement).toBe(document.body);
+    expect(wrapper.contains(list)).toBe(false);
+    wrapper.remove();
+  });
+
   it("forwards id and class to the input for label association and caller styling", () => {
     render(SuggestInput, { props: { value: "", suggestions: [], onInput: vi.fn(), id: "my-id", class: "my-class" } });
     const input = screen.getByRole("combobox");

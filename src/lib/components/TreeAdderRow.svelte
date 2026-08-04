@@ -22,14 +22,16 @@
     fieldSuggestions?: string[];
     /** Pipeline Builder operator suggestions (e.g. $gt, $sum) for this row's position — empty for
      *  ordinary document editing, which never passes this. */
-    operatorSuggestions?: OpEntry[];
+    operatorSuggestions?: readonly OpEntry[];
   } = $props();
 
   // Already-existing keys are a dead end: validateNewFieldName() below rejects them as duplicates.
+  // Applies to operator suggestions too (e.g. offering $and when the body already has an $and key).
   const usableSuggestions = $derived(fieldSuggestions.filter((n) => !existingKeys.includes(n)));
+  const usableOperatorSuggestions = $derived(operatorSuggestions.filter((o) => !existingKeys.includes(o.label)));
   const suggestions = $derived<OpEntry[]>([
     ...usableSuggestions.map((label) => ({ label })),
-    ...operatorSuggestions,
+    ...usableOperatorSuggestions,
   ]);
 
   let newName = $state("");

@@ -156,7 +156,7 @@ describe("PipelineStageCard", () => {
 
     const input = container.querySelector("input.name") as HTMLInputElement;
     await fireEvent.focus(input);
-    const options = Array.from(container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    const options = Array.from(document.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
     // "stale" never appears; "fresh" is followed by this $match stage's own depth-0 operator
     // suggestions ($and/$or/$nor/$expr), now wired in via operatorSuggestionsFor.
     expect(options).toEqual(["fresh", "$and", "$or", "$nor", "$expr"]);

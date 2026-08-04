@@ -124,15 +124,16 @@ describe("TreeEditor", () => {
     });
     const input = withSuggestions.container.querySelector("input.name") as HTMLInputElement;
     await fireEvent.focus(input);
-    const options = Array.from(withSuggestions.container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    const options = Array.from(document.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
     expect(options).toEqual(["age", "email"]);
+    await fireEvent.blur(input);
 
     const withoutSuggestions = render(TreeEditor, {
       props: { value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn() },
     });
     const plainInput = withoutSuggestions.container.querySelector("input.name") as HTMLInputElement;
     await fireEvent.focus(plainInput);
-    expect(withoutSuggestions.container.querySelector(".suggest-list")).toBeNull();
+    expect(document.querySelector(".suggest-list")).toBeNull();
   });
 
   it("filters out fieldSuggestions the document already has (they'd only trigger a duplicate-name error)", async () => {
@@ -144,7 +145,7 @@ describe("TreeEditor", () => {
     });
     const input = container.querySelector("input.name") as HTMLInputElement;
     await fireEvent.focus(input);
-    const options = Array.from(container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    const options = Array.from(document.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
     expect(options).toEqual(["age"]); // "name" dropped, "age" kept
   });
 
@@ -157,7 +158,20 @@ describe("TreeEditor", () => {
     });
     const input = container.querySelector("input.name") as HTMLInputElement;
     await fireEvent.focus(input);
-    expect(container.querySelector(".suggest-list")).toBeNull();
+    expect(document.querySelector(".suggest-list")).toBeNull();
+  });
+
+  it("filters out operatorSuggestionsFor results that collide with an existing key (same duplicate-key dead end as fieldSuggestions)", async () => {
+    const { container } = render(TreeEditor, {
+      props: {
+        value: { $and: [] }, onchange: vi.fn(), onvalidchange: vi.fn(),
+        operatorSuggestionsFor: () => [{ label: "$and" }, { label: "$or" }],
+      },
+    });
+    const input = container.querySelector("input.name") as HTMLInputElement;
+    await fireEvent.focus(input);
+    const options = Array.from(document.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    expect(options).toEqual(["$or"]); // "$and" dropped: it's already a key on this body
   });
 
   it("does not leak the root's fieldSuggestions into a nested container's own adder row", async () => {
@@ -176,11 +190,11 @@ describe("TreeEditor", () => {
     const [nestedInput, rootInput] = nameInputs;
 
     await fireEvent.focus(nestedInput);
-    expect(container.querySelector(".suggest-list")).toBeNull(); // nested adder gets [] regardless of the root's fieldSuggestions
+    expect(document.querySelector(".suggest-list")).toBeNull(); // nested adder gets [] regardless of the root's fieldSuggestions
     await fireEvent.blur(nestedInput);
 
     await fireEvent.focus(rootInput);
-    expect(container.querySelector(".suggest-list")).not.toBeNull(); // root adder still gets them
+    expect(document.querySelector(".suggest-list")).not.toBeNull(); // root adder still gets them
   });
 
   it("compact mode hides the find-field search box and expand/collapse-all button", () => {
