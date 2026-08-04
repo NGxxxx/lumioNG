@@ -5,6 +5,7 @@
   import { createAsyncGuard } from "../stores/asyncGuard.svelte";
   import { PIPELINE_STAGES } from "../domain/mongoOps";
   import { stageBodyKind, isDefaultStageBody } from "../domain/pipelineStages";
+  import { operatorSuggestionsFor } from "../domain/pipelineComplete";
   import { describeValue } from "../domain/extjson";
   import { hasInput, type LeafInputType } from "../domain/bsontree";
   import ConfirmDialog from "./ConfirmDialog.svelte";
@@ -99,7 +100,7 @@
 
   <div class="stage-body">
     {#if kind === "object"}
-      <TreeEditor value={stage.body as Doc} onchange={onBodyChange} onvalidchange={() => {}} lockedKeys={[]} compact {fieldSuggestions} />
+      <TreeEditor value={stage.body as Doc} onchange={onBodyChange} onvalidchange={() => {}} lockedKeys={[]} compact {fieldSuggestions} operatorSuggestionsFor={(depth) => operatorSuggestionsFor(stage.name, depth)} />
     {:else if kind === "leaf" && leafType && hasInput(leafType)}
       <TreeLeafInput type={leafType} value={stage.body} onchange={onBodyChange} onerror={() => {}} />
     {:else}

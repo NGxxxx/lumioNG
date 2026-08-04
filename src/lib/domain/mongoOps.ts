@@ -48,6 +48,7 @@ export const QUERY_OPERATORS: readonly OpEntry[] = Object.freeze([
   { label: "$elemMatch", detail: "array element match" },
   { label: "$size", detail: "array length" },
   { label: "$all", detail: "all elements match" },
+  { label: "$expr", detail: "use an aggregation expression" },
 ]);
 
 /** Aggregation expression operators (value position inside expressions). */

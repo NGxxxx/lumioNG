@@ -115,7 +115,7 @@ describe("TreeEditor", () => {
     expect(onchange).toHaveBeenCalledWith({ name: "Ann", age: "" });
   });
 
-  it("offers fieldSuggestions via a native datalist on the root add-field input, none when not passed", () => {
+  it("offers fieldSuggestions via SuggestInput's dropdown on the root add-field input, none when not passed", async () => {
     const withSuggestions = render(TreeEditor, {
       props: {
         value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn(),
@@ -123,20 +123,19 @@ describe("TreeEditor", () => {
       },
     });
     const input = withSuggestions.container.querySelector("input.name") as HTMLInputElement;
-    const listId = input.getAttribute("list");
-    expect(listId).toBeTruthy();
-    const datalist = withSuggestions.container.querySelector(`datalist#${listId}`)!;
-    expect(Array.from(datalist.querySelectorAll("option")).map((o) => o.getAttribute("value"))).toEqual(["age", "email"]);
+    await fireEvent.focus(input);
+    const options = Array.from(withSuggestions.container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    expect(options).toEqual(["age", "email"]);
 
     const withoutSuggestions = render(TreeEditor, {
       props: { value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn() },
     });
     const plainInput = withoutSuggestions.container.querySelector("input.name") as HTMLInputElement;
-    expect(plainInput.getAttribute("list")).toBeNull();
-    expect(withoutSuggestions.container.querySelector("datalist")).toBeNull();
+    await fireEvent.focus(plainInput);
+    expect(withoutSuggestions.container.querySelector(".suggest-list")).toBeNull();
   });
 
-  it("filters out fieldSuggestions the document already has (they'd only trigger a duplicate-name error)", () => {
+  it("filters out fieldSuggestions the document already has (they'd only trigger a duplicate-name error)", async () => {
     const { container } = render(TreeEditor, {
       props: {
         value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn(),
@@ -144,13 +143,12 @@ describe("TreeEditor", () => {
       },
     });
     const input = container.querySelector("input.name") as HTMLInputElement;
-    const listId = input.getAttribute("list")!;
-    expect(listId).toBeTruthy();
-    const options = Array.from(container.querySelectorAll(`datalist#${listId} option`)).map((o) => o.getAttribute("value"));
+    await fireEvent.focus(input);
+    const options = Array.from(container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
     expect(options).toEqual(["age"]); // "name" dropped, "age" kept
   });
 
-  it("hides the datalist entirely when every suggestion is already an existing key", () => {
+  it("shows no suggestions when every field suggestion is already an existing key", async () => {
     const { container } = render(TreeEditor, {
       props: {
         value: { name: "Ann" }, onchange: vi.fn(), onvalidchange: vi.fn(),
@@ -158,8 +156,8 @@ describe("TreeEditor", () => {
       },
     });
     const input = container.querySelector("input.name") as HTMLInputElement;
-    expect(input.getAttribute("list")).toBeNull();
-    expect(container.querySelector("datalist")).toBeNull();
+    await fireEvent.focus(input);
+    expect(container.querySelector(".suggest-list")).toBeNull();
   });
 
   it("does not leak the root's fieldSuggestions into a nested container's own adder row", async () => {
@@ -173,14 +171,16 @@ describe("TreeEditor", () => {
     await fireEvent.click(aLabel);
     await waitForRows();
 
-    // Two adder rows now exist: the nested "a" container's own (mounted first, since it's nested
-    // just below "a"'s children) and the document's root-level one (always last, per
-    // flattenEditableDoc's doc comment).
     const nameInputs = Array.from(container.querySelectorAll(".add .name")) as HTMLInputElement[];
     expect(nameInputs.length).toBe(2);
     const [nestedInput, rootInput] = nameInputs;
-    expect(nestedInput.getAttribute("list")).toBeNull(); // nested adder gets [] regardless of the root's fieldSuggestions
-    expect(rootInput.getAttribute("list")).toBeTruthy(); // root adder still gets them
+
+    await fireEvent.focus(nestedInput);
+    expect(container.querySelector(".suggest-list")).toBeNull(); // nested adder gets [] regardless of the root's fieldSuggestions
+    await fireEvent.blur(nestedInput);
+
+    await fireEvent.focus(rootInput);
+    expect(container.querySelector(".suggest-list")).not.toBeNull(); // root adder still gets them
   });
 
   it("compact mode hides the find-field search box and expand/collapse-all button", () => {

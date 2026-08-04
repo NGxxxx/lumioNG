@@ -7,6 +7,7 @@
   import { describeValue } from "../domain/extjson";
   import { hasInput, type LeafInputType } from "../domain/bsontree";
   import { createDebouncer, SEARCH_DEBOUNCE_MS } from "../domain/timing";
+  import type { OpEntry } from "../domain/mongoOps";
   import TreeLeafInput from "./TreeLeafInput.svelte";
   import TreeAdderRow from "./TreeAdderRow.svelte";
   import * as m from "$lib/paraglide/messages";
@@ -19,6 +20,7 @@
     lockedKeys = ["_id"],
     compact = false,
     fieldSuggestions = [],
+    operatorSuggestionsFor,
   }: {
     value: Doc;
     onchange: (v: Doc) => void;
@@ -29,6 +31,10 @@
     compact?: boolean;
     /** Field names sampled from the collection, forwarded only to the root-level "add field" row. */
     fieldSuggestions?: string[];
+    /** Maps a tree depth (0 = stage-body root) to extra operator suggestions for the adder row's
+     *  name input — only meaningful for the Pipeline Builder (see PipelineStageCard.svelte); plain
+     *  document editing never passes this. */
+    operatorSuggestionsFor?: (depth: number) => OpEntry[];
   } = $props();
 
   // Persists across edits (value changes on every keystroke) — only reset by remounting
@@ -209,6 +215,7 @@
               existingKeys={row.isArray ? [] : existingKeysAt(value, row.segments)}
               onadd={(name, v) => handleAdd(row.segments, name, v)}
               fieldSuggestions={row.segments.length === 0 ? fieldSuggestions : []}
+              operatorSuggestions={operatorSuggestionsFor ? operatorSuggestionsFor(row.depth) : []}
             />
           {:else if row.expandable}
             <!-- No describeValue() here on purpose: it would JSON.stringify the whole container just

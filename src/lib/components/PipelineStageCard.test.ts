@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import { render, fireEvent, waitFor } from "@testing-library/svelte";
 import { flushSync } from "svelte";
 import PipelineStageCard from "./PipelineStageCard.svelte";
@@ -39,6 +39,10 @@ function fakeTree(stages: StageEntry[]) {
 }
 
 describe("PipelineStageCard", () => {
+  // fieldsForMock is a shared vi.fn() across every test in this file; without clearing, a later
+  // test's toHaveBeenCalledTimes() assertion would count calls from earlier tests' mounts too.
+  beforeEach(() => fieldsForMock.mockClear());
+
   it("renders a TreeEditor for an object-bodied stage", () => {
     const tree = fakeTree([{ id: "s1", name: "$match", body: { a: 1 } }]);
     const { container } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
@@ -139,18 +143,17 @@ describe("PipelineStageCard", () => {
 
     // Second (fresher) call's response — for the newer db — arrives first.
     resolveSecond(["fresh"]);
-    await waitFor(() => {
-      const input = container.querySelector("input.name") as HTMLInputElement | null;
-      expect(input?.getAttribute("list")).toBeTruthy();
-    });
+    await waitFor(() => expect(fieldsForMock).toHaveBeenCalledTimes(2));
 
     // ...then the stale first call's response arrives late — it must not overwrite the fresher one.
     resolveFirst(["stale"]);
     await new Promise((r) => setTimeout(r, 0));
 
     const input = container.querySelector("input.name") as HTMLInputElement;
-    const listId = input.getAttribute("list")!;
-    const options = Array.from(container.querySelectorAll(`datalist#${listId} option`)).map((o) => o.getAttribute("value"));
-    expect(options).toEqual(["fresh"]);
+    await fireEvent.focus(input);
+    const options = Array.from(container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    // "stale" never appears; "fresh" is followed by this $match stage's own depth-0 operator
+    // suggestions ($and/$or/$nor/$expr), now wired in via operatorSuggestionsFor.
+    expect(options).toEqual(["fresh", "$and", "$or", "$nor", "$expr"]);
   });
 });

@@ -141,10 +141,12 @@ describe("DocumentForm — field suggestions", () => {
     const { container } = render(DocumentForm, {
       props: { mode: "insert", db: "d", coll: "c", initial: null, onsaved: () => {}, oncancel: () => {} },
     });
-    await waitFor(() => expect(container.querySelector("input.name")?.getAttribute("list")).toBeTruthy());
     const input = container.querySelector("input.name") as HTMLInputElement;
-    const listId = input.getAttribute("list");
-    const options = Array.from(container.querySelectorAll(`datalist#${listId} option`)).map((o) => o.getAttribute("value"));
+    await waitFor(async () => {
+      await fireEvent.focus(input);
+      expect(container.querySelectorAll(".suggest-option").length).toBeGreaterThan(0);
+    });
+    const options = Array.from(container.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
     expect(options).toEqual(["name"]); // "address.city" is dropped: dotted paths aren't valid top-level document keys
   });
 });
