@@ -128,15 +128,16 @@ describe("ImportDialog — source stage", () => {
     expect(await screen.findByText("Collection name cannot start with 'system.'.")).toBeTruthy();
   });
 
-  it("the target-collection field suggests existingCollections via a datalist", async () => {
+  it("the target-collection field suggests existingCollections via SuggestInput", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, {
       props: { sessionId: "s", db: "d", coll: null, existingCollections: ["users", "orders"], onclose: vi.fn() },
     });
     await fireEvent.click(screen.getByText("Browse…"));
     const input = screen.getByLabelText("Target collection") as HTMLInputElement;
-    const datalist = document.getElementById(input.getAttribute("list")!) as HTMLDataListElement;
-    expect([...datalist.options].map((o) => o.value)).toEqual(["users", "orders"]);
+    await fireEvent.focus(input);
+    const options = Array.from(document.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    expect(options).toEqual(["users", "orders"]);
   });
 
   it("typing a name not in existingCollections shows the create-new-collection notice", async () => {

@@ -3,14 +3,23 @@ import { render, screen, fireEvent } from "@testing-library/svelte";
 import TargetCollectionField from "./TargetCollectionField.svelte";
 
 describe("TargetCollectionField", () => {
-  it("renders the current value and suggests existingCollections via a datalist", () => {
+  it("renders a non-empty current value", () => {
     render(TargetCollectionField, {
       props: { value: "users", existingCollections: ["users", "orders"], onInput: vi.fn() },
     });
     const input = screen.getByLabelText("Target collection") as HTMLInputElement;
     expect(input.value).toBe("users");
-    const datalist = document.getElementById(input.getAttribute("list")!) as HTMLDataListElement;
-    expect([...datalist.options].map((o) => o.value)).toEqual(["users", "orders"]);
+  });
+
+  it("renders the current value and suggests existingCollections via SuggestInput", async () => {
+    render(TargetCollectionField, {
+      props: { value: "", existingCollections: ["users", "orders"], onInput: vi.fn() },
+    });
+    const input = screen.getByLabelText("Target collection") as HTMLInputElement;
+    expect(input.value).toBe("");
+    await fireEvent.focus(input);
+    const options = Array.from(document.querySelectorAll(".suggest-option .suggest-label")).map((o) => o.textContent);
+    expect(options).toEqual(["users", "orders"]);
   });
 
   it("calls onInput with the typed value", async () => {
