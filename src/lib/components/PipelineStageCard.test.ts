@@ -28,6 +28,7 @@ function fakeTree(stages: StageEntry[]) {
     coll: "orders",
     sessionId: "sess1",
     autoPreview: true,
+    hasClipboard: false,
     previewFor: vi.fn(() => ({ docs: [], loading: false, error: null, hasRun: false })),
     updateStageBody: vi.fn(),
     renameStage: vi.fn(),
@@ -35,6 +36,10 @@ function fakeTree(stages: StageEntry[]) {
     reorderStage: vi.fn(),
     requestPreview: vi.fn(),
     runPreview: vi.fn(),
+    cutStage: vi.fn(),
+    copyStage: vi.fn(),
+    pasteStageAfter: vi.fn(),
+    duplicateStage: vi.fn(),
   };
 }
 
@@ -155,5 +160,63 @@ describe("PipelineStageCard", () => {
     // "stale" never appears; "fresh" is followed by this $match stage's own depth-0 operator
     // suggestions ($and/$or/$nor/$expr), now wired in via operatorSuggestionsFor.
     expect(options).toEqual(["fresh", "$and", "$or", "$nor", "$expr"]);
+  });
+
+  it("right-clicking the stage header opens a context menu with Cut/Copy/Duplicate/Delete but no Paste when the clipboard is empty", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: {} }]);
+    const { container, getByText, queryByText } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    await fireEvent.contextMenu(container.querySelector(".stage-head")!);
+    expect(getByText("Cut stage")).toBeTruthy();
+    expect(getByText("Copy stage")).toBeTruthy();
+    expect(getByText("Duplicate stage")).toBeTruthy();
+    expect(getByText("Delete stage")).toBeTruthy();
+    expect(queryByText("Paste stage")).toBeNull();
+  });
+
+  it("shows Paste stage when the clipboard has something", async () => {
+    const tree = fakeTree([{ id: "s1", name: "$match", body: {} }]);
+    (tree as { hasClipboard: boolean }).hasClipboard = true;
+    const { container, getByText } = render(PipelineStageCard, { props: { tree: tree as never, index: 0, db: "mydb" } });
+    await fireEvent.contextMenu(container.querySelector(".stage-head")!);
+    expect(getByText("Paste stage")).toBeTruthy();
+  });
+
+  it("Cut/Copy/Duplicate/Delete menu items call the matching store method with this card's index", async () => {
+    // 3 stages so index 2 is valid — PipelineStageCard derives `stage` from tree.stages[index].
+    const tree = fakeTree([
+      { id: "s1", name: "$match", body: {} },
+      { id: "s2", name: "$match", body: {} },
+      { id: "s3", name: "$match", body: {} },
+    ]);
+    const { container, getByText } = render(PipelineStageCard, { props: { tree: tree as never, index: 2, db: "mydb" } });
+
+    await fireEvent.contextMenu(container.querySelector(".stage-head")!);
+    await fireEvent.click(getByText("Cut stage"));
+    expect(tree.cutStage).toHaveBeenCalledWith(2);
+
+    await fireEvent.contextMenu(container.querySelector(".stage-head")!);
+    await fireEvent.click(getByText("Copy stage"));
+    expect(tree.copyStage).toHaveBeenCalledWith(2);
+
+    await fireEvent.contextMenu(container.querySelector(".stage-head")!);
+    await fireEvent.click(getByText("Duplicate stage"));
+    expect(tree.duplicateStage).toHaveBeenCalledWith(2);
+
+    await fireEvent.contextMenu(container.querySelector(".stage-head")!);
+    await fireEvent.click(getByText("Delete stage"));
+    expect(tree.removeStage).toHaveBeenCalledWith(2);
+  });
+
+  it("Paste stage menu item calls pasteStageAfter with this card's index", async () => {
+    // 2 stages so index 1 is valid — PipelineStageCard derives `stage` from tree.stages[index].
+    const tree = fakeTree([
+      { id: "s1", name: "$match", body: {} },
+      { id: "s2", name: "$match", body: {} },
+    ]);
+    (tree as { hasClipboard: boolean }).hasClipboard = true;
+    const { container, getByText } = render(PipelineStageCard, { props: { tree: tree as never, index: 1, db: "mydb" } });
+    await fireEvent.contextMenu(container.querySelector(".stage-head")!);
+    await fireEvent.click(getByText("Paste stage"));
+    expect(tree.pasteStageAfter).toHaveBeenCalledWith(1);
   });
 });

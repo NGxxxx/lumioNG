@@ -12,6 +12,8 @@
   import TreeEditor from "./TreeEditor.svelte";
   import TreeLeafInput from "./TreeLeafInput.svelte";
   import ResultTree from "./ResultTree.svelte";
+  import ContextMenu from "./ContextMenu.svelte";
+  import type { MenuItem } from "../domain/gridView";
   import type { Doc } from "../domain/doc";
   import * as m from "$lib/paraglide/messages";
 
@@ -46,6 +48,27 @@
 
   let pendingRename = $state<string | null>(null);
   let selectEl = $state<HTMLSelectElement | null>(null);
+  let menu = $state<{ x: number; y: number } | null>(null);
+
+  const menuItems = $derived.by((): MenuItem[] => {
+    const items: MenuItem[] = [
+      { label: m.pipeline_tree_menu_cut(), action: "cut" },
+      { label: m.pipeline_tree_menu_copy(), action: "copy" },
+    ];
+    if (tree.hasClipboard) items.push({ label: m.pipeline_tree_menu_paste(), action: "paste" });
+    items.push({ label: m.pipeline_tree_menu_duplicate(), action: "duplicate" });
+    items.push({ label: m.pipeline_tree_menu_delete(), action: "delete" });
+    return items;
+  });
+
+  function onMenuSelect(action: string) {
+    menu = null;
+    if (action === "cut") tree.cutStage(index);
+    else if (action === "copy") tree.copyStage(index);
+    else if (action === "paste") tree.pasteStageAfter(index);
+    else if (action === "duplicate") tree.duplicateStage(index);
+    else if (action === "delete") tree.removeStage(index);
+  }
 
   function onBodyChange(v: unknown) {
     tree.updateStageBody(index, v);
@@ -81,7 +104,10 @@
   ondragover={(e) => e.preventDefault()}
   ondrop={onDrop}
 >
-  <div class="stage-head">
+  <div
+    class="stage-head"
+    oncontextmenu={(e) => { e.preventDefault(); e.stopPropagation(); menu = { x: e.clientX, y: e.clientY }; }}
+  >
     <span class="drag-handle" aria-hidden="true" draggable="true" ondragstart={onDragStart}>⠿</span>
     <select
       bind:this={selectEl}
@@ -125,6 +151,10 @@
     {/if}
   </div>
 </div>
+
+{#if menu}
+  <ContextMenu x={menu.x} y={menu.y} items={menuItems} onselect={onMenuSelect} onclose={() => (menu = null)} />
+{/if}
 
 {#if pendingRename !== null}
   <ConfirmDialog

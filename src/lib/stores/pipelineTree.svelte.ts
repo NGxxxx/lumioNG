@@ -7,6 +7,20 @@ import type { Doc } from "../domain/doc";
 import { createAsyncGuard } from "./asyncGuard.svelte";
 import { settings } from "./settings.svelte";
 
+/** Shared across every PipelineTree instance on purpose — copying a stage in one Query tab's
+ *  Builder and pasting it into a different tab's Builder should work, so this deliberately isn't
+ *  per-instance state. Not the OS clipboard: navigator.clipboard.readText() has never been used in
+ *  this codebase (only writeText, for plain copy-to-clipboard elsewhere) and would need a new
+ *  Tauri clipboard-read permission + cross-platform verification for a use case this already
+ *  covers within a single app session. */
+let clipboard = $state<{ name: string; body: unknown } | null>(null);
+
+/** Test-only: the module-level clipboard above persists across every `it()` in a test file (it's
+ *  loaded once per file), so tests that assert on clipboard state must reset it first. */
+export function resetClipboardForTests(): void {
+  clipboard = null;
+}
+
 export interface PreviewState {
   docs: Doc[];
   loading: boolean;
@@ -120,6 +134,38 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     regenerate();
   }
 
+  function cutStage(index: number): void {
+    const removed = stages[index];
+    if (!removed) return;
+    clipboard = { name: removed.name, body: removed.body };
+    removeStage(index);
+  }
+
+  function copyStage(index: number): void {
+    const s = stages[index];
+    if (!s) return;
+    clipboard = { name: s.name, body: s.body };
+  }
+
+  function pasteStageAfter(index: number): void {
+    if (!clipboard) return;
+    const next = stages.slice();
+    next.splice(index + 1, 0, { id: newStageId(), name: clipboard.name, body: clipboard.body });
+    stages = next;
+    invalidatePreviewsFrom(index + 1);
+    regenerate();
+  }
+
+  function duplicateStage(index: number): void {
+    const s = stages[index];
+    if (!s) return;
+    const next = stages.slice();
+    next.splice(index + 1, 0, { id: newStageId(), name: s.name, body: s.body });
+    stages = next;
+    invalidatePreviewsFrom(index + 1);
+    regenerate();
+  }
+
   /** Debounced regenerate: called on every keystroke (via TreeLeafInput's onchange), so the
    *  expensive full-pipeline stringify+script.set() is coalesced instead of running per character. */
   function updateStageBody(index: number, body: unknown): void {
@@ -201,6 +247,11 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     removeStage,
     reorderStage,
     renameStage,
+    cutStage,
+    copyStage,
+    pasteStageAfter,
+    duplicateStage,
+    get hasClipboard() { return clipboard !== null; },
     updateStageBody,
     previewFor: (id: string) => previews[id] ?? EMPTY_PREVIEW,
     requestPreview,

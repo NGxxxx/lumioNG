@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const aggregateMock = vi.fn(async (..._args: unknown[]) => [{ _id: 1 }]);
 vi.mock("../api/documents", () => ({ aggregate: (...args: unknown[]) => aggregateMock(...args) }));
 
-import { createPipelineTree } from "./pipelineTree.svelte";
+import { createPipelineTree, resetClipboardForTests } from "./pipelineTree.svelte";
 
 function scriptBinding(initial: string) {
   let text = initial;
@@ -174,5 +174,77 @@ describe("createPipelineTree", () => {
     vi.advanceTimersByTime(1000);
     expect(aggregateMock).not.toHaveBeenCalled();
     vi.useRealTimers();
+  });
+});
+
+describe("createPipelineTree — stage clipboard (cut/copy/paste/duplicate)", () => {
+  beforeEach(() => {
+    resetClipboardForTests();
+  });
+
+  it("hasClipboard starts false", () => {
+    const tree = createPipelineTree("conn:1", scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])'));
+    expect(tree.hasClipboard).toBe(false);
+  });
+
+  it("copyStage populates the clipboard without removing the stage", () => {
+    const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])');
+    const tree = createPipelineTree("conn:1", script);
+    tree.syncFromScript();
+    tree.copyStage(0);
+    expect(tree.hasClipboard).toBe(true);
+    expect(tree.stages.map((s) => s.name)).toEqual(["$match"]);
+  });
+
+  it("cutStage populates the clipboard and removes the stage", () => {
+    const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }, { "$limit": 5 }])');
+    const tree = createPipelineTree("conn:1", script);
+    tree.syncFromScript();
+    tree.cutStage(0);
+    expect(tree.hasClipboard).toBe(true);
+    expect(tree.stages.map((s) => s.name)).toEqual(["$limit"]);
+  });
+
+  it("pasteStageAfter inserts a fresh-id copy of the clipboard stage right after the given index", () => {
+    const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }, { "$limit": 5 }])');
+    const tree = createPipelineTree("conn:1", script);
+    tree.syncFromScript();
+    const matchId = tree.stages[0].id;
+    tree.copyStage(0);
+    tree.pasteStageAfter(1);
+    expect(tree.stages.map((s) => s.name)).toEqual(["$match", "$limit", "$match"]);
+    expect(tree.stages[2].id).not.toBe(matchId);
+  });
+
+  it("pasteStageAfter is a no-op when the clipboard is empty", () => {
+    const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])');
+    const tree = createPipelineTree("conn:1", script);
+    tree.syncFromScript();
+    tree.pasteStageAfter(0);
+    expect(tree.stages.map((s) => s.name)).toEqual(["$match"]);
+  });
+
+  it("duplicateStage inserts a fresh-id copy of the stage right after itself", () => {
+    const script = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])');
+    const tree = createPipelineTree("conn:1", script);
+    tree.syncFromScript();
+    const originalId = tree.stages[0].id;
+    tree.duplicateStage(0);
+    expect(tree.stages.map((s) => s.name)).toEqual(["$match", "$match"]);
+    expect(tree.stages[1].id).not.toBe(originalId);
+  });
+
+  it("copying a stage in one tree and pasting in a different tree works (shared clipboard)", () => {
+    const scriptA = scriptBinding('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }])');
+    const treeA = createPipelineTree("conn:1", scriptA);
+    treeA.syncFromScript();
+    treeA.copyStage(0);
+
+    const scriptB = scriptBinding('db.getCollection("customers").aggregate([{ "$limit": 5 }])');
+    const treeB = createPipelineTree("conn:2", scriptB);
+    treeB.syncFromScript();
+    expect(treeB.hasClipboard).toBe(true);
+    treeB.pasteStageAfter(0);
+    expect(treeB.stages.map((s) => s.name)).toEqual(["$limit", "$match"]);
   });
 });
