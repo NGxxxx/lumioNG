@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import SessionManager from "./SessionManager.svelte";
 import { listConnections, type SavedConnection } from "../api/connections";
-import { handleModalKeydown } from "$lib/stores/modalStack";
+import { handleModalKeydown } from "#lib/stores/modalStack.js";
 
 function key(k: string): KeyboardEvent {
   return { key: k, target: null } as unknown as KeyboardEvent;

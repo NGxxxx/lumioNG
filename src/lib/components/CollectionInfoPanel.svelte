@@ -3,7 +3,7 @@
   import { createCollectionInfo } from "../stores/collectionInfo.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { formatBytes, formatCount } from "../domain/stats";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { db, coll }: { db: string; coll: string } = $props();
 

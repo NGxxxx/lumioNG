@@ -6,7 +6,7 @@ vi.mock("../api/connection", () => ({
   disconnect: vi.fn().mockResolvedValue(undefined),
   listNamespaces: vi.fn().mockResolvedValue([{ name: "shop", collections: ["users"] }]),
 }));
-vi.mock("../api/server", () => ({
+vi.mock("../api/mongoServer", () => ({
   serverStatus: vi.fn().mockResolvedValue("{}"),
   buildInfo: vi.fn().mockResolvedValue("{}"),
   hostInfo: vi.fn().mockResolvedValue("{}"),

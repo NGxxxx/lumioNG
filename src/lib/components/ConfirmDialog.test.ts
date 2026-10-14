@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/svelte";
 import ConfirmDialog from "./ConfirmDialog.svelte";
-import { handleModalKeydown } from "$lib/stores/modalStack";
+import { handleModalKeydown } from "#lib/stores/modalStack.js";
 
 function key(k: string): KeyboardEvent {
   return { key: k, target: null } as unknown as KeyboardEvent;

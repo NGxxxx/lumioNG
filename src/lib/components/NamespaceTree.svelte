@@ -9,7 +9,7 @@
   import type { DbInfo } from "../domain/namespaces";
   import { sortCollectionNames } from "../domain/namespaces";
   import { collectionSort } from "../stores/collectionSort.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     databases = [],

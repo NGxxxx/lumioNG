@@ -1,7 +1,7 @@
 <!-- src/lib/components/MenuBar.svelte -->
 <script lang="ts">
-  import { type Locale } from "$lib/paraglide/runtime";
-  import * as m from "$lib/paraglide/messages";
+  import { type Locale } from "#lib/paraglide/runtime.js";
+  import * as m from "#lib/paraglide/messages.js";
   import { appLocale } from "../stores/locale.svelte";
   import { uiSize } from "../stores/uiSize.svelte";
   import { theme } from "../stores/theme.svelte";

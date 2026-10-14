@@ -3,8 +3,8 @@
   import { folderOptions } from "../domain/queryTree";
   import Modal from "./Modal.svelte";
   import { createAsyncSubmit } from "./asyncSubmit.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
 
   let { onsubmit, oncancel }: {
     onsubmit: (name: string, parentId: number | null) => Promise<void>;

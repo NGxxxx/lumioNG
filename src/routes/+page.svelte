@@ -1,48 +1,48 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { idJson } from "$lib/domain/docid";
-  import { detectGridFsBucket } from "$lib/domain/gridfsBucket";
-  import { isGridfsFilesEmpty } from "$lib/stores/gridfsBucketProbe.svelte";
-  import { aggregateTemplate } from "$lib/domain/queryStatement";
-  import { buildInsertSkeleton } from "$lib/api/insertSkeleton";
-  import { cancelScript } from "$lib/api/script";
-  import { sessionManager } from "$lib/stores/sessionManager.svelte";
-  import { getQueryRun } from "$lib/stores/queryRuns.svelte";
-  import { shell } from "$lib/stores/shell.svelte";
-  import { queryLibrary } from "$lib/stores/queryLibrary.svelte";
-  import { activeDataView } from "$lib/stores/activeDataView.svelte";
-  import { activeDocumentForm } from "$lib/stores/activeDocumentForm.svelte";
-  import { activity } from "$lib/stores/activity.svelte";
-  import { quit } from "$lib/api/window";
-  import type { Doc } from "$lib/domain/doc";
-  import type { SshConnectInput } from "$lib/api/connection";
-  import type { SavedQuery } from "$lib/domain/queryTree";
-  import type { ContextKind, QueryTab as QueryTabType } from "$lib/stores/navigation.svelte";
-  import SessionManager from "$lib/components/SessionManager.svelte";
-  import ConfirmDialog from "$lib/components/ConfirmDialog.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import NamespacePanel from "$lib/components/NamespacePanel.svelte";
-  import SavedQueriesPanel from "$lib/components/SavedQueriesPanel.svelte";
-  import SaveQueryDialog from "$lib/components/SaveQueryDialog.svelte";
-  import ResultTable from "$lib/components/ResultTable.svelte";
-  import GridFsFilesPanel from "$lib/components/GridFsFilesPanel.svelte";
-  import DocumentForm from "$lib/components/DocumentForm.svelte";
-  import TabBar from "$lib/components/TabBar.svelte";
-  import DatabaseCollectionsPanel from "$lib/components/DatabaseCollectionsPanel.svelte";
-  import { createAxisDrag } from "$lib/components/axisDrag";
-  import { lazyComponent } from "$lib/components/lazyComponent.svelte";
-  import TitleBar from "$lib/components/TitleBar.svelte";
-  import MenuBar from "$lib/components/MenuBar.svelte";
-  import Toolbar from "$lib/components/Toolbar.svelte";
-  import StatusBar from "$lib/components/StatusBar.svelte";
-  import CommandLog from "$lib/components/CommandLog.svelte";
-  import AboutDialog from "$lib/components/AboutDialog.svelte";
-  import ToastHost from "$lib/components/ToastHost.svelte";
-  import { toast } from "$lib/stores/toast.svelte";
-  import { SHORTCUTS, type Command, type CommandId } from "$lib/domain/commands";
-  import { matchesEvent, isDefaultWebviewAccelerator } from "$lib/domain/shortcuts";
-  import { detectPlatform } from "$lib/stores/platform";
-  import { isModalOpen } from "$lib/stores/modalStack";
+  import { idJson } from "#lib/domain/docid.js";
+  import { detectGridFsBucket } from "#lib/domain/gridfsBucket.js";
+  import { isGridfsFilesEmpty } from "#lib/stores/gridfsBucketProbe.svelte.js";
+  import { aggregateTemplate } from "#lib/domain/queryStatement.js";
+  import { buildInsertSkeleton } from "#lib/api/insertSkeleton.js";
+  import { cancelScript } from "#lib/api/script.js";
+  import { sessionManager } from "#lib/stores/sessionManager.svelte.js";
+  import { getQueryRun } from "#lib/stores/queryRuns.svelte.js";
+  import { shell } from "#lib/stores/shell.svelte.js";
+  import { queryLibrary } from "#lib/stores/queryLibrary.svelte.js";
+  import { activeDataView } from "#lib/stores/activeDataView.svelte.js";
+  import { activeDocumentForm } from "#lib/stores/activeDocumentForm.svelte.js";
+  import { activity } from "#lib/stores/activity.svelte.js";
+  import { quit } from "#lib/api/window.js";
+  import type { Doc } from "#lib/domain/doc.js";
+  import type { SshConnectInput } from "#lib/api/connection.js";
+  import type { SavedQuery } from "#lib/domain/queryTree.js";
+  import type { ContextKind, QueryTab as QueryTabType } from "#lib/stores/navigation.svelte.js";
+  import SessionManager from "#lib/components/SessionManager.svelte";
+  import ConfirmDialog from "#lib/components/ConfirmDialog.svelte";
+  import * as m from "#lib/paraglide/messages.js";
+  import NamespacePanel from "#lib/components/NamespacePanel.svelte";
+  import SavedQueriesPanel from "#lib/components/SavedQueriesPanel.svelte";
+  import SaveQueryDialog from "#lib/components/SaveQueryDialog.svelte";
+  import ResultTable from "#lib/components/ResultTable.svelte";
+  import GridFsFilesPanel from "#lib/components/GridFsFilesPanel.svelte";
+  import DocumentForm from "#lib/components/DocumentForm.svelte";
+  import TabBar from "#lib/components/TabBar.svelte";
+  import DatabaseCollectionsPanel from "#lib/components/DatabaseCollectionsPanel.svelte";
+  import { createAxisDrag } from "#lib/components/axisDrag.js";
+  import { lazyComponent } from "#lib/components/lazyComponent.svelte.js";
+  import TitleBar from "#lib/components/TitleBar.svelte";
+  import MenuBar from "#lib/components/MenuBar.svelte";
+  import Toolbar from "#lib/components/Toolbar.svelte";
+  import StatusBar from "#lib/components/StatusBar.svelte";
+  import CommandLog from "#lib/components/CommandLog.svelte";
+  import AboutDialog from "#lib/components/AboutDialog.svelte";
+  import ToastHost from "#lib/components/ToastHost.svelte";
+  import { toast } from "#lib/stores/toast.svelte.js";
+  import { SHORTCUTS, type Command, type CommandId } from "#lib/domain/commands.js";
+  import { matchesEvent, isDefaultWebviewAccelerator } from "#lib/domain/shortcuts.js";
+  import { detectPlatform } from "#lib/stores/platform.js";
+  import { isModalOpen } from "#lib/stores/modalStack.js";
 
   const CONTEXT_LABEL: Record<ContextKind, string> = {
     host: "Host",
@@ -57,9 +57,9 @@
   // must be dynamic for the ~300kB @codemirror stack to stay out of the eager startup chunk —
   // a single static importer anywhere would pull it back in. Same reasoning as CodeEditor's own
   // lazy `js-beautify` import; each pane is already mounted only while it is the active tab.
-  const queryTabChunk = lazyComponent(() => import("$lib/components/QueryTab.svelte"));
-  const hostTabChunk = lazyComponent(() => import("$lib/components/HostTab.svelte"));
-  const collectionTabChunk = lazyComponent(() => import("$lib/components/CollectionTab.svelte"));
+  const queryTabChunk = lazyComponent(() => import("#lib/components/QueryTab.svelte"));
+  const hostTabChunk = lazyComponent(() => import("#lib/components/HostTab.svelte"));
+  const collectionTabChunk = lazyComponent(() => import("#lib/components/CollectionTab.svelte"));
 
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);

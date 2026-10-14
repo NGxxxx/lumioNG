@@ -3,7 +3,7 @@ import { parseIndexList, buildIndexKeys, validateIndexFields, type IndexInfo } f
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import { createIndexCmd, dropIndexCmd, listIndexesCmd } from "../domain/mongosh";
 import { createAsyncGuard } from "./asyncGuard.svelte";
 

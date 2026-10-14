@@ -1,7 +1,7 @@
 <script lang="ts">
   import { errorMessage } from "../api/errors";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
   import CodeEditor from "./CodeEditor.svelte";
 
   let {

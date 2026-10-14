@@ -1,8 +1,8 @@
 <!-- src/routes/+layout.svelte -->
 <script lang="ts">
   import "../app.css";
-  import { dev } from "$app/environment";
-  import { handleModalKeydown } from "$lib/stores/modalStack";
+  import { dev } from "$app/env";
+  import { handleModalKeydown } from "#lib/stores/modalStack.js";
   let { children } = $props();
 
   // Hide the webview's native right-click menu in release builds (every surface has its own custom menu); dev keeps it for devtools access.

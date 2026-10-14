@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import ExportWizard from "./ExportWizard.svelte";
 import { buildTargets, targetKey } from "../domain/exportPlan";
-import { handleModalKeydown } from "$lib/stores/modalStack";
+import { handleModalKeydown } from "#lib/stores/modalStack.js";
 import { saveDialog } from "../api/files";
 
 vi.mock("../api/files", () => ({

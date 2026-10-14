@@ -4,7 +4,7 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { sqlImportCmd } from "../domain/mongosh";
 import type { InsertMode } from "../api/documents";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 
 export type SqlImportPhase = "loading" | "selecting" | "running" | "done";
 

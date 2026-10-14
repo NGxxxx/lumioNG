@@ -1,7 +1,7 @@
 <!-- src/lib/components/StatusBar.svelte -->
 <script lang="ts">
   import { formatUptime } from "../domain/host";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     connected,

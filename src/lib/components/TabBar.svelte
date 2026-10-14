@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Active, ContextKind, WorkTab } from "../stores/navigation.svelte";
   import { queryLibrary } from "../stores/queryLibrary.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   type SessionInfo = { id: string; label: string; color: string };
 

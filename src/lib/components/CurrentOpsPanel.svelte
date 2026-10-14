@@ -4,7 +4,7 @@
   import { createCurrentOps } from "../stores/currentOps.svelte";
   import { OWN_APP_NAME } from "../domain/host";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   const v = untrack(() => createCurrentOps(sessionManager.active?.id ?? ""));
   onMount(() => v.load());

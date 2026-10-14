@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../api/server", () => ({ currentOps: vi.fn(), killOp: vi.fn() }));
+vi.mock("../api/mongoServer", () => ({ currentOps: vi.fn(), killOp: vi.fn() }));
 
-import * as api from "../api/server";
+import * as api from "../api/mongoServer";
 import { createCurrentOps } from "./currentOps.svelte";
 
 const currentOps = api.currentOps as ReturnType<typeof vi.fn>;

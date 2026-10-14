@@ -7,7 +7,7 @@
   import ExportWizard from "./ExportWizard.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
   import { toast } from "../stores/toast.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { db, onopen }: { db: string; onopen: (coll: string) => void } = $props();
   // Pass the ACTIVE session's tree — the default `namespaceTree` singleton stays empty in multi-session mode.

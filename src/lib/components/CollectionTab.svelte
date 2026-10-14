@@ -4,7 +4,7 @@
   import CollectionInfoPanel from "./CollectionInfoPanel.svelte";
   import IndexPanel from "./IndexPanel.svelte";
   import SchemaPanel from "./SchemaPanel.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { db, coll }: { db: string; coll: string } = $props();
 

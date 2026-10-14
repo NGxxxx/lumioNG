@@ -7,7 +7,7 @@ import { validateCollectionName, validateDatabaseName } from "../domain/namespac
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { settings } from "./settings.svelte";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import {
   createCollectionCmd,
   dropCollectionCmd,

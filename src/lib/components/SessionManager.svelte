@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { pushModal } from "$lib/stores/modalStack";
+  import { pushModal } from "#lib/stores/modalStack.js";
   import { backdropClose } from "../actions/backdropClose";
   import { createConnectionRegistry } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
@@ -8,7 +8,7 @@
   import TestConnectionDialog from "./TestConnectionDialog.svelte";
   import SessionList from "./SessionList.svelte";
   import ConnectionForm from "./ConnectionForm.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     onconnected,

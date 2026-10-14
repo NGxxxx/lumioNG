@@ -1,8 +1,8 @@
 <script lang="ts">
   import { tick } from "svelte";
 import type { createCollectionView } from "../stores/collectionView.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
   import GridDepthSelect from "./GridDepthSelect.svelte";
 
   let { v, view = $bindable("grid"), treeAllExpanded = false, ontoggleexpand }: {

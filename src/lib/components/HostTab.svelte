@@ -7,7 +7,7 @@
   import CurrentOpsPanel from "./CurrentOpsPanel.svelte";
   import TopologyPanel from "./TopologyPanel.svelte";
   import UsersRolesPanel from "./UsersRolesPanel.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { connection }: { connection: { label: string; uri: string } | null } = $props();
 

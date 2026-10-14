@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/svelte";
-import { handleModalKeydown } from "$lib/stores/modalStack";
+import { handleModalKeydown } from "#lib/stores/modalStack.js";
 
 vi.mock("../api/files", () => ({ openDialog: vi.fn(), importFileSize: vi.fn(), readTextFileIfExists: vi.fn() }));
 vi.mock("../api/documents", () => ({ importDocuments: vi.fn(), importBson: vi.fn() }));

@@ -5,7 +5,7 @@
   import { describeKeys, type IndexInfo } from "../domain/indexes";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import IndexCreateForm from "./IndexCreateForm.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { db, coll }: { db: string; coll: string } = $props();
 

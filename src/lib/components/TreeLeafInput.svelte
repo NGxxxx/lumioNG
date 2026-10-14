@@ -4,8 +4,8 @@
   import { editTextOf, rebuildLeaf, type LeafInputType } from "../domain/bsontree";
   import { settings } from "../stores/settings.svelte";
   import JsonPreviewDialog from "./JsonPreviewDialog.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
 
   /** One editable leaf cell in the document tree editor; kept as its own component so each row's in-progress edit text is independent local state. */
   let {

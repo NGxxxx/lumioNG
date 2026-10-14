@@ -2,7 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
-  import { pushModal } from "$lib/stores/modalStack";
+  import { pushModal } from "#lib/stores/modalStack.js";
   import { openDialog, importFileSize, readTextFileIfExists } from "../api/files";
   import { metadataPathFor } from "../domain/collectionMetadata";
   import { describeSqlImportTargets, describeImportTarget, isLargeImportFile, formatFileSize } from "../domain/importPlan";
@@ -14,7 +14,7 @@
   import TargetCollectionField from "./TargetCollectionField.svelte";
   import ImportProgressBar from "./ImportProgressBar.svelte";
   import ImportResultSummary from "./ImportResultSummary.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   // File extension alone decides the flow (.sql -> multi-table SQL, .csv -> single-collection CSV).
   // Single-target formats (JSON/JSONL/BSON/CSV) collect their target collection on the Source step,

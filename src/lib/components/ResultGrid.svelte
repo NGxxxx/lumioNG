@@ -8,10 +8,10 @@
   import type { Doc } from "../domain/doc";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
   import { activeDataView } from "../stores/activeDataView.svelte";
-  import { pushModal } from "$lib/stores/modalStack";
+  import { pushModal } from "#lib/stores/modalStack.js";
 
   let { v, onopendocument }: { v: GridPageView; onopendocument?: (doc: Doc, mode: "insert") => void } = $props();
 

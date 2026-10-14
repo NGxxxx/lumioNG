@@ -15,7 +15,7 @@
   import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "../stores/modalStack";
   import type { GridfsFileRow } from "../domain/gridfsFiles";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { db, bucket, row, onclose }: { db: string; bucket: string; row: GridfsFileRow; onclose: () => void } = $props();
 

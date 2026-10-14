@@ -2,7 +2,7 @@
   import { onMount, untrack } from "svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createTopologyStatus } from "../stores/topology.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   const v = untrack(() => createTopologyStatus(sessionManager.active?.id ?? ""));
   onMount(() => v.load());

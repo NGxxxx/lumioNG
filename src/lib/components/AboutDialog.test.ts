@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/svelte";
 
-vi.mock("$lib/api/app", () => ({ getAppVersion: vi.fn().mockResolvedValue("0.2.0") }));
+vi.mock("#lib/api/app.js", () => ({ getAppVersion: vi.fn().mockResolvedValue("0.2.0") }));
 
 import AboutDialog from "./AboutDialog.svelte";
-import { handleModalKeydown } from "$lib/stores/modalStack";
+import { handleModalKeydown } from "#lib/stores/modalStack.js";
 
 function key(k: string): KeyboardEvent {
   return { key: k, target: null } as unknown as KeyboardEvent;

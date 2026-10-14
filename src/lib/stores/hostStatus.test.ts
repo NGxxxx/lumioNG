@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../api/server", () => ({ serverStatus: vi.fn(), buildInfo: vi.fn(), hostInfo: vi.fn() }));
+vi.mock("../api/mongoServer", () => ({ serverStatus: vi.fn(), buildInfo: vi.fn(), hostInfo: vi.fn() }));
 
-import * as api from "../api/server";
+import * as api from "../api/mongoServer";
 import { createHostStatus } from "./hostStatus.svelte";
 
 const serverStatus = api.serverStatus as ReturnType<typeof vi.fn>;

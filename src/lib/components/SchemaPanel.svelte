@@ -4,7 +4,7 @@
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { bsonTypeBadge } from "../domain/theme";
   import { formatPercent } from "../domain/stats";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { db, coll }: { db: string; coll: string } = $props();
   const v = untrack(() => createCollectionSchema(sessionManager.active?.id ?? "", db, coll));

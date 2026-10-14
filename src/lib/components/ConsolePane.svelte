@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { ConsoleEntry } from "../api/script";
   import { copyToClipboard } from "../clipboard";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { entries, elapsedMs = null, onClear }:
     { entries: ConsoleEntry[]; elapsedMs?: number | null; onClear?: () => void } = $props();

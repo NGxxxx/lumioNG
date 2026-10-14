@@ -7,7 +7,7 @@
   import { formatBytes } from "../domain/stats";
   import GridFsPreviewPanel from "./GridFsPreviewPanel.svelte";
   import type { GridfsFileRow } from "../domain/gridfsFiles";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { db, bucket, version }: { db: string; bucket: string; version: number } = $props();
 

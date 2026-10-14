@@ -1,4 +1,4 @@
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import { idInFilter } from "../domain/selection";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import { buildSort, type SortKey } from "../domain/grid";

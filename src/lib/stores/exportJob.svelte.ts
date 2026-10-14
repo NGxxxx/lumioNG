@@ -8,7 +8,7 @@ import { metadataPathFor, buildMetadataBundle } from "../domain/collectionMetada
 import { findCmd, exportBsonCmd, listIndexesCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import { errorMessage } from "../api/errors";
 import type { Doc } from "../domain/doc";
 

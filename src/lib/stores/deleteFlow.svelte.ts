@@ -1,4 +1,4 @@
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import { deleteDocument, deleteMany } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";

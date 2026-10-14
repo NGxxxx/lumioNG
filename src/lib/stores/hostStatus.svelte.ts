@@ -1,4 +1,4 @@
-import { serverStatus, buildInfo, hostInfo } from "../api/server";
+import { serverStatus, buildInfo, hostInfo } from "../api/mongoServer";
 import { parseHostInfo, type HostInfo } from "../domain/host";
 import { errorMessage } from "../api/errors";
 import { createAsyncGuard } from "./asyncGuard.svelte";

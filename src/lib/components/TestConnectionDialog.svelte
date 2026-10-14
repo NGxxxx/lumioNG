@@ -1,7 +1,7 @@
 <!-- src/lib/components/TestConnectionDialog.svelte -->
 <script lang="ts">
   import Modal from "./Modal.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     result,

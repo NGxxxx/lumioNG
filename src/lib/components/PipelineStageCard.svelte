@@ -15,7 +15,7 @@
   import ContextMenu from "./ContextMenu.svelte";
   import type { MenuItem } from "../domain/gridView";
   import type { Doc } from "../domain/doc";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { tree, index, db }: { tree: PipelineTree; index: number; db: string } = $props();
 

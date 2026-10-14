@@ -1,4 +1,4 @@
-import { currentOps as fetchCurrentOps, killOp } from "../api/server";
+import { currentOps as fetchCurrentOps, killOp } from "../api/mongoServer";
 import { parseCurrentOps, type OpInfo } from "../domain/host";
 import { errorMessage } from "../api/errors";
 import { createAsyncGuard } from "./asyncGuard.svelte";

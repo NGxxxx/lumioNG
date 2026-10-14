@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-vi.mock("../api/server", () => ({
+vi.mock("../api/mongoServer", () => ({
   isMaster: vi.fn(),
   replSetStatus: vi.fn(),
   listShards: vi.fn(),
   balancerStatus: vi.fn(),
 }));
 
-import * as api from "../api/server";
+import * as api from "../api/mongoServer";
 import { createTopologyStatus } from "./topology.svelte";
 
 const isMaster = api.isMaster as ReturnType<typeof vi.fn>;

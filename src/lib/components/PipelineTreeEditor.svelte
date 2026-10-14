@@ -3,8 +3,8 @@
   import type { PipelineTree } from "../stores/pipelineTree.svelte";
   import { PIPELINE_STAGES } from "../domain/mongoOps";
   import PipelineStageCard from "./PipelineStageCard.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
 
   let { tree, db }: { tree: PipelineTree; db: string } = $props();
 

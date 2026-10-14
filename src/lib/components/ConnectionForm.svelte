@@ -1,7 +1,7 @@
 <script lang="ts">
   import { openDialog } from "../api/files";
   import { forgetSshHostKey } from "../api/connection";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
   import type { createConnectionRegistry } from "../stores/connections.svelte";
 
   let {

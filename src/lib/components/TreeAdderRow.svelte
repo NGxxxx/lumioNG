@@ -3,8 +3,8 @@
   import { emptyValue, validateNewFieldName, ADDABLE_TYPES, type AddableType } from "../domain/bsontree";
   import type { OpEntry } from "../domain/mongoOps";
   import SuggestInput from "./SuggestInput.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
 
   /** The trailing "add field"/"add item" row for an open container (own local draft state, kept
    *  independent from any sibling adder row visible elsewhere in the tree). */

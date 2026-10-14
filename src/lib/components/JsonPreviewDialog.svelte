@@ -3,8 +3,8 @@
   import { onMount } from "svelte";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
-  import { pushModal } from "$lib/stores/modalStack";
-  import * as m from "$lib/paraglide/messages";
+  import { pushModal } from "#lib/stores/modalStack.js";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { json, onclose }: { json: string; onclose: () => void } = $props();
 

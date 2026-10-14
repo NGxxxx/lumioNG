@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { SavedConnection } from "../api/connections";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
   import { appLocale } from "../stores/locale.svelte";
   import { relativeParts } from "../domain/recency";
 

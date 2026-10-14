@@ -5,7 +5,7 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { csvImportCmd } from "../domain/mongosh";
 import { restoreCollectionMetadata } from "./metadataRestore";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 
 export type CsvImportPhase = "loading" | "config" | "running" | "done";
 

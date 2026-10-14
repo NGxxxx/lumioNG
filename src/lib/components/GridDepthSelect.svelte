@@ -1,6 +1,6 @@
 <script lang="ts">
-  import * as m from "$lib/paraglide/messages";
-  import { settings } from "$lib/stores/settings.svelte";
+  import * as m from "#lib/paraglide/messages.js";
+  import { settings } from "#lib/stores/settings.svelte.js";
 
   const DEPTHS = [1, 2, 3, 4, 5];
 </script>

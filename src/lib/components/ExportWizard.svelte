@@ -2,13 +2,13 @@
   import { onMount, untrack } from "svelte";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
-  import { pushModal } from "$lib/stores/modalStack";
+  import { pushModal } from "#lib/stores/modalStack.js";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
   import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, type ExportWizardInput } from "../domain/exportPlan";
   import type { BsonType } from "../domain/extjson";
   import { saveDialog, openDirDialog } from "../api/files";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { input, onclose }: { input: ExportWizardInput; onclose: () => void } = $props();
 

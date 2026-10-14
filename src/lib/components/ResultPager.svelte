@@ -1,6 +1,6 @@
 <script lang="ts">
   import type { GridPageView } from "../domain/gridView";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { v }: { v: GridPageView } = $props();
 </script>

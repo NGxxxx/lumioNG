@@ -6,7 +6,7 @@ const rt = vi.hoisted(() => ({
   setLocale: vi.fn(),
   overwriteGetLocale: vi.fn(),
 }));
-vi.mock("$lib/paraglide/runtime", () => rt);
+vi.mock("#lib/paraglide/runtime.js", () => rt);
 
 import { appLocale } from "./locale.svelte";
 

@@ -1,5 +1,5 @@
 import { copyToClipboard } from "../clipboard";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 
 /** Copies `text` to the clipboard, reporting the platform failure message via `setError` on failure. */
 export function createClipboardCopy(setError: (msg: string) => void) {

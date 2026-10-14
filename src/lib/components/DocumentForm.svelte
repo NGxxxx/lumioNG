@@ -14,8 +14,8 @@
   import { topLevelFieldNames } from "../domain/schema";
   import TreeEditor from "./TreeEditor.svelte";
   import { settings } from "../stores/settings.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
 
   let {
     mode,

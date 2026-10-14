@@ -3,7 +3,7 @@ import {
   setLocale as persistLocale,
   overwriteGetLocale,
   type Locale,
-} from "$lib/paraglide/runtime";
+} from "#lib/paraglide/runtime.js";
 
 /** Reactive app locale so language switches apply LIVE without reloading: overrides Paraglide's `getLocale()` to read this `$state`, so every inline `m.*()` re-renders on change, while persisting via `setLocale(..., { reload: false })`. */
 function createAppLocale() {

@@ -25,7 +25,7 @@ import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { deleteManyCmd } from "../domain/mongosh";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import { idInFilter } from "../domain/selection";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import type { ExportWizardInput } from "../domain/exportPlan";

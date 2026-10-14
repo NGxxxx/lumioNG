@@ -23,7 +23,7 @@ import { validateDatabaseName } from "../domain/namespaces";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import {
   listUsersCmd,
   createUserCmd,

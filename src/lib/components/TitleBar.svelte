@@ -1,9 +1,9 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { buildBreadcrumb } from "$lib/domain/breadcrumb";
-  import { minimize, toggleMaximize, isMaximized, onMaximizedChange } from "$lib/api/window";
-  import { getAppVersion } from "$lib/api/app";
-  import * as m from "$lib/paraglide/messages";
+  import { buildBreadcrumb } from "#lib/domain/breadcrumb.js";
+  import { minimize, toggleMaximize, isMaximized, onMaximizedChange } from "#lib/api/window.js";
+  import { getAppVersion } from "#lib/api/app.js";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     conn,

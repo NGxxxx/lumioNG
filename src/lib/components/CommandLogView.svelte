@@ -1,7 +1,7 @@
 <script lang="ts">
   import { commandLog } from "../stores/commandLog.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   const NEAR_BOTTOM_PX = 40;
 

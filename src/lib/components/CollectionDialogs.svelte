@@ -7,7 +7,7 @@
   import ExportWizard from "./ExportWizard.svelte";
   import { idJson } from "../domain/docid";
   import { isEmptyFilter } from "../domain/bulk";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { v, coll, onMenuSelect }: {
     v: ReturnType<typeof createCollectionView>;

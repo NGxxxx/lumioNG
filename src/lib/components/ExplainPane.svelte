@@ -3,7 +3,7 @@
   import type { IndexSuggestion } from "../domain/indexAdvisor";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { copyToClipboard } from "../clipboard";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     summary, prevSummary, rawJson, loading, suggestion, coll, oncreateindex, onrefresh,

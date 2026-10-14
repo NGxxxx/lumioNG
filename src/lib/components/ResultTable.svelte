@@ -11,7 +11,7 @@
   import ResultPager from "./ResultPager.svelte";
   import CollectionToolbar from "./CollectionToolbar.svelte";
   import CollectionDialogs from "./CollectionDialogs.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     db,

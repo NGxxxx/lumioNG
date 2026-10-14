@@ -3,7 +3,7 @@
   import { onMount, type Snippet } from "svelte";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
-  import { pushModal } from "$lib/stores/modalStack";
+  import { pushModal } from "#lib/stores/modalStack.js";
 
   let {
     title,

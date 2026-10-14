@@ -7,7 +7,7 @@
   import CodeEditor from "./CodeEditor.svelte";
   import EntityCrudList from "./EntityCrudList.svelte";
   import EntityEditModal from "./EntityEditModal.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   // Narrowed to the subset this component actually reads/calls (not the full Users & Roles view),
   // so a test double only needs to implement these fields.

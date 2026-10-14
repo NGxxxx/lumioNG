@@ -10,7 +10,7 @@
   import type { OpEntry } from "../domain/mongoOps";
   import TreeLeafInput from "./TreeLeafInput.svelte";
   import TreeAdderRow from "./TreeAdderRow.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   /** Virtualized, collapsed-by-default editor for a single document — only mounts visible/expanded rows, unlike the old fully-recursive TreeNode. */
   let {

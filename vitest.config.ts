@@ -1,16 +1,12 @@
 import { defineConfig, configDefaults } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
-import path from "path";
 
 export default defineConfig({
-  plugins: [svelte({ hot: false })],
+  plugins: [svelte()],
   // @testing-library/svelte 5 + Svelte 5: resolve the client (browser) build so
   // `mount` is available under jsdom; otherwise Svelte resolves its SSR export.
   resolve: {
     conditions: ["browser"],
-    alias: {
-      $lib: path.resolve(__dirname, "src/lib"),
-    },
   },
   test: {
     environment: "jsdom",
@@ -27,6 +23,8 @@ export default defineConfig({
       ["src/lib/api/**", "node"], // thin invoke() wrappers — no DOM
     ],
     globals: true,
+    // Vitest 5 defaults to clearing mock history before each test; several suites assert on calls made at import time.
+    clearMocks: false,
     setupFiles: ["src/test-setup.ts"],
     exclude: [...configDefaults.exclude, "**/.claude/**"],
   },

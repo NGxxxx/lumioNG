@@ -1,8 +1,8 @@
 <script lang="ts" generics="T">
   import type { Snippet } from "svelte";
   import { errorMessage } from "../api/errors";
-  import { msgKey } from "$lib/msgkey";
-  import * as m from "$lib/paraglide/messages";
+  import { msgKey } from "#lib/msgkey.js";
+  import * as m from "#lib/paraglide/messages.js";
 
   // Shared chrome for the admin "list of entities" panels (users, roles): toolbar + error banner +
   // inline create form + scrolling table. Callers supply the columns, the create-form fields and

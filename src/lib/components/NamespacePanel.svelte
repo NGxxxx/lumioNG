@@ -12,7 +12,7 @@
   import type { ExportWizardInput } from "../domain/exportPlan";
   import { SEARCH_DEBOUNCE_MS } from "../domain/timing";
   import { copyToClipboard } from "../clipboard";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
   import type { Session } from "../stores/sessionManager.svelte";
 
   let {

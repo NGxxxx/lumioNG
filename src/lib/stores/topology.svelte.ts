@@ -1,4 +1,4 @@
-import { isMaster, replSetStatus, listShards, balancerStatus } from "../api/server";
+import { isMaster, replSetStatus, listShards, balancerStatus } from "../api/mongoServer";
 import {
   detectTopologyKind,
   parseReplSetStatus,

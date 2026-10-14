@@ -1,6 +1,6 @@
 <script lang="ts">
   import Modal from "./Modal.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { ops, onrun, oncancel, ondontask }:
     { ops: string[]; onrun: () => void; oncancel: () => void; ondontask: () => void } = $props();

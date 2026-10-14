@@ -17,7 +17,7 @@
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ExportWizard from "./ExportWizard.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
   import CodeEditor from "./CodeEditor.svelte";
   import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
   import GridDepthSelect from "./GridDepthSelect.svelte";

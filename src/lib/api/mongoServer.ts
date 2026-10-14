@@ -1,3 +1,4 @@
+// Frontend wrappers for commands/server.rs. Not named `server.ts`: SvelteKit 3 treats any `server.*` module as server-only and refuses to bundle it for the browser.
 import { invoke } from "@tauri-apps/api/core";
 
 export async function serverStatus(sessionId: string): Promise<string> {

@@ -2,7 +2,7 @@
 <script lang="ts">
   import { commandLog } from "../stores/commandLog.svelte";
   import CommandLogView from "./CommandLogView.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let { height, onToggle }: { height: number; onToggle: () => void } = $props();
 </script>

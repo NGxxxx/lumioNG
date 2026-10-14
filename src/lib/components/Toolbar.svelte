@@ -5,7 +5,7 @@
   import { SHORTCUTS, type Command, type CommandId } from "../domain/commands";
   import { formatCombo } from "../domain/shortcuts";
   import { detectPlatform } from "../stores/platform";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   let {
     commands,

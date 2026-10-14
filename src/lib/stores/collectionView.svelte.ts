@@ -1,4 +1,4 @@
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import { queryPage, sampleDocuments, fetchFullDoc, countDocuments, exportQueryProgress } from "../api/documents";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";

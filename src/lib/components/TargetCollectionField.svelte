@@ -1,7 +1,7 @@
 <script lang="ts">
   import SuggestInput from "./SuggestInput.svelte";
-  import * as m from "$lib/paraglide/messages";
-  import { msgKey } from "$lib/msgkey";
+  import * as m from "#lib/paraglide/messages.js";
+  import { msgKey } from "#lib/msgkey.js";
 
   let {
     value,

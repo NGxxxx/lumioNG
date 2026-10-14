@@ -7,7 +7,7 @@
   import { describeValue, truncateForDisplay } from "../domain/extjson";
   import { jsonValueColor, bsonValueKind } from "../domain/theme";
   import { settings } from "../stores/settings.svelte";
-  import * as m from "$lib/paraglide/messages";
+  import * as m from "#lib/paraglide/messages.js";
 
   /** Shared, virtualized nested tree (collection grid + query results). Rows come pre-flattened
    *  from domain/treeFlatten so every visible row costs the same and 25k+ docs stay smooth. */

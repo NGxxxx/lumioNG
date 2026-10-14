@@ -4,7 +4,7 @@ import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { settings } from "./settings.svelte";
-import * as m from "$lib/paraglide/messages";
+import * as m from "#lib/paraglide/messages.js";
 import { sampleCmd } from "../domain/mongosh";
 import { createAsyncGuard } from "./asyncGuard.svelte";
 
