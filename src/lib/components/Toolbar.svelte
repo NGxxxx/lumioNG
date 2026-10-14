@@ -62,13 +62,13 @@
       onclick={runOf("file.sessionManager")}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="2.5" width="12" height="4" rx="1" fill="var(--tab-inactive-bg)" stroke="var(--muted)" stroke-width="1"/>
-        <rect x="2" y="9.5" width="12" height="4" rx="1" fill="var(--tab-inactive-bg)" stroke="var(--muted)" stroke-width="1"/>
-        <circle cx="4.6" cy="4.5" r="0.9" fill="var(--accent)"/>
-        <circle cx="4.6" cy="11.5" r="0.9" fill="var(--accent)"/>
+        <rect x="2" y="2.5" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1"/>
+        <rect x="2" y="9.5" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1"/>
+        <circle cx="4.6" cy="4.5" r="0.9" fill="currentColor"/>
+        <circle cx="4.6" cy="11.5" r="0.9" fill="currentColor"/>
       </svg>
       <svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8">
-        <path d="M1 2.5 L4 5.5 L7 2.5" stroke="var(--muted)" stroke-width="1.1" fill="none"/>
+        <path d="M1 2.5 L4 5.5 L7 2.5" stroke="currentColor" stroke-width="1.1" fill="none"/>
       </svg>
     </button>
   </span>
@@ -82,8 +82,8 @@
       onclick={runOf("file.refresh")}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M13 5a5.5 5.5 0 1 0 1 4" fill="none" stroke="var(--link)" stroke-width="1.4"/>
-        <path d="M13.5 2v3.2H10.3z" fill="var(--link)"/>
+        <path d="M13 5a5.5 5.5 0 1 0 1 4" fill="none" stroke="currentColor" stroke-width="1.4"/>
+        <path d="M13.5 2v3.2H10.3z" fill="currentColor"/>
       </svg>
     </button>
   </span>
@@ -95,9 +95,9 @@
   <span class="tt" use:tooltip={tt("query.save", m.toolbar_save())}>
     <button aria-label={m.toolbar_save()} class="btn-icon" disabled={disabledOf("query.save")} onclick={runOf("query.save")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2 2h9l3 3v9H2z" fill="var(--link)" stroke="var(--link-strong)" stroke-width="0.8"/>
-        <rect x="5" y="2" width="5" height="4" fill="var(--blue-tint5)"/>
-        <rect x="4.5" y="9" width="7" height="4" fill="var(--blue-tint5)"/>
+        <path d="M2.5 2.5h8.3l2.7 2.7v8.3h-11z" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <path d="M5 2.5v3h5v-3" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <path d="M4.8 13.5V9.2h6.4v4.3" fill="none" stroke="currentColor" stroke-width="1.1"/>
       </svg>
     </button>
   </span>
@@ -111,9 +111,9 @@
       onclick={runOf("file.newDocument")}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M3 1.5h7l3 3v10H3z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
-        <path d="M10 1.5v3h3" fill="none" stroke="var(--muted)" stroke-width="0.9"/>
-        <path d="M8 7v5M5.5 9.5h5" stroke="var(--accent)" stroke-width="1.4"/>
+        <path d="M3 1.5h7l3 3v10H3z" fill="none" stroke="currentColor" stroke-width="0.9"/>
+        <path d="M10 1.5v3h3" fill="none" stroke="currentColor" stroke-width="0.9"/>
+        <path d="M8 7v5M5.5 9.5h5" stroke="currentColor" stroke-width="1.3"/>
       </svg>
     </button>
   </span>
@@ -122,8 +122,8 @@
   <span class="tt" use:tooltip={tt("grid.editDocument", m.toolbar_edit_document())}>
     <button aria-label={m.toolbar_edit_document()} class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2 11l7-7 3 3-7 7H2z" fill="var(--warn)" stroke="var(--fg)" stroke-width="0.9"/>
-        <path d="M10 3l2-2 3 3-2 2z" fill="var(--muted)" stroke="var(--muted)" stroke-width="0.8"/>
+        <path d="M2 11l7-7 3 3-7 7H2z" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <path d="M10 3l2-2 3 3-2 2z" fill="currentColor" stroke="currentColor" stroke-width="0.8"/>
       </svg>
     </button>
   </span>
@@ -132,7 +132,7 @@
   <span class="tt" use:tooltip={tt("grid.deleteDocument", m.toolbar_delete_document())}>
     <button aria-label={m.toolbar_delete_document()} class="btn-icon" disabled={!canDeleteDoc} onclick={ondeletedocument}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 4h8l-1 10H5z" fill="var(--panel)" stroke="var(--danger)" stroke-width="0.9"/>
+        <path d="M4 4h8l-1 10H5z" fill="none" stroke="var(--danger)" stroke-width="0.9"/>
         <path d="M3 4h10M6.5 4V2.5h3V4" stroke="var(--danger)" stroke-width="0.9" fill="none"/>
       </svg>
     </button>
@@ -173,11 +173,11 @@
   <span class="tt" use:tooltip={tt("query.explain", m.toolbar_explain())}>
     <button aria-label={m.toolbar_explain()} class="btn-icon" disabled={disabledOf("query.explain")} onclick={runOf("query.explain")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <circle cx="7" cy="7" r="4.2" fill="none" stroke="var(--muted)" stroke-width="1.3"/>
-        <path d="M10.2 10.2 L14 14" stroke="var(--muted)" stroke-width="1.5"/>
-        <rect x="5" y="7.5" width="1.2" height="2" fill="var(--run)"/>
-        <rect x="6.8" y="6" width="1.2" height="3.5" fill="var(--run)"/>
-        <rect x="8.6" y="4.7" width="1.2" height="4.8" fill="var(--run)"/>
+        <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M10.2 10.2 L14 14" stroke="currentColor" stroke-width="1.5"/>
+        <rect x="5" y="7.5" width="1.2" height="2" fill="currentColor"/>
+        <rect x="6.8" y="6" width="1.2" height="3.5" fill="currentColor"/>
+        <rect x="8.6" y="4.7" width="1.2" height="4.8" fill="currentColor"/>
       </svg>
     </button>
   </span>
@@ -189,8 +189,8 @@
   <span class="tt" use:tooltip={tt("grid.focusFilter", m.toolbar_find_title())}>
     <button aria-label={m.toolbar_find()} class="btn-icon" disabled={!canFind} onclick={onfind}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <circle cx="7" cy="7" r="4.2" fill="none" stroke="var(--muted)" stroke-width="1.3"/>
-        <path d="M10.2 10.2 L14 14" stroke="var(--muted)" stroke-width="1.5"/>
+        <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
+        <path d="M10.2 10.2 L14 14" stroke="currentColor" stroke-width="1.5"/>
       </svg>
     </button>
   </span>
@@ -199,7 +199,7 @@
   <span class="tt" use:tooltip={tt("query.aggregate", m.toolbar_aggregate())}>
     <button aria-label={m.toolbar_aggregate()} class="btn-icon" disabled={disabledOf("query.aggregate")} onclick={runOf("query.aggregate")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M3 2h10l-4 6 4 6H3l4-6z" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
+        <path d="M3 2h10l-4 6 4 6H3l4-6z" fill="none" stroke="currentColor" stroke-width="1.2"/>
       </svg>
     </button>
   </span>
@@ -211,8 +211,8 @@
   <span class="tt" use:tooltip={tt("file.export", m.toolbar_export())}>
     <button aria-label={m.toolbar_export()} class="btn-icon" disabled={disabledOf("file.export")} onclick={runOf("file.export")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 1.5h6l3 3v10H4z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
-        <path d="M8 6v5M5.6 8.6L8 11l2.4-2.4" stroke="var(--link)" stroke-width="1.2" fill="none"/>
+        <path d="M4 1.5h6l3 3v10H4z" fill="none" stroke="currentColor" stroke-width="0.9"/>
+        <path d="M8 6v5M5.6 8.6L8 11l2.4-2.4" stroke="currentColor" stroke-width="1.2" fill="none"/>
       </svg>
     </button>
   </span>
@@ -221,8 +221,8 @@
   <span class="tt" use:tooltip={tt("file.import", m.toolbar_import())}>
     <button aria-label={m.toolbar_import()} class="btn-icon" disabled={disabledOf("file.import")} onclick={runOf("file.import")}>
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 1.5h6l3 3v10H4z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
-        <path d="M8 11V6M5.6 8.4L8 6l2.4 2.4" stroke="var(--link)" stroke-width="1.2" fill="none"/>
+        <path d="M4 1.5h6l3 3v10H4z" fill="none" stroke="currentColor" stroke-width="0.9"/>
+        <path d="M8 11V6M5.6 8.4L8 6l2.4 2.4" stroke="currentColor" stroke-width="1.2" fill="none"/>
       </svg>
     </button>
   </span>
@@ -239,8 +239,8 @@
       onclick={() => settings.setWrapLongLines(!settings.wrapLongLines)}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2 4.5h12M2 8h8.5M2 11.5h8.5" stroke="var(--muted)" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-        <path d="M10.5 11.5h2.5v-2.2M13 11.5l-1.8-1.8" stroke="var(--muted)" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 4.5h12M2 8h8.5M2 11.5h8.5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>
+        <path d="M10.5 11.5h2.5v-2.2M13 11.5l-1.8-1.8" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
     </button>
   </span>
@@ -254,8 +254,8 @@
       onclick={onToggleLog}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="2" width="12" height="12" rx="1.5" fill="none" stroke="var(--muted)" stroke-width="1.1"/>
-        <path d="M4 5h8M4 8h8M4 11h5" stroke="var(--muted)" stroke-width="1.1"/>
+        <rect x="2" y="2" width="12" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <path d="M4 5h8M4 8h8M4 11h5" stroke="currentColor" stroke-width="1.1"/>
       </svg>
     </button>
   </span>
@@ -269,9 +269,9 @@
       onclick={onToggleSavedQueries}
     >
       <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 2h6l2.5 2.5V14H4z" fill="none" stroke="var(--muted)" stroke-width="1.1"/>
-        <path d="M6 6.5l1.3 1.3L9.5 5.3" stroke="var(--run)" stroke-width="1.2" fill="none"/>
-        <path d="M6 10.5h4" stroke="var(--muted)" stroke-width="1.1"/>
+        <path d="M4 2h6l2.5 2.5V14H4z" fill="none" stroke="currentColor" stroke-width="1.1"/>
+        <path d="M6 6.5l1.3 1.3L9.5 5.3" stroke="currentColor" stroke-width="1.2" fill="none"/>
+        <path d="M6 10.5h4" stroke="currentColor" stroke-width="1.1"/>
       </svg>
     </button>
   </span>
@@ -306,10 +306,14 @@
     cursor: default;
     border-radius: var(--radius);
     line-height: 1;
+    /* Icons draw in currentColor: muted by default, full strength on hover. Only Run (accent)
+       and Delete/Stop (danger) keep a fixed color, since that color carries meaning. */
+    color: var(--muted);
   }
 
   .btn-icon:hover:not(:disabled) {
     background: var(--menu-hover);
+    color: var(--fg);
   }
 
   .btn-icon:disabled {
@@ -319,6 +323,7 @@
 
   .btn-icon.active {
     background: var(--selected);
+    color: var(--accent);
   }
 
   .sep {
