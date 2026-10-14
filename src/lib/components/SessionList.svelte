@@ -113,7 +113,7 @@
     align-items: center;
     height: 1.5rem;
     border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     padding: 0 0.375rem;
     background: var(--panel);
     gap: 0.25rem;
@@ -133,7 +133,7 @@
     width: 1.5rem;
     height: 1.5rem;
     border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     background: var(--panel);
     color: var(--danger-mute);
     cursor: pointer;

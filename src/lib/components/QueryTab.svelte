@@ -433,7 +433,7 @@
 <style>
   .query { flex: 1; display: flex; flex-direction: column; min-height: 0; height: 100%; }
   .bar { display: flex; align-items: center; gap: 0.625rem; height: 1.875rem; flex: none; background: var(--panel); border-bottom: 1px solid var(--border); padding: 0 0.625rem; }
-  .readonly-badge { font-size: 0.6875rem; color: var(--warn-fg); background: var(--warn-bg2); border: 1px solid var(--warn-fg); border-radius: 0.1875rem; padding: 0 0.375rem; line-height: 1.4; }
+  .readonly-badge { font-size: 0.6875rem; color: var(--warn-fg); background: var(--warn-bg2); border: 1px solid var(--warn-fg); border-radius: var(--radius); padding: 0 0.375rem; line-height: 1.4; }
   .db { color: var(--gray-77); font-size: var(--fs); }
   .bar-spacer { flex: 1; }
   .editor { height: 34%; flex: none; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
@@ -448,15 +448,15 @@
   .bottom-tabs > button.active { background: var(--panel); color: var(--tab-active-fg); font-weight: 600; box-shadow: inset 0 -2px 0 var(--tab-active-border); }
   .right-tools { margin-left: auto; display: flex; align-items: center; gap: 0.375rem; }
   .view-toggle, .mode-toggle { display: flex; gap: 0.0625rem; }
-  .view-toggle button, .mode-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
+  .view-toggle button, .mode-toggle button { height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: var(--radius-sm); cursor: pointer; }
   .view-toggle button.active, .mode-toggle button.active { background: var(--hover); box-shadow: inset 0 0 0 1px var(--toggle-on-ring); color: var(--tab-active-fg); }
-  .search-input { width: 8rem; height: 1.25rem; background: var(--panel); border: 1px solid var(--gray-c4); border-radius: 0.125rem; padding: 0 0.5rem; font-family: Consolas, monospace; font-size: 0.6875rem; box-sizing: border-box; }
+  .search-input { width: 8rem; height: 1.25rem; background: var(--panel); border: 1px solid var(--gray-c4); border-radius: var(--radius-sm); padding: 0 0.5rem; font-family: var(--mono); font-size: 0.6875rem; box-sizing: border-box; }
   .search-invalid { border-color: var(--error); color: var(--error); }
-  .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: 0.125rem; cursor: pointer; }
+  .log-clear { margin-left: auto; height: 1.25rem; padding: 0 0.5rem; font-size: 0.6875rem; border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44); border-radius: var(--radius-sm); cursor: pointer; }
   .log-clear:hover { background: var(--hover); }
   .result-pane { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--panel); }
   .status { padding: 0.5rem 0.75rem; color: var(--muted); font-size: var(--fs); display: flex; align-items: center; gap: 0.5rem; }
   .cancel-btn { font-size: var(--fs); cursor: pointer; border: none; background: none; color: var(--link); }
   .value-display { height: 100%; box-sizing: border-box; overflow: auto; padding: 0.5rem 0.75rem; }
-  .value-display pre { margin: 0; font-family: ui-monospace, monospace; font-size: var(--fs); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
+  .value-display pre { margin: 0; font-family: var(--mono); font-size: var(--fs); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
 </style>

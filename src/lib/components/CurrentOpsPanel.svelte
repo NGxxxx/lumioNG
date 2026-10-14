@@ -80,7 +80,7 @@
 <style>
   .currentops { height: 100%; box-sizing: border-box; overflow: auto; background: var(--panel); padding: 0.875rem 1.125rem; }
   .bar { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 0.625rem; }
-  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .bar button:hover { background: var(--bg); }
   .status { color: var(--muted); font-size: var(--fs); }
   table { border-collapse: collapse; width: 100%; font-size: var(--fs); user-select: none; }
@@ -88,7 +88,7 @@
   .v { padding: 0.25rem 0.625rem; border: 1px solid var(--cell-border); color: var(--text-strong); font-family: var(--mono); }
   tr.own .v { background: var(--ok-bg); }
   .you { margin-left: 0.375rem; padding: 0.0625rem 0.375rem; border-radius: 0.5625rem; font-size: 0.625rem; font-family: var(--font-ui, sans-serif); background: var(--ok-strong); color: var(--panel); }
-  .kill { height: 1.25rem; padding: 0 0.5rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--error); cursor: pointer; font-size: 0.6875rem; }
+  .kill { height: 1.25rem; padding: 0 0.5rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--error); cursor: pointer; font-size: 0.6875rem; }
   .kill:hover:not(:disabled) { background: var(--error-bg); }
   .kill:disabled { color: var(--gray-b8); cursor: default; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; margin-bottom: 0.625rem; }

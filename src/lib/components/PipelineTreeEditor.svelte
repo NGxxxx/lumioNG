@@ -44,7 +44,7 @@
 
 <style>
   .pipeline-tree { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0.5rem; box-sizing: border-box; }
-  .parse-error { color: var(--warn-fg); background: var(--warn-bg2); padding: 0.5rem 0.75rem; border-radius: 0.1875rem; font-size: var(--fs); }
+  .parse-error { color: var(--warn-fg); background: var(--warn-bg2); padding: 0.5rem 0.75rem; border-radius: var(--radius); font-size: var(--fs); }
   .toolbar { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; flex: none; }
   .auto-preview { display: flex; align-items: center; gap: 0.25rem; font-size: var(--fs); color: var(--gray-77); }
   .spacer { flex: 1; }

@@ -283,9 +283,9 @@
     height: 1.375rem;
     background: var(--panel);
     border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     padding: 0 0.5rem;
-    font-family: Consolas, monospace;
+    font-family: var(--mono);
     font-size: var(--fs);
     box-sizing: border-box;
   }
@@ -297,7 +297,7 @@
     border: 1px solid var(--gray-c4);
     background: var(--bg);
     color: var(--gray-44);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     cursor: pointer;
   }
   .tree-toolbar-btn:hover:not(:disabled) { background: var(--cell-border); }
@@ -312,7 +312,7 @@
     min-height: 0;
     position: relative;
     background: var(--panel);
-    font-family: Consolas, "Courier New", monospace;
+    font-family: var(--mono);
     font-size: 0.8125rem;
   }
   .tree-sizer { position: relative; width: 100%; }
@@ -342,10 +342,10 @@
   }
   .tree-caret { flex: none; cursor: pointer; }
   .tree-caret-pad { flex: none; width: 9px; }
-  .label { font-family: ui-monospace, monospace; font-size: 0.8125rem; color: var(--gray-33); flex: none; }
+  .label { font-family: var(--mono); font-size: 0.8125rem; color: var(--gray-33); flex: none; }
   .label.clickable { cursor: pointer; }
-  .badge { background: var(--blue-tint5); color: var(--slate); padding: 0 0.375rem; border-radius: 0.1875rem; font-size: 0.6875rem; font-family: ui-monospace, monospace; flex: none; }
-  .display { color: var(--gray-55); font-family: ui-monospace, monospace; font-size: 0.8125rem; }
+  .badge { background: var(--blue-tint5); color: var(--slate); padding: 0 0.375rem; border-radius: var(--radius); font-size: 0.6875rem; font-family: var(--mono); flex: none; }
+  .display { color: var(--gray-55); font-family: var(--mono); font-size: 0.8125rem; }
   .x { border: none; background: none; color: var(--danger-strong); cursor: pointer; font-size: var(--fs); flex: none; }
   .lock { font-size: var(--fs); flex: none; }
 </style>

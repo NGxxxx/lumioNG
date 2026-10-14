@@ -194,7 +194,7 @@
     max-height: 100%;
     position: relative;
     background: var(--panel);
-    font-family: Consolas, "Courier New", monospace;
+    font-family: var(--mono);
     font-size: 0.78125rem;
     line-height: 1.5;
     user-select: none;

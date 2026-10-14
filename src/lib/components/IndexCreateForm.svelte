@@ -101,22 +101,22 @@
 </div>
 
 <style>
-  .form { border: 1px solid var(--border); border-radius: 0.375rem; padding: 0.75rem; margin: 0.5rem; font-size: 0.8125rem; background: var(--zebra); }
+  .form { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 0.75rem; margin: 0.5rem; font-size: 0.8125rem; background: var(--zebra); }
   .row { display: flex; gap: 0.375rem; margin-bottom: 0.375rem; }
   .row input { flex: 1; padding: 0.25rem 0.375rem; }
   .rm { border: none; background: none; cursor: pointer; color: var(--error); font-size: 1rem; }
-  .addfield { border: 1px dashed var(--gray-c4); background: var(--panel); color: var(--fg); border-radius: 0.25rem; padding: 0.1875rem 0.5rem; cursor: pointer; font-size: var(--fs); }
+  .addfield { border: 1px dashed var(--gray-c4); background: var(--panel); color: var(--fg); border-radius: var(--radius); padding: 0.1875rem 0.5rem; cursor: pointer; font-size: var(--fs); }
   .opt { display: block; margin-top: 0.5rem; }
   .opt input:not([type]) { width: 100%; box-sizing: border-box; margin-top: 0.25rem; padding: 0.25rem 0.375rem; }
   .ttl-row input[type="number"] { width: 6rem; margin-left: 0.5rem; padding: 0.1875rem 0.375rem; }
   .advanced-toggle { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; margin-top: 0.625rem; font-size: var(--fs); }
   .advanced-toggle:hover { text-decoration: underline; }
-  .jsoneditor { height: 6rem; border: 1px solid var(--border); border-radius: 0.25rem; overflow: auto; margin-top: 0.25rem; }
+  .jsoneditor { height: 6rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; margin-top: 0.25rem; }
   .dlg-error { color: var(--error); margin-top: 0.5rem; }
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem; }
-  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   footer button:hover:not(:disabled) { background: var(--bg); }
   footer button:disabled { color: var(--gray-b8); cursor: default; }
-  footer .primary { background: var(--run); color: var(--panel); border: none; font-weight: 600; }
+  footer .primary { background: var(--run); color: var(--on-accent); border: none; font-weight: 600; }
   footer .primary:hover:not(:disabled) { background: var(--run-hover); }
 </style>

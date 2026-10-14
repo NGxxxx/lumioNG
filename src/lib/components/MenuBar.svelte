@@ -285,7 +285,7 @@
   .menubar {
     display: flex;
     align-items: center;
-    height: 1.5rem;
+    height: 1.75rem;
     background: var(--bg);
     border-bottom: 1px solid var(--border);
     padding: 0 0.25rem;
@@ -296,10 +296,10 @@
   .top {
     border: none;
     background: none;
-    padding: 0.1875rem 0.5625rem;
+    padding: 0.25rem 0.5625rem;
     font-size: var(--fs);
     color: var(--fg);
-    border-radius: 0.125rem;
+    border-radius: var(--radius);
     cursor: pointer;
     line-height: 1;
   }
@@ -316,7 +316,9 @@
     width: max-content;
     background: var(--panel);
     border: 1px solid var(--border);
-    box-shadow: 0 2px 6px rgba(0,0,0,.15);
+    border-radius: var(--radius-lg);
+    padding: 0.25rem;
+    box-shadow: var(--shadow-sm);
   }
   .item {
     display: flex;
@@ -327,7 +329,8 @@
     text-align: left;
     border: none;
     background: none;
-    padding: 0.3125rem 0.75rem;
+    padding: 0.3125rem 0.625rem;
+    border-radius: var(--radius);
     cursor: pointer;
     font-size: var(--fs);
     color: var(--fg);
@@ -339,5 +342,5 @@
   /* Submenu parent row + right-anchored flyout */
   .parent { position: relative; }
   .arrow { color: var(--muted); font-size: 0.625rem; }
-  .submenu { top: 0; left: 100%; }
+  .submenu { top: -0.3125rem; left: calc(100% + 0.25rem); }
 </style>

@@ -35,7 +35,7 @@
     border: 1px solid var(--gray-c4);
     background: var(--bg);
     color: var(--gray-44);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     cursor: pointer;
   }
 </style>

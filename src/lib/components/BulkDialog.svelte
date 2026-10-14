@@ -94,11 +94,11 @@
 </Modal>
 
 <style>
-  .warn { background: var(--warn-bg); border: 1px solid var(--warn); padding: 0.5rem; border-radius: 0.25rem; }
+  .warn { background: var(--warn-bg); border: 1px solid var(--warn); padding: 0.5rem; border-radius: var(--radius); }
   .ulabel { display: flex; flex-direction: column; gap: 0.25rem; }
-  textarea { font-family: ui-monospace, monospace; font-size: var(--fs); }
+  textarea { font-family: var(--mono); font-size: var(--fs); }
   .counter { display: flex; align-items: center; gap: 0.5rem; }
-  .counter button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .counter button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .counter button:hover:not(:disabled) { background: var(--bg); }
   .counter button:disabled { color: var(--gray-b8); cursor: default; }
   .ok { color: var(--ok-fg); }

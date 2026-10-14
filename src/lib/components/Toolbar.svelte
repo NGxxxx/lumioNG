@@ -304,7 +304,7 @@
     border: none;
     background: none;
     cursor: default;
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     line-height: 1;
   }
 
@@ -318,13 +318,12 @@
   }
 
   .btn-icon.active {
-    background: var(--hover);
-    box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
+    background: var(--selected);
   }
 
   .sep {
     width: 1px;
-    height: 1.25rem;
+    height: 1rem;
     background: var(--gray-cf);
     margin: 0 0.1875rem;
     flex: none;

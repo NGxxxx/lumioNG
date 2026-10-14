@@ -129,7 +129,7 @@
   .gridfs-preview-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.35);
+    background: var(--backdrop);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -140,7 +140,7 @@
     max-height: 80vh;
     background: var(--bg);
     border: 1px solid var(--border);
-    border-radius: 0.25rem;
+    border-radius: var(--radius);
     display: flex;
     flex-direction: column;
   }

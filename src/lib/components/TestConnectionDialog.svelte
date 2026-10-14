@@ -40,6 +40,6 @@
 
 <style>
   p { margin: 0; }
-  .ok { color: var(--run); }
+  .ok { color: var(--ok-fg); }
   .fail { color: var(--error); }
 </style>

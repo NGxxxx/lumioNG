@@ -169,7 +169,7 @@
   .overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.28);
+    background: var(--backdrop);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -183,9 +183,9 @@
     max-width: calc(100vw - 1.5rem);
     max-height: calc(100vh - 1.5rem);
     background: var(--bg);
-    border: 1px solid var(--muted);
-    border-radius: 0.375rem;
-    box-shadow: 0 14px 48px rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -216,13 +216,13 @@
     background: none;
     border: none;
     cursor: pointer;
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     color: var(--gray-55);
     padding: 0;
   }
   .close-btn:hover {
     background: var(--danger);
-    color: var(--panel);
+    color: var(--on-accent);
   }
 
   /* ── Body ── */
@@ -255,7 +255,7 @@
     padding: 0 0.75rem;
     background: var(--panel);
     border: 1px solid var(--gray-b8);
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     cursor: pointer;
     font-size: var(--fs);
     color: var(--fg);
@@ -274,7 +274,7 @@
     height: 1.75rem;
     padding: 0 1.375rem;
     background: var(--accent);
-    color: var(--panel);
+    color: var(--on-accent);
     border-color: transparent;
     font-weight: 600;
   }

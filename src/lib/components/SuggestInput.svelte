@@ -137,7 +137,7 @@
     font-size: var(--fs);
     padding: 0.0625rem 0.25rem;
     border: 1px solid var(--gray-b8);
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     background: var(--panel);
     color: var(--fg);
   }
@@ -153,8 +153,8 @@
     list-style: none;
     background: var(--panel);
     border: 1px solid var(--gray-c4);
-    border-radius: 0.25rem;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
     max-height: 16rem;
     overflow-y: auto;
   }
@@ -169,7 +169,7 @@
     color: var(--fg);
     padding: 0.25rem 0.75rem;
     font-size: 0.8125rem;
-    font-family: ui-monospace, monospace;
+    font-family: var(--mono);
     cursor: pointer;
   }
   .suggest-option:hover, .suggest-option.active { background: var(--bg); }

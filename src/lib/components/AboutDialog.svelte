@@ -59,7 +59,7 @@
   .name { font-size: 1.0625rem; font-weight: 700; color: var(--fg); letter-spacing: -0.01em; }
   .tagline {
     margin-top: 0.375rem; font-size: 0.6875rem; color: var(--slate); background: var(--blue-tint5);
-    padding: 0.125rem 0.5rem; border-radius: 0.1875rem;
+    padding: 0.125rem 0.5rem; border-radius: var(--radius);
   }
   .info-wrap { margin-top: 1rem; width: 100%; border-top: 1px solid var(--bg); padding-top: 0.625rem; display: flex; justify-content: center; }
   .info { border-collapse: collapse; }

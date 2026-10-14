@@ -66,15 +66,15 @@
 
 <style>
   /* overflow-y: auto — lets the backdrop scroll if a dialog is taller than the window */
-  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
-  .modal { background: var(--panel); border-radius: 0.375rem; overflow: hidden; }
-  header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
-  .body { padding: 0.875rem; font-size: 0.8125rem; }
+  .backdrop { position: fixed; inset: 0; z-index: 1000; background: var(--backdrop); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
+  .modal { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
+  header { padding: 0.75rem 1rem; font-weight: 500; border-bottom: 1px solid var(--border); }
+  .body { padding: 1rem; font-size: var(--fs); }
   .body.stack { display: flex; flex-direction: column; gap: 0.625rem; }
-  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
+  footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.75rem 1rem; border-top: 1px solid var(--border); background: var(--bg); }
 
   /* Body/footer content is authored in the calling dialog, so the shared bits below need :global. */
-  .body :global(code) { background: var(--bg); padding: 0.0625rem 0.25rem; border-radius: 0.1875rem; font-family: ui-monospace, monospace; }
+  .body :global(code) { background: var(--bg); padding: 0.0625rem 0.25rem; border-radius: var(--radius); font-family: var(--mono); }
   .body :global(input), .body :global(select) { width: 100%; box-sizing: border-box; margin-top: 0.375rem; padding: 0.3125rem 0.4375rem; }
   .body :global(.dlg-error) { color: var(--error); margin-top: 0.5rem; }
   .body.stack :global(.dlg-error) { margin-top: 0; }
@@ -85,12 +85,12 @@
   }
   @keyframes -global-dlg-spin { to { transform: rotate(360deg); } }
 
-  footer :global(button) { display: inline-flex; align-items: center; gap: 0.375rem; height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
-  footer :global(button:hover:not(:disabled)) { background: var(--bg); }
+  footer :global(button) { display: inline-flex; align-items: center; gap: 0.375rem; height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--fg); font-weight: 500; cursor: pointer; }
+  footer :global(button:hover:not(:disabled)) { background: var(--menu-hover); }
   footer :global(button:disabled) { cursor: default; }
   footer:not(.fade) :global(button:disabled) { color: var(--gray-b8); }
   footer.fade :global(button:disabled) { opacity: 0.6; }
-  footer :global(.primary) { background: var(--run); color: var(--panel); border: none; }
+  footer :global(.primary) { background: var(--run); color: var(--on-accent); border-color: transparent; }
   footer :global(.primary:hover:not(:disabled)) { background: var(--run-hover); }
   footer :global(.danger) { color: var(--error); }
   footer :global(.danger:disabled) { color: var(--gray-b8); }

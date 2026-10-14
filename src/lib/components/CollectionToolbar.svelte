@@ -239,9 +239,9 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     height: 1.3125rem;
     background: var(--panel);
     border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     padding: 0 0.5rem;
-    font-family: Consolas, monospace;
+    font-family: var(--mono);
     font-size: var(--fs);
     box-sizing: border-box;
   }
@@ -252,9 +252,9 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     height: 1.375rem;
     padding: 0 0.75rem;
     background: var(--run);
-    color: var(--panel);
+    color: var(--on-accent);
     border: none;
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     cursor: pointer;
     font-weight: 600;
     font-size: var(--fs);
@@ -274,7 +274,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     background: var(--bg);
     cursor: pointer;
     color: var(--gray-44);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
   }
   .toggle-btn:hover { background: var(--cell-border); }
   .toggle-active {
@@ -290,9 +290,9 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     margin-left: 0.375rem;
     background: var(--panel);
     border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     padding: 0 0.5rem;
-    font-family: Consolas, monospace;
+    font-family: var(--mono);
     font-size: var(--fs);
     box-sizing: border-box;
   }
@@ -309,7 +309,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     padding: 0 0.625rem;
     font-size: var(--fs);
     border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     background: var(--bg);
     color: var(--gray-44);
     cursor: pointer;
@@ -322,14 +322,14 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .drop-btn {
     height: 1.375rem; padding: 0 0.5rem; font-size: var(--fs);
     border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44);
-    border-radius: 0.125rem; cursor: pointer; white-space: nowrap;
+    border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;
   }
   .drop-btn:hover { background: var(--cell-border); }
   .dropdown {
     position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 0.125rem;
     background: var(--panel); border: 1px solid var(--gray-c4); padding: 0.375rem;
     min-width: 11.25rem; max-height: 20rem; overflow: auto;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--shadow-sm);
   }
   .dd-allnone { padding-bottom: 0.375rem; margin-bottom: 0.25rem; border-bottom: 1px solid var(--bg); }
   .dd-allnone .chooser-row { font-weight: 600; }
@@ -343,10 +343,10 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .dd-empty { color: var(--gray-99); font-size: var(--fs); padding: 0.125rem 0.125rem 0.375rem; }
   .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: var(--fs); padding: 0.125rem 0; white-space: nowrap; }
   .dd-rank { color: var(--gray-99); width: 1rem; }
-  .dd-field { flex: 1; font-family: ui-monospace, monospace; }
+  .dd-field { flex: 1; font-family: var(--mono); }
   .dd-ic {
     width: 1.25rem; height: 1.125rem; border: 1px solid var(--gray-cf); background: var(--th-grad-top);
-    border-radius: 0.125rem; cursor: pointer; font-size: 0.6875rem; line-height: 1; padding: 0; color: var(--gray-44);
+    border-radius: var(--radius-sm); cursor: pointer; font-size: 0.6875rem; line-height: 1; padding: 0; color: var(--gray-44);
   }
   .dd-ic:hover { background: var(--tab-inactive-bg); }
   .dd-ic:disabled { opacity: 0.35; cursor: default; }

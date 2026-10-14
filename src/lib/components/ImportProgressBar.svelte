@@ -17,7 +17,7 @@
 
 <style>
   .progress { display: flex; align-items: center; gap: 0.5rem; }
-  .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: 0.25rem; overflow: hidden; }
+  .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: var(--radius); overflow: hidden; }
   .fill { height: 100%; background: var(--progress); transition: width .2s; }
   .unknown { color: var(--gray-77); }
 </style>

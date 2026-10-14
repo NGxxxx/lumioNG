@@ -257,10 +257,13 @@
   /* ── Header ── */
   th {
     box-sizing: border-box;
-    background: linear-gradient(var(--th-grad-top), var(--th-grad-bottom));
-    border: 1px solid var(--gray-cf);
+    background: var(--th-grad-top);
+    /* transparent top/left keep the old 1px-per-side geometry; only the dividers are drawn */
+    border: 1px solid transparent;
+    border-right-color: var(--cell-border);
+    border-bottom-color: var(--border);
     padding: 0.25rem 0.5625rem;
-    font-weight: 600;
+    font-weight: 500;
     position: sticky;
     top: 0;
     z-index: 2;
@@ -288,7 +291,9 @@
   td {
     /* border-box: border-collapse is now separate, so border+padding must count toward width. */
     box-sizing: border-box;
-    border: 1px solid var(--cell-border);
+    border: 1px solid transparent;
+    border-right-color: color-mix(in srgb, var(--cell-border) 55%, transparent);
+    border-bottom-color: var(--row-divider);
     padding: 0.1875rem 0.5625rem;
     white-space: nowrap;
     overflow: hidden;
@@ -315,9 +320,9 @@
   .data-cell .cell {
     padding: 0 0.5625rem; display: inline-block; height: 22px; line-height: 22px;
     max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    vertical-align: bottom; font-family: ui-monospace, monospace; font-size: var(--fs);
+    vertical-align: bottom; font-family: var(--mono); font-size: var(--fs);
   }
-  .data-cell .cell.string { font-family: system-ui, sans-serif; }
+  .data-cell .cell.string { font-family: var(--font); }
   .data-cell .cell.null { font-style: italic; }
   .data-cell .cell.object { color: var(--type-object); font-style: italic; font-size: 0.6875rem; }
   .data-cell .cell.array { color: var(--type-array); font-style: italic; font-size: 0.6875rem; }
@@ -333,7 +338,7 @@
   }
 
   /* ── Edit cell ── */
-  .celledit { width: 100%; box-sizing: border-box; font-family: ui-monospace, monospace; font-size: var(--fs); padding: 0.125rem 0.25rem; }
+  .celledit { width: 100%; box-sizing: border-box; font-family: var(--mono); font-size: var(--fs); padding: 0.125rem 0.25rem; }
   .celledit:disabled { opacity: 0.6; }
   .cell-spinner {
     position: absolute; top: 50%; right: 0.25rem; transform: translateY(-50%);
@@ -345,26 +350,26 @@
   .cell-editing-modal { box-shadow: inset 0 0 0 2px var(--focus-ring); }
 
   /* ── Object/array modal editor ── */
-  .modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
-  .modal-editor { background: var(--panel); width: 34rem; max-width: 90vw; border-radius: 0.375rem; overflow: hidden; display: flex; flex-direction: column; }
+  .modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: var(--backdrop); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
+  .modal-editor { background: var(--panel); width: 34rem; max-width: 90vw; border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
   .modal-editor header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); font-size: 0.8125rem; }
   .modal-textarea {
     height: 18rem; margin: 0.875rem; width: calc(100% - 1.75rem); box-sizing: border-box;
-    font-family: ui-monospace, monospace; font-size: var(--fs); padding: 0.5rem; resize: vertical;
+    font-family: var(--mono); font-size: var(--fs); padding: 0.5rem; resize: vertical;
   }
   .modal-textarea:disabled { opacity: 0.6; }
   .modal-loading { height: 18rem; margin: 0.875rem; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 0.8125rem; }
   .modal-error { margin: 0 0.875rem 0.625rem; }
   .modal-editor footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
-  .modal-editor footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .modal-editor footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .modal-editor footer button:hover:not(:disabled) { background: var(--bg); }
   .modal-editor footer button:disabled { color: var(--gray-b8); cursor: default; }
-  .modal-editor footer .primary { background: var(--run); color: var(--panel); border: none; font-weight: 600; }
+  .modal-editor footer .primary { background: var(--run); color: var(--on-accent); border: none; font-weight: 600; }
   .modal-editor footer .primary:hover:not(:disabled) { background: var(--run-hover); }
 
   /* ── Column header decorations ── */
   .colname { font-weight: 600; }
-  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: var(--gray-55); background: var(--tab-inactive-bg); border-radius: 0.1875rem; padding: 0 0.25rem; font-family: ui-monospace, monospace; }
+  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: var(--gray-55); background: var(--tab-inactive-bg); border-radius: var(--radius); padding: 0 0.25rem; font-family: var(--mono); }
   .presence { margin-left: 0.25rem; font-size: 0.625rem; color: var(--gray-99); }
   .sortarrow { margin-left: 0.25rem; font-size: 0.625rem; color: var(--link); }
   .sortrank { margin-left: 0.125rem; font-size: 0.5625rem; color: var(--link); vertical-align: super; }

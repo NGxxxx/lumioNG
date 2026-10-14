@@ -25,9 +25,9 @@
     background: var(--ok-strong);
     color: #fff;
     padding: 0.5rem 0.875rem;
-    border-radius: 0.25rem;
+    border-radius: var(--radius);
     font-size: var(--fs);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--shadow-sm);
     animation: toast-in 0.15s ease-out;
   }
   .toast-error { background: var(--error); }

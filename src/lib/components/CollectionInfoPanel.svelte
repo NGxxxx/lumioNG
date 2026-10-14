@@ -126,23 +126,23 @@
   h3:first-child { margin-top: 0; }
   table.kv { border-collapse: collapse; user-select: none; }
   table.kv th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.1875rem 1rem 0.1875rem 0; vertical-align: top; }
-  table.kv td { padding: 0.1875rem 0; font-family: ui-monospace, monospace; }
-  pre { background: var(--zebra); border: 1px solid var(--bg); border-radius: 0.25rem; padding: 0.625rem; overflow: auto; font-size: var(--fs); }
+  table.kv td { padding: 0.1875rem 0; font-family: var(--mono); }
+  pre { background: var(--zebra); border: 1px solid var(--bg); border-radius: var(--radius); padding: 0.625rem; overflow: auto; font-size: var(--fs); }
   .muted { color: var(--muted); }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }
   .status { padding: 0.5rem 0; color: var(--gray-77); font-size: var(--fs); }
-  .edit-validator { margin-top: 0.5rem; height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; font-size: var(--fs); }
+  .edit-validator { margin-top: 0.5rem; height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; font-size: var(--fs); }
   .edit-validator:hover:not(:disabled) { background: var(--bg); }
   .edit-validator:disabled { color: var(--gray-b8); cursor: default; }
-  .validator-form { border: 1px solid var(--border); border-radius: 0.375rem; padding: 0.75rem; background: var(--zebra); }
+  .validator-form { border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 0.75rem; background: var(--zebra); }
   .validator-form label { display: block; font-size: var(--fs); color: var(--gray-55); }
-  .validator-json { width: 100%; box-sizing: border-box; height: 8rem; margin-top: 0.25rem; padding: 0.375rem; font-family: ui-monospace, monospace; font-size: var(--fs); resize: vertical; }
+  .validator-json { width: 100%; box-sizing: border-box; height: 8rem; margin-top: 0.25rem; padding: 0.375rem; font-family: var(--mono); font-size: var(--fs); resize: vertical; }
   .validator-row { display: flex; gap: 1.25rem; margin-top: 0.625rem; }
   .validator-row select { display: block; margin-top: 0.25rem; }
   .validator-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem; }
-  .validator-actions button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .validator-actions button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .validator-actions button:hover:not(:disabled) { background: var(--bg); }
   .validator-actions button:disabled { color: var(--gray-b8); cursor: default; }
-  .validator-actions .primary { background: var(--run); color: var(--panel); border: none; font-weight: 600; }
+  .validator-actions .primary { background: var(--run); color: var(--on-accent); border: none; font-weight: 600; }
   .validator-actions .primary:hover:not(:disabled) { background: var(--run-hover); }
 </style>

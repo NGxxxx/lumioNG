@@ -41,14 +41,14 @@
 <style>
   .schemapanel { overflow: auto; height: 100%; box-sizing: border-box; padding: 0.75rem 1rem; font-size: 0.8125rem; }
   .bar { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.625rem; }
-  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .bar button:hover:not(:disabled) { background: var(--bg); }
   .bar button:disabled { color: var(--gray-b8); cursor: default; }
   .bar input { width: 4.375rem; }
   .muted { color: var(--muted); }
   table.schema { border-collapse: collapse; width: 100%; user-select: none; }
   table.schema th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.25rem 0.75rem 0.25rem 0; border-bottom: 1px solid var(--cell-border); }
-  table.schema td { padding: 0.25rem 0.75rem 0.25rem 0; font-family: ui-monospace, monospace; border-bottom: 1px solid var(--row-divider); }
+  table.schema td { padding: 0.25rem 0.75rem 0.25rem 0; font-family: var(--mono); border-bottom: 1px solid var(--row-divider); }
   .field { color: var(--text-strong); }
   .badge { padding: 0.0625rem 0.4375rem; border-radius: 0.5625rem; font-size: 0.6875rem; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }

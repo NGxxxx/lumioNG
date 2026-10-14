@@ -168,7 +168,7 @@
 {/if}
 
 <style>
-  .stage-card { border: 1px solid var(--gray-c4); border-radius: 0.1875rem; margin-bottom: 0.5rem; background: var(--panel); }
+  .stage-card { border: 1px solid var(--gray-c4); border-radius: var(--radius); margin-bottom: 0.5rem; background: var(--panel); }
   .stage-head { display: flex; align-items: center; gap: 0.375rem; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border); }
   .drag-handle { cursor: grab; color: var(--gray-77); }
   .spacer { flex: 1; }

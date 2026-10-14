@@ -62,7 +62,7 @@
   .pane { display: flex; flex-direction: column; height: 100%; min-height: 0; }
   .head { display: flex; align-items: center; gap: 0.5rem; flex: none; height: 1.5rem; padding: 0 0.5rem; border-bottom: 1px solid var(--border); background: var(--bg); }
   .elapsed { font-size: 0.6875rem; color: var(--muted); font-variant-numeric: tabular-nums; }
-  .head-btn { margin-left: auto; border: none; background: none; cursor: pointer; font-size: 0.6875rem; color: var(--muted); padding: 0.125rem 0.375rem; border-radius: 0.125rem; }
+  .head-btn { margin-left: auto; border: none; background: none; cursor: pointer; font-size: 0.6875rem; color: var(--muted); padding: 0.125rem 0.375rem; border-radius: var(--radius-sm); }
   .head-btn:hover:not(:disabled) { color: var(--fg); background: var(--hover); }
   .head-btn:disabled { opacity: 0.4; cursor: default; }
   .idle { padding: 0.5rem 0.75rem; color: var(--muted); font-size: var(--fs); }
@@ -71,7 +71,7 @@
   .entry:hover { background: var(--hover); }
   .entry .text {
     flex: 1; min-width: 0;
-    font-family: ui-monospace, monospace;
+    font-family: var(--mono);
     font-size: var(--fs);
     white-space: pre-wrap;
     word-break: break-all;
@@ -81,6 +81,6 @@
   .entry.error .text { color: var(--error); }
   .row-actions { display: flex; gap: 0.1875rem; flex: none; opacity: 0; }
   .entry:hover .row-actions { opacity: 1; }
-  .line-btn { border: none; background: none; cursor: pointer; font-size: 0.6875rem; color: var(--muted); padding: 0 0.25rem; border-radius: 0.125rem; }
+  .line-btn { border: none; background: none; cursor: pointer; font-size: 0.6875rem; color: var(--muted); padding: 0 0.25rem; border-radius: var(--radius-sm); }
   .line-btn:hover { color: var(--fg); background: var(--menu-hover); }
 </style>

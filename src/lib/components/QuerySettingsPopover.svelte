@@ -39,13 +39,13 @@
 
 <style>
   .settings { position: relative; display: inline-flex; }
-  .gear { background: none; border: none; cursor: pointer; font-size: 0.875rem; line-height: 1; padding: 0.125rem 0.25rem; color: var(--gray-55); border-radius: 0.1875rem; }
+  .gear { background: none; border: none; cursor: pointer; font-size: 0.875rem; line-height: 1; padding: 0.125rem 0.25rem; color: var(--gray-55); border-radius: var(--radius); }
   .gear:hover { background: var(--hover); color: var(--fg); }
 
   .popover {
     position: absolute; top: 1.75rem; right: 0; z-index: 100;
-    background: var(--panel); border: 1px solid var(--border); border-radius: 0.375rem;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.14);
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
     padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; min-width: 13rem;
   }
 
@@ -56,7 +56,7 @@
 
   .field-input {
     height: 1.625rem; padding: 0 0.5rem; font-size: var(--fs);
-    border: 1px solid var(--gray-c4); border-radius: 0.1875rem;
+    border: 1px solid var(--gray-c4); border-radius: var(--radius);
     background: var(--bg); color: var(--fg);
   }
   .field-input:focus { outline: none; border-color: var(--focus-ring); }

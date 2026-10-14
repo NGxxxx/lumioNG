@@ -362,7 +362,7 @@
     display: flex;
     overflow: hidden;
     min-height: 0;
-    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-family: var(--mono);
     font-size: 0.8125rem;
     line-height: 1.65;
   }
@@ -375,7 +375,7 @@
     box-sizing: border-box;
     white-space: pre-wrap;
     overflow-wrap: break-word;
-    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-family: var(--mono);
     font-size: 0.8125rem;
     line-height: 1.65;
   }
@@ -390,7 +390,7 @@
     border-right: 1px solid var(--bg);
     background: var(--cream);
     white-space: pre;
-    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-family: var(--mono);
     font-size: 0.8125rem;
     line-height: 1.65;
     overflow: hidden;
@@ -402,7 +402,7 @@
     height: 100%;
     border: none;
     padding: 0.625rem 0.875rem;
-    font-family: Consolas, "Courier New", ui-monospace, monospace;
+    font-family: var(--mono);
     font-size: 0.8125rem;
     line-height: 1.65;
     resize: none;
@@ -455,9 +455,9 @@
     height: 1.75rem;
     padding: 0 1.25rem;
     background: var(--run);
-    color: var(--panel);
+    color: var(--on-accent);
     border: none;
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     cursor: pointer;
     font-weight: 600;
     font-size: 0.8125rem;
@@ -472,7 +472,7 @@
     background: var(--panel);
     color: var(--fg);
     border: 1px solid var(--gray-b8);
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     cursor: pointer;
     font-size: 0.8125rem;
   }

@@ -121,7 +121,7 @@
     align-items: flex-end;
     flex: none;
     padding: 0 0.25rem;
-    border-bottom: 1px solid var(--gray-c4);
+    border-bottom: 1px solid var(--border);
     background: var(--bg);
   }
   /* Explicit height on both — matching .work-tabs' total (tab row + reserve) exactly, so
@@ -149,7 +149,7 @@
   }
   .work-tabs::-webkit-scrollbar { height: 0.5rem; }
   .work-tabs::-webkit-scrollbar-track { background: transparent; }
-  .work-tabs::-webkit-scrollbar-thumb { background: var(--gray-c4); border-radius: 0.25rem; }
+  .work-tabs::-webkit-scrollbar-thumb { background: var(--gray-b8); border-radius: var(--radius); }
   .work-tabs-inner {
     display: flex;
     align-items: flex-start;
@@ -158,54 +158,43 @@
     transform: scaleY(-1);
   }
 
+  /* Linear-style tabs: borderless, muted until hovered; the active tab is a raised card joined to the pane below. */
   .tab {
     display: flex;
     align-items: center;
-    gap: 0.3125rem;
-    padding: 0.25rem 0.8125rem;
+    gap: 0.375rem;
+    padding: 0.3125rem 0.75rem;
     font-size: var(--fs);
-    border: 1px solid var(--gray-c4);
+    border: 1px solid transparent;
     border-bottom: none;
-    border-radius: 0.25rem 0.25rem 0 0;
+    border-radius: var(--radius) var(--radius) 0 0;
     margin-bottom: -1px;
     cursor: default;
     white-space: nowrap;
     max-width: 13.75rem;
+    background: transparent;
+    color: var(--muted);
   }
 
-  .tab.context {
-    background: var(--tab-inactive-bg);
-    color: var(--gray-55);
+  .tab:hover:not(.active) {
+    background: var(--menu-hover);
+    color: var(--fg);
   }
 
-  .tab.context.active {
+  .tab.active {
     background: var(--panel);
+    border-color: var(--border);
     color: var(--tab-active-fg);
-    font-weight: 600;
+    font-weight: 500;
     position: relative;
     z-index: 2;
-    box-shadow: inset 0 2px 0 var(--tab-active-border);
-  }
-
-  .tab.work {
-    background: var(--tab-inactive-bg);
-    color: var(--gray-55);
-  }
-
-  .tab.work.active {
-    background: var(--panel);
-    color: var(--tab-active-fg);
-    font-weight: 600;
-    position: relative;
-    z-index: 2;
-    box-shadow: inset 0 2px 0 var(--tab-active-border);
   }
 
   .divider {
     width: 1px;
-    height: 1.25rem;
-    background: var(--gray-c4);
-    margin: 0 0.375rem 0.25rem;
+    height: 1rem;
+    background: var(--border);
+    margin: 0 0.375rem 0.5rem;
     align-self: flex-end;
   }
 
@@ -236,8 +225,8 @@
     color: var(--fg);
   }
 
-  .newq { flex: none; margin-bottom: -1px; padding: 0.25rem 0.75rem; font-weight: 600; color: var(--gray-55); cursor: pointer; border: none; background: none; }
-  .newq:hover { background: var(--panel); }
+  .newq { flex: none; padding: 0.25rem 0.625rem; margin-bottom: 0.25rem; border-radius: var(--radius); font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; }
+  .newq:hover { background: var(--menu-hover); color: var(--fg); }
 
   .session-dot {
     width: 0.5rem;

@@ -113,6 +113,6 @@
   }
 
   .dot.on {
-    background: var(--accent);
+    background: var(--ok-fg);
   }
 </style>

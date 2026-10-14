@@ -22,15 +22,15 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; z-index: 1000; background: rgba(0, 0, 0, 0.3); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
-  .modal { background: var(--panel); width: 34rem; max-width: 90vw; max-height: 80vh; border-radius: 0.375rem; overflow: hidden; display: flex; flex-direction: column; }
+  .backdrop { position: fixed; inset: 0; z-index: 1000; background: var(--backdrop); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
+  .modal { background: var(--panel); width: 34rem; max-width: 90vw; max-height: 80vh; border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
   header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); flex: none; }
   .body { padding: 0.875rem; overflow: auto; min-height: 0; }
   .json {
-    margin: 0; font-family: ui-monospace, monospace; font-size: var(--fs); white-space: pre-wrap;
+    margin: 0; font-family: var(--mono); font-size: var(--fs); white-space: pre-wrap;
     word-break: break-word; color: var(--gray-33);
   }
   footer { display: flex; justify-content: flex-end; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); flex: none; }
-  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   footer button:hover { background: var(--bg); }
 </style>

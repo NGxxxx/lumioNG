@@ -115,24 +115,25 @@
     font-size: 0.8125rem;
     display: flex;
     flex-direction: column;
-    background: var(--panel);
+    background: var(--bg);
+    padding-top: 0.25rem;
   }
 
   /* ── Database row ── */
   .db {
     display: flex;
     align-items: center;
-    height: 1.375rem;
-    padding: 0 0.375rem 0 1.125rem;
+    height: 1.625rem;
+    margin: 0 0.375rem;
+    padding: 0 0.375rem 0 0.75rem;
+    border-radius: var(--radius);
     cursor: default;
     user-select: none;
-    background: var(--panel);
   }
-  .db:hover { background: var(--row-hover); }
+  .db:hover { background: var(--menu-hover); }
   .db[aria-selected="true"] {
-    background: var(--selected);
-    box-shadow: inset 2px 0 0 var(--accent);
-    font-weight: 600;
+    background: var(--menu-hover);
+    font-weight: 500;
   }
   .caret { margin-right: 0.1875rem; flex: none; }
   .icon-db { margin-right: 0.3125rem; flex: none; }
@@ -143,9 +144,11 @@
   .coll {
     display: flex;
     align-items: center;
-    width: 100%;
-    height: 1.375rem;
-    padding: 0 0.375rem 0 2.375rem;
+    width: calc(100% - 0.75rem);
+    height: 1.625rem;
+    margin: 0 0.375rem;
+    padding: 0 0.375rem 0 2rem;
+    border-radius: var(--radius);
     text-align: left;
     border: none;
     background: none;
@@ -154,11 +157,11 @@
     color: var(--fg);
     box-sizing: border-box;
   }
-  .coll:hover { background: var(--row-hover); }
+  .coll:hover { background: var(--menu-hover); }
   .coll.active {
     background: var(--selected);
-    box-shadow: inset 2px 0 0 var(--accent);
-    font-weight: 600;
+    color: var(--text-strong);
+    font-weight: 500;
   }
   .icon-coll { margin-right: 0.3125rem; flex: none; }
   .coll-name { flex: 1; }
@@ -174,7 +177,7 @@
     font-size: 0.6875rem;
     color: var(--gray-77);
     border-top: 1px solid var(--border);
-    background: var(--zebra);
+    background: var(--bg);
     flex: none;
   }
 </style>

@@ -87,5 +87,5 @@
   }
   .wbtn:hover { background: var(--tab-inactive-bg); }
   .wbtn.close:hover { background: var(--danger); }
-  .wbtn.close:hover :global(path) { stroke: var(--panel); }
+  .wbtn.close:hover :global(path) { stroke: var(--on-accent); }
 </style>

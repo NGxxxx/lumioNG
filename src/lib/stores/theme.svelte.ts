@@ -20,7 +20,7 @@ function applyDataTheme(key: ThemeKey) {
   }
 }
 
-/** Reactive Catppuccin flavor: changing it retheme's every CSS var live via the data-theme attribute. */
+/** Reactive light/dark theme: changing it retheme's every CSS var live via the data-theme attribute. */
 export function createTheme() {
   let current = $state<ThemeKey>(typeof document !== "undefined" ? readSaved() : DEFAULT);
   untrack(() => applyDataTheme(current));

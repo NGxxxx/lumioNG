@@ -421,9 +421,9 @@
     margin-right: 0.0625rem;
     cursor: pointer;
     line-height: 0;
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
   }
-  .session-caret-btn:hover { background: rgba(0,0,0,0.07); }
+  .session-caret-btn:hover { background: var(--menu-hover); }
   .session-caret { flex: none; }
 
   .session-dot {
@@ -465,7 +465,7 @@
     color: var(--gray-99);
     font-size: 0.625rem;
     line-height: 1;
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     padding: 0;
     opacity: 0;
     transition: opacity 0.1s;

@@ -140,5 +140,5 @@
 <style>
   .dbfield { display: flex; align-items: center; gap: 0.375rem; font-size: var(--fs); }
   .dbfield input { width: 8rem; padding: 0.125rem 0.375rem; }
-  .jsoneditor { height: 6rem; border: 1px solid var(--border); border-radius: 0.25rem; overflow: auto; margin-top: 0.25rem; }
+  .jsoneditor { height: 6rem; border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; margin-top: 0.25rem; }
 </style>

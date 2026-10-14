@@ -267,8 +267,8 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0,0,0,.3); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; }
-  .modal { background: var(--panel); width: 40rem; max-width: 94vw; border-radius: 0.375rem; overflow: hidden; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+  .backdrop { position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; }
+  .modal { background: var(--panel); width: 40rem; max-width: 94vw; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg); }
   .modal.running { width: 35rem; }
   header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); }
   .body { padding: 0.875rem; font-size: 0.8125rem; }
@@ -276,7 +276,7 @@
 
   /* Two-column layout (HeidiSQL-style): left = what to export, right = options */
   .cols-2 { display: flex; gap: 0.75rem; align-items: stretch; }
-  .panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: 0.25rem; overflow: hidden; }
+  .panel { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
   .panel-bar { display: flex; align-items: center; gap: 0.625rem; padding: 0.3125rem 0.5rem; border-bottom: 1px solid var(--bg); background: var(--zebra); }
   .panel-title { font-size: var(--fs); color: var(--gray-77); }
   .panel-bar .count { margin-left: auto; color: var(--gray-77); font-size: var(--fs); }
@@ -295,20 +295,20 @@
   .scroll label:hover { background: var(--row-hover); }
 
   .options { flex: 0 0 12.25rem; display: flex; flex-direction: column; gap: 0.625rem; }
-  fieldset { border: 1px solid var(--border); border-radius: 0.25rem; padding: 0.5rem 0.625rem; margin: 0; }
-  fieldset button[type="button"]:not(.link) { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  fieldset { border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem 0.625rem; margin: 0; }
+  fieldset button[type="button"]:not(.link) { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   fieldset button[type="button"]:not(.link):hover { background: var(--bg); }
   legend { font-size: var(--fs); color: var(--gray-77); padding: 0 0.25rem; }
   .options label { display: block; padding: 0.125rem 0; }
   .metadata-toggle { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; }
-  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: var(--fs); margin: 0 0 0.625rem; }
+  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: var(--radius); font-size: var(--fs); margin: 0 0 0.625rem; }
   .dir { margin: 0.375rem 0 0; color: var(--th-fg); font-size: var(--fs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); }
-  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   footer button:hover:not(:disabled) { background: var(--bg); }
   footer button:disabled { color: var(--gray-b8); cursor: default; }
-  footer .primary { background: var(--run); color: var(--panel); border: none; }
+  footer .primary { background: var(--run); color: var(--on-accent); border: none; }
   footer .primary:hover:not(:disabled) { background: var(--run-hover); }
   .primary { font-weight: 600; }
 
@@ -319,7 +319,7 @@
   table.rows th { position: sticky; top: 0; background: var(--panel); }
   td.done { color: var(--ok-fg); } td.error { color: var(--error); } td.running { color: var(--ok-strong); }
   .overall { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.625rem; }
-  .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: 0.25rem; overflow: hidden; }
+  .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: var(--radius); overflow: hidden; }
   .fill { height: 100%; background: var(--progress); transition: width .2s; }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; }
   .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; }

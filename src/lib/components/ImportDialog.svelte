@@ -427,26 +427,26 @@
 </div>
 
 <style>
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, .3); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; }
-  .modal { background: var(--panel); width: 30rem; max-width: 94vw; border-radius: 0.375rem; overflow: hidden; box-shadow: 0 10px 40px rgba(0, 0, 0, .25); }
+  .backdrop { position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; }
+  .modal { background: var(--panel); width: 30rem; max-width: 94vw; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg); }
   .modal-sql { width: 32rem; max-height: 85vh; display: flex; flex-direction: column; }
   header { padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--bg); flex: none; }
   header .title { font-weight: 600; }
   header .step-indicator { margin-top: 0.125rem; font-size: 0.6875rem; color: var(--gray-77); }
   .body { padding: 0.875rem; font-size: 0.8125rem; overflow: auto; min-height: 0; }
   .file-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.625rem; }
-  .file-row button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; flex: none; }
+  .file-row button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; flex: none; }
   .file-row button:hover { background: var(--bg); }
   .label { color: var(--gray-77); flex: none; }
   .path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1; }
-  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: var(--fs); margin-bottom: 0.75rem; }
+  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: var(--radius); font-size: var(--fs); margin-bottom: 0.75rem; }
   .notice-cancelled { background: var(--warn-bg); color: var(--warn-fg); }
   .insert-mode-group { display: flex; flex-wrap: wrap; align-items: center; gap: 0.625rem; font-size: var(--fs); margin-bottom: 0.75rem; }
   .insert-mode-group .label { color: var(--gray-77); }
   .insert-mode-group label { display: flex; align-items: center; gap: 0.25rem; cursor: pointer; }
   .metadata-toggle { display: flex; align-items: center; gap: 0.375rem; cursor: pointer; font-size: var(--fs); margin-bottom: 0.75rem; }
   .status { color: var(--gray-77); }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; border-radius: 0.1875rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; border-radius: var(--radius); }
   .result-row { display: flex; flex-direction: column; gap: 0.125rem; margin-bottom: 0.5rem; }
 
   /* ── SQL table picker ── */
@@ -455,9 +455,9 @@
   .tablelist li { border-bottom: 1px solid var(--border); padding: 0.25rem 0; }
   .table-row { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; }
   .select-all { padding-bottom: 0.25rem; font-weight: 600; }
-  .tname { font-family: ui-monospace, monospace; }
+  .tname { font-family: var(--mono); }
   .tmeta { margin-left: auto; color: var(--gray-77); font-size: 0.6875rem; }
-  .tcolumns { padding-left: 1.5rem; color: var(--gray-77); font-family: ui-monospace, monospace; font-size: 0.6875rem; word-break: break-word; }
+  .tcolumns { padding-left: 1.5rem; color: var(--gray-77); font-family: var(--mono); font-size: 0.6875rem; word-break: break-word; }
   .csv-options { display: flex; flex-direction: column; gap: 0.375rem; margin-bottom: 0.75rem; font-size: var(--fs); }
   .csv-radio-group { display: flex; align-items: center; gap: 0.625rem; }
   .csv-radio-group .label { color: var(--gray-77); }
@@ -465,12 +465,12 @@
   .csv-preview-wrap { max-height: 16rem; overflow: auto; }
   .csv-preview { width: 100%; border-collapse: collapse; font-size: var(--fs); }
   .csv-preview th, .csv-preview td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--border); }
-  .csv-preview td.tname { font-family: ui-monospace, monospace; }
+  .csv-preview td.tname { font-family: var(--mono); }
 
   footer { display: flex; justify-content: flex-end; gap: 0.5rem; padding: 0.625rem 0.875rem; border-top: 1px solid var(--bg); flex: none; }
-  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  footer button { height: 1.75rem; padding: 0 0.875rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   footer button:hover:not(:disabled) { background: var(--bg); }
   footer button:disabled { color: var(--gray-b8); cursor: default; }
-  footer .primary { background: var(--run); color: var(--panel); border: none; font-weight: 600; }
+  footer .primary { background: var(--run); color: var(--on-accent); border: none; font-weight: 600; }
   footer .primary:hover:not(:disabled) { background: var(--run-hover); }
 </style>

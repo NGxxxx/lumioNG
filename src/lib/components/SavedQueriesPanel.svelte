@@ -234,7 +234,7 @@
   .sq-new-folder {
     flex: none; width: 1.125rem; height: 1.125rem; display: flex; align-items: center; justify-content: center;
     background: none; border: none; cursor: pointer; color: var(--gray-99);
-    font-size: 0.875rem; font-weight: 600; line-height: 1; border-radius: 0.125rem; padding: 0;
+    font-size: 0.875rem; font-weight: 600; line-height: 1; border-radius: var(--radius-sm); padding: 0;
   }
   .sq-new-folder:hover { background: var(--hover); color: var(--fg); }
   .sq-body { overflow-y: auto; flex: none; }

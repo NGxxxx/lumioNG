@@ -18,7 +18,7 @@
 {/if}
 
 <style>
-  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; border-radius: 0.1875rem; }
+  .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; border-radius: var(--radius); }
   .link { border: none; background: none; color: var(--link-strong); cursor: pointer; padding: 0; font-size: var(--fs); margin-top: 0.5rem; }
   .link:hover { text-decoration: underline; }
   .errlist { margin: 0.375rem 0 0; padding-left: 1.125rem; max-height: 8rem; overflow: auto; font-size: var(--fs); color: var(--error); }

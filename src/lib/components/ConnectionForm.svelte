@@ -221,7 +221,7 @@
   .toggle-btn {
     display: flex; align-items: center; height: 1.375rem; padding: 0 0.75rem;
     font-size: var(--fs); border: 1px solid var(--gray-c4); background: var(--bg);
-    cursor: pointer; color: var(--gray-44); border-radius: 0.125rem;
+    cursor: pointer; color: var(--gray-44); border-radius: var(--radius-sm);
   }
   .toggle-btn:hover { background: var(--cell-border); }
   .toggle-active {
@@ -248,7 +248,7 @@
   .form-input {
     height: 1.5rem;
     border: 1px solid var(--gray-c4);
-    border-radius: 0.125rem;
+    border-radius: var(--radius-sm);
     padding: 0 0.5rem;
     font-size: var(--fs);
     background: var(--panel);
@@ -267,7 +267,7 @@
   .import-row { display: flex; gap: 0.375rem; }
   .import-row .form-input { flex: 1; }
   .import-btn {
-    height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.125rem;
+    height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius-sm);
     background: var(--panel); cursor: pointer; font-size: var(--fs); color: var(--fg); flex: none;
   }
   .import-btn:hover { background: var(--bg); }
@@ -284,7 +284,7 @@
     padding: 0.375rem 0.5rem;
     background: var(--warn-bg);
     border: 1px solid var(--warn);
-    border-radius: 0.1875rem;
+    border-radius: var(--radius);
     color: var(--fg);
     font-size: var(--fs);
   }

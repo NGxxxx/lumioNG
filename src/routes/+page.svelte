@@ -501,7 +501,7 @@
 </div>
 
 <style>
-  .app { display: flex; flex-direction: column; height: 100vh; font-family: system-ui, sans-serif; }
+  .app { display: flex; flex-direction: column; height: 100vh; }
   .body { display: flex; flex: 1; min-height: 0; background: var(--bg); }
   aside { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow: hidden; }
   .ns-area { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }

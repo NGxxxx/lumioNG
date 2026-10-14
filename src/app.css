@@ -1,145 +1,162 @@
-/* src/app.css — Catppuccin design tokens (Latte default, Mocha override) + base reset */
+/* src/app.css — design tokens (Linear-inspired, light default + dark override) + base reset */
+/* Linear-inspired palette: neutral grays + a single indigo accent. Light is the default; dark
+   overrides only the primitives, so every app token below re-themes automatically. */
 :root {
-  /* Catppuccin Latte primitives */
-  --ctp-rosewater: #dc8a78;
-  --ctp-flamingo: #dd7878;
-  --ctp-pink: #ea76cb;
-  --ctp-mauve: #8839ef;
-  --ctp-red: #d20f39;
-  --ctp-maroon: #e64553;
-  --ctp-peach: #fe640b;
-  --ctp-yellow: #df8e1d;
-  --ctp-green: #40a02b;
-  --ctp-teal: #179299;
-  --ctp-sky: #04a5e5;
-  --ctp-sapphire: #209fb5;
-  --ctp-blue: #1e66f5;
-  --ctp-lavender: #7287fd;
-  --ctp-text: #4c4f69;
-  --ctp-subtext1: #5c5f77;
-  --ctp-subtext0: #6c6f85;
-  --ctp-overlay2: #7c7f93;
-  --ctp-overlay1: #8c8fa1;
-  --ctp-overlay0: #9ca0b0;
-  --ctp-surface2: #acb0be;
-  --ctp-surface1: #bcc0cc;
-  --ctp-surface0: #ccd0da;
-  --ctp-base: #eff1f5;
-  --ctp-mantle: #e6e9ef;
-  --ctp-crust: #dce0e8;
+  /* primitives (light) */
+  --c-rosewater: #d4776b;
+  --c-flamingo: #d86a6a;
+  --c-pink: #c94f9c;
+  --c-mauve: #8b5cf6;
+  --c-red: #e5484d;
+  --c-maroon: #d93d42;
+  --c-peach: #e2731f;
+  --c-yellow: #c98b00;
+  --c-green: #2f9e6e;
+  --c-teal: #12a594;
+  --c-sky: #0c95d4;
+  --c-sapphire: #0b84b0;
+  --c-blue: #5e6ad2;
+  --c-lavender: #7c84e0;
+  --c-text: #1b1c1f;
+  --c-subtext1: #3c3f46;
+  --c-subtext0: #6b6f76;
+  --c-overlay2: #7b7f87;
+  --c-overlay1: #8f929a;
+  --c-overlay0: #a3a6ad;
+  --c-surface2: #c7c8ce;
+  --c-surface1: #dcdde1;
+  --c-surface0: #e8e8eb;
+  --c-base: #ffffff;
+  --c-mantle: #f7f7f8;
+  --c-crust: #efeff1;
+  --on-accent: #ffffff;
+
+  /* shape + type */
+  --font: "Inter", "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  --fs: 0.8125rem;
+  --radius-sm: 0.25rem;
+  --radius: 0.375rem;
+  --radius-lg: 0.5rem;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.06), 0 16px 48px rgba(0, 0, 0, 0.16);
+  --backdrop: rgba(10, 11, 13, 0.32);
 
   /* app tokens (reference primitives; overriding the primitives above is enough to retheme these) */
-  --bg: var(--ctp-mantle);
-  --panel: var(--ctp-base);
-  --border: var(--ctp-surface0);
-  --fg: var(--ctp-text);
-  --muted: var(--ctp-subtext0);
-  --accent: var(--ctp-green);
-  --hover: color-mix(in srgb, var(--ctp-blue) 12%, var(--ctp-base));
-  --selected: color-mix(in srgb, var(--ctp-blue) 16%, var(--ctp-base));
-  --mono: Consolas, "SF Mono", "Liberation Mono", monospace;
-  --fs: 0.75rem;
+  --bg: var(--c-mantle);
+  --panel: var(--c-base);
+  --border: var(--c-surface0);
+  --fg: var(--c-text);
+  --muted: var(--c-subtext0);
+  --accent: var(--c-blue);
+  --hover: color-mix(in srgb, var(--c-text) 5%, var(--c-base));
+  --selected: color-mix(in srgb, var(--c-blue) 12%, var(--c-base));
   /* tab + row */
-  --tab-active-border: var(--ctp-blue);
-  --tab-active-fg: var(--ctp-text);
-  --tab-inactive-bg: var(--ctp-surface0);
-  --row-selected: color-mix(in srgb, var(--ctp-blue) 18%, var(--ctp-base));
-  --row-selected-ring: var(--ctp-blue);
-  --row-hover: color-mix(in srgb, var(--ctp-blue) 8%, var(--ctp-base));
-  --menu-hover: var(--ctp-surface0);
-  --zebra: var(--ctp-base);
-  --zebra-alt: var(--ctp-mantle);
-  /* table */
-  --th-grad-top: var(--ctp-surface0);
-  --th-grad-bottom: var(--ctp-surface1);
-  --cell-border: var(--ctp-surface0);
-  --th-fg: var(--ctp-subtext0);
-  --row-divider: var(--ctp-surface0);
-  --text-strong: var(--ctp-text);
-  --link: var(--ctp-blue);
-  --error: var(--ctp-red);
-  --error-bg: color-mix(in srgb, var(--ctp-red) 10%, var(--ctp-base));
+  --tab-active-border: var(--c-blue);
+  --tab-active-fg: var(--c-text);
+  --tab-inactive-bg: var(--c-crust);
+  --row-selected: color-mix(in srgb, var(--c-blue) 12%, var(--c-base));
+  --row-selected-ring: color-mix(in srgb, var(--c-blue) 45%, var(--c-base));
+  --row-hover: color-mix(in srgb, var(--c-text) 4%, var(--c-base));
+  --menu-hover: color-mix(in srgb, var(--c-text) 6%, var(--c-base));
+  --zebra: var(--c-base);
+  --zebra-alt: var(--c-base);
+  /* table (flat header — no gradient) */
+  --th-grad-top: var(--c-mantle);
+  --th-grad-bottom: var(--c-mantle);
+  --cell-border: var(--c-surface0);
+  --th-fg: var(--c-subtext0);
+  --row-divider: var(--c-surface0);
+  --text-strong: var(--c-text);
+  --link: var(--c-blue);
+  --error: var(--c-red);
+  --error-bg: color-mix(in srgb, var(--c-red) 10%, var(--c-base));
   /* syntax JSON / mongosh */
-  --j-key: var(--ctp-mauve);
-  --j-string: var(--ctp-green);
-  --j-number: var(--ctp-blue);
-  --j-bool: var(--ctp-pink);
-  --j-func: var(--ctp-teal);
-  --j-brace: var(--ctp-lavender);
-  --j-op: var(--ctp-sapphire);
-  --j-id: var(--ctp-mauve);
-  --j-comment: var(--ctp-overlay0);
+  --j-key: var(--c-mauve);
+  --j-string: var(--c-green);
+  --j-number: var(--c-blue);
+  --j-bool: var(--c-pink);
+  --j-func: var(--c-teal);
+  --j-brace: var(--c-lavender);
+  --j-op: var(--c-sapphire);
+  --j-id: var(--c-mauve);
+  --j-comment: var(--c-overlay0);
   /* neutral grays: text + lines, ramp from most-text-like to most-surface-like */
-  --gray-33: var(--ctp-text);
-  --gray-44: var(--ctp-subtext1);
-  --gray-55: var(--ctp-subtext0);
-  --gray-77: var(--ctp-overlay2);
-  --gray-99: var(--ctp-overlay1);
-  --gray-aa: var(--ctp-overlay0);
-  --gray-b8: var(--ctp-surface2);
-  --gray-c4: var(--ctp-surface1);
-  --gray-cf: var(--ctp-surface0);
-  /* greens: run / success / progress */
-  --run: var(--ctp-green);
-  --run-hover: color-mix(in srgb, var(--ctp-green) 80%, var(--ctp-crust) 20%);
-  --ok-fg: var(--ctp-green);
-  --ok-bg: color-mix(in srgb, var(--ctp-green) 14%, var(--ctp-base));
-  --ok-bg-tint: color-mix(in srgb, var(--ctp-green) 7%, var(--ctp-base));
-  --ok-strong: var(--ctp-green);
-  --ok-mid: color-mix(in srgb, var(--ctp-green) 55%, var(--ctp-overlay0) 45%);
-  --progress: var(--ctp-green);
+  --gray-33: var(--c-text);
+  --gray-44: var(--c-subtext1);
+  --gray-55: var(--c-subtext0);
+  --gray-77: var(--c-overlay2);
+  --gray-99: var(--c-overlay1);
+  --gray-aa: var(--c-overlay0);
+  --gray-b8: var(--c-surface1);
+  --gray-c4: var(--c-surface0);
+  --gray-cf: var(--c-surface0);
+  /* primary action (run / save / open) — the accent, Linear-style */
+  --run: var(--c-blue);
+  --run-hover: color-mix(in srgb, var(--c-blue) 88%, var(--c-text) 12%);
+  --ok-fg: var(--c-green);
+  --ok-bg: color-mix(in srgb, var(--c-green) 14%, var(--c-base));
+  --ok-bg-tint: color-mix(in srgb, var(--c-green) 7%, var(--c-base));
+  --ok-strong: var(--c-green);
+  --ok-mid: color-mix(in srgb, var(--c-blue) 50%, var(--c-base));
+  --progress: var(--c-blue);
   /* reds: danger */
-  --danger: var(--ctp-red);
-  --danger-strong: var(--ctp-red);
-  --danger-mute: var(--ctp-maroon);
+  --danger: var(--c-red);
+  --danger-strong: var(--c-red);
+  --danger-mute: var(--c-maroon);
   /* blues: info / toggle / focus */
-  --toggle-on-ring: color-mix(in srgb, var(--ctp-blue) 40%, var(--ctp-base));
-  --link-strong: var(--ctp-blue);
-  --focus-ring: var(--ctp-blue);
-  --slate: var(--ctp-subtext1);
-  --spinner-track: var(--ctp-surface1);
-  --blue-tint5: color-mix(in srgb, var(--ctp-blue) 6%, var(--ctp-base));
+  --toggle-on-ring: color-mix(in srgb, var(--c-blue) 40%, var(--c-base));
+  --link-strong: var(--c-blue);
+  --focus-ring: var(--c-blue);
+  --slate: var(--c-subtext1);
+  --spinner-track: var(--c-surface1);
+  --blue-tint5: color-mix(in srgb, var(--c-blue) 6%, var(--c-base));
   /* type colors / cream / warn */
-  --cream: var(--ctp-base);
-  --type-object: var(--ctp-mauve);
-  --type-array: var(--ctp-peach);
+  --cream: var(--c-base);
+  --type-object: var(--c-mauve);
+  --type-array: var(--c-peach);
   /* icon paper/bg tints (multi-part decorative SVG glyphs: db/collection/index icons) */
-  --accent-bg-tint: color-mix(in srgb, var(--ctp-green) 14%, var(--panel));
-  --type-object-bg-tint: color-mix(in srgb, var(--ctp-mauve) 14%, var(--panel));
-  --warn: var(--ctp-yellow);
-  --warn-fg: color-mix(in srgb, var(--ctp-yellow) 65%, var(--ctp-text) 35%);
-  --warn-bg: color-mix(in srgb, var(--ctp-yellow) 12%, var(--ctp-base));
-  --warn-bg2: color-mix(in srgb, var(--ctp-yellow) 7%, var(--ctp-base));
+  --accent-bg-tint: color-mix(in srgb, var(--c-blue) 14%, var(--panel));
+  --type-object-bg-tint: color-mix(in srgb, var(--c-mauve) 14%, var(--panel));
+  --warn: var(--c-yellow);
+  --warn-fg: color-mix(in srgb, var(--c-yellow) 65%, var(--c-text) 35%);
+  --warn-bg: color-mix(in srgb, var(--c-yellow) 12%, var(--c-base));
+  --warn-bg2: color-mix(in srgb, var(--c-yellow) 7%, var(--c-base));
 }
 
-/* Catppuccin Mocha — overriding only the primitives re-themes every var(--ctp-*) above */
+/* Dark — overriding only the primitives re-themes every var(--c-*) above.
+   (Theme key stays "mocha" so saved preferences keep working.) */
 :root[data-theme="mocha"] {
-  --ctp-rosewater: #f5e0dc;
-  --ctp-flamingo: #f2cdcd;
-  --ctp-pink: #f5c2e7;
-  --ctp-mauve: #cba6f7;
-  --ctp-red: #f38ba8;
-  --ctp-maroon: #eba0ac;
-  --ctp-peach: #fab387;
-  --ctp-yellow: #f9e2af;
-  --ctp-green: #a6e3a1;
-  --ctp-teal: #94e2d5;
-  --ctp-sky: #89dceb;
-  --ctp-sapphire: #74c7ec;
-  --ctp-blue: #89b4fa;
-  --ctp-lavender: #b4befe;
-  --ctp-text: #cdd6f4;
-  --ctp-subtext1: #bac2de;
-  --ctp-subtext0: #a6adc8;
-  --ctp-overlay2: #9399b2;
-  --ctp-overlay1: #7f849c;
-  --ctp-overlay0: #6c7086;
-  --ctp-surface2: #585b70;
-  --ctp-surface1: #45475a;
-  --ctp-surface0: #313244;
-  --ctp-base: #1e1e2e;
-  --ctp-mantle: #181825;
-  --ctp-crust: #11111b;
+  --c-rosewater: #f0a99d;
+  --c-flamingo: #ec9a9a;
+  --c-pink: #e27fc0;
+  --c-mauve: #b598f5;
+  --c-red: #eb5757;
+  --c-maroon: #f07a7a;
+  --c-peach: #f2994a;
+  --c-yellow: #f2c94c;
+  --c-green: #4cb782;
+  --c-teal: #3cc4b0;
+  --c-sky: #4ec3f0;
+  --c-sapphire: #56b0e0;
+  --c-blue: #7c85f5;
+  --c-lavender: #a2a8ff;
+  --c-text: #e8e9ec;
+  --c-subtext1: #c2c6ce;
+  --c-subtext0: #8a8f98;
+  --c-overlay2: #7a7f88;
+  --c-overlay1: #696d75;
+  --c-overlay0: #565a62;
+  --c-surface2: #3e4047;
+  --c-surface1: #2e3036;
+  --c-surface0: #24262b;
+  --c-base: #141518;
+  --c-mantle: #0e0f11;
+  --c-crust: #08090a;
+  --on-accent: #ffffff;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.3), 0 16px 48px rgba(0, 0, 0, 0.5);
+  --backdrop: rgba(0, 0, 0, 0.55);
 }
 
 html,
@@ -151,10 +168,18 @@ body {
 }
 
 body {
-  font-family: system-ui, sans-serif;
+  font-family: var(--font);
   font-size: var(--fs);
   color: var(--fg);
   background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "cv11", "ss01";
+  letter-spacing: -0.003em;
+}
+
+button {
+  font-family: inherit;
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease;
 }
 
 /* Form controls: unstyled by default in every browser (own background/text/caret color,
@@ -165,14 +190,29 @@ textarea,
 select {
   color: var(--fg);
   background: var(--panel);
-  border: 1px solid var(--gray-c4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   caret-color: var(--fg);
   font: inherit;
+}
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--accent);
+}
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
 /* Scrollbars: Chromium/WebView2 (-webkit-*) + Firefox (scrollbar-color) */
 * {
-  scrollbar-color: var(--gray-c4) var(--bg);
+  scrollbar-color: var(--gray-b8) transparent;
   scrollbar-width: thin;
 }
 ::-webkit-scrollbar {
@@ -180,10 +220,12 @@ select {
   height: 0.625rem;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg);
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--gray-c4);
+  background: var(--gray-b8);
+  border: 2px solid transparent;
+  background-clip: padding-box;
   border-radius: 0.3125rem;
 }
 ::-webkit-scrollbar-thumb:hover {
@@ -197,12 +239,13 @@ select {
   z-index: 2000;
   max-width: 20rem;
   padding: 0.25rem 0.5rem;
-  border-radius: 0.1875rem;
-  background: var(--gray-33);
-  color: var(--panel);
+  border-radius: var(--radius);
+  background: var(--panel);
+  color: var(--fg);
+  border: 1px solid var(--border);
   font-size: 0.6875rem;
   line-height: 1.3;
   pointer-events: none;
-  box-shadow: 0 0.125rem 0.5rem rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-sm);
   white-space: normal;
 }

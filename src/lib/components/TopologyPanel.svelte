@@ -68,7 +68,7 @@
 <style>
   .topology { height: 100%; box-sizing: border-box; overflow: auto; background: var(--panel); padding: 0.875rem 1.125rem; }
   .bar { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 0.625rem; }
-  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .bar button:hover { background: var(--bg); }
   .status { color: var(--muted); font-size: var(--fs); }
   .setname { font-weight: 600; margin-bottom: 0.5rem; }

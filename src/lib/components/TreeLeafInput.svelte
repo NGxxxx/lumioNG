@@ -85,11 +85,11 @@
 
 <style>
   /* flex+min-width:0: a bare input/textarea otherwise sizes to its tiny intrinsic default. */
-  .leaf { flex: 1; min-width: 0; font-family: ui-monospace, monospace; font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
+  .leaf { flex: 1; min-width: 0; font-family: var(--mono); font-size: 0.8125rem; padding: 0.0625rem 0.25rem; }
   .leaf-wrap { resize: vertical; white-space: pre-wrap; word-break: break-word; }
   .preview-toggle {
     flex: none; border: 1px solid var(--gray-b8); background: var(--panel); color: var(--gray-55);
-    border-radius: 0.1875rem; cursor: pointer; font-family: ui-monospace, monospace; font-size: 0.6875rem;
+    border-radius: var(--radius); cursor: pointer; font-family: var(--mono); font-size: 0.6875rem;
     line-height: 1; padding: 0.0625rem 0.3125rem;
   }
   .preview-toggle:hover, .preview-toggle.active { background: var(--blue-tint5); color: var(--slate); }

@@ -158,13 +158,13 @@
   .dbpanel { overflow: auto; height: 100%; box-sizing: border-box; padding: 0.75rem 1rem; font-size: 0.8125rem; }
   .summary { color: var(--th-fg); margin-bottom: 0.625rem; }
   .bar { margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
-  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: 0.1875rem; background: var(--panel); color: var(--fg); cursor: pointer; }
+  .bar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .bar button:hover { background: var(--bg); }
   .bar button.danger { color: var(--error); }
   .sel-count { color: var(--muted); margin-left: 0.25rem; }
   table.grid { border-collapse: collapse; width: 100%; user-select: none; }
   table.grid th { text-align: left; font-weight: 500; color: var(--th-fg); padding: 0.25rem 0.75rem 0.25rem 0; border-bottom: 1px solid var(--cell-border); cursor: pointer; user-select: none; }
-  table.grid td { padding: 0.25rem 0.75rem 0.25rem 0; font-family: ui-monospace, monospace; border-bottom: 1px solid var(--row-divider); }
+  table.grid td { padding: 0.25rem 0.75rem 0.25rem 0; font-family: var(--mono); border-bottom: 1px solid var(--row-divider); }
   .checkcol { width: 1.25rem; cursor: default; }
   .name { color: var(--text-strong); }
   .muted { color: var(--muted); }

@@ -43,6 +43,6 @@
     height: 1.5rem;
     box-sizing: border-box;
   }
-  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: 0.1875rem; font-size: var(--fs); margin-bottom: 0.75rem; }
-  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; margin-bottom: 0.625rem; border-radius: 0.1875rem; }
+  .notice { background: var(--blue-tint5); color: var(--slate); padding: 0.375rem 0.625rem; border-radius: var(--radius); font-size: var(--fs); margin-bottom: 0.75rem; }
+  .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; margin-bottom: 0.625rem; border-radius: var(--radius); }
 </style>
