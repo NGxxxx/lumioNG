@@ -2,8 +2,8 @@
 use crate::commands::import_export::{insert_batch, InsertMode};
 use crate::error::AppError;
 use crate::sql_import::{
-    insert_values_rows, parse_one_statement, resolve_insert_columns, resolve_target_collection,
-    row_to_document, table_ident, SqlSchemaAccumulator,
+    insert_table_ident, insert_values_rows, parse_one_statement, resolve_insert_columns,
+    resolve_target_collection, row_to_document, SqlSchemaAccumulator,
 };
 use crate::sql_stream::SqlStatementReader;
 use crate::state::AppState;
@@ -128,7 +128,7 @@ fn spawn_sql_producer(
                 }
             };
             let Ok(Statement::Insert(insert)) = parse_one_statement(&text) else { continue };
-            let table = table_ident(&insert.table_name);
+            let table = insert_table_ident(&insert);
             if !tables.contains(&table) {
                 continue;
             }

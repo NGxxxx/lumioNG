@@ -1,8 +1,9 @@
 use crate::error::AppError;
 use crate::known_hosts::{self, Verdict};
-use async_trait::async_trait;
+use base64::engine::general_purpose::STANDARD_NO_PAD;
+use base64::Engine as _;
 use russh::client::{self, Handle};
-use russh_keys::key::PublicKey;
+use russh::keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -48,13 +49,32 @@ struct ClientHandler {
     mismatch: Arc<Mutex<Option<HostKeyMismatch>>>,
 }
 
-#[async_trait]
+/// SHA-256 host key fingerprint as unpadded base64 (no `SHA256:` prefix) — the format russh 0.44
+/// produced, kept so `known_hosts` entries saved by earlier versions still match.
+fn host_key_fingerprint(key: &russh::keys::PublicKey) -> String {
+    STANDARD_NO_PAD.encode(key.fingerprint(HashAlg::Sha256).as_bytes())
+}
+
+/// Key type label as russh 0.44 stored it: for RSA, the negotiated signature algorithm
+/// (`rsa-sha2-512` / `rsa-sha2-256` / `ssh-rsa`); otherwise the key algorithm (`ssh-ed25519`, ...).
+fn host_key_type(algorithm: Algorithm, hash_alg: Option<HashAlg>) -> String {
+    match algorithm {
+        Algorithm::Rsa { .. } => Algorithm::Rsa { hash: hash_alg }.as_str().to_string(),
+        other => other.as_str().to_string(),
+    }
+}
+
 impl client::Handler for ClientHandler {
     type Error = russh::Error;
 
-    async fn check_server_key(&mut self, server_public_key: &PublicKey) -> Result<bool, Self::Error> {
-        let key_type = server_public_key.name().to_string();
-        let fingerprint = server_public_key.fingerprint();
+    async fn check_server_key(&mut self, server_key: &PublicKeyOrCertificate) -> Result<bool, Self::Error> {
+        let hash_alg = match server_key {
+            PublicKeyOrCertificate::PublicKey { hash_alg, .. } => *hash_alg,
+            PublicKeyOrCertificate::Certificate(_) => None,
+        };
+        let server_public_key = server_key.public_key();
+        let key_type = host_key_type(server_public_key.algorithm(), hash_alg);
+        let fingerprint = host_key_fingerprint(&server_public_key);
 
         // A corrupt/unreadable store must fail closed (reject), not silently fall back to trusting
         // everything — that would defeat the whole point of pinning.
@@ -133,7 +153,7 @@ pub async fn open(
 
     let authenticated = match cfg.auth_method.as_str() {
         "key" => {
-            let key_pair = russh_keys::load_secret_key(
+            let key_pair = russh::keys::load_secret_key(
                 &cfg.private_key_path,
                 if cfg.passphrase.is_empty() {
                     None
@@ -142,15 +162,23 @@ pub async fn open(
                 },
             )
             .map_err(|e| AppError::SshTunnel(format!("failed to load private key: {e}")))?;
-            session
-                .authenticate_publickey(&cfg.user, Arc::new(key_pair))
+            // RSA keys sign with the strongest hash the server advertises (rsa-sha2-512/256); ignored for other key types.
+            let rsa_hash = session
+                .best_supported_rsa_hash()
                 .await
                 .map_err(|e| AppError::SshTunnel(e.to_string()))?
+                .flatten();
+            session
+                .authenticate_publickey(&cfg.user, PrivateKeyWithHashAlg::new(Arc::new(key_pair), rsa_hash))
+                .await
+                .map_err(|e| AppError::SshTunnel(e.to_string()))?
+                .success()
         }
         "password" => session
             .authenticate_password(&cfg.user, &cfg.password)
             .await
-            .map_err(|e| AppError::SshTunnel(e.to_string()))?,
+            .map_err(|e| AppError::SshTunnel(e.to_string()))?
+            .success(),
         other => {
             return Err(AppError::SshTunnel(format!(
                 "unknown SSH auth_method \"{other}\" (expected \"password\" or \"key\")"
@@ -213,10 +241,10 @@ async fn forward_one(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
-    use russh::server::{self, Auth, Msg, Server as _, Session};
+    use russh::keys::ssh_key::private::Ed25519Keypair;
+    use russh::keys::PrivateKey;
+    use russh::server::{self, Auth, ChannelOpenHandle, Msg, Server as _, Session};
     use russh::Channel;
-    use russh_keys::key::KeyPair;
     use std::sync::Arc;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     use tokio::net::TcpListener;
@@ -231,7 +259,6 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl server::Handler for MockHandler {
         type Error = russh::Error;
 
@@ -239,14 +266,14 @@ mod tests {
             Ok(if user == "tester" && password == "testpass" {
                 Auth::Accept
             } else {
-                Auth::Reject { proceed_with_methods: None }
+                Auth::reject()
             })
         }
 
         async fn auth_publickey(
             &mut self,
             _user: &str,
-            _key: &russh_keys::key::PublicKey,
+            _key: &russh::keys::PublicKey,
         ) -> Result<Auth, Self::Error> {
             Ok(Auth::Accept)
         }
@@ -258,20 +285,27 @@ mod tests {
             port_to_connect: u32,
             _originator_address: &str,
             _originator_port: u32,
+            reply: ChannelOpenHandle,
             _session: &mut Session,
-        ) -> Result<bool, Self::Error> {
+        ) -> Result<(), Self::Error> {
             let addr = format!("{host_to_connect}:{port_to_connect}");
             let mut remote = tokio::net::TcpStream::connect(addr).await?;
+            reply.accept().await;
             tokio::spawn(async move {
                 let mut chan = channel.into_stream();
                 let _ = tokio::io::copy_bidirectional(&mut chan, &mut remote).await;
             });
-            Ok(true)
+            Ok(())
         }
     }
 
     /// Spins up the mock SSH server presenting `key`, optionally on a fixed `port`; returns the bound port and the accept loop's abortable handle.
-    async fn spawn_mock_ssh_server_with_key(port: Option<u16>, key: KeyPair) -> (u16, tokio::task::JoinHandle<()>) {
+    /// Deterministic ed25519 key from a one-byte seed — distinct seeds give distinct keys, no RNG needed.
+    fn ed25519_key(seed: u8) -> PrivateKey {
+        PrivateKey::from(Ed25519Keypair::from_seed(&[seed; 32]))
+    }
+
+    async fn spawn_mock_ssh_server_with_key(port: Option<u16>, key: PrivateKey) -> (u16, tokio::task::JoinHandle<()>) {
         let config = Arc::new(server::Config {
             keys: vec![key],
             ..Default::default()
@@ -296,7 +330,7 @@ mod tests {
 
     /// Spins up the mock SSH server on 127.0.0.1:0 with a fresh random key; returns its port.
     async fn spawn_mock_ssh_server() -> u16 {
-        spawn_mock_ssh_server_with_key(None, KeyPair::generate_ed25519().unwrap()).await.0
+        spawn_mock_ssh_server_with_key(None, ed25519_key(1)).await.0
     }
 
     /// A local TCP echo listener standing in for "the remote Mongo host"; returns its port.
@@ -367,9 +401,9 @@ mod tests {
 
         // Generate an ed25519 key and write it as an unencrypted OpenSSH-readable PKCS#8 PEM
         // (`-----BEGIN PRIVATE KEY-----`), the format `load_secret_key` parses back.
-        let key = KeyPair::generate_ed25519().unwrap();
+        let key = ed25519_key(10);
         let mut pem = Vec::new();
-        russh_keys::encode_pkcs8_pem(&key, &mut pem).unwrap();
+        russh::keys::encode_pkcs8_pem(&key, &mut pem).unwrap();
         let key_path = std::env::temp_dir().join("monglumio_test_ssh_key_ok.pem");
         std::fs::write(&key_path, &pem).unwrap();
         let known_hosts_path = temp_known_hosts_path("correct_private_key");
@@ -403,9 +437,9 @@ mod tests {
 
         // Encrypt the key with one passphrase, then attempt to load it with a different one:
         // `load_secret_key` must fail (exercising the non-empty-passphrase `Some(..)` branch).
-        let key = KeyPair::generate_ed25519().unwrap();
+        let key = ed25519_key(11);
         let mut pem = Vec::new();
-        russh_keys::encode_pkcs8_pem_encrypted(&key, b"correct-passphrase", 4, &mut pem).unwrap();
+        russh::keys::encode_pkcs8_pem_encrypted(&key, b"correct-passphrase", 4, &mut pem).unwrap();
         let key_path = std::env::temp_dir().join("monglumio_test_ssh_key_encrypted.pem");
         std::fs::write(&key_path, &pem).unwrap();
         let known_hosts_path = temp_known_hosts_path("wrong_passphrase");
@@ -567,6 +601,22 @@ mod tests {
         }
     }
 
+    #[test]
+    fn host_key_fingerprint_keeps_the_pre_upgrade_format() {
+        // Expected value computed independently: unpadded base64 of SHA-256 over the key's SSH wire
+        // encoding (what russh 0.44 stored). A format change would turn every saved host into a "mismatch".
+        let key = ed25519_key(1);
+        assert_eq!(host_key_fingerprint(key.public_key()), "fe85JkIjo8VPe+XqXJGH5Mau1EMFdK1OdKvJUFicyA8");
+    }
+
+    #[test]
+    fn host_key_type_keeps_the_pre_upgrade_names() {
+        assert_eq!(host_key_type(Algorithm::Ed25519, None), "ssh-ed25519");
+        assert_eq!(host_key_type(Algorithm::Rsa { hash: None }, Some(HashAlg::Sha512)), "rsa-sha2-512");
+        assert_eq!(host_key_type(Algorithm::Rsa { hash: None }, Some(HashAlg::Sha256)), "rsa-sha2-256");
+        assert_eq!(host_key_type(Algorithm::Rsa { hash: None }, None), "ssh-rsa");
+    }
+
     #[tokio::test]
     async fn first_connect_trusts_and_persists_the_host_key() {
         let ssh_port = spawn_mock_ssh_server().await;
@@ -615,7 +665,7 @@ mod tests {
     async fn host_key_change_is_rejected_until_the_stale_entry_is_forgotten() {
         let known_hosts_path = temp_known_hosts_path("mismatch_then_forget");
         let (ssh_port, server_a) =
-            spawn_mock_ssh_server_with_key(None, KeyPair::generate_ed25519().unwrap()).await;
+            spawn_mock_ssh_server_with_key(None, ed25519_key(2)).await;
         let cfg = SshTunnelConfig {
             enabled: true,
             host: "127.0.0.1".into(),
@@ -633,7 +683,7 @@ mod tests {
         server_a.abort();
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
         let (_, server_b) =
-            spawn_mock_ssh_server_with_key(Some(ssh_port), KeyPair::generate_ed25519().unwrap()).await;
+            spawn_mock_ssh_server_with_key(Some(ssh_port), ed25519_key(3)).await;
 
         let err = open(&cfg, "127.0.0.1", 1, &known_hosts_path).await.unwrap_err();
         match err {

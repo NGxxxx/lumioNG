@@ -2,7 +2,7 @@
 //! types come from each literal's own kind, not the declared column type.
 use crate::value_infer::{bson_type_name, infer_bson, InferOptions};
 use mongodb::bson::{Bson, Document};
-use sqlparser::ast::{Expr, Insert, ObjectName, SetExpr, Statement, UnaryOperator, Value as SqlValue};
+use sqlparser::ast::{Expr, Insert, ObjectName, SetExpr, Statement, TableObject, UnaryOperator, Value as SqlValue};
 use sqlparser::dialect::GenericDialect;
 use sqlparser::parser::Parser;
 use std::collections::{HashMap, HashSet};
@@ -19,27 +19,35 @@ pub fn parse_one_statement(text: &str) -> Result<Statement, String> {
 
 /// The table segment of a possibly schema-qualified identifier (`public.movie` -> `movie`); Mongo collections are flat.
 pub fn table_ident(name: &ObjectName) -> String {
-    name.0.last().map(|ident| ident.value.clone()).unwrap_or_default()
+    name.0.last().and_then(|part| part.as_ident()).map(|ident| ident.value.clone()).unwrap_or_default()
+}
+
+/// The target table of an `INSERT`; empty for `INSERT INTO TABLE FUNCTION ...` (no plain table to map to a collection).
+pub fn insert_table_ident(insert: &Insert) -> String {
+    match &insert.table {
+        TableObject::TableName(name) => table_ident(name),
+        _ => String::new(),
+    }
 }
 
 /// The column order for one `INSERT`'s rows: its own explicit list if given, else the table's `CREATE TABLE` order; empty means skip.
 pub fn resolve_insert_columns(insert: &Insert, columns_by_table: &HashMap<String, Vec<String>>) -> Vec<String> {
-    let explicit: Vec<String> = insert.columns.iter().map(|c| c.value.clone()).collect();
+    let explicit: Vec<String> = insert.columns.iter().map(table_ident).collect();
     if !explicit.is_empty() {
         return explicit;
     }
     columns_by_table
-        .get(&table_ident(&insert.table_name))
+        .get(&insert_table_ident(insert))
         .cloned()
         .unwrap_or_default()
 }
 
 /// The raw `VALUES (...)` row expressions of one `INSERT INTO ... VALUES ...` statement, or `None`
 /// for anything else (`INSERT ... SELECT`, unsupported — not a literal-values insert).
-pub fn insert_values_rows(insert: &Insert) -> Option<&Vec<Vec<Expr>>> {
+pub fn insert_values_rows(insert: &Insert) -> Option<Vec<&Vec<Expr>>> {
     let source = insert.source.as_ref()?;
     match source.body.as_ref() {
-        SetExpr::Values(values) => Some(&values.rows),
+        SetExpr::Values(values) => Some(values.rows.iter().map(|row| &row.content).collect()),
         _ => None,
     }
 }
@@ -97,7 +105,7 @@ impl SqlSchemaAccumulator {
                 self.columns_by_table.insert(name, cols);
             }
             Statement::Insert(insert) => {
-                let table = table_ident(&insert.table_name);
+                let table = insert_table_ident(insert);
                 let cols = resolve_insert_columns(insert, &self.columns_by_table);
                 if cols.is_empty() {
                     return;
@@ -241,7 +249,7 @@ mod tests {
     fn table_ident_on_a_quoted_insert_into_table_name() {
         let statements = parse_statements(r#"INSERT INTO "orders" (id) VALUES (1);"#).unwrap();
         let Statement::Insert(insert) = &statements[0] else { panic!("expected Insert") };
-        assert_eq!(table_ident(&insert.table_name), "orders");
+        assert_eq!(insert_table_ident(insert), "orders");
     }
 
     #[test]
