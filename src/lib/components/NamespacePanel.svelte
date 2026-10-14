@@ -141,7 +141,7 @@
         exportWizard = { mode: "pick", preChecked: [{ db: target.db, coll: target.coll }] };
       }
       else if (action === "import") openImportDialog(target.sessionId, target.db, target.coll);
-      else if (action === "copyName") copyName(`${target.db}.${target.coll}`);
+      else if (action === "copyName") copyName(target.coll);
       else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "duplicate") dialog = { type: "duplicate", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "truncate") dialog = { type: "truncate", db: target.db, coll: target.coll, sessionId: target.sessionId };

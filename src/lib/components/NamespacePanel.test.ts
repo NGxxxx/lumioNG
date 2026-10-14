@@ -54,7 +54,7 @@ describe("NamespacePanel", () => {
     expect(queryByText("Stats")).toBeNull();
   });
 
-  it("collection menu: Copy name copies db.coll to clipboard", async () => {
+  it("collection menu: Copy name copies just the collection name (no db prefix)", async () => {
     const writeText = vi.fn();
     Object.defineProperty(navigator, "clipboard", {
       value: { writeText },
@@ -64,7 +64,7 @@ describe("NamespacePanel", () => {
     await fireEvent.click(getByText("shop")); // expand — collections are collapsed by default
     await fireEvent.contextMenu(getByText("users"));
     await fireEvent.click(getByText("Copy name"));
-    expect(writeText).toHaveBeenCalledWith("shop.users");
+    expect(writeText).toHaveBeenCalledWith("users");
   });
 
   it("db menu shows New collection… / Copy name / Refresh / Drop database… / Import…", async () => {
