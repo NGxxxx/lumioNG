@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, type Snippet } from "svelte";
   import { buildBreadcrumb } from "#lib/domain/breadcrumb.js";
   import { minimize, toggleMaximize, isMaximized, onMaximizedChange } from "#lib/api/window.js";
   import { getAppVersion } from "#lib/api/app.js";
@@ -10,11 +10,20 @@
     db,
     coll,
     onquit,
+    onpalette,
+    paletteHint = "",
+    menus,
   }: {
     conn: string | null;
     db: string | null;
     coll: string | null;
     onquit: () => void;
+    /** Opens the command palette; the search pill is hidden when absent. */
+    onpalette?: () => void;
+    /** Formatted shortcut shown inside the search pill (e.g. "Ctrl+K"). */
+    paletteHint?: string;
+    /** App menus (MenuBar) rendered inline after the logo — one row instead of two. */
+    menus?: Snippet;
   } = $props();
 
   let appVersion = $state("");
@@ -46,10 +55,20 @@
       <path d="M28 77 46 60V77Z" fill="url(#titlebar-logo-fd)" stroke="url(#titlebar-logo-fd)" stroke-width="2.6"/>
     </g>
   </svg>
-  <span class="crumb">{crumb}{appVersion ? ` — v${appVersion}` : ""}</span>
+  {#if menus}<div class="menus">{@render menus()}</div>{/if}
+  <span class="crumb" data-tauri-drag-region>{crumb}{appVersion ? ` — v${appVersion}` : ""}</span>
+  {#if onpalette}
+    <button class="search" onclick={onpalette} aria-label={m.palette_open()}>
+      <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5">
+        <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
+      </svg>
+      <span class="search-label">{m.palette_open()}</span>
+      {#if paletteHint}<kbd>{paletteHint}</kbd>{/if}
+    </button>
+  {/if}
   <div class="wbtns">
     <button class="wbtn" title={m.title_bar_minimize()} onclick={minimize} aria-label={m.title_bar_minimize()}>
-      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="var(--fg)" /></svg>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="currentColor" /></svg>
     </button>
     <button
       class="wbtn"
@@ -59,33 +78,50 @@
     >
       {#if maximized}
         <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11">
-          <rect x="1" y="3" width="7" height="7" fill="none" stroke="var(--fg)" stroke-width="1" />
-          <path d="M3 3 V1 H10 V8 H8" fill="none" stroke="var(--fg)" stroke-width="1" />
+          <rect x="1" y="3" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1" />
+          <path d="M3 3 V1 H10 V8 H8" fill="none" stroke="currentColor" stroke-width="1" />
         </svg>
       {:else}
-        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="var(--fg)" stroke-width="1" /></svg>
+        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="1" width="9" height="9" fill="none" stroke="currentColor" stroke-width="1" /></svg>
       {/if}
     </button>
     <button class="wbtn close" title={m.title_bar_close()} onclick={onquit} aria-label={m.title_bar_close()}>
-      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="var(--fg)" stroke-width="1.1" /></svg>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="currentColor" stroke-width="1.1" /></svg>
     </button>
   </div>
 </div>
 
 <style>
+  /* One row of window chrome: logo + menus | drag area with breadcrumb | search | window buttons. */
   .titlebar {
-    display: flex; align-items: center; height: 2rem; flex: none;
-    background: var(--panel); border-bottom: 1px solid var(--border);
-    padding-left: 0.625rem; user-select: none;
+    display: flex; align-items: center; gap: 0.25rem; height: 2.375rem; flex: none;
+    background: var(--app-bg);
+    padding-left: 0.75rem; user-select: none;
   }
-  .logo { flex: none; }
-  .crumb { margin-left: 0.5rem; font-size: var(--fs); color: var(--gray-33); }
-  .wbtns { margin-left: auto; display: flex; height: 100%; }
+  .logo { flex: none; margin-right: 0.25rem; }
+  .menus { flex: none; display: flex; align-items: center; }
+  .crumb {
+    flex: 1; min-width: 0; align-self: stretch; display: flex; align-items: center; justify-content: center;
+    font-size: 0.75rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .search {
+    flex: 0 1 17.5rem; min-width: 8rem; display: flex; align-items: center; gap: 0.5rem;
+    height: 1.625rem; padding: 0 0.5rem 0 0.625rem; margin-right: 0.5rem;
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel);
+    color: var(--muted); font-size: 0.75rem; cursor: pointer;
+  }
+  .search:hover { color: var(--fg); border-color: var(--c-surface1); }
+  .search-label { flex: 1; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  kbd {
+    font-family: var(--mono); font-size: 0.6875rem; color: var(--muted);
+    padding: 0.0625rem 0.3125rem; border-radius: var(--radius-sm);
+    background: var(--hover); border: 1px solid var(--border);
+  }
+  .wbtns { display: flex; height: 100%; }
   .wbtn {
-    width: 2.875rem; height: 100%; border: none; background: transparent;
+    width: 2.75rem; height: 100%; border: none; background: transparent; color: var(--muted);
     display: flex; align-items: center; justify-content: center; cursor: default; padding: 0;
   }
-  .wbtn:hover { background: var(--tab-inactive-bg); }
-  .wbtn.close:hover { background: var(--danger); }
-  .wbtn.close:hover :global(path) { stroke: var(--on-accent); }
+  .wbtn:hover { background: var(--hover); color: var(--fg); }
+  .wbtn.close:hover { background: var(--danger); color: #ffffff; }
 </style>

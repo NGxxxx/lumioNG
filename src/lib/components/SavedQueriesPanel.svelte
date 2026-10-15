@@ -161,8 +161,8 @@
             {/if}
           {:else}
             <svg aria-hidden="true" class="icon" width="12" height="12" viewBox="0 0 16 16">
-              <path d="M3 1.5h7l3 3v10H3z" fill="var(--panel)" stroke="var(--muted)" stroke-width="0.9"/>
-              <path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="var(--link)" stroke-width="1"/>
+              <path d="M3 1.5h7l3 3v10H3z" fill="none" stroke="var(--c-overlay2)" stroke-width="0.9"/>
+              <path d="M5.5 7h5M5.5 9.5h5M5.5 12h3" stroke="var(--c-overlay2)" stroke-width="1"/>
             </svg>
           {/if}
           <span class="name" title={node.name}>{node.name}</span>
@@ -222,15 +222,15 @@
 {/if}
 
 <style>
-  .sq-panel { display: flex; flex-direction: column; flex: none; border-top: 1px solid var(--border); background: var(--bg); }
+  .sq-panel { display: flex; flex-direction: column; flex: none; background: var(--app-bg); padding-bottom: 0.25rem; }
   .sq-header {
-    display: flex; align-items: center; gap: 0.375rem; height: 1.625rem; padding: 0 0.5rem;
-    background: var(--panel); border-bottom: 1px solid var(--border);
-    font-size: var(--fs); font-weight: 600; cursor: pointer; user-select: none; flex: none;
+    display: flex; align-items: center; gap: 0.375rem; height: 1.75rem; margin: 0 0.375rem 0 0.5rem; padding: 0 0.375rem;
+    border-radius: var(--radius); font-size: 0.71875rem; font-weight: 500; color: var(--muted);
+    cursor: pointer; user-select: none; flex: none;
   }
-  .sq-header:hover { background: var(--row-hover); }
+  .sq-header:hover { background: var(--hover); }
   .caret { flex: none; }
-  .title { flex: 1; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .title { flex: 1; color: inherit; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .sq-new-folder {
     flex: none; width: 1.125rem; height: 1.125rem; display: flex; align-items: center; justify-content: center;
     background: none; border: none; cursor: pointer; color: var(--gray-99);
@@ -242,10 +242,11 @@
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
   .empty { padding: 0.5rem 0.625rem; color: var(--muted); font-size: var(--fs); }
   .row {
-    display: flex; align-items: center; gap: 0.3125rem; height: 1.375rem; padding-right: 0.375rem;
+    display: flex; align-items: center; gap: 0.375rem; height: 1.625rem; margin: 0 0.375rem 0 0.5rem; padding-right: 0.375rem;
+    border-radius: var(--radius); color: var(--c-subtext1);
     font-size: var(--fs); cursor: default; user-select: none; white-space: nowrap;
   }
-  .row:hover { background: var(--row-hover); }
+  .row:hover { background: var(--hover); color: var(--fg); }
   .row.drop { background: var(--hover); box-shadow: inset 0 0 0 1px var(--accent); }
   .icon { flex: none; }
   .name { overflow: hidden; text-overflow: ellipsis; }

@@ -3,7 +3,7 @@ import { untrack } from "svelte";
 export type ThemeKey = "latte" | "mocha";
 
 const STORAGE_KEY = "theme";
-const DEFAULT: ThemeKey = "latte";
+const DEFAULT: ThemeKey = "mocha";
 
 function readSaved(): ThemeKey {
   try {

@@ -34,6 +34,11 @@
   import TitleBar from "#lib/components/TitleBar.svelte";
   import MenuBar from "#lib/components/MenuBar.svelte";
   import Toolbar from "#lib/components/Toolbar.svelte";
+  import CommandPalette from "#lib/components/CommandPalette.svelte";
+  import { namespacePaletteItems, parseNamespaceId, type PaletteItem } from "#lib/domain/palette.js";
+  import { formatCombo } from "#lib/domain/shortcuts.js";
+  import { settings } from "#lib/stores/settings.svelte.js";
+  import { theme } from "#lib/stores/theme.svelte.js";
   import StatusBar from "#lib/components/StatusBar.svelte";
   import CommandLog from "#lib/components/CommandLog.svelte";
   import AboutDialog from "#lib/components/AboutDialog.svelte";
@@ -64,6 +69,7 @@
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
   let aboutOpen = $state(false);
+  let paletteOpen = $state(false);
   let saveQueryDialog = $state<{ tabId: number } | null>(null);
   let namespacePanelRef: NamespacePanel | undefined = $state();
 
@@ -248,7 +254,105 @@
     "goto.data": { disabled: !navContextTabs.includes("data"), run: () => sm.showContext("data") },
     "view.resetToDefault": { disabled: false, run: requestReset },
     "help.about": { disabled: false, run: () => (aboutOpen = true) },
+    "view.commandPalette": { disabled: false, run: () => (paletteOpen = !paletteOpen) },
   });
+
+  // ── Command palette: every registry command + view toggles + saved queries + namespaces ──
+  const shortcutHint = (id: CommandId) => (SHORTCUTS[id] ? formatCombo(SHORTCUTS[id]!, plat) : undefined);
+
+  const PALETTE_COMMANDS: [CommandId, () => string, "actions" | "query" | "navigate" | "view"][] = [
+    ["file.newQuery", m.tab_bar_new_query, "actions"],
+    ["file.newDocument", m.menu_new_document, "actions"],
+    ["file.refresh", m.menu_refresh, "actions"],
+    ["file.import", m.menu_import, "actions"],
+    ["file.export", m.menu_export, "actions"],
+    ["file.sessionManager", m.menu_session_manager, "actions"],
+    ["query.run", m.menu_run_query, "query"],
+    ["query.runSelection", m.menu_run_selection, "query"],
+    ["query.stop", m.menu_stop, "query"],
+    ["query.explain", m.menu_explain, "query"],
+    ["query.aggregate", m.menu_aggregate, "query"],
+    ["query.save", m.menu_save_query, "query"],
+    ["goto.host", () => CONTEXT_LABEL.host, "navigate"],
+    ["goto.database", () => CONTEXT_LABEL.database, "navigate"],
+    ["goto.collection", () => CONTEXT_LABEL.collection, "navigate"],
+    ["goto.data", () => CONTEXT_LABEL.data, "navigate"],
+    ["goto.nextTab", m.menu_next_tab, "navigate"],
+    ["goto.prevTab", m.menu_previous_tab, "navigate"],
+    ["view.resetToDefault", m.menu_reset_to_default, "view"],
+    ["help.about", m.menu_about, "view"],
+    ["file.quit", m.menu_quit, "view"],
+  ];
+
+  const VIEW_TOGGLES: Record<string, { label: () => string; run: () => void }> = {
+    "toggle:theme": { label: m.palette_toggle_theme, run: () => theme.set(theme.current === "mocha" ? "latte" : "mocha") },
+    "toggle:wrap": { label: m.palette_toggle_wrap, run: () => settings.setWrapLongLines(!settings.wrapLongLines) },
+    "toggle:log": { label: m.palette_toggle_log, run: () => shell.toggleLog() },
+    "toggle:saved": { label: m.palette_toggle_saved, run: () => shell.toggleSavedQueries() },
+  };
+
+  const paletteItems = $derived.by((): PaletteItem[] => {
+    if (!paletteOpen) return [];
+    const group = {
+      actions: m.palette_group_actions(),
+      query: m.palette_group_query(),
+      navigate: m.palette_group_navigate(),
+      view: m.palette_group_view(),
+    };
+    const cmds: PaletteItem[] = PALETTE_COMMANDS.map(([id, label, g]) => ({
+      id,
+      group: group[g],
+      label: label(),
+      shortcut: shortcutHint(id),
+      disabled: commands[id]?.disabled ?? true,
+    }));
+    const toggles: PaletteItem[] = Object.entries(VIEW_TOGGLES).map(([id, t]) => ({ id, group: group.view, label: t.label() }));
+    const saved: PaletteItem[] = sm.activeId
+      ? queryLibrary.nodes
+          .filter((n): n is SavedQuery => n.kind === "query")
+          .map((q) => ({ id: `saved:${q.id}`, group: m.palette_group_saved(), label: q.name, detail: q.db ?? undefined }))
+      : [];
+    const ns = namespacePaletteItems(tree?.databases ?? [], {
+      databases: m.palette_group_databases(),
+      collections: m.palette_group_collections(),
+    });
+    // Namespaces first: jumping to a collection is the most common reason to open the palette.
+    return [...ns, ...cmds, ...saved, ...toggles];
+  });
+
+  // Header breadcrumb: a document tab names its own namespace; a query tab has its own title row.
+  const toolbarCrumb = $derived.by((): string[] => {
+    if (active?.zone === "work") {
+      const t = sm.workTabs.find((w) => w.id === active.id);
+      if (!t || t.kind === "query") return [];
+      return [t.db, t.coll];
+    }
+    return [sel?.db, sel?.coll].filter((x): x is string => !!x);
+  });
+
+  const paletteContext = $derived(
+    [shell.connection?.label, sel ? (sel.coll ? `${sel.db}.${sel.coll}` : sel.db) : null].filter((x): x is string => !!x),
+  );
+
+  function runPaletteItem(id: string) {
+    const target = parseNamespaceId(id);
+    if (target) {
+      if (target.coll) nav?.selectCollection(target.db, target.coll);
+      else nav?.selectDatabase(target.db);
+      return;
+    }
+    if (id.startsWith("saved:")) {
+      const q = queryLibrary.nodes.find((n): n is SavedQuery => n.kind === "query" && `saved:${n.id}` === id);
+      if (q) openSavedQuery(q);
+      return;
+    }
+    if (id in VIEW_TOGGLES) {
+      VIEW_TOGGLES[id].run();
+      return;
+    }
+    const c = commands[id as CommandId];
+    if (c && !c.disabled) c.run();
+  }
 </script>
 
 <svelte:window
@@ -282,27 +386,18 @@
     db={sel?.db ?? null}
     coll={sel?.coll ?? null}
     onquit={requestQuit}
-  />
-  <MenuBar
-    {commands}
-    {contextTabs}
-    activeContextKind={active?.zone === "context" ? active.kind : null}
-    onshowcontext={(kind) => sm.showContext(kind)}
-  />
-  <Toolbar
-    {commands}
-    canNewDoc={sel?.coll != null && !readOnly}
-    canEditDoc={canUseDataView && !readOnly && (activeDataView.handle?.canEdit ?? false)}
-    oneditdocument={() => activeDataView.handle?.editSelected()}
-    canDeleteDoc={canUseDataView && !readOnly && (activeDataView.handle?.canDelete ?? false)}
-    ondeletedocument={() => activeDataView.handle?.deleteSelected()}
-    canFind={canUseDataView}
-    onfind={() => activeDataView.handle?.focusSearch?.()}
-    onToggleLog={() => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog())}
-    logOpen={activeDataView.handle?.toggleLog ? (activeDataView.handle.logOpen ?? false) : shell.logOpen}
-    savedQueriesOpen={shell.savedQueriesOpen}
-    onToggleSavedQueries={() => shell.toggleSavedQueries()}
-  />
+    onpalette={() => (paletteOpen = true)}
+    paletteHint={shortcutHint("view.commandPalette") ?? ""}
+  >
+    {#snippet menus()}
+      <MenuBar
+        {commands}
+        {contextTabs}
+        activeContextKind={active?.zone === "context" ? active.kind : null}
+        onshowcontext={(kind) => sm.showContext(kind)}
+      />
+    {/snippet}
+  </TitleBar>
   <div class="body">
     <aside style="width:{shell.sidebarWidth}px">
       <div class="ns-area">
@@ -352,6 +447,21 @@
         onActivateWork={(id) => sm.activateWork(id)}
         onCloseWork={(id) => sm.closeWork(id)}
         onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
+      />
+      <Toolbar
+        {commands}
+        canNewDoc={sel?.coll != null && !readOnly}
+        canEditDoc={canUseDataView && !readOnly && (activeDataView.handle?.canEdit ?? false)}
+        oneditdocument={() => activeDataView.handle?.editSelected()}
+        canDeleteDoc={canUseDataView && !readOnly && (activeDataView.handle?.canDelete ?? false)}
+        ondeletedocument={() => activeDataView.handle?.deleteSelected()}
+        canFind={canUseDataView}
+        onfind={() => activeDataView.handle?.focusSearch?.()}
+        onToggleLog={() => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog())}
+        logOpen={activeDataView.handle?.toggleLog ? (activeDataView.handle.logOpen ?? false) : shell.logOpen}
+        savedQueriesOpen={shell.savedQueriesOpen}
+        onToggleSavedQueries={() => shell.toggleSavedQueries()}
+        crumb={toolbarCrumb}
       />
       <div class="panes">
         <!-- Mount only the active context pane (lazy): eager mounting fired every pane's queries at once on each switch, wedging the connection. -->
@@ -436,7 +546,16 @@
           </div>
         {/each}
         {#if active === null}
-          <div class="empty">{m.page_empty_state()}</div>
+          <div class="empty-state">
+            <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--c-overlay1)" stroke-width="1.2">
+              <ellipse cx="12" cy="5.6" rx="7" ry="3.6" />
+              <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6M5 12c0 2 3 3.6 7 3.6s7-1.6 7-3.6" />
+            </svg>
+            <p>{m.page_empty_state()}</p>
+            <button class="es-btn" onclick={() => (paletteOpen = true)}>
+              {m.palette_open()}{#if shortcutHint("view.commandPalette")}<kbd>{shortcutHint("view.commandPalette")}</kbd>{/if}
+            </button>
+          </div>
         {/if}
       </div>
       {#if shell.logOpen && !queryActive}
@@ -497,23 +616,53 @@
   {#if aboutOpen}
     <AboutDialog onclose={() => (aboutOpen = false)} />
   {/if}
+  {#if paletteOpen}
+    <CommandPalette
+      items={paletteItems}
+      context={paletteContext}
+      onrun={runPaletteItem}
+      onclose={() => (paletteOpen = false)}
+    />
+  {/if}
   <ToastHost />
 </div>
 
 <style>
-  .app { display: flex; flex-direction: column; height: 100vh; }
-  .body { display: flex; flex: 1; min-height: 0; background: var(--bg); }
-  aside { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-width: 0; background: var(--bg); overflow: hidden; }
+  /* Window chrome (title bar, sidebar, status bar) sits on --app-bg; the work area is an inset
+     rounded panel on top of it — the Linear-style "sheet on a backdrop" layout. */
+  .app { display: flex; flex-direction: column; height: 100vh; background: var(--app-bg); }
+  .body { display: flex; flex: 1; min-height: 0; padding: 0 0.375rem 0 0; }
+  aside { display: flex; flex-direction: column; min-width: 0; background: var(--app-bg); overflow: hidden; }
   .ns-area { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-  .sq-split { height: 0.3125rem; flex: none; cursor: row-resize; background: var(--bg); }
+  .sq-split { height: 0.375rem; flex: none; cursor: row-resize; background: transparent; }
   .sq-split:hover { background: var(--hover); }
-  .vsplit { width: 0.3125rem; flex: none; cursor: col-resize; background: var(--bg); }
-  .vsplit:hover { background: var(--hover); }
-  section { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--bg); }
+  /* The sidebar splitter doubles as the gutter between sidebar and panel. */
+  .vsplit { width: 0.375rem; flex: none; cursor: col-resize; background: transparent; }
+  .vsplit:hover { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+  section {
+    flex: 1; min-width: 0; display: flex; flex-direction: column;
+    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl);
+    overflow: hidden; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
   .panes { flex: 1; min-height: 0; position: relative; }
   .tabpane { height: 100%; }
   .tabpane[hidden] { display: none; }
   .empty { padding: 1.5rem; color: var(--muted); font-size: var(--fs); }
-  .hsplit { height: 0.3125rem; flex: none; cursor: row-resize; background: var(--bg); }
+  .empty-state {
+    height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 0.75rem; color: var(--muted); font-size: var(--fs);
+  }
+  .empty-state p { margin: 0; }
+  .es-btn {
+    display: inline-flex; align-items: center; gap: 0.625rem; height: 2rem; padding: 0 0.75rem;
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg);
+    color: var(--c-subtext1); font-size: var(--fs); cursor: pointer;
+  }
+  .es-btn:hover { color: var(--fg); border-color: var(--c-surface1); }
+  .es-btn kbd {
+    font-family: var(--mono); font-size: 0.6875rem; color: var(--muted); padding: 0.0625rem 0.3125rem;
+    border-radius: var(--radius-sm); background: var(--hover); border: 1px solid var(--border);
+  }
+  .hsplit { height: 0.3125rem; flex: none; cursor: row-resize; background: var(--panel); border-top: 1px solid var(--border); }
   .hsplit:hover { background: var(--hover); }
 </style>

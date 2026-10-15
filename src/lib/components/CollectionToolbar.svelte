@@ -227,20 +227,21 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     display: flex;
     align-items: center;
     gap: 0.375rem;
-    height: 1.875rem;
+    height: 2.75rem;
     flex: none;
-    background: var(--zebra-alt);
+    background: var(--panel);
     border-bottom: 1px solid var(--border);
-    padding: 0 0.625rem;
+    padding: 0 0.75rem 0 0.875rem;
   }
-  .filter-label { color: var(--gray-77); font-size: var(--fs); }
+  .filter-label { color: var(--muted); font-size: 0.75rem; }
   .filter-input {
     flex: 1;
-    height: 1.3125rem;
-    background: var(--panel);
-    border: 1px solid var(--gray-c4);
-    border-radius: var(--radius-sm);
-    padding: 0 0.5rem;
+    min-width: 8rem;
+    height: 1.875rem;
+    background: var(--bg);
+    border: 1px solid var(--c-surface1);
+    border-radius: var(--radius);
+    padding: 0 0.625rem;
     font-family: var(--mono);
     font-size: var(--fs);
     box-sizing: border-box;
@@ -248,9 +249,9 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .btn-run {
     display: flex;
     align-items: center;
-    gap: 0.3125rem;
-    height: 1.375rem;
-    padding: 0 0.75rem;
+    gap: 0.375rem;
+    height: 1.875rem;
+    padding: 0 0.875rem;
     background: var(--run);
     color: var(--on-accent);
     border: none;
@@ -262,36 +263,40 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .btn-run:hover { background: var(--run-hover); }
 
   /* ── Grid / Tree toggle ── */
-  .view-toggle { display: flex; align-items: center; gap: 0.0625rem; margin-left: 0.25rem; }
+  /* Segmented control: one bordered track, the active segment is a raised chip. */
+  .view-toggle {
+    display: flex; align-items: center; gap: 0.125rem; margin-left: 0.25rem; padding: 0.125rem;
+    border: 1px solid var(--c-surface1); border-radius: var(--radius); background: var(--bg);
+  }
   .toggle-btn {
     display: flex;
     align-items: center;
-    gap: 0.25rem;
-    height: 1.375rem;
+    gap: 0.3125rem;
+    height: 1.5rem;
     padding: 0 0.5rem;
-    font-size: var(--fs);
-    border: 1px solid var(--gray-c4);
-    background: var(--bg);
+    font-size: 0.75rem;
+    border: none;
+    background: none;
     cursor: pointer;
-    color: var(--gray-44);
+    color: var(--muted);
     border-radius: var(--radius-sm);
   }
-  .toggle-btn:hover { background: var(--cell-border); }
+  .toggle-btn:hover { color: var(--fg); }
   .toggle-active {
-    background: var(--hover);
-    box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
-    color: var(--tab-active-fg);
+    background: var(--menu-hover);
+    box-shadow: 0 0 0 1px var(--c-surface1);
+    color: var(--fg);
   }
 
   /* ── Quick search (client-side regex filter over the loaded rows) ── */
   .search-input {
     width: 9rem;
-    height: 1.3125rem;
+    height: 1.875rem;
     margin-left: 0.375rem;
-    background: var(--panel);
-    border: 1px solid var(--gray-c4);
-    border-radius: var(--radius-sm);
-    padding: 0 0.5rem;
+    background: var(--bg);
+    border: 1px solid var(--c-surface1);
+    border-radius: var(--radius);
+    padding: 0 0.625rem;
     font-family: var(--mono);
     font-size: var(--fs);
     box-sizing: border-box;
@@ -305,29 +310,30 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .chooser-apply {
     display: block;
     margin: 0.5rem 0 0.125rem auto;
-    height: 1.375rem;
-    padding: 0 0.625rem;
+    height: 1.75rem;
+    padding: 0 0.75rem;
     font-size: var(--fs);
-    border: 1px solid var(--gray-c4);
-    border-radius: var(--radius-sm);
-    background: var(--bg);
-    color: var(--gray-44);
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: var(--run);
+    color: var(--on-accent);
+    font-weight: 600;
     cursor: pointer;
   }
-  .chooser-apply:hover { background: var(--cell-border); }
+  .chooser-apply:hover { background: var(--run-hover); }
 
   /* ── Header dropdowns (Sort / Fields) ── */
   .dropwrap { position: relative; display: flex; align-items: center; gap: 0.25rem; margin-left: 0.25rem; }
   .dropwrap:focus { outline: none; }
   .drop-btn {
-    height: 1.375rem; padding: 0 0.5rem; font-size: var(--fs);
-    border: 1px solid var(--gray-c4); background: var(--bg); color: var(--gray-44);
-    border-radius: var(--radius-sm); cursor: pointer; white-space: nowrap;
+    height: 1.875rem; padding: 0 0.625rem; font-size: 0.75rem;
+    border: 1px solid var(--c-surface1); background: var(--hover); color: var(--c-subtext1);
+    border-radius: var(--radius); cursor: pointer; white-space: nowrap;
   }
-  .drop-btn:hover { background: var(--cell-border); }
+  .drop-btn:hover { background: var(--menu-hover); color: var(--fg); }
   .dropdown {
-    position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 0.125rem;
-    background: var(--panel); border: 1px solid var(--gray-c4); padding: 0.375rem;
+    position: absolute; z-index: 20; top: 100%; left: 0; margin-top: 0.25rem;
+    background: var(--popover); border: 1px solid var(--c-surface1); border-radius: var(--radius-lg); padding: 0.5rem;
     min-width: 11.25rem; max-height: 20rem; overflow: auto;
     box-shadow: var(--shadow-sm);
   }

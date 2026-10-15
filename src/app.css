@@ -1,50 +1,55 @@
-/* src/app.css — design tokens (Linear-inspired, light default + dark override) + base reset */
-/* Linear-inspired palette: neutral grays + a single indigo accent. Light is the default; dark
-   overrides only the primitives, so every app token below re-themes automatically. */
+/* src/app.css — design tokens (dark-first, Linear-style; light override kept) + base reset */
+/* Neutral grays + a single indigo accent. Both themes override only the primitives, so every app
+   token below re-themes automatically. Dark ("mocha") is the default theme. */
 :root {
   /* primitives (light) */
   --c-rosewater: #d4776b;
   --c-flamingo: #d86a6a;
   --c-pink: #c94f9c;
-  --c-mauve: #8b5cf6;
-  --c-red: #e5484d;
-  --c-maroon: #d93d42;
-  --c-peach: #e2731f;
-  --c-yellow: #c98b00;
-  --c-green: #2f9e6e;
-  --c-teal: #12a594;
-  --c-sky: #0c95d4;
-  --c-sapphire: #0b84b0;
-  --c-blue: #5e6ad2;
-  --c-lavender: #7c84e0;
-  --c-text: #1b1c1f;
-  --c-subtext1: #3c3f46;
-  --c-subtext0: #6b6f76;
-  --c-overlay2: #7b7f87;
-  --c-overlay1: #8f929a;
-  --c-overlay0: #a3a6ad;
-  --c-surface2: #c7c8ce;
-  --c-surface1: #dcdde1;
-  --c-surface0: #e8e8eb;
+  --c-mauve: #7c5ce6;
+  --c-red: #dc4a4f;
+  --c-maroon: #c9393e;
+  --c-peach: #d06a1c;
+  --c-yellow: #b07c00;
+  --c-green: #23885c;
+  --c-teal: #0f8f80;
+  --c-sky: #0b82ba;
+  --c-sapphire: #0a76a0;
+  --c-blue: #5b5fe0;
+  --c-lavender: #7b80ea;
+  --c-text: #1a1b1e;
+  --c-subtext1: #3b3e45;
+  --c-subtext0: #63666e;
+  --c-overlay2: #75787f;
+  --c-overlay1: #8b8e95;
+  --c-overlay0: #a1a4ab;
+  --c-surface2: #cfd0d5;
+  --c-surface1: #e0e1e5;
+  --c-surface0: #ebebee;
   --c-base: #ffffff;
-  --c-mantle: #f7f7f8;
-  --c-crust: #efeff1;
+  --c-mantle: #f6f6f7;
+  --c-crust: #eeeef0;
   --on-accent: #ffffff;
+  /* floating surfaces (menus, popovers, dialogs) — lifted one step above the panel in dark */
+  --popover: #ffffff;
 
-  /* shape + type */
-  --font: "Inter", "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-  --mono: "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
+  /* shape + type (Geist is bundled locally via @fontsource-variable — no network at runtime) */
+  --font: "Geist Variable", "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono: "Geist Mono Variable", "Geist Mono", "JetBrains Mono", "SF Mono", Consolas, "Liberation Mono", monospace;
   --fs: 0.8125rem;
   --radius-sm: 0.25rem;
   --radius: 0.375rem;
   --radius-lg: 0.5rem;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.06), 0 16px 48px rgba(0, 0, 0, 0.16);
+  --radius-xl: 0.625rem;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05), 0 4px 12px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.05), 0 16px 48px rgba(0, 0, 0, 0.14);
   --backdrop: rgba(10, 11, 13, 0.32);
 
   /* app tokens (reference primitives; overriding the primitives above is enough to retheme these) */
   --bg: var(--c-mantle);
   --panel: var(--c-base);
+  /* window chrome behind the inset main panel (title bar, sidebar, status bar) */
+  --app-bg: var(--c-mantle);
   --border: var(--c-surface0);
   --fg: var(--c-text);
   --muted: var(--c-subtext0);
@@ -64,9 +69,9 @@
   /* table (flat header — no gradient) */
   --th-grad-top: var(--c-mantle);
   --th-grad-bottom: var(--c-mantle);
-  --cell-border: var(--c-surface0);
+  --cell-border: color-mix(in srgb, var(--c-surface0) 75%, var(--c-base));
   --th-fg: var(--c-subtext0);
-  --row-divider: var(--c-surface0);
+  --row-divider: color-mix(in srgb, var(--c-surface0) 75%, var(--c-base));
   --text-strong: var(--c-text);
   --link: var(--c-blue);
   --error: var(--c-red);
@@ -79,7 +84,7 @@
   --j-func: var(--c-teal);
   --j-brace: var(--c-lavender);
   --j-op: var(--c-sapphire);
-  --j-id: var(--c-mauve);
+  --j-id: var(--c-subtext0);
   --j-comment: var(--c-overlay0);
   /* neutral grays: text + lines, ramp from most-text-like to most-surface-like */
   --gray-33: var(--c-text);
@@ -129,34 +134,36 @@
 :root[data-theme="mocha"] {
   --c-rosewater: #f0a99d;
   --c-flamingo: #ec9a9a;
-  --c-pink: #e27fc0;
-  --c-mauve: #b598f5;
-  --c-red: #eb5757;
-  --c-maroon: #f07a7a;
-  --c-peach: #f2994a;
-  --c-yellow: #f2c94c;
-  --c-green: #4cb782;
-  --c-teal: #3cc4b0;
-  --c-sky: #4ec3f0;
-  --c-sapphire: #56b0e0;
-  --c-blue: #7c85f5;
-  --c-lavender: #a2a8ff;
-  --c-text: #e8e9ec;
-  --c-subtext1: #c2c6ce;
-  --c-subtext0: #8a8f98;
-  --c-overlay2: #7a7f88;
-  --c-overlay1: #696d75;
-  --c-overlay0: #565a62;
-  --c-surface2: #3e4047;
-  --c-surface1: #2e3036;
-  --c-surface0: #24262b;
-  --c-base: #141518;
-  --c-mantle: #0e0f11;
-  --c-crust: #08090a;
-  --on-accent: #ffffff;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.35);
-  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.3), 0 16px 48px rgba(0, 0, 0, 0.5);
-  --backdrop: rgba(0, 0, 0, 0.55);
+  --c-pink: #f09ac8;
+  --c-mauve: #c3b5ff;
+  --c-red: #eb6a6a;
+  --c-maroon: #f08a8a;
+  --c-peach: #f2b36f;
+  --c-yellow: #e2b341;
+  --c-green: #4fc28f;
+  --c-teal: #6fd3e0;
+  --c-sky: #8fc7ff;
+  --c-sapphire: #5aa9e6;
+  --c-blue: #8b8ff8;
+  --c-lavender: #b4b8ff;
+  --c-text: #edeef0;
+  --c-subtext1: #c9ccd1;
+  --c-subtext0: #9a9fa8;
+  --c-overlay2: #7a7f87;
+  --c-overlay1: #62666d;
+  --c-overlay0: #4a4d54;
+  --c-surface2: #34363c;
+  --c-surface1: #2a2c32;
+  --c-surface0: #1f2125;
+  --c-base: #111214;
+  --c-mantle: #0b0c0e;
+  --c-crust: #070809;
+  /* the dark accent is light, so text on it is dark */
+  --on-accent: #0b0c0e;
+  --popover: #16171a;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.35), 0 24px 80px rgba(0, 0, 0, 0.55);
+  --backdrop: rgba(5, 6, 8, 0.62);
 }
 
 html,
@@ -173,8 +180,8 @@ body {
   color: var(--fg);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
-  font-feature-settings: "cv11", "ss01";
-  letter-spacing: -0.003em;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 button {
@@ -240,9 +247,9 @@ input[type="radio"] {
   max-width: 20rem;
   padding: 0.25rem 0.5rem;
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--popover);
   color: var(--fg);
-  border: 1px solid var(--border);
+  border: 1px solid var(--c-surface1);
   font-size: 0.6875rem;
   line-height: 1.3;
   pointer-events: none;

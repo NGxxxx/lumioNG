@@ -118,13 +118,13 @@ describe("MenuBar", () => {
     render(MenuBar, { props: base });
     await fireEvent.click(screen.getByRole("button", { name: "View" }));
     await fireEvent.click(screen.getByRole("button", { name: "Theme" }));
-    const light = screen.getByRole("button", { name: /Light/ });
-    expect(light.textContent).toContain("✓"); // latte active by default
-    await fireEvent.click(screen.getByRole("button", { name: /Dark/ }));
+    const dark = screen.getByRole("button", { name: /Dark/ });
+    expect(dark.textContent).toContain("✓"); // mocha (dark) active by default
+    await fireEvent.click(screen.getByRole("button", { name: /Light/ }));
     try {
-      expect(theme.current).toBe("mocha");
+      expect(theme.current).toBe("latte");
     } finally {
-      theme.set("latte"); // restore shared store for later tests
+      theme.set("mocha"); // restore shared store for later tests
     }
   });
 

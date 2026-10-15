@@ -282,13 +282,11 @@
 </div>
 
 <style>
+  /* Rendered inline in the title bar row: no own background or border. */
   .menubar {
     display: flex;
     align-items: center;
-    height: 1.75rem;
-    background: var(--bg);
-    border-bottom: 1px solid var(--border);
-    padding: 0 0.25rem;
+    gap: 0.0625rem;
     user-select: none;
     box-sizing: border-box;
   }
@@ -296,26 +294,26 @@
   .top {
     border: none;
     background: none;
-    padding: 0.25rem 0.5625rem;
-    font-size: var(--fs);
-    color: var(--fg);
+    padding: 0.3125rem 0.5rem;
+    font-size: 0.78125rem;
+    color: var(--c-subtext1);
     border-radius: var(--radius);
     cursor: pointer;
     line-height: 1;
   }
   .top:hover:not(.disabled):not(:disabled),
-  .top.active:not(.disabled):not(:disabled) { background: var(--menu-hover); }
+  .top.active:not(.disabled):not(:disabled) { background: var(--menu-hover); color: var(--fg); }
   .top.disabled,
   .top:disabled { color: var(--gray-aa); cursor: default; }
   .dropdown {
     position: absolute;
-    top: 100%;
+    top: calc(100% + 0.25rem);
     left: 0;
     z-index: 30;
-    min-width: 10rem;
+    min-width: 12rem;
     width: max-content;
-    background: var(--panel);
-    border: 1px solid var(--border);
+    background: var(--popover);
+    border: 1px solid var(--c-surface1);
     border-radius: var(--radius-lg);
     padding: 0.25rem;
     box-shadow: var(--shadow-sm);
@@ -329,16 +327,17 @@
     text-align: left;
     border: none;
     background: none;
-    padding: 0.3125rem 0.625rem;
-    border-radius: var(--radius);
+    height: 1.875rem;
+    padding: 0 0.625rem;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     font-size: var(--fs);
-    color: var(--fg);
+    color: var(--c-subtext1);
     white-space: nowrap;
   }
-  .item:hover:not(:disabled) { background: var(--menu-hover); }
+  .item:hover:not(:disabled) { background: var(--menu-hover); color: var(--fg); }
   .item:disabled { color: var(--gray-aa); cursor: default; }
-  .shortcut { color: var(--muted); font-size: 0.6875rem; flex: none; }
+  .shortcut { color: var(--muted); font-family: var(--mono); font-size: 0.6875rem; flex: none; }
   /* Submenu parent row + right-anchored flyout */
   .parent { position: relative; }
   .arrow { color: var(--muted); font-size: 0.625rem; }

@@ -91,19 +91,19 @@
 
 <style>
   .left-col {
-    width: 20.625rem;
+    width: 19rem;
     flex: none;
-    border-right: 1px solid var(--gray-cf);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
-    background: var(--panel);
+    background: var(--bg);
   }
 
   /* ── Filter bar ── */
   .filter-bar {
     display: flex;
     gap: 0.375rem;
-    padding: 0.5rem;
+    padding: 0.75rem 0.625rem 0.5rem;
     align-items: center;
     flex: none;
   }
@@ -111,12 +111,12 @@
     flex: 1;
     display: flex;
     align-items: center;
-    height: 1.5rem;
-    border: 1px solid var(--gray-c4);
-    border-radius: var(--radius-sm);
-    padding: 0 0.375rem;
+    height: 1.875rem;
+    border: 1px solid var(--c-surface1);
+    border-radius: var(--radius);
+    padding: 0 0.5rem;
     background: var(--panel);
-    gap: 0.25rem;
+    gap: 0.375rem;
   }
   .filter-icon { flex: none; }
   .filter-input {
@@ -130,10 +130,10 @@
   }
   .filter-input::placeholder { color: var(--gray-aa); }
   .filter-clear {
-    width: 1.5rem;
-    height: 1.5rem;
-    border: 1px solid var(--gray-c4);
-    border-radius: var(--radius-sm);
+    width: 1.875rem;
+    height: 1.875rem;
+    border: 1px solid var(--c-surface1);
+    border-radius: var(--radius);
     background: var(--panel);
     color: var(--danger-mute);
     cursor: pointer;
@@ -149,9 +149,10 @@
   /* ── Session list rows ── */
   .list-header {
     display: flex;
-    padding: 0 0.5rem 0.25rem;
-    color: var(--gray-77);
+    padding: 0.25rem 1.125rem 0.375rem;
+    color: var(--muted);
     font-size: 0.6875rem;
+    font-weight: 500;
     flex: none;
   }
   .col-name { flex: 1; }
@@ -160,24 +161,28 @@
   .session-list {
     flex: 1;
     overflow: auto;
+    padding: 0 0.375rem 0.5rem;
   }
 
   .session-row {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.3125rem 0.5rem;
+    gap: 0.5rem;
+    height: 2.125rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius);
     cursor: default;
     font-size: var(--fs);
-    border-bottom: 1px solid var(--bg);
+    color: var(--c-subtext1);
   }
   .session-row:hover {
-    background: var(--row-hover);
+    background: var(--hover);
+    color: var(--fg);
   }
   .session-row.selected {
-    background: var(--row-selected);
-    outline: 1px solid var(--row-selected-ring);
-    outline-offset: -1px;
+    background: var(--menu-hover);
+    color: var(--fg);
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .session-icon { flex: none; }
   .session-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

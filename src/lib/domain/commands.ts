@@ -23,6 +23,7 @@ export type CommandId =
   | "goto.data"
   | "view.closeWorkTab"
   | "view.resetToDefault"
+  | "view.commandPalette"
   | "help.about"
   // Grid (result grid / data view)
   | "grid.newDocument"
@@ -66,6 +67,7 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "goto.collection": "Mod+3",
   "goto.data": "Mod+4",
   "view.closeWorkTab": "Mod+F4",
+  "view.commandPalette": "Mod+K",
   "help.about": "F1",
   "grid.newDocument": "Insert",
   "grid.duplicateDocument": "Mod+Insert",

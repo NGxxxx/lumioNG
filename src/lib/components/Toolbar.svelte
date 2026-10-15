@@ -20,6 +20,7 @@
     logOpen = false,
     savedQueriesOpen = false,
     onToggleSavedQueries = () => {},
+    crumb = [],
   }: {
     commands: Partial<Record<CommandId, Command>>;
     canNewDoc: boolean;
@@ -33,6 +34,8 @@
     logOpen?: boolean;
     savedQueriesOpen?: boolean;
     onToggleSavedQueries?: () => void;
+    /** Where the actions apply (e.g. ["shop", "orders"]); the last segment is emphasized. */
+    crumb?: string[];
   } = $props();
 
   const plat = detectPlatform();
@@ -52,6 +55,12 @@
 </script>
 
 <div class="toolbar">
+  <div class="crumb">
+    {#each crumb as part, i (i)}
+      {#if i > 0}<span class="slash" aria-hidden="true">/</span>{/if}
+      <span class:strong={i === crumb.length - 1}>{part}</span>
+    {/each}
+  </div>
   <!-- ── Connection: session + tree state ── -->
   <!-- Session manager (always enabled) -->
   <span class="tt" use:tooltip={tt("file.sessionManager", m.toolbar_session_manager())}>
@@ -279,17 +288,35 @@
 </div>
 
 <style>
+  /* Header row of the main panel: context breadcrumb on the left, actions grouped on the right. */
   .toolbar {
     display: flex;
     align-items: center;
-    height: 2.125rem;
-    background: var(--bg);
+    height: 2.5rem;
+    background: var(--panel);
     border-bottom: 1px solid var(--border);
     flex: none;
-    padding: 0 0.25rem;
-    gap: 0.0625rem;
+    padding: 0 0.5rem 0 0.875rem;
+    gap: 0.125rem;
     user-select: none;
+    overflow-x: auto;
+    scrollbar-width: none;
   }
+
+  .crumb {
+    flex: 1;
+    min-width: 2rem;
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: var(--fs);
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .crumb .strong { color: var(--fg); font-weight: 600; }
+  .slash { color: var(--c-overlay0); }
 
   /* Real box (not display:contents) so hover still fires while the inner button is disabled. */
   .tt {
@@ -299,8 +326,12 @@
   .btn-icon {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.25rem;
-    padding: 0.3125rem;
+    min-width: 1.75rem;
+    height: 1.75rem;
+    padding: 0 0.375rem;
+    box-sizing: border-box;
     border: none;
     background: none;
     cursor: default;
@@ -317,7 +348,7 @@
   }
 
   .btn-icon:disabled {
-    opacity: 0.4;
+    opacity: 0.35;
     cursor: default;
   }
 
@@ -329,9 +360,8 @@
   .sep {
     width: 1px;
     height: 1rem;
-    background: var(--gray-cf);
-    margin: 0 0.1875rem;
+    background: var(--border);
+    margin: 0 0.3125rem;
     flex: none;
   }
-
 </style>

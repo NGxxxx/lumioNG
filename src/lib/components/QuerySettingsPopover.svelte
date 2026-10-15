@@ -44,7 +44,7 @@
 
   .popover {
     position: absolute; top: 1.75rem; right: 0; z-index: 100;
-    background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-lg);
+    background: var(--popover); border: 1px solid var(--c-surface1); border-radius: var(--radius-lg);
     box-shadow: var(--shadow-sm);
     padding: 0.75rem; display: flex; flex-direction: column; gap: 0.75rem; min-width: 13rem;
   }

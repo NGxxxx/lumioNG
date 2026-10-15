@@ -1,5 +1,7 @@
 <!-- src/routes/+layout.svelte -->
 <script lang="ts">
+  import "@fontsource-variable/geist";
+  import "@fontsource-variable/geist-mono";
   import "../app.css";
   import { dev } from "$app/env";
   import { handleModalKeydown } from "#lib/stores/modalStack.js";

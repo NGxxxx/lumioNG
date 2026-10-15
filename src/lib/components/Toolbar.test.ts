@@ -29,6 +29,19 @@ function baseCommands(overrides: Partial<Record<CommandId, Command>> = {}): Part
 const base = { commands: baseCommands(), canNewDoc: true, onToggleLog: vi.fn() };
 
 describe("Toolbar", () => {
+  it("renders the context breadcrumb with the last segment emphasized", () => {
+    const { container } = render(Toolbar, { props: { ...base, crumb: ["shop", "orders"] } });
+    const parts = [...container.querySelectorAll(".crumb > span:not(.slash)")];
+    expect(parts.map((p) => p.textContent)).toEqual(["shop", "orders"]);
+    expect(parts[1].classList.contains("strong")).toBe(true);
+    expect(container.querySelectorAll(".crumb .slash")).toHaveLength(1);
+  });
+
+  it("renders no breadcrumb segments by default", () => {
+    const { container } = render(Toolbar, { props: base });
+    expect(container.querySelector(".crumb")?.children).toHaveLength(0);
+  });
+
   it("Session manager is always enabled and calls its command's run", async () => {
     const run = vi.fn();
     const { getByLabelText } = render(Toolbar, {

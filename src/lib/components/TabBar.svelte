@@ -62,26 +62,26 @@
         {#if c.kind === "host"}
           <!-- Mongo leaf / green -->
           <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
-            <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
-            <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="var(--accent)" stroke-width="2"/>
+            <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="currentColor" stroke-width="2"/>
+            <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="currentColor" stroke-width="2"/>
           </svg>
         {:else if c.kind === "database"}
           <!-- Purple cylinder -->
           <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-            <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
-            <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" fill="none" stroke="var(--type-object)" stroke-width="1.2"/>
+            <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" fill="none" stroke="currentColor" stroke-width="1.2"/>
           </svg>
         {:else if c.kind === "collection"}
           <!-- Yellow table -->
           <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="var(--warn)" stroke-width="1.1"/>
-            <path d="M2 6h12" stroke="var(--warn)" stroke-width="0.9"/>
+            <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/>
+            <path d="M2 6h12" stroke="currentColor" stroke-width="0.9"/>
           </svg>
         {:else if c.kind === "data"}
           <!-- Blue grid -->
           <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="var(--link)" stroke-width="1.1"/>
-            <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="var(--link)" stroke-width="0.8"/>
+            <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/>
+            <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="currentColor" stroke-width="0.8"/>
           </svg>
         {/if}
         {c.label}
@@ -116,59 +116,57 @@
 </div>
 
 <style>
+  /* Pill tabs on the panel's top strip: context tabs (Host/Database/Collection/Data), a divider,
+     then the scrollable work tabs (queries, documents) and "+". */
   .tabbar {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     flex: none;
-    padding: 0 0.25rem;
+    height: 2.375rem;
+    padding: 0 0.375rem;
+    gap: 0.125rem;
     border-bottom: 1px solid var(--border);
-    background: var(--bg);
+    background: var(--panel);
   }
-  /* Explicit height on both — matching .work-tabs' total (tab row + reserve) exactly, so
-     content-based auto-sizing can't put their bottom borders a pixel or two apart. */
   .context-tabs {
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     flex: none;
     gap: 0.125rem;
-    height: 2.25rem;
   }
-  /* Horizontal scrollbars render at an element's bottom edge, colliding with bottom-anchored tabs — flip the scroller so the scrollbar lands on top, then flip the inner row back. */
-  /* flex-grow:0 so this only takes the width of its own tabs — not the whole row — so the "+" button
-     sits right after the last tab instead of pinned to the far right with a big empty gap when there
-     are only a few tabs open. flex-shrink:1 + min-width:0 keep the "shrink to fit, then scroll
-     internally" behavior once there are enough tabs to fill the available space. */
+  /* Horizontal scrollbars render at an element's bottom edge — flip the scroller so the scrollbar
+     lands on top, then flip the inner row back. flex-grow:0 keeps "+" right after the last tab;
+     flex-shrink:1 + min-width:0 shrink-then-scroll once the strip is full. */
   .work-tabs {
     flex: 0 1 auto;
     min-width: 0;
-    height: 2.25rem;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: thin;
     transform: scaleY(-1);
   }
-  .work-tabs::-webkit-scrollbar { height: 0.5rem; }
+  .work-tabs::-webkit-scrollbar { height: 0.25rem; }
   .work-tabs::-webkit-scrollbar-track { background: transparent; }
   .work-tabs::-webkit-scrollbar-thumb { background: var(--gray-b8); border-radius: var(--radius); }
   .work-tabs-inner {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.125rem;
     width: max-content;
+    padding: 0.375rem 0;
     transform: scaleY(-1);
   }
 
-  /* Linear-style tabs: borderless, muted until hovered; the active tab is a raised card joined to the pane below. */
   .tab {
     display: flex;
     align-items: center;
-    gap: 0.375rem;
-    padding: 0.3125rem 0.75rem;
-    font-size: var(--fs);
-    border: 1px solid transparent;
-    border-bottom: none;
-    border-radius: var(--radius) var(--radius) 0 0;
-    margin-bottom: -1px;
+    gap: 0.4375rem;
+    height: 1.625rem;
+    box-sizing: border-box;
+    padding: 0 0.625rem;
+    font-size: 0.78125rem;
+    border: none;
+    border-radius: var(--radius);
     cursor: default;
     white-space: nowrap;
     max-width: 13.75rem;
@@ -177,32 +175,31 @@
   }
 
   .tab:hover:not(.active) {
-    background: var(--menu-hover);
+    background: var(--hover);
     color: var(--fg);
   }
 
   .tab.active {
-    background: var(--panel);
-    border-color: var(--border);
+    background: var(--menu-hover);
     color: var(--tab-active-fg);
     font-weight: 500;
-    position: relative;
-    z-index: 2;
+    box-shadow: inset 0 0 0 1px var(--border);
   }
 
   .divider {
     width: 1px;
     height: 1rem;
     background: var(--border);
-    margin: 0 0.375rem 0.5rem;
-    align-self: flex-end;
+    margin: 0 0.375rem;
+    flex: none;
   }
 
   .label {
     border: none;
     background: none;
     padding: 0;
-    font-size: var(--fs);
+    font-size: inherit;
+    font-weight: inherit;
     cursor: pointer;
     white-space: nowrap;
     overflow: hidden;
@@ -214,23 +211,29 @@
   .x {
     border: none;
     background: none;
-    padding: 0 0 0 0.25rem;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
+    margin-right: -0.25rem;
+    border-radius: var(--radius-sm);
     cursor: pointer;
     color: var(--muted);
     font-size: 0.875rem;
     line-height: 1;
+    opacity: 0;
   }
+  .tab:hover .x, .tab.active .x, .x:focus-visible { opacity: 1; }
+  .x:hover { color: var(--fg); background: var(--hover); }
 
-  .x:hover {
-    color: var(--fg);
+  .newq {
+    flex: none; width: 1.625rem; justify-content: center; padding: 0;
+    font-size: 1rem; font-weight: 400; color: var(--muted); cursor: pointer;
   }
-
-  .newq { flex: none; padding: 0.25rem 0.625rem; margin-bottom: 0.25rem; border-radius: var(--radius); font-weight: 500; color: var(--muted); cursor: pointer; border: none; background: none; }
-  .newq:hover { background: var(--menu-hover); color: var(--fg); }
+  .newq:hover { background: var(--hover); color: var(--fg); }
 
   .session-dot {
-    width: 0.5rem;
-    height: 0.5rem;
+    width: 0.4375rem;
+    height: 0.4375rem;
     border-radius: 50%;
     flex: none;
     display: inline-block;

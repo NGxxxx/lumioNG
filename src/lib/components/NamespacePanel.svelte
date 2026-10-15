@@ -384,31 +384,37 @@
 
 <style>
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); }
-  .ns-search { display: flex; align-items: center; gap: 0.3125rem; height: 1.625rem; padding: 0 0.5rem; border-bottom: 1px solid var(--border); background: var(--panel); flex: none; }
+  .ns-search {
+    display: flex; align-items: center; gap: 0.375rem; height: 1.75rem; margin: 0.25rem 0.375rem 0.375rem 0.5rem; padding: 0 0.5rem;
+    border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); flex: none;
+  }
+  .ns-search:focus-within { border-color: var(--accent); }
   /* <aside> clips overflow (+page.svelte); this is the actual scroll region. */
   .sessions-scroll { flex: 1; min-height: 0; overflow-y: auto; }
-  .ns-search input { flex: 1; border: none; background: none; font-size: var(--fs); outline: none; }
+  .ns-search input { flex: 1; min-width: 0; border: none; background: none; font-size: var(--fs); outline: none; box-shadow: none; padding: 0; }
+  .ns-search input::placeholder { color: var(--muted); }
   .ns-clear { border: none; background: none; cursor: pointer; color: var(--gray-99); font-size: 0.875rem; line-height: 1; padding: 0 0.125rem; }
   .ns-clear:hover { color: var(--gray-44); }
 
   /* ── Per-session root block ── */
   .session-root { display: flex; flex-direction: column; }
-  .session-root.active > .session-header { background: var(--row-hover); }
+  .session-root.active > .session-header .session-label { color: var(--fg); }
 
   .session-header {
     display: flex;
     align-items: center;
-    height: 1.625rem;
+    height: 1.875rem;
+    margin: 0 0.375rem 0 0.5rem;
     padding: 0 0.375rem;
-    gap: 0.25rem;
+    gap: 0.375rem;
+    border-radius: var(--radius);
     cursor: pointer;
     user-select: none;
-    border-bottom: 1px solid var(--border);
-    background: var(--panel);
+    background: transparent;
     font-size: var(--fs);
     font-weight: 600;
   }
-  .session-header:hover { background: var(--row-hover); }
+  .session-header:hover { background: var(--hover); }
 
   .session-caret-btn {
     flex: none;
@@ -434,7 +440,7 @@
     display: inline-block;
   }
 
-  .session-label { flex: 1; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .session-label { flex: 1; color: var(--c-subtext1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .status-spinner,
   .status-error,

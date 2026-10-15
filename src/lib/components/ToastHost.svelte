@@ -21,16 +21,29 @@
     gap: 0.375rem;
     pointer-events: none;
   }
+  /* Neutral card with a status dot (Linear-style) rather than a solid colored banner. */
   .toast {
-    background: var(--ok-strong);
-    color: #fff;
-    padding: 0.5rem 0.875rem;
-    border-radius: var(--radius);
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    background: var(--popover);
+    color: var(--fg);
+    border: 1px solid var(--c-surface1);
+    padding: 0.625rem 0.875rem;
+    border-radius: var(--radius-lg);
     font-size: var(--fs);
     box-shadow: var(--shadow-sm);
     animation: toast-in 0.15s ease-out;
   }
-  .toast-error { background: var(--error); }
+  .toast::before {
+    content: "";
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 50%;
+    flex: none;
+    background: var(--ok-strong);
+  }
+  .toast-error::before { background: var(--error); }
   @keyframes toast-in {
     from { opacity: 0; transform: translateY(0.5rem); }
     to { opacity: 1; transform: translateY(0); }

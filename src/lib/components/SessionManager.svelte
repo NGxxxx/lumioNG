@@ -178,13 +178,13 @@
   }
 
   .panel {
-    width: 55rem;
-    height: 35rem;
+    width: 58rem;
+    height: 38rem;
     max-width: calc(100vw - 1.5rem);
     max-height: calc(100vh - 1.5rem);
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
+    background: var(--popover);
+    border: 1px solid var(--c-surface1);
+    border-radius: 0.75rem;
     box-shadow: var(--shadow-lg);
     display: flex;
     flex-direction: column;
@@ -195,21 +195,21 @@
   .header {
     display: flex;
     align-items: center;
-    height: 2.125rem;
-    background: var(--panel);
+    height: 2.75rem;
+    background: transparent;
     border-bottom: 1px solid var(--border);
-    padding: 0 0.75rem;
+    padding: 0 0.5rem 0 1rem;
     flex: none;
   }
   .header-title {
     font-weight: 600;
-    font-size: var(--fs);
+    font-size: 0.875rem;
     color: var(--fg);
   }
   .close-btn {
     margin-left: auto;
-    width: 1.875rem;
-    height: 1.5rem;
+    width: 1.75rem;
+    height: 1.75rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -221,8 +221,8 @@
     padding: 0;
   }
   .close-btn:hover {
-    background: var(--danger);
-    color: var(--on-accent);
+    background: var(--hover);
+    color: var(--fg);
   }
 
   /* ── Body ── */
@@ -236,12 +236,12 @@
   .footer {
     display: flex;
     align-items: center;
-    height: 2.875rem;
+    height: 3.25rem;
     flex: none;
-    border-top: 1px solid var(--gray-cf);
-    padding: 0 0.625rem;
+    border-top: 1px solid var(--border);
+    padding: 0 0.75rem;
     gap: 0.5rem;
-    background: var(--bg);
+    background: transparent;
   }
   .footer-left { display: flex; gap: 0.3125rem; align-items: center; }
   .footer-right { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
@@ -251,36 +251,37 @@
     display: flex;
     align-items: center;
     gap: 0.25rem;
-    height: 1.625rem;
+    height: 1.875rem;
     padding: 0 0.75rem;
-    background: var(--panel);
-    border: 1px solid var(--gray-b8);
+    background: var(--hover);
+    border: 1px solid var(--c-surface1);
     border-radius: var(--radius);
     cursor: pointer;
     font-size: var(--fs);
     color: var(--fg);
     font-family: inherit;
   }
-  .foot-btn:hover:not(:disabled) { background: var(--bg); }
-  .foot-btn:disabled { opacity: 0.5; cursor: default; }
+  .foot-btn:hover:not(:disabled) { background: var(--menu-hover); border-color: var(--c-surface2); }
+  .foot-btn:disabled { opacity: 0.45; cursor: default; }
 
   .new-btn .plus { color: var(--accent); font-weight: 700; }
-  .new-btn:hover:not(:disabled) { background: var(--ok-bg-tint); }
+  .new-btn .plus { font-weight: 500; }
 
+  .del-btn { color: var(--danger-mute); background: transparent; border-color: color-mix(in srgb, var(--danger) 30%, var(--c-surface1)); }
   .del-btn .del-x { color: var(--danger-mute); }
-  .del-btn:hover:not(:disabled) { background: var(--error-bg); }
+  .del-btn:hover:not(:disabled) { background: var(--error-bg); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
 
   .open-btn {
-    height: 1.75rem;
-    padding: 0 1.375rem;
+    height: 1.875rem;
+    padding: 0 1.25rem;
     background: var(--accent);
     color: var(--on-accent);
     border-color: transparent;
     font-weight: 600;
   }
   .open-btn:hover:not(:disabled) { background: var(--run-hover); }
-  .open-btn:disabled { background: var(--ok-mid); cursor: default; opacity: 1; }
+  .open-btn:disabled { background: var(--accent); cursor: default; opacity: 0.45; }
 
-  .cancel-btn { height: 1.75rem; padding: 0 1.375rem; }
-  .cancel-btn:hover { background: var(--bg); }
+  .cancel-btn { height: 1.875rem; padding: 0 1rem; background: transparent; border-color: transparent; color: var(--muted); }
+  .cancel-btn:hover { background: var(--hover); color: var(--fg); }
 </style>

@@ -210,67 +210,71 @@
     flex: 1;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
+    background: transparent;
     min-width: 0;
-    padding: 1rem 1.125rem;
+    padding: 0 1.5rem 1.25rem;
     overflow: auto;
   }
 
   /* ── General / SSH Tunnel tabs ── */
-  .view-toggle { display: flex; align-items: center; gap: 0.0625rem; margin-bottom: 0.75rem; }
-  .toggle-btn {
-    display: flex; align-items: center; height: 1.375rem; padding: 0 0.75rem;
-    font-size: var(--fs); border: 1px solid var(--gray-c4); background: var(--bg);
-    cursor: pointer; color: var(--gray-44); border-radius: var(--radius-sm);
+  /* Underline tabs, sticky so they stay reachable while a long form scrolls. */
+  .view-toggle {
+    display: flex; align-items: center; gap: 1.125rem; margin: 0 0 1.125rem;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 1;
+    background: var(--popover); padding-top: 0.75rem;
   }
-  .toggle-btn:hover { background: var(--cell-border); }
+  .toggle-btn {
+    display: flex; align-items: center; height: 2.125rem; padding: 0;
+    font-size: var(--fs); border: none; background: none;
+    cursor: pointer; color: var(--muted); border-radius: 0;
+  }
+  .toggle-btn:hover { color: var(--fg); }
   .toggle-active {
-    background: var(--hover);
-    box-shadow: inset 0 0 0 1px var(--toggle-on-ring);
-    color: var(--tab-active-fg);
+    color: var(--fg);
+    box-shadow: inset 0 -2px 0 var(--accent);
   }
 
   /* ── Form grid & inputs ── */
   .form-grid {
     display: grid;
-    grid-template-columns: 8.75rem 1fr;
-    gap: 0.625rem 0.75rem;
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+    gap: 0.625rem 1rem;
     align-items: center;
-    max-width: 27.5rem;
+    max-width: 32rem;
   }
 
   .form-label {
-    color: var(--gray-44);
+    color: var(--muted);
     font-size: var(--fs);
-    text-align: right;
+    text-align: left;
   }
 
   .form-input {
-    height: 1.5rem;
-    border: 1px solid var(--gray-c4);
-    border-radius: var(--radius-sm);
-    padding: 0 0.5rem;
+    height: 2rem;
+    border: 1px solid var(--c-surface1);
+    border-radius: var(--radius);
+    padding: 0 0.625rem;
     font-size: var(--fs);
-    background: var(--panel);
+    background: var(--bg);
     color: var(--fg);
     font-family: inherit;
     outline: none;
     width: 100%;
     box-sizing: border-box;
   }
-  .form-input:focus { border-color: var(--focus-ring); }
+  .form-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
   .form-input.mono { font-family: var(--mono); }
-  .form-input.short { width: 5.625rem; }
-  .form-input:disabled { background: var(--zebra); color: var(--gray-99); cursor: default; }
+  .form-input.short { width: 6.5rem; }
+  .form-input:disabled { background: var(--hover); color: var(--muted); cursor: default; }
 
   .form-check { display: flex; align-items: center; gap: 0.375rem; font-size: var(--fs); color: var(--fg); }
   .import-row { display: flex; gap: 0.375rem; }
   .import-row .form-input { flex: 1; }
   .import-btn {
-    height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius-sm);
-    background: var(--panel); cursor: pointer; font-size: var(--fs); color: var(--fg); flex: none;
+    height: 2rem; padding: 0 0.75rem; border: 1px solid var(--c-surface1); border-radius: var(--radius);
+    background: var(--hover); cursor: pointer; font-size: var(--fs); color: var(--fg); flex: none;
   }
-  .import-btn:hover { background: var(--bg); }
+  .import-btn:hover { background: var(--menu-hover); }
   .import-btn:disabled { color: var(--gray-99); cursor: default; }
   .ssh-forget-done { font-size: var(--fs); color: var(--fg); align-self: center; }
 
@@ -283,7 +287,7 @@
     margin-top: 0.625rem;
     padding: 0.375rem 0.5rem;
     background: var(--warn-bg);
-    border: 1px solid var(--warn);
+    border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent);
     border-radius: var(--radius);
     color: var(--fg);
     font-size: var(--fs);

@@ -72,30 +72,37 @@
 </div>
 
 <style>
+  /* Sits on the window chrome below the inset panel: no own background or rules, just quiet text. */
   .statusbar {
     display: flex;
     align-items: center;
-    height: 1.5rem;
+    height: 1.625rem;
     flex: none;
-    background: var(--bg);
-    border-top: 1px solid var(--border);
+    padding: 0 0.375rem;
+    background: var(--app-bg);
     font-size: 0.6875rem;
-    color: var(--gray-55);
+    color: var(--muted);
     user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
   }
 
   .seg {
-    padding: 0 0.625rem;
-    border-right: 1px solid var(--border);
+    padding: 0 0.5rem;
     height: 100%;
     display: flex;
     align-items: center;
     gap: 0.375rem;
   }
+  .seg + .seg:not(.idle)::before {
+    content: "·";
+    margin-right: 0.5rem;
+    margin-left: -0.5rem;
+    color: var(--c-overlay0);
+  }
 
   .idle {
     margin-left: auto;
-    border-right: none;
     color: var(--muted);
   }
 
@@ -107,12 +114,13 @@
     width: 0.4375rem;
     height: 0.4375rem;
     border-radius: 50%;
-    background: var(--gray-c4);
+    background: var(--c-overlay0);
     display: inline-block;
     flex: none;
   }
 
   .dot.on {
     background: var(--ok-fg);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ok-fg) 22%, transparent);
   }
 </style>

@@ -5,7 +5,7 @@
 // looped forever.
 import { rafThrottle } from "../domain/rafThrottle";
 
-export const GRID_ROW_H = 24;
+export const GRID_ROW_H = 28;
 
 /** `resizing` lets callers suppress a click action (e.g. sort-on-header) on mouseup. */
 export function createColumnResize(getWidth: (path: string) => number, setWidth: (path: string, px: number) => void) {

@@ -428,7 +428,7 @@
 
 <style>
   .backdrop { position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; }
-  .modal { background: var(--panel); width: 30rem; max-width: 94vw; border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-lg); }
+  .modal { background: var(--popover); border: 1px solid var(--c-surface1); width: 30rem; max-width: 94vw; border-radius: 0.75rem; overflow: hidden; box-shadow: var(--shadow-lg); }
   .modal-sql { width: 32rem; max-height: 85vh; display: flex; flex-direction: column; }
   header { padding: 0.625rem 0.875rem; border-bottom: 1px solid var(--bg); flex: none; }
   header .title { font-weight: 600; }

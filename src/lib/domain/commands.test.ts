@@ -12,4 +12,8 @@ describe("commands", () => {
     expect(SHORTCUTS["file.quit"]).toBeUndefined();
     expect(SHORTCUTS["view.resetToDefault"]).toBeUndefined();
   });
+
+  it("binds the command palette to Mod+K", () => {
+    expect(SHORTCUTS["view.commandPalette"]).toBe("Mod+K");
+  });
 });

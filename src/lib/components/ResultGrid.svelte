@@ -257,19 +257,21 @@
   /* ── Header ── */
   th {
     box-sizing: border-box;
-    background: var(--th-grad-top);
+    background: var(--panel);
     /* transparent top/left keep the old 1px-per-side geometry; only the dividers are drawn */
     border: 1px solid transparent;
     border-right-color: var(--cell-border);
     border-bottom-color: var(--border);
-    padding: 0.25rem 0.5625rem;
+    height: 2rem;
+    padding: 0 0.75rem;
     font-weight: 500;
     position: sticky;
     top: 0;
     z-index: 2;
     cursor: pointer;
     user-select: none;
-    color: var(--fg);
+    color: var(--muted);
+    font-size: 0.75rem;
     text-align: left;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -284,7 +286,7 @@
     left: 0;
     top: 0;
     z-index: 3;
-    padding: 0.25rem 0.375rem;
+    padding: 0 0.5rem;
   }
 
   /* ── Cells ── */
@@ -292,37 +294,40 @@
     /* border-box: border-collapse is now separate, so border+padding must count toward width. */
     box-sizing: border-box;
     border: 1px solid transparent;
-    border-right-color: color-mix(in srgb, var(--cell-border) 55%, transparent);
+    border-right-color: transparent;
     border-bottom-color: var(--row-divider);
-    padding: 0.1875rem 0.5625rem;
+    padding: 0 0.75rem;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
   .td-rownum {
     text-align: right;
-    color: var(--gray-99);
-    background: var(--th-grad-top);
+    color: var(--c-overlay1);
+    background: var(--panel);
     position: sticky;
     left: 0;
     z-index: 1;
-    padding: 0.1875rem 0.375rem;
+    padding: 0 0.5rem;
     font-size: 0.6875rem;
+    font-family: var(--mono);
   }
   /* Fixed data-row height so virtualization can trust ROW_H without measuring. Spacer rows
      (padTop/padBottom) have no data-index, so their explicit pixel heights are unaffected. */
-  tbody tr[data-index] { height: 24px; }
-  .row-selected td { box-shadow: inset 0 -1px 0 var(--row-selected-ring), inset 0 1px 0 var(--row-selected-ring); }
+  tbody tr[data-index] { height: 28px; }
+  tbody tr[data-index]:not(.row-selected):hover td { background: var(--row-hover); }
+  .row-selected td { border-bottom-color: color-mix(in srgb, var(--accent) 22%, transparent); }
+  .row-selected td:first-child { box-shadow: inset 2px 0 0 var(--accent); }
   .scroller:focus { outline: none; }
-  .data-cell { padding: 0; height: 22px; position: relative; }
+  .data-cell { padding: 0; height: 26px; position: relative; }
   /* Inlined BsonCell (no component per cell): base + per-BSON-type modifiers. Scalar colors come
      from the inline style attr; object/array colors come from the type-class rules below. */
   .data-cell .cell {
-    padding: 0 0.5625rem; display: inline-block; height: 22px; line-height: 22px;
+    padding: 0 0.75rem; display: inline-block; height: 26px; line-height: 26px;
     max-width: 20rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-    vertical-align: bottom; font-family: var(--mono); font-size: var(--fs);
+    vertical-align: bottom; font-family: var(--mono); font-size: 0.78125rem;
   }
-  .data-cell .cell.string { font-family: var(--font); }
+  .data-cell .cell.string { font-family: var(--font); font-size: var(--fs); }
   .data-cell .cell.null { font-style: italic; }
   .data-cell .cell.object { color: var(--type-object); font-style: italic; font-size: 0.6875rem; }
   .data-cell .cell.array { color: var(--type-array); font-style: italic; font-size: 0.6875rem; }
@@ -333,8 +338,8 @@
     padding: 0.0625rem 0.5rem;
     border-radius: 0.5625rem;
     font-size: 0.6875rem;
-    font-weight: 600;
-    margin: 0.125rem 0.5625rem;
+    font-weight: 500;
+    margin: 0.125rem 0.75rem;
   }
 
   /* ── Edit cell ── */
@@ -351,7 +356,7 @@
 
   /* ── Object/array modal editor ── */
   .modal-backdrop { position: fixed; inset: 0; z-index: 1000; background: var(--backdrop); display: flex; align-items: center; justify-content: center; overflow-y: auto; }
-  .modal-editor { background: var(--panel); width: 34rem; max-width: 90vw; border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; }
+  .modal-editor { background: var(--popover); border: 1px solid var(--c-surface1); width: 34rem; max-width: 90vw; border-radius: 0.75rem; overflow: hidden; display: flex; flex-direction: column; }
   .modal-editor header { padding: 0.625rem 0.875rem; font-weight: 600; border-bottom: 1px solid var(--bg); font-size: 0.8125rem; }
   .modal-textarea {
     height: 18rem; margin: 0.875rem; width: calc(100% - 1.75rem); box-sizing: border-box;
@@ -368,8 +373,8 @@
   .modal-editor footer .primary:hover:not(:disabled) { background: var(--run-hover); }
 
   /* ── Column header decorations ── */
-  .colname { font-weight: 600; }
-  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: var(--gray-55); background: var(--tab-inactive-bg); border-radius: var(--radius); padding: 0 0.25rem; font-family: var(--mono); }
+  .colname { font-weight: 500; color: var(--c-subtext1); }
+  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: var(--c-overlay2); background: none; border-radius: var(--radius); padding: 0; font-family: var(--mono); font-weight: 400; }
   .presence { margin-left: 0.25rem; font-size: 0.625rem; color: var(--gray-99); }
   .sortarrow { margin-left: 0.25rem; font-size: 0.625rem; color: var(--link); }
   .sortrank { margin-left: 0.125rem; font-size: 0.5625rem; color: var(--link); vertical-align: super; }
@@ -386,5 +391,5 @@
     cursor: col-resize;
     user-select: none;
   }
-  .col-resize:hover { background: var(--tab-active-border); opacity: 0.5; }
+  .col-resize:hover { background: var(--accent); opacity: 0.5; }
 </style>

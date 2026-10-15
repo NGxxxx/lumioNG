@@ -78,9 +78,9 @@
       </svg>
       <!-- Purple cylinder icon -->
       <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" class="icon-db">
-        <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="var(--type-object-bg-tint)" stroke="var(--type-object)" stroke-width="1"/>
-        <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-0.9 5-2v-9" fill="var(--type-object-bg-tint)" stroke="var(--type-object)" stroke-width="1"/>
-        <path d="M3 8c0 1.1 2.2 2 5 2s5-0.9 5-2" fill="none" stroke="var(--type-object)" stroke-width="0.9"/>
+        <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="var(--c-overlay2)" stroke-width="1"/>
+        <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-0.9 5-2v-9" fill="none" stroke="var(--c-overlay2)" stroke-width="1"/>
+        <path d="M3 8c0 1.1 2.2 2 5 2s5-0.9 5-2" fill="none" stroke="var(--c-overlay2)" stroke-width="0.9"/>
       </svg>
       <span class="db-name">{d.name}</span>
       <span class="db-size">—</span>
@@ -96,8 +96,8 @@
         >
           <!-- Yellow table icon -->
           <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" class="icon-coll">
-            <rect x="2" y="3" width="12" height="10" rx="1" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="0.9"/>
-            <path d="M2 6h12M6 6v7" stroke="var(--warn)" stroke-width="0.8"/>
+            <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="var(--c-overlay2)" stroke-width="0.9"/>
+            <path d="M2 6h12M6 6v7" stroke="var(--c-overlay2)" stroke-width="0.8"/>
           </svg>
           <span class="coll-name">{c}</span>
           <span class="coll-count"></span>
@@ -115,8 +115,8 @@
     font-size: 0.8125rem;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
-    padding-top: 0.25rem;
+    background: var(--app-bg);
+    padding-top: 0.125rem;
   }
 
   /* ── Database row ── */
@@ -130,14 +130,15 @@
     cursor: default;
     user-select: none;
   }
-  .db:hover { background: var(--menu-hover); }
+  .db:hover { background: var(--hover); }
   .db[aria-selected="true"] {
     background: var(--menu-hover);
     font-weight: 500;
   }
   .caret { margin-right: 0.1875rem; flex: none; }
   .icon-db { margin-right: 0.3125rem; flex: none; }
-  .db-name { color: var(--text-strong); flex: 1; font-size: 0.8125rem; }
+  .db-name { color: var(--c-subtext1); flex: 1; font-size: 0.8125rem; }
+  .db[aria-selected="true"] .db-name { color: var(--fg); }
   .db-size { color: var(--gray-99); font-size: 0.6875rem; margin-left: auto; flex: none; }
 
   /* ── Collection row ── */
@@ -154,14 +155,15 @@
     background: none;
     cursor: pointer;
     font-size: 0.8125rem;
-    color: var(--fg);
+    color: var(--c-subtext1);
     box-sizing: border-box;
   }
-  .coll:hover { background: var(--menu-hover); }
+  .coll:hover { background: var(--hover); color: var(--fg); }
   .coll.active {
-    background: var(--selected);
-    color: var(--text-strong);
+    background: var(--menu-hover);
+    color: var(--fg);
     font-weight: 500;
+    box-shadow: inset 2px 0 0 var(--accent);
   }
   .icon-coll { margin-right: 0.3125rem; flex: none; }
   .coll-name { flex: 1; }
@@ -175,9 +177,8 @@
     align-items: center;
     padding: 0 0.5rem;
     font-size: 0.6875rem;
-    color: var(--gray-77);
-    border-top: 1px solid var(--border);
-    background: var(--bg);
+    color: var(--muted);
+    background: var(--app-bg);
     flex: none;
   }
 </style>
