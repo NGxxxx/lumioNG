@@ -59,4 +59,21 @@ describe("createCommandLog", () => {
       expect(log.entries).toEqual([]);
     });
   });
+
+  describe("unseen counter", () => {
+    it("counts pushes until markSeen", () => {
+      const log = createCommandLog();
+      log.push("a", "s", 1);
+      log.push("b", "s", 1);
+      expect(log.unseen).toBe(2);
+      log.markSeen();
+      expect(log.unseen).toBe(0);
+    });
+    it("clear resets the counter", () => {
+      const log = createCommandLog();
+      log.push("a", "s", 1);
+      log.clear();
+      expect(log.unseen).toBe(0);
+    });
+  });
 });

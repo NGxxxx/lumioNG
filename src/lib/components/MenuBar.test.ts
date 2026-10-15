@@ -5,6 +5,7 @@ import MenuBar from "./MenuBar.svelte";
 import { appLocale } from "../stores/locale.svelte";
 import { uiSize } from "../stores/uiSize.svelte";
 import { theme } from "../stores/theme.svelte";
+import { settings } from "../stores/settings.svelte";
 import type { Command, CommandId } from "../domain/commands";
 
 function cmd(disabled = false, run: () => void = vi.fn()): Command {
@@ -36,9 +37,7 @@ function baseCommands(overrides: Partial<Record<CommandId, Command>> = {}): Part
 
 const base = {
   commands: baseCommands(),
-  contextTabs: [],
-  activeContextKind: null,
-  onshowcontext: vi.fn(),
+  goto: [],
 };
 
 describe("MenuBar", () => {
@@ -128,6 +127,19 @@ describe("MenuBar", () => {
     }
   });
 
+  it("View → Density submenu lists three options with the active one checked, and switches", async () => {
+    render(MenuBar, { props: base });
+    await fireEvent.click(screen.getByRole("button", { name: "View" }));
+    await fireEvent.click(screen.getByRole("button", { name: "Density" }));
+    expect(screen.getByRole("button", { name: /Comfortable/ }).textContent).toContain("✓");
+    await fireEvent.click(screen.getByRole("button", { name: /Compact/ }));
+    try {
+      expect(settings.density).toBe("compact");
+    } finally {
+      settings.setDensity("comfortable");
+    }
+  });
+
   it("View → Reset to default calls its command's run", async () => {
     const run = vi.fn();
     render(MenuBar, { props: { ...base, commands: baseCommands({ "view.resetToDefault": cmd(false, run) }) } });
@@ -165,30 +177,40 @@ describe("MenuBar", () => {
     expect(getByText("F9")).toBeTruthy();
   });
 
-  it("Go to lists context tabs and marks the active one checked", async () => {
-    const onshowcontext = vi.fn();
+  it("Go to lists the destination items, marks the active one, and runs the chosen one", async () => {
+    const runDb = vi.fn();
     const { getByText, getByRole } = render(MenuBar, {
       props: {
         ...base,
-        contextTabs: [
-          { kind: "host", label: "Host" },
-          { kind: "database", label: "Database" },
+        goto: [
+          { label: "Host", checked: true, shortcut: "Ctrl+1", run: vi.fn() },
+          { label: "Database", checked: false, run: runDb },
+          { label: "Indexes", checked: false, disabled: true, run: vi.fn() },
         ],
-        activeContextKind: "host",
-        onshowcontext,
       },
     });
     await fireEvent.click(getByText("Go to"));
-    const hostItem = getByRole("button", { name: /Host/ });
-    expect(hostItem.textContent).toContain("✓");
+    expect(getByRole("button", { name: /Host/ }).textContent).toContain("✓");
+    expect(getByRole("button", { name: /Host/ }).textContent).toContain("Ctrl+1");
+    expect((getByRole("button", { name: /Indexes/ }) as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.click(getByText("Database"));
-    expect(onshowcontext).toHaveBeenCalledWith("database");
+    expect(runDb).toHaveBeenCalled();
   });
 
-  it("Go to is disabled when there are no context tabs and no tabs to cycle", async () => {
+  it("Go to is disabled when there are no destination items and no tabs to cycle", async () => {
     const { getByText } = render(MenuBar, { props: base });
     const item = getByText("Go to") as HTMLButtonElement;
     expect(item.disabled).toBe(true);
+  });
+
+  it("Help → Keyboard shortcuts runs its command and shows the ? hint", async () => {
+    const run = vi.fn();
+    render(MenuBar, { props: { ...base, commands: baseCommands({ "help.shortcuts": cmd(false, run) }) } });
+    await fireEvent.click(screen.getByRole("button", { name: "Help" }));
+    const item = screen.getByRole("button", { name: /Keyboard shortcuts/ });
+    expect(item.textContent).toContain("?");
+    await fireEvent.click(item);
+    expect(run).toHaveBeenCalled();
   });
 
   it("Help → About calls its command's run", async () => {

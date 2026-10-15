@@ -1,50 +1,53 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
-import type { ContextKind, WorkTab } from "../stores/navigation.svelte";
+import type { WorkTab } from "../stores/navigation.svelte";
 import TabBar from "./TabBar.svelte";
 
-const ctx: { kind: ContextKind; label: string }[] = [
-  { kind: "database", label: "Database" },
-  { kind: "collection", label: "Collection" },
-  { kind: "data", label: "Data" },
-];
+const dest = { label: "shop.orders", page: "collection" as const };
 
 const SESSION_A = { id: "conn:1", label: "Local Dev", color: "#e06c75" };
 const SESSION_B = { id: "conn:2", label: "Staging", color: "#61afef" };
 
 describe("TabBar", () => {
-  it("context tab has no close button; renders all labels", () => {
-    const { getByText, queryByLabelText } = render(TabBar, {
+  it("renders one non-closable destination tab before the work tabs", () => {
+    const { getByText, queryByLabelText, queryByText } = render(TabBar, {
       props: {
-        contextTabs: ctx,
+        destination: dest,
         workTabs: [],
-        active: { zone: "context", kind: "data" },
-        onShowContext: vi.fn(),
+        active: { zone: "destination" },
+        onShowDestination: vi.fn(),
         onActivateWork: vi.fn(),
         onCloseWork: vi.fn(),
         onNewQuery: vi.fn(),
       },
     });
-    expect(getByText("Database")).toBeTruthy();
-    expect(getByText("Data")).toBeTruthy();
+    expect(getByText("shop.orders")).toBeTruthy();
     expect(queryByLabelText("Close tab")).toBeNull();
+    expect(queryByText("Collection")).toBeNull();
   });
 
-  it("click context tab → onShowContext(kind)", async () => {
-    const onShowContext = vi.fn();
+  it("click destination tab → onShowDestination", async () => {
+    const onShowDestination = vi.fn();
     const { getByText } = render(TabBar, {
       props: {
-        contextTabs: ctx,
+        destination: dest,
         workTabs: [],
-        active: { zone: "context", kind: "data" },
-        onShowContext,
+        active: { zone: "work", id: 1 },
+        onShowDestination,
         onActivateWork: vi.fn(),
         onCloseWork: vi.fn(),
         onNewQuery: vi.fn(),
       },
     });
-    await fireEvent.click(getByText("Collection"));
-    expect(onShowContext).toHaveBeenCalledWith("collection");
+    await fireEvent.click(getByText("shop.orders"));
+    expect(onShowDestination).toHaveBeenCalled();
+  });
+
+  it("no destination tab when not connected", () => {
+    const { container } = render(TabBar, {
+      props: { destination: null, workTabs: [], active: null, onShowDestination: vi.fn(), onActivateWork: vi.fn(), onCloseWork: vi.fn(), onNewQuery: vi.fn() },
+    });
+    expect(container.querySelector(".tab.destination")).toBeNull();
   });
 
   it("work tab has close button; click → onCloseWork(id); click label → onActivateWork(id)", async () => {
@@ -53,11 +56,11 @@ describe("TabBar", () => {
     const work: WorkTab[] = [{ id: 7, kind: "document", sessionId: "conn:1", db: "d", coll: "orders", mode: "insert", initial: null, idText: null }];
     const { getByText, getByLabelText } = render(TabBar, {
       props: {
-        contextTabs: [],
+        destination: null,
         workTabs: work,
         sessions: [SESSION_A],
         active: { zone: "work", id: 7 },
-        onShowContext: vi.fn(),
+        onShowDestination: vi.fn(),
         onActivateWork,
         onCloseWork,
         onNewQuery: vi.fn(),
@@ -72,7 +75,7 @@ describe("TabBar", () => {
   it("[+] button triggers onNewQuery", async () => {
     const onNewQuery = vi.fn();
     const { getByTitle } = render(TabBar, {
-      props: { contextTabs: [], workTabs: [], active: null, onShowContext: vi.fn(), onActivateWork: vi.fn(), onCloseWork: vi.fn(), onNewQuery },
+      props: { destination: null, workTabs: [], active: null, onShowDestination: vi.fn(), onActivateWork: vi.fn(), onCloseWork: vi.fn(), onNewQuery },
     });
     await fireEvent.click(getByTitle("New aggregate query"));
     expect(onNewQuery).toHaveBeenCalled();
@@ -82,11 +85,11 @@ describe("TabBar", () => {
     const work: WorkTab[] = [{ id: 3, kind: "document", sessionId: "conn:1", db: "d", coll: "users", mode: "insert", initial: null, idText: null }];
     const { container } = render(TabBar, {
       props: {
-        contextTabs: [],
+        destination: null,
         workTabs: work,
         sessions: [SESSION_A],
         active: { zone: "work", id: 3 },
-        onShowContext: vi.fn(),
+        onShowDestination: vi.fn(),
         onActivateWork: vi.fn(),
         onCloseWork: vi.fn(),
         onNewQuery: vi.fn(),
@@ -101,11 +104,11 @@ describe("TabBar", () => {
     const work: WorkTab[] = [{ id: 5, kind: "document", sessionId: "conn:99", db: "d", coll: "test", mode: "insert", initial: null, idText: null }];
     const { container } = render(TabBar, {
       props: {
-        contextTabs: [],
+        destination: null,
         workTabs: work,
         sessions: [SESSION_A],
         active: null,
-        onShowContext: vi.fn(),
+        onShowDestination: vi.fn(),
         onActivateWork: vi.fn(),
         onCloseWork: vi.fn(),
         onNewQuery: vi.fn(),
@@ -123,12 +126,12 @@ describe("TabBar", () => {
     const tabB: WorkTab = { id: 11, kind: "document", sessionId: "conn:2", db: "d", coll: "beta", mode: "insert", initial: null, idText: null };
     const { getByText } = render(TabBar, {
       props: {
-        contextTabs: [],
+        destination: null,
         workTabs: [tabA, tabB],
         sessions: [SESSION_A, SESSION_B],
         // active is on session A's tab
         active: { zone: "work", id: 10 },
-        onShowContext: vi.fn(),
+        onShowDestination: vi.fn(),
         onActivateWork,
         onCloseWork: vi.fn(),
         onNewQuery: vi.fn(),

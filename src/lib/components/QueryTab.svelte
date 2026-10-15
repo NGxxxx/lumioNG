@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tooltip } from "../actions/tooltip";
   import { untrack, tick } from "svelte";
   import { getQueryRun } from "../stores/queryRuns.svelte";
   import { getPipelineTree } from "../stores/pipelineTreeRuns.svelte";
@@ -6,6 +7,9 @@
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
   import ResultGrid from "./ResultGrid.svelte";
+  import DocPeekDrawer from "./DocPeekDrawer.svelte";
+  import { docPeekFor } from "../stores/docPeek.svelte";
+  import { idJson } from "../domain/docid";
   import ResultPager from "./ResultPager.svelte";
   import ResultTree from "./ResultTree.svelte";
   import ConsolePane from "./ConsolePane.svelte";
@@ -29,9 +33,11 @@
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
   import type { Doc } from "../domain/doc";
 
-  let { id, seq, initialStatement, sessionId, currentDb, active, onopendocument }:
+  let { id, seq, initialStatement, sessionId, currentDb, active, onopendocument, onsave }:
     { id: number; seq: number; initialStatement: string; sessionId: string; currentDb: string | null; active: boolean;
-      onopendocument?: (doc: Doc, db: string, coll: string, mode: "edit") => void } = $props();
+      onopendocument?: (doc: Doc, db: string, coll: string, mode: "edit") => void;
+      /** Title-row Save (the page owns save vs. save-as against the query library). */
+      onsave?: () => void } = $props();
 
   const v = untrack(() => getQueryRun(id, sessionId, initialStatement));
   const tree = untrack(() =>
@@ -80,6 +86,39 @@
 
   /** Global Toolbar's Explain button can't reach `resultView` directly, so it bumps `v.explainRequestSeq`; mirror that into local state here (skipping the initial 0). */
   let lastExplainRequestSeq = untrack(() => v.explainRequestSeq);
+
+  // ── Quick-look drawer over the result grid. Only results with a single source collection
+  // (grid-editable) can be edited; anything else (aggregations) is shown read-only.
+  const peek = docPeekFor(v, {
+    sessionId: () => sessionId,
+    db: () => v.provenance?.db ?? currentDb,
+    coll: () => (v.displayMode === "grid-editable" ? (v.provenance?.coll ?? null) : null),
+    loadFull: (d) => v.fullDocFor(d),
+    readOnly: () => sessionManager.active?.readOnly ?? false,
+    onSaved: (saved) => v.replaceDoc?.(saved),
+  });
+  function onPeek(row: number, edit: boolean) {
+    const d = v.docs[row];
+    if (d) void peek.show(d, edit);
+  }
+  function onGridEscape(): boolean {
+    if (!peek.open) return false;
+    peek.requestClose();
+    return true;
+  }
+  // A re-run or page change replaces the rows: the drawer refreshes, keeps a dirty draft (flagged), or closes.
+  $effect(() => {
+    const docs = v.docs;
+    untrack(() => peek.sync(docs));
+  });
+  /** The drawer's Delete acts on the document it shows, not on whatever the grid has selected. */
+  function deleteShown() {
+    const id = peek.doc ? idJson(peek.doc) : null;
+    const row = id === null ? -1 : v.docs.findIndex((d) => idJson(d) === id);
+    if (row === -1) return;
+    v.setSelected(new Set([row]));
+    v.requestDeleteSelected?.();
+  }
   $effect(() => {
     if (v.explainRequestSeq !== lastExplainRequestSeq) {
       lastExplainRequestSeq = v.explainRequestSeq;
@@ -198,6 +237,26 @@
       <span class="readonly-badge" title={m.session_manager_readonly_enable()}>{m.query_tab_readonly()}</span>
     {/if}
     <div class="bar-spacer"></div>
+    <div class="run-actions">
+      <button class="run-btn" onclick={runQuery} disabled={v.running} aria-label={m.toolbar_run_query()} use:tooltip={m.toolbar_run_query()}>
+        <svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5l9.5 5.5L4 13.5z" /></svg>
+        <span>{m.toolbar_run_query()}</span>
+      </button>
+      <button class="icon-btn" onclick={runSelectionQuery} disabled={v.running || !v.hasSelection} aria-label={m.toolbar_run_selection()} use:tooltip={m.toolbar_run_selection()}>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M3 3l6 5-6 5z" /><rect x="11" y="3" width="2" height="10" rx="0.5" /></svg>
+      </button>
+      <button class="icon-btn" onclick={() => v.cancel()} disabled={!v.running} aria-label={m.toolbar_stop()} use:tooltip={m.toolbar_stop()}>
+        <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="3" width="10" height="10" rx="1.5" /></svg>
+      </button>
+      <button class="icon-btn" onclick={explainFromMenu} disabled={v.running} aria-label={m.toolbar_explain()} use:tooltip={m.toolbar_explain()}>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14M5.5 8.5v-1M7 8.5V6M8.5 8.5V5" /></svg>
+      </button>
+      {#if onsave}
+        <button class="icon-btn" onclick={onsave} aria-label={m.toolbar_save()} use:tooltip={m.toolbar_save()}>
+          <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"><path d="M3 2.5h8l2.5 2.5v8.5h-10.5zM5.5 2.5v3h4.5v-3M5 13.5V9.5h6v4" /></svg>
+        </button>
+      {/if}
+    </div>
     <div class="mode-toggle">
       <button class:active={editorMode === "script"} onclick={() => (editorMode = "script")}>⌨ {m.query_tab_editor_mode_script()}</button>
       {#if isAggregateStatement}
@@ -312,7 +371,23 @@
         {#if showDocs && resultView === "tree"}
           <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
         {:else if showDocs}
-          <ResultGrid {v} />
+          <div class="grid-host" class:with-pinned={peek.open && settings.peekPinned}>
+            <div class="grid-main"><ResultGrid {v} onpeek={onPeek} onescape={onGridEscape} /></div>
+            {#if peek.open}
+              <DocPeekDrawer
+                {peek}
+                pinned={settings.peekPinned}
+                width={settings.peekWidth}
+                selectionCount={v.selected.size}
+                onresize={(px) => settings.setPeekWidth(px)}
+                onpin={(b) => settings.setPeekPinned(b)}
+                onopentab={(d) => { if (v.provenance) onopendocument?.(d, v.provenance.db, v.provenance.coll, "edit"); }}
+                onduplicate={() => {}}
+                ondelete={deleteShown}
+                onbulk={(a) => { if (a === "delete") v.requestDeleteSelected?.(); }}
+              />
+            {/if}
+          </div>
         {:else if v.displayMode === "ack" && v.ackJson !== null}
           <div class="value-display"><pre>{v.ackJson}</pre></div>
         {:else if v.displayMode === "value" && v.valueJson !== null}
@@ -459,4 +534,20 @@
   .cancel-btn { font-size: var(--fs); cursor: pointer; border: none; background: none; color: var(--link); }
   .value-display { height: 100%; box-sizing: border-box; overflow: auto; padding: 0.5rem 0.75rem; }
   .value-display pre { margin: 0; font-family: var(--mono); font-size: var(--fs); color: var(--fg); white-space: pre-wrap; word-break: break-word; }
+  .run-actions { display: flex; align-items: center; gap: 0.125rem; margin-right: 0.5rem; }
+  .run-btn {
+    display: inline-flex; align-items: center; gap: 0.375rem; height: 1.625rem; padding: 0 0.625rem; margin-right: 0.25rem;
+    border: none; border-radius: var(--radius); background: var(--run); color: var(--on-accent);
+    font-size: 0.75rem; font-weight: 600; cursor: pointer;
+  }
+  .run-btn:hover:not(:disabled) { background: var(--run-hover); }
+  .icon-btn {
+    display: inline-flex; align-items: center; justify-content: center; width: 1.625rem; height: 1.625rem;
+    border: none; border-radius: var(--radius); background: none; color: var(--muted); cursor: pointer;
+  }
+  .icon-btn:hover:not(:disabled) { background: var(--menu-hover); color: var(--fg); }
+  .run-btn:disabled, .icon-btn:disabled { opacity: 0.4; cursor: default; }
+  .grid-host { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
+  .grid-host.with-pinned { flex-direction: row; }
+  .grid-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 </style>

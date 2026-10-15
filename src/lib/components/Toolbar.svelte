@@ -1,58 +1,81 @@
-<!-- src/lib/components/Toolbar.svelte -->
+<!-- src/lib/components/Toolbar.svelte — the main panel's header: breadcrumb, view switcher, and the active view's actions. -->
 <script lang="ts">
-  import { settings } from "../stores/settings.svelte";
+  import type { Snippet } from "svelte";
   import { tooltip } from "../actions/tooltip";
   import { SHORTCUTS, type Command, type CommandId } from "../domain/commands";
+  import type { ToolbarEntry } from "../domain/toolbarLayout";
   import { formatCombo } from "../domain/shortcuts";
   import { detectPlatform } from "../stores/platform";
   import * as m from "#lib/paraglide/messages.js";
 
   let {
+    entries,
+    labels,
     commands,
-    canNewDoc,
-    canEditDoc = false,
-    oneditdocument = () => {},
-    canDeleteDoc = false,
-    ondeletedocument = () => {},
-    canFind = false,
-    onfind = () => {},
-    onToggleLog,
-    logOpen = false,
-    savedQueriesOpen = false,
-    onToggleSavedQueries = () => {},
+    activeIds = new Set<CommandId>(),
     crumb = [],
+    switcher,
   }: {
+    /** What to show, in order — from `toolbarFor(view)`. */
+    entries: ToolbarEntry[];
+    labels: Partial<Record<CommandId, string>>;
     commands: Partial<Record<CommandId, Command>>;
-    canNewDoc: boolean;
-    canEditDoc?: boolean;
-    oneditdocument?: () => void;
-    canDeleteDoc?: boolean;
-    ondeletedocument?: () => void;
-    canFind?: boolean;
-    onfind?: () => void;
-    onToggleLog: () => void;
-    logOpen?: boolean;
-    savedQueriesOpen?: boolean;
-    onToggleSavedQueries?: () => void;
+    /** Toggle commands currently on (rendered pressed / checked). */
+    activeIds?: Set<CommandId>;
     /** Where the actions apply (e.g. ["shop", "orders"]); the last segment is emphasized. */
     crumb?: string[];
+    /** The page's view switcher, rendered after the breadcrumb. */
+    switcher?: Snippet;
   } = $props();
 
   const plat = detectPlatform();
+  const inline = $derived(entries.filter((e) => !e.overflow));
+  const overflow = $derived(entries.filter((e) => e.overflow));
+  let moreOpen = $state(false);
 
-  /** Appends the command's shortcut (if any) to a tooltip label, e.g. "Run query (F9)". */
-  function tt(id: CommandId, label: string): string {
+  const labelOf = (id: CommandId) => labels[id] ?? id;
+  const disabledOf = (id: CommandId) => !commands[id] || commands[id]!.disabled;
+  const isToggle = (id: CommandId) => id.startsWith("view.toggle");
+
+  /** Tooltip text: the label plus the command's shortcut, e.g. "Refresh (F5)". */
+  function tt(id: CommandId): string {
     const combo = SHORTCUTS[id];
-    return combo ? `${label} (${formatCombo(combo, plat)})` : label;
+    return combo ? `${labelOf(id)} (${formatCombo(combo, plat)})` : labelOf(id);
   }
 
-  function disabledOf(id: CommandId): boolean {
-    return !commands[id] || commands[id]!.disabled;
-  }
-  function runOf(id: CommandId): () => void {
-    return () => commands[id]?.run();
+  function run(id: CommandId) {
+    moreOpen = false;
+    if (!disabledOf(id)) commands[id]?.run();
   }
 </script>
+
+<svelte:window onclick={() => (moreOpen = false)} />
+
+{#snippet glyph(id: CommandId)}
+  <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    {#if id === "file.refresh"}
+      <path d="M13 8a5 5 0 1 1-1.5-3.6M13 2.5v3h-3" />
+    {:else if id === "file.import"}
+      <path d="M8 2v8M5 7l3 3 3-3M2.5 11v2.5h11V11" />
+    {:else if id === "file.export"}
+      <path d="M8 10V2M5 5l3-3 3 3M2.5 11v2.5h11V11" />
+    {:else if id === "file.newDocument" || id === "file.newQuery"}
+      <path d="M8 3v10M3 8h10" />
+    {:else if id === "query.save"}
+      <path d="M3 2.5h8l2.5 2.5v8.5h-10.5zM5.5 2.5v3h4.5v-3M5 13.5V9.5h6v4" />
+    {:else if id === "query.aggregate"}
+      <path d="M3 2.5h10l-4 5.5 4 5.5H3l4-5.5z" />
+    {:else if id === "grid.focusFilter"}
+      <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
+    {:else if id === "view.toggleWrap"}
+      <path d="M2 4.5h12M2 8h8.5a2 2 0 0 1 0 4H9M2 11.5h4M10.5 10.5 9 12l1.5 1.5" />
+    {:else if id === "view.toggleSavedQueries"}
+      <path d="M4 2.5h8v11l-4-2.8-4 2.8z" />
+    {:else}
+      <circle cx="8" cy="8" r="1.5" />
+    {/if}
+  </svg>
+{/snippet}
 
 <div class="toolbar">
   <div class="crumb">
@@ -61,230 +84,64 @@
       <span class:strong={i === crumb.length - 1}>{part}</span>
     {/each}
   </div>
-  <!-- ── Connection: session + tree state ── -->
-  <!-- Session manager (always enabled) -->
-  <span class="tt" use:tooltip={tt("file.sessionManager", m.toolbar_session_manager())}>
-    <button
-      aria-label={m.toolbar_session_manager()}
-      class="btn-icon session"
-      disabled={disabledOf("file.sessionManager")}
-      onclick={runOf("file.sessionManager")}
-    >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="2.5" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1"/>
-        <rect x="2" y="9.5" width="12" height="4" rx="1" fill="none" stroke="currentColor" stroke-width="1"/>
-        <circle cx="4.6" cy="4.5" r="0.9" fill="currentColor"/>
-        <circle cx="4.6" cy="11.5" r="0.9" fill="currentColor"/>
-      </svg>
-      <svg aria-hidden="true" width="8" height="8" viewBox="0 0 8 8">
-        <path d="M1 2.5 L4 5.5 L7 2.5" stroke="currentColor" stroke-width="1.1" fill="none"/>
-      </svg>
-    </button>
-  </span>
+  {#if switcher}<div class="switcher">{@render switcher()}</div>{/if}
+  <div class="spacer"></div>
 
-  <!-- Refresh -->
-  <span class="tt" use:tooltip={tt("file.refresh", m.toolbar_refresh())}>
-    <button
-      aria-label={m.toolbar_refresh()}
-      class="btn-icon"
-      disabled={disabledOf("file.refresh")}
-      onclick={runOf("file.refresh")}
-    >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M13 5a5.5 5.5 0 1 0 1 4" fill="none" stroke="currentColor" stroke-width="1.4"/>
-        <path d="M13.5 2v3.2H10.3z" fill="currentColor"/>
-      </svg>
-    </button>
-  </span>
+  {#each inline as e (e.id)}
+    {#if e.style === "primary"}
+      <span class="tt" use:tooltip={tt(e.id)}>
+        <button class="primary" disabled={disabledOf(e.id)} onclick={() => run(e.id)}>
+          {@render glyph(e.id)}<span>{labelOf(e.id)}</span>
+        </button>
+      </span>
+    {:else}
+      <span class="tt" use:tooltip={tt(e.id)}>
+        <button
+          class="btn-icon"
+          class:active={activeIds.has(e.id)}
+          aria-label={labelOf(e.id)}
+          aria-pressed={isToggle(e.id) ? activeIds.has(e.id) : undefined}
+          disabled={disabledOf(e.id)}
+          onclick={() => run(e.id)}
+        >
+          {@render glyph(e.id)}
+        </button>
+      </span>
+    {/if}
+  {/each}
 
-  <div class="sep"></div>
-
-  <!-- ── Document CRUD (Save also covers the active Query tab) ── -->
-  <!-- Save (enabled when a document tab or a query tab is the active editor) -->
-  <span class="tt" use:tooltip={tt("query.save", m.toolbar_save())}>
-    <button aria-label={m.toolbar_save()} class="btn-icon" disabled={disabledOf("query.save")} onclick={runOf("query.save")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2.5 2.5h8.3l2.7 2.7v8.3h-11z" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <path d="M5 2.5v3h5v-3" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <path d="M4.8 13.5V9.2h6.4v4.3" fill="none" stroke="currentColor" stroke-width="1.1"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- New document (disabled when !canNewDoc, e.g. no collection selected or session is read-only) -->
-  <span class="tt" use:tooltip={tt("file.newDocument", m.toolbar_new_document())}>
-    <button
-      aria-label={m.toolbar_new_document()}
-      class="btn-icon"
-      disabled={disabledOf("file.newDocument")}
-      onclick={runOf("file.newDocument")}
-    >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M3 1.5h7l3 3v10H3z" fill="none" stroke="currentColor" stroke-width="0.9"/>
-        <path d="M10 1.5v3h3" fill="none" stroke="currentColor" stroke-width="0.9"/>
-        <path d="M8 7v5M5.5 9.5h5" stroke="currentColor" stroke-width="1.3"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Edit document (enabled when exactly one data-view row with an _id is selected, and session is not read-only) -->
-  <span class="tt" use:tooltip={tt("grid.editDocument", m.toolbar_edit_document())}>
-    <button aria-label={m.toolbar_edit_document()} class="btn-icon" disabled={!canEditDoc} onclick={oneditdocument}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2 11l7-7 3 3-7 7H2z" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <path d="M10 3l2-2 3 3-2 2z" fill="currentColor" stroke="currentColor" stroke-width="0.8"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Delete document (enabled when the data view has a selection, and session is not read-only) -->
-  <span class="tt" use:tooltip={tt("grid.deleteDocument", m.toolbar_delete_document())}>
-    <button aria-label={m.toolbar_delete_document()} class="btn-icon" disabled={!canDeleteDoc} onclick={ondeletedocument}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 4h8l-1 10H5z" fill="none" stroke="var(--danger)" stroke-width="0.9"/>
-        <path d="M3 4h10M6.5 4V2.5h3V4" stroke="var(--danger)" stroke-width="0.9" fill="none"/>
-      </svg>
-    </button>
-  </span>
-
-  <div class="sep"></div>
-
-  <!-- ── Query execution ── -->
-  <!-- Run query -->
-  <span class="tt" use:tooltip={tt("query.run", m.toolbar_run_query())}>
-    <button aria-label={m.toolbar_run_query()} class="btn-icon" disabled={disabledOf("query.run")} onclick={runOf("query.run")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 3l9 5-9 5z" fill="var(--run)"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Run selection -->
-  <span class="tt" use:tooltip={tt("query.runSelection", m.toolbar_run_selection())}>
-    <button aria-label={m.toolbar_run_selection()} class="btn-icon" disabled={disabledOf("query.runSelection")} onclick={runOf("query.runSelection")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M3 3l6 5-6 5z" fill="var(--run)"/>
-        <rect x="11" y="3" width="2.2" height="10" fill="var(--run)"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Stop (enabled only while the active query tab's script is actually running) -->
-  <span class="tt" use:tooltip={tt("query.stop", m.toolbar_stop())}>
-    <button aria-label={m.toolbar_stop()} class="btn-icon" disabled={disabledOf("query.stop")} onclick={runOf("query.stop")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <rect x="3" y="3" width="10" height="10" rx="1.5" fill="var(--danger)"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Explain (enabled whenever a query tab is active; re-runs first if not yet explainable) -->
-  <span class="tt" use:tooltip={tt("query.explain", m.toolbar_explain())}>
-    <button aria-label={m.toolbar_explain()} class="btn-icon" disabled={disabledOf("query.explain")} onclick={runOf("query.explain")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
-        <path d="M10.2 10.2 L14 14" stroke="currentColor" stroke-width="1.5"/>
-        <rect x="5" y="7.5" width="1.2" height="2" fill="currentColor"/>
-        <rect x="6.8" y="6" width="1.2" height="3.5" fill="currentColor"/>
-        <rect x="8.6" y="4.7" width="1.2" height="4.8" fill="currentColor"/>
-      </svg>
-    </button>
-  </span>
-
-  <div class="sep"></div>
-
-  <!-- ── Data navigation ── -->
-  <!-- Find / filter (enabled in the Data view or an active Query tab; focuses its search box) -->
-  <span class="tt" use:tooltip={tt("grid.focusFilter", m.toolbar_find_title())}>
-    <button aria-label={m.toolbar_find()} class="btn-icon" disabled={!canFind} onclick={onfind}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" stroke-width="1.3"/>
-        <path d="M10.2 10.2 L14 14" stroke="currentColor" stroke-width="1.5"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Aggregate (enabled when a collection is selected; opens a new Query tab with a starter pipeline) -->
-  <span class="tt" use:tooltip={tt("query.aggregate", m.toolbar_aggregate())}>
-    <button aria-label={m.toolbar_aggregate()} class="btn-icon" disabled={disabledOf("query.aggregate")} onclick={runOf("query.aggregate")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M3 2h10l-4 6 4 6H3l4-6z" fill="none" stroke="currentColor" stroke-width="1.2"/>
-      </svg>
-    </button>
-  </span>
-
-  <div class="sep"></div>
-
-  <!-- ── Import / export ── -->
-  <!-- Export (enabled in the data view; exports the selection if any, else the filtered set) -->
-  <span class="tt" use:tooltip={tt("file.export", m.toolbar_export())}>
-    <button aria-label={m.toolbar_export()} class="btn-icon" disabled={disabledOf("file.export")} onclick={runOf("file.export")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 1.5h6l3 3v10H4z" fill="none" stroke="currentColor" stroke-width="0.9"/>
-        <path d="M8 6v5M5.6 8.6L8 11l2.4-2.4" stroke="currentColor" stroke-width="1.2" fill="none"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Import (enabled when a database or collection is selected and session is not read-only; imports from a JSON/JSONL/BSON/SQL/CSV file) -->
-  <span class="tt" use:tooltip={tt("file.import", m.toolbar_import())}>
-    <button aria-label={m.toolbar_import()} class="btn-icon" disabled={disabledOf("file.import")} onclick={runOf("file.import")}>
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 1.5h6l3 3v10H4z" fill="none" stroke="currentColor" stroke-width="0.9"/>
-        <path d="M8 11V6M5.6 8.4L8 6l2.4 2.4" stroke="currentColor" stroke-width="1.2" fill="none"/>
-      </svg>
-    </button>
-  </span>
-
-  <div class="sep"></div>
-
-  <!-- ── View toggles (persistent on/off state, not one-shot actions) ── -->
-  <!-- Wrap long lines (always enabled — shared across Tree view, Edit Document, query cells) -->
-  <span class="tt" use:tooltip={m.wrap_toggle_title()}>
-    <button
-      aria-label={m.wrap_toggle_label()}
-      class="btn-icon"
-      class:active={settings.wrapLongLines}
-      onclick={() => settings.setWrapLongLines(!settings.wrapLongLines)}
-    >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M2 4.5h12M2 8h8.5M2 11.5h8.5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linecap="round"/>
-        <path d="M10.5 11.5h2.5v-2.2M13 11.5l-1.8-1.8" stroke="currentColor" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Command log (always enabled) -->
-  <span class="tt" use:tooltip={m.toolbar_command_log()}>
-    <button
-      aria-label={m.toolbar_command_log()}
-      class="btn-icon"
-      class:active={logOpen}
-      onclick={onToggleLog}
-    >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <rect x="2" y="2" width="12" height="12" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <path d="M4 5h8M4 8h8M4 11h5" stroke="currentColor" stroke-width="1.1"/>
-      </svg>
-    </button>
-  </span>
-
-  <!-- Saved queries panel (always enabled) -->
-  <span class="tt" use:tooltip={m.toolbar_saved_queries()}>
-    <button
-      aria-label={m.toolbar_saved_queries()}
-      class="btn-icon"
-      class:active={savedQueriesOpen}
-      onclick={onToggleSavedQueries}
-    >
-      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16">
-        <path d="M4 2h6l2.5 2.5V14H4z" fill="none" stroke="currentColor" stroke-width="1.1"/>
-        <path d="M6 6.5l1.3 1.3L9.5 5.3" stroke="currentColor" stroke-width="1.2" fill="none"/>
-        <path d="M6 10.5h4" stroke="currentColor" stroke-width="1.1"/>
-      </svg>
-    </button>
-  </span>
-
+  {#if overflow.length}
+    <div class="more">
+      <button
+        class="btn-icon"
+        class:active={moreOpen}
+        aria-label={m.toolbar_more()}
+        aria-haspopup="menu"
+        aria-expanded={moreOpen}
+        onclick={(ev) => { ev.stopPropagation(); moreOpen = !moreOpen; }}
+      >
+        <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="12.5" cy="8" r="1.2" /></svg>
+      </button>
+      {#if moreOpen}
+        <div class="menu" role="menu">
+          {#each overflow as e (e.id)}
+            <button
+              class="item"
+              role={isToggle(e.id) ? "menuitemcheckbox" : "menuitem"}
+              aria-checked={isToggle(e.id) ? activeIds.has(e.id) : undefined}
+              disabled={disabledOf(e.id)}
+              onclick={() => run(e.id)}
+            >
+              {@render glyph(e.id)}
+              <span class="item-label">{labelOf(e.id)}</span>
+              {#if isToggle(e.id) && activeIds.has(e.id)}<span class="check" aria-hidden="true">✓</span>{/if}
+              {#if SHORTCUTS[e.id]}<span class="hint">{formatCombo(SHORTCUTS[e.id]!, plat)}</span>{/if}
+            </button>
+          {/each}
+        </div>
+      {/if}
+    </div>
+  {/if}
 </div>
 
 <style>
@@ -299,12 +156,16 @@
     padding: 0 0.5rem 0 0.875rem;
     gap: 0.125rem;
     user-select: none;
-    overflow-x: auto;
-    scrollbar-width: none;
+    /* visible so the ⋯ menu can drop below the header */
+    overflow: visible;
+    position: relative;
+    z-index: 3;
   }
 
+  .spacer { flex: 1; }
+  .switcher { flex: none; margin-left: 0.75rem; }
   .crumb {
-    flex: 1;
+    flex: 0 1 auto;
     min-width: 2rem;
     display: flex;
     align-items: center;
@@ -357,11 +218,26 @@
     color: var(--accent);
   }
 
-  .sep {
-    width: 1px;
-    height: 1rem;
-    background: var(--border);
-    margin: 0 0.3125rem;
-    flex: none;
+  .primary {
+    display: inline-flex; align-items: center; gap: 0.375rem; height: 1.75rem; margin-left: 0.375rem; padding: 0 0.75rem;
+    border: none; border-radius: var(--radius); background: var(--run); color: var(--on-accent);
+    font-size: var(--fs); font-weight: 600; cursor: pointer; white-space: nowrap;
   }
+  .primary:hover:not(:disabled) { background: var(--run-hover); }
+  .primary:disabled { opacity: 0.45; cursor: default; }
+  .more { position: relative; display: inline-flex; }
+  .menu {
+    position: absolute; top: calc(100% + 0.25rem); right: 0; z-index: 30; min-width: 13rem; padding: 0.25rem;
+    background: var(--popover); border: 1px solid var(--c-surface1); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
+  }
+  .item {
+    display: flex; align-items: center; gap: 0.5rem; width: 100%; height: 1.875rem; padding: 0 0.625rem;
+    border: none; border-radius: var(--radius-sm); background: none; color: var(--c-subtext1);
+    font-size: var(--fs); text-align: left; cursor: pointer; white-space: nowrap;
+  }
+  .item:hover:not(:disabled) { background: var(--menu-hover); color: var(--fg); }
+  .item:disabled { opacity: 0.45; cursor: default; }
+  .item-label { flex: 1; }
+  .check { color: var(--accent); }
+  .hint { color: var(--muted); font-family: var(--mono); font-size: 0.6875rem; }
 </style>

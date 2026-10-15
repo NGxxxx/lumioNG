@@ -38,6 +38,12 @@ export function createRowSelection(args: {
     anchor = next.size > 0 ? [...next][0] : null;
   }
 
+  /** Replace the selection wholesale (keyboard navigation computes it in domain/gridNav). */
+  function setSelected(rows: Set<number>) {
+    selected = new Set(rows);
+    anchor = rows.size > 0 ? [...rows][0] : null;
+  }
+
   function clearSelection() {
     selected = new Set();
     anchor = null;
@@ -81,6 +87,7 @@ export function createRowSelection(args: {
       return menu;
     },
     clickRow,
+    setSelected,
     selectForMenuRow,
     selectAll,
     invertSelection,

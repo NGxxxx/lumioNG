@@ -13,11 +13,14 @@
   import { activeDataView } from "#lib/stores/activeDataView.svelte.js";
   import { activeDocumentForm } from "#lib/stores/activeDocumentForm.svelte.js";
   import { activity } from "#lib/stores/activity.svelte.js";
+  import { commandLog } from "#lib/stores/commandLog.svelte.js";
   import { quit } from "#lib/api/window.js";
   import type { Doc } from "#lib/domain/doc.js";
   import type { SshConnectInput } from "#lib/api/connection.js";
   import type { SavedQuery } from "#lib/domain/queryTree.js";
-  import type { ContextKind, QueryTab as QueryTabType } from "#lib/stores/navigation.svelte.js";
+  import type { CollectionView, HostSection, QueryTab as QueryTabType } from "#lib/stores/navigation.svelte.js";
+  import { toolbarFor, type ViewKey } from "#lib/domain/toolbarLayout.js";
+  import ViewSwitcher from "#lib/components/ViewSwitcher.svelte";
   import SessionManager from "#lib/components/SessionManager.svelte";
   import ConfirmDialog from "#lib/components/ConfirmDialog.svelte";
   import * as m from "#lib/paraglide/messages.js";
@@ -35,6 +38,7 @@
   import MenuBar from "#lib/components/MenuBar.svelte";
   import Toolbar from "#lib/components/Toolbar.svelte";
   import CommandPalette from "#lib/components/CommandPalette.svelte";
+  import ShortcutsDialog from "#lib/components/ShortcutsDialog.svelte";
   import { namespacePaletteItems, parseNamespaceId, type PaletteItem } from "#lib/domain/palette.js";
   import { formatCombo } from "#lib/domain/shortcuts.js";
   import { settings } from "#lib/stores/settings.svelte.js";
@@ -49,13 +53,6 @@
   import { detectPlatform } from "#lib/stores/platform.js";
   import { isModalOpen } from "#lib/stores/modalStack.js";
 
-  const CONTEXT_LABEL: Record<ContextKind, string> = {
-    host: "Host",
-    database: "Database",
-    collection: "Collection",
-    data: "Data",
-  };
-  // Note: CONTEXT_LABEL uses English literals intentionally — structural keys, not in i18n scope.
 
   // The three heavy tab panes are the only reachers of CodeEditor (QueryTab's editor, HostTab's
   // user/role JSON editors, CollectionTab's index partial-filter/collation editors), so all three
@@ -70,6 +67,7 @@
   const requestQuit = () => (confirmQuit = true);
   let aboutOpen = $state(false);
   let paletteOpen = $state(false);
+  let shortcutsOpen = $state(false);
   let saveQueryDialog = $state<{ tabId: number } | null>(null);
   let namespacePanelRef: NamespacePanel | undefined = $state();
 
@@ -97,8 +95,19 @@
 
   const active = $derived(sm.activeZone);
   const sel = $derived(nav?.selection ?? null);
-  const navContextTabs = $derived(nav?.contextTabs ?? []);
-  const contextTabs = $derived(navContextTabs.map((kind) => ({ kind, label: CONTEXT_LABEL[kind] })));
+  const page = $derived(nav?.page ?? null);
+  const collectionView = $derived<CollectionView>(nav?.collectionView ?? "data");
+  const onDestination = $derived(active?.zone === "destination");
+  // The destination tab names what it shows: the collection / database, or the connection for the host page.
+  const destination = $derived(
+    page === null
+      ? null
+      : {
+          page,
+          label:
+            page === "collection" && sel?.coll ? `${sel.db}.${sel.coll}` : page === "database" && sel ? sel.db : (session?.label ?? ""),
+        },
+  );
   const queryActive = $derived(
     active?.zone === "work" &&
       sm.workTabs.find((t) => t.id === active.id)?.kind === "query",
@@ -117,7 +126,7 @@
     activeDataView.setActiveQueryId(activeQueryTab?.id ?? null);
   });
   // Toolbar Edit/Export act on the collection data view, and only when it's the active context.
-  const dataViewActive = $derived(active?.zone === "context" && active.kind === "data");
+  const dataViewActive = $derived(onDestination && page === "collection" && collectionView === "data");
   // The activeDataView bridge is also registered by the active Query tab's result grid, so widen the gate to cover both.
   const canUseDataView = $derived(dataViewActive || queryActive);
 
@@ -218,6 +227,7 @@
   }
 
   const plat = detectPlatform();
+  const shortcutHint = (id: CommandId) => (SHORTCUTS[id] ? formatCombo(SHORTCUTS[id]!, plat) : undefined);
 
   const commands: Partial<Record<CommandId, Command>> = $derived({
     "file.sessionManager": { disabled: false, run: () => shell.toggleSession() },
@@ -248,17 +258,90 @@
       disabled: active?.zone !== "work",
       run: () => { if (active?.zone === "work") sm.closeWork(active.id); },
     },
-    "goto.host": { disabled: !navContextTabs.includes("host"), run: () => sm.showContext("host") },
-    "goto.database": { disabled: !navContextTabs.includes("database"), run: () => sm.showContext("database") },
-    "goto.collection": { disabled: !navContextTabs.includes("collection"), run: () => sm.showContext("collection") },
-    "goto.data": { disabled: !navContextTabs.includes("data"), run: () => sm.showContext("data") },
+    "goto.host": { disabled: page === null, run: () => { nav?.selectHost(); sm.showDestination(); } },
+    "goto.database": { disabled: !sel, run: () => { if (sel) { nav?.selectDatabase(sel.db); sm.showDestination(); } } },
+    "goto.data": { disabled: !sel?.coll, run: () => showCollectionView("data") },
+    "goto.schema": { disabled: !sel?.coll, run: () => showCollectionView("schema") },
+    "view.toggleLog": { disabled: false, run: () => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog()) },
+    "view.toggleWrap": { disabled: false, run: () => settings.setWrapLongLines(!settings.wrapLongLines) },
+    "view.toggleSavedQueries": { disabled: false, run: () => shell.toggleSavedQueries() },
     "view.resetToDefault": { disabled: false, run: requestReset },
     "help.about": { disabled: false, run: () => (aboutOpen = true) },
+    "help.shortcuts": { disabled: false, run: () => (shortcutsOpen = true) },
+    "grid.focusFilter": { disabled: !canUseDataView, run: () => activeDataView.handle?.focusSearch?.() },
     "view.commandPalette": { disabled: false, run: () => (paletteOpen = !paletteOpen) },
   });
 
+  function showCollectionView(v: CollectionView) {
+    nav?.setCollectionView(v);
+    sm.showDestination();
+  }
+
+  // ── Panel header: which view is showing, its switcher and its actions ──
+  const viewKey = $derived.by((): ViewKey | null => {
+    if (active?.zone === "work") return sm.workTabs.find((w) => w.id === active.id)?.kind === "query" ? "query" : "document";
+    if (!onDestination || page === null) return null;
+    return page === "collection" ? (`collection.${collectionView}` as ViewKey) : page;
+  });
+  // Log visibility follows the active view's own embedded log when it has one (query tab), else the docked panel.
+  const logIsOpen = $derived(activeDataView.handle?.toggleLog ? (activeDataView.handle.logOpen ?? false) : shell.logOpen);
+  // While the log is on screen, new commands are seen as they arrive.
+  $effect(() => {
+    void commandLog.entries.length;
+    if (logIsOpen) commandLog.markSeen();
+  });
+
+  const headerEntries = $derived(viewKey ? toolbarFor(viewKey) : []);
+  const COMMAND_LABELS = $derived<Partial<Record<CommandId, string>>>({
+    "file.refresh": m.toolbar_refresh(),
+    "file.import": m.toolbar_import(),
+    "file.export": m.toolbar_export(),
+    "file.newDocument": m.toolbar_new_document(),
+    "file.newQuery": m.tab_bar_new_query(),
+    "query.aggregate": m.toolbar_aggregate(),
+    "query.save": m.toolbar_save(),
+    "grid.focusFilter": m.toolbar_find_title(),
+    "view.toggleWrap": m.wrap_toggle_label(),
+    "view.toggleSavedQueries": m.toolbar_saved_queries(),
+    "view.toggleLog": m.toolbar_command_log(),
+  });
+  const headerActive = $derived(
+    new Set<CommandId>([
+      ...(settings.wrapLongLines ? (["view.toggleWrap"] as const) : []),
+      ...(shell.savedQueriesOpen ? (["view.toggleSavedQueries"] as const) : []),
+    ]),
+  );
+  const COLLECTION_VIEWS = $derived([
+    { key: "data", label: m.view_data() },
+    { key: "schema", label: m.view_schema() },
+    { key: "indexes", label: m.view_indexes() },
+    { key: "info", label: m.view_info() },
+  ]);
+  const HOST_VIEWS = $derived([
+    { key: "info", label: m.host_view_overview() },
+    { key: "currentOps", label: m.host_tab_current_ops() },
+    { key: "topology", label: m.host_tab_topology() },
+    { key: "users", label: m.users_roles_toggle_users() },
+    { key: "roles", label: m.users_roles_toggle_roles() },
+  ]);
+  // Go to menu: the destinations, with the Mod+1..4 hints where they have one.
+  const gotoItems = $derived([
+    { label: m.nav_overview(), id: "goto.host" as CommandId, checked: onDestination && page === "host" },
+    { label: m.palette_group_databases(), id: "goto.database" as CommandId, checked: onDestination && page === "database" },
+    { label: m.view_data(), id: "goto.data" as CommandId, checked: dataViewActive },
+    { label: m.view_schema(), id: "goto.schema" as CommandId, checked: onDestination && page === "collection" && collectionView === "schema" },
+  ].map((g) => ({ label: g.label, checked: g.checked, shortcut: shortcutHint(g.id), disabled: commands[g.id]?.disabled ?? true, run: () => commands[g.id]?.run() }))
+    .concat(
+      (["indexes", "info"] as const).map((v) => ({
+        label: v === "indexes" ? m.view_indexes() : m.view_info(),
+        checked: onDestination && page === "collection" && collectionView === v,
+        shortcut: undefined,
+        disabled: !sel?.coll,
+        run: () => showCollectionView(v),
+      })),
+    ));
+
   // ── Command palette: every registry command + view toggles + saved queries + namespaces ──
-  const shortcutHint = (id: CommandId) => (SHORTCUTS[id] ? formatCombo(SHORTCUTS[id]!, plat) : undefined);
 
   const PALETTE_COMMANDS: [CommandId, () => string, "actions" | "query" | "navigate" | "view"][] = [
     ["file.newQuery", m.tab_bar_new_query, "actions"],
@@ -273,22 +356,28 @@
     ["query.explain", m.menu_explain, "query"],
     ["query.aggregate", m.menu_aggregate, "query"],
     ["query.save", m.menu_save_query, "query"],
-    ["goto.host", () => CONTEXT_LABEL.host, "navigate"],
-    ["goto.database", () => CONTEXT_LABEL.database, "navigate"],
-    ["goto.collection", () => CONTEXT_LABEL.collection, "navigate"],
-    ["goto.data", () => CONTEXT_LABEL.data, "navigate"],
+    ["goto.host", m.nav_overview, "navigate"],
+    ["goto.database", m.palette_group_databases, "navigate"],
+    ["goto.data", m.view_data, "navigate"],
+    ["goto.schema", m.view_schema, "navigate"],
     ["goto.nextTab", m.menu_next_tab, "navigate"],
     ["goto.prevTab", m.menu_previous_tab, "navigate"],
     ["view.resetToDefault", m.menu_reset_to_default, "view"],
+    ["help.shortcuts", m.menu_keyboard_shortcuts, "view"],
     ["help.about", m.menu_about, "view"],
     ["file.quit", m.menu_quit, "view"],
   ];
 
   const VIEW_TOGGLES: Record<string, { label: () => string; run: () => void }> = {
     "toggle:theme": { label: m.palette_toggle_theme, run: () => theme.set(theme.current === "mocha" ? "latte" : "mocha") },
-    "toggle:wrap": { label: m.palette_toggle_wrap, run: () => settings.setWrapLongLines(!settings.wrapLongLines) },
-    "toggle:log": { label: m.palette_toggle_log, run: () => shell.toggleLog() },
-    "toggle:saved": { label: m.palette_toggle_saved, run: () => shell.toggleSavedQueries() },
+    "toggle:wrap": { label: m.palette_toggle_wrap, run: () => commands["view.toggleWrap"]?.run() },
+    "toggle:log": { label: m.palette_toggle_log, run: () => commands["view.toggleLog"]?.run() },
+    "toggle:saved": { label: m.palette_toggle_saved, run: () => commands["view.toggleSavedQueries"]?.run() },
+    "density:compact": { label: () => `${m.menu_density()}: ${m.density_compact()}`, run: () => settings.setDensity("compact") },
+    "density:comfortable": { label: () => `${m.menu_density()}: ${m.density_comfortable()}`, run: () => settings.setDensity("comfortable") },
+    "density:spacious": { label: () => `${m.menu_density()}: ${m.density_spacious()}`, run: () => settings.setDensity("spacious") },
+    "view:indexes": { label: m.view_indexes, run: () => { if (sel?.coll) showCollectionView("indexes"); } },
+    "view:info": { label: m.view_info, run: () => { if (sel?.coll) showCollectionView("info"); } },
   };
 
   const paletteItems = $derived.by((): PaletteItem[] => {
@@ -327,6 +416,7 @@
       if (!t || t.kind === "query") return [];
       return [t.db, t.coll];
     }
+    if (page === "host") return [session?.label ?? ""];
     return [sel?.db, sel?.coll].filter((x): x is string => !!x);
   });
 
@@ -357,6 +447,16 @@
 
 <svelte:window
   onkeydown={(e) => {
+    // "?" needs Shift on most layouts, so it can't go through the combo matcher; never while typing.
+    if (e.key === "?" && !isModalOpen() && !e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.closest(".cm-editor") !== null);
+      if (!typing) {
+        e.preventDefault();
+        shortcutsOpen = true;
+        return;
+      }
+    }
     if (!isModalOpen() && !e.defaultPrevented) {
       for (const id of Object.keys(SHORTCUTS) as CommandId[]) {
         const combo = SHORTCUTS[id];
@@ -390,12 +490,7 @@
     paletteHint={shortcutHint("view.commandPalette") ?? ""}
   >
     {#snippet menus()}
-      <MenuBar
-        {commands}
-        {contextTabs}
-        activeContextKind={active?.zone === "context" ? active.kind : null}
-        onshowcontext={(kind) => sm.showContext(kind)}
-      />
+      <MenuBar {commands} goto={gotoItems} />
     {/snippet}
   </TitleBar>
   <div class="body">
@@ -439,33 +534,45 @@
     ></div>
     <section>
       <TabBar
-        {contextTabs}
+        {destination}
         workTabs={sm.workTabs}
         sessions={sm.sessions}
         {active}
-        onShowContext={(kind) => sm.showContext(kind)}
+        onShowDestination={() => sm.showDestination()}
         onActivateWork={(id) => sm.activateWork(id)}
         onCloseWork={(id) => sm.closeWork(id)}
         onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
       />
+      {#if viewKey && viewKey !== "query"}
       <Toolbar
         {commands}
-        canNewDoc={sel?.coll != null && !readOnly}
-        canEditDoc={canUseDataView && !readOnly && (activeDataView.handle?.canEdit ?? false)}
-        oneditdocument={() => activeDataView.handle?.editSelected()}
-        canDeleteDoc={canUseDataView && !readOnly && (activeDataView.handle?.canDelete ?? false)}
-        ondeletedocument={() => activeDataView.handle?.deleteSelected()}
-        canFind={canUseDataView}
-        onfind={() => activeDataView.handle?.focusSearch?.()}
-        onToggleLog={() => (activeDataView.handle?.toggleLog ? activeDataView.handle.toggleLog() : shell.toggleLog())}
-        logOpen={activeDataView.handle?.toggleLog ? (activeDataView.handle.logOpen ?? false) : shell.logOpen}
-        savedQueriesOpen={shell.savedQueriesOpen}
-        onToggleSavedQueries={() => shell.toggleSavedQueries()}
+        entries={headerEntries}
+        labels={COMMAND_LABELS}
+        activeIds={headerActive}
         crumb={toolbarCrumb}
-      />
+      >
+        {#snippet switcher()}
+          {#if onDestination && page === "collection"}
+            <ViewSwitcher
+              items={COLLECTION_VIEWS}
+              value={collectionView}
+              label={m.views_label()}
+              onchange={(k) => nav?.setCollectionView(k as CollectionView)}
+            />
+          {:else if onDestination && page === "host"}
+            <ViewSwitcher
+              items={HOST_VIEWS}
+              value={nav?.hostSection ?? "info"}
+              label={m.views_label()}
+              onchange={(k) => nav?.setHostSection(k as HostSection)}
+            />
+          {/if}
+        {/snippet}
+      </Toolbar>
+      {/if}
       <div class="panes">
         <!-- Mount only the active context pane (lazy): eager mounting fired every pane's queries at once on each switch, wedging the connection. -->
-        {#if active?.zone === "context" && active.kind === "host"}
+        {#if onDestination && page === "host"}
           {@const HostTabView = hostTabChunk.value}
           <div class="tabpane">
             {#if HostTabView}
@@ -477,7 +584,7 @@
             {/if}
           </div>
         {/if}
-        {#if active?.zone === "context" && active.kind === "database" && sel}
+        {#if onDestination && page === "database" && sel}
           {@const db = sel.db}
           <div class="tabpane">
             {#key db}
@@ -485,7 +592,7 @@
             {/key}
           </div>
         {/if}
-        {#if active?.zone === "context" && active.kind === "collection" && sel?.coll}
+        {#if onDestination && page === "collection" && collectionView !== "data" && sel?.coll}
           {@const db = sel.db}
           {@const coll = sel.coll}
           {@const CollectionTabView = collectionTabChunk.value}
@@ -499,7 +606,7 @@
             {/if}
           </div>
         {/if}
-        {#if active?.zone === "context" && active.kind === "data" && sel?.coll}
+        {#if dataViewActive && sel?.coll}
           {@const db = sel.db}
           {@const coll = sel.coll}
           {@const version = nav?.collectionVersion(db, coll) ?? 0}
@@ -525,6 +632,7 @@
               {#if QueryTabView}
                 <QueryTabView id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement}
                   sessionId={tab.sessionId} currentDb={dbForSession(tab.sessionId)} active={isActiveTab}
+                  onsave={saveActiveQuery}
                   onopendocument={(doc: Doc, db: string, coll: string) => openDocument(db, coll, doc, "edit")} />
               {:else}
                 <div class="empty">{m.status_bar_loading()}</div>
@@ -585,6 +693,9 @@
     serverTimeIso={host?.info?.localTimeIso ?? null}
     connectedAt={session?.connectedAt ?? null}
     activityLabel={activity.label}
+    logOpen={logIsOpen}
+    logUnseen={commandLog.unseen}
+    ontogglelog={() => commands["view.toggleLog"]?.run()}
   />
   {#if shell.sessionOpen}
     <SessionManager onconnected={onConnected} onclose={() => shell.toggleSession()} />
@@ -615,6 +726,9 @@
   {/if}
   {#if aboutOpen}
     <AboutDialog onclose={() => (aboutOpen = false)} />
+  {/if}
+  {#if shortcutsOpen}
+    <ShortcutsDialog platform={plat} onclose={() => (shortcutsOpen = false)} />
   {/if}
   {#if paletteOpen}
     <CommandPalette

@@ -4,8 +4,15 @@
 // `$state`); an earlier attempt that mirrored it into `$state` fed back into the resync effect and
 // looped forever.
 import { rafThrottle } from "../domain/rafThrottle";
+import { settings, type Density } from "../stores/settings.svelte";
 
-export const GRID_ROW_H = 28;
+/** Grid row heights per density (px). */
+export const DENSITY_ROW_H: Record<Density, number> = { compact: 24, comfortable: 28, spacious: 32 };
+
+/** Current grid row height, following the density setting. */
+export function gridRowH(): number {
+  return DENSITY_ROW_H[settings.density];
+}
 
 /** `resizing` lets callers suppress a click action (e.g. sort-on-header) on mouseup. */
 export function createColumnResize(getWidth: (path: string) => number, setWidth: (path: string, px: number) => void) {

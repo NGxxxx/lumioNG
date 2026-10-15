@@ -25,7 +25,7 @@ export function createShell() {
   let connectedAt = $state<number | null>(null); // epoch ms of the active connection (status-bar clock)
   let sessionOpen = $state(true);
   let sidebarWidth = $state(240);
-  let logOpen = $state(true);
+  let logOpen = $state(false); // closed by default; the status bar shows a dot when commands arrive
   let logHeight = $state(140);
   // Saved-queries sidebar section: the only shell fields persisted across restarts.
   let savedQueriesOpen = $state(untrack(() => readStored(SQ_OPEN_KEY)) !== "false");

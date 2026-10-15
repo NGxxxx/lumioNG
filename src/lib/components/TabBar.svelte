@@ -1,25 +1,26 @@
 <script lang="ts">
-  import type { Active, ContextKind, WorkTab } from "../stores/navigation.svelte";
+  import type { Active, Page, WorkTab } from "../stores/navigation.svelte";
   import { queryLibrary } from "../stores/queryLibrary.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   type SessionInfo = { id: string; label: string; color: string };
 
   let {
-    contextTabs,
+    destination,
     workTabs,
     sessions = [],
     active,
-    onShowContext,
+    onShowDestination,
     onActivateWork,
     onCloseWork,
     onNewQuery,
   }: {
-    contextTabs: { kind: ContextKind; label: string }[];
+    /** The single, non-closable tab for the selected host / database / collection page; null when not connected. */
+    destination: { label: string; page: Page } | null;
     workTabs: WorkTab[];
     sessions?: SessionInfo[];
     active: Active;
-    onShowContext: (kind: ContextKind) => void;
+    onShowDestination: () => void;
     onActivateWork: (id: number) => void;
     onCloseWork: (id: number) => void;
     onNewQuery: () => void;
@@ -52,43 +53,30 @@
 </script>
 
 <div class="tabbar">
-  <div class="context-tabs">
-    {#each contextTabs as c (c.kind)}
-      <button
-        class="tab context"
-        class:active={active?.zone === "context" && active.kind === c.kind}
-        onclick={() => onShowContext(c.kind)}
-      >
-        {#if c.kind === "host"}
-          <!-- Mongo leaf / green -->
-          <svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true">
-            <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke="currentColor" stroke-width="2"/>
-            <path d="M5 5.6v12.8C5 20.4 8 22 12 22s7-1.6 7-3.6V5.6" fill="none" stroke="currentColor" stroke-width="2"/>
-          </svg>
-        {:else if c.kind === "database"}
-          <!-- Purple cylinder -->
-          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-            <ellipse cx="8" cy="3.5" rx="5" ry="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
-            <path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" fill="none" stroke="currentColor" stroke-width="1.2"/>
-          </svg>
-        {:else if c.kind === "collection"}
-          <!-- Yellow table -->
-          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="2" y="3" width="12" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/>
-            <path d="M2 6h12" stroke="currentColor" stroke-width="0.9"/>
-          </svg>
-        {:else if c.kind === "data"}
-          <!-- Blue grid -->
-          <svg width="13" height="13" viewBox="0 0 16 16" aria-hidden="true">
-            <rect x="2" y="2.5" width="12" height="11" rx="1" fill="none" stroke="currentColor" stroke-width="1.1"/>
-            <path d="M2 6h12M2 9.5h12M6.5 2.5v11" stroke="currentColor" stroke-width="0.8"/>
-          </svg>
-        {/if}
-        {c.label}
-      </button>
-    {/each}
-  </div>
-  {#if contextTabs.length && workTabs.length}
+  {#if destination}
+    <button
+      class="tab destination"
+      class:active={active?.zone === "destination"}
+      onclick={onShowDestination}
+      title={destination.label}
+    >
+      {#if destination.page === "host"}
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+          <rect x="2" y="2.5" width="12" height="4" rx="1" /><rect x="2" y="9.5" width="12" height="4" rx="1" />
+        </svg>
+      {:else if destination.page === "database"}
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+          <ellipse cx="8" cy="3.5" rx="5" ry="2" /><path d="M3 3.5v9c0 1.1 2.2 2 5 2s5-.9 5-2v-9" />
+        </svg>
+      {:else}
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.1" aria-hidden="true">
+          <rect x="2" y="2.5" width="12" height="11" rx="1" /><path d="M2 6h12M6.5 6v7.5" />
+        </svg>
+      {/if}
+      <span class="dest-label">{destination.label}</span>
+    </button>
+  {/if}
+  {#if destination && workTabs.length}
     <div class="divider"></div>
   {/if}
   <div class="work-tabs" onwheel={onWheel}>
@@ -128,12 +116,8 @@
     border-bottom: 1px solid var(--border);
     background: var(--panel);
   }
-  .context-tabs {
-    display: flex;
-    align-items: center;
-    flex: none;
-    gap: 0.125rem;
-  }
+  .destination { flex: none; }
+  .dest-label { overflow: hidden; text-overflow: ellipsis; }
   /* Horizontal scrollbars render at an element's bottom edge — flip the scroller so the scrollbar
      lands on top, then flip the inner row back. flex-grow:0 keeps "+" right after the last tab;
      flex-shrink:1 + min-width:0 shrink-then-scroll once the strip is full. */

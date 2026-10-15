@@ -4,6 +4,31 @@ import { createSettings, MIN_PANE_PX } from "./settings.svelte";
 beforeEach(() => localStorage.clear());
 
 describe("settings", () => {
+  it("quick-look drawer: width defaults to 360 and clamps to >= 280; pinned defaults off; both persist", () => {
+    const a = createSettings();
+    expect(a.peekWidth).toBe(360);
+    expect(a.peekPinned).toBe(false);
+    a.setPeekWidth(100);
+    expect(a.peekWidth).toBe(280);
+    a.setPeekWidth(500);
+    a.setPeekPinned(true);
+    const b = createSettings();
+    expect(b.peekWidth).toBe(500);
+    expect(b.peekPinned).toBe(true);
+  });
+
+  it("density defaults to comfortable and persists", () => {
+    const a = createSettings();
+    expect(a.density).toBe("comfortable");
+    a.setDensity("compact");
+    expect(createSettings().density).toBe("compact");
+  });
+
+  it("an unknown stored density falls back to comfortable", () => {
+    localStorage.setItem("grid-density", "huge");
+    expect(createSettings().density).toBe("comfortable");
+  });
+
   it("defaults suppressDestructiveWarning to false", () => {
     expect(createSettings().suppressDestructiveWarning).toBe(false);
   });

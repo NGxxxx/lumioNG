@@ -23,6 +23,7 @@ const stub = {
   requestShowAll: vi.fn(), confirmShowAll: vi.fn(), cancelShowAll: vi.fn(),
   get showAllPending() { return null; },
   run, cancel: vi.fn(), setSelection: vi.fn(),
+  fullDocFor: async (d: unknown) => d, setSelected: vi.fn(), replaceDoc: vi.fn(),
   get hasSelection() { return false; }, runSelection: vi.fn(),
   fieldsFor: vi.fn().mockResolvedValue([]),
   get selected() { return new Set<number>(); },
@@ -88,9 +89,34 @@ import QueryTab from "./QueryTab.svelte";
 describe("QueryTab", () => {
   const props = { id: 1, seq: 1, initialStatement: "x", sessionId: "sess1", currentDb: "shop", active: true };
 
-  it("has no in-tab Run button", () => {
-    const { queryByText } = render(QueryTab, { props });
-    expect(queryByText("▶ Run")).toBeNull();
+  it("title row Run button runs against the current db and session", async () => {
+    run.mockClear();
+    const { getByRole } = render(QueryTab, { props });
+    await fireEvent.click(getByRole("button", { name: "Run query" }));
+    expect(run).toHaveBeenCalledWith("shop", "sess1");
+  });
+
+  it("title row Stop is disabled while idle and cancels while running", async () => {
+    activeStub = stub;
+    const idle = render(QueryTab, { props });
+    expect((idle.getByRole("button", { name: "Stop" }) as HTMLButtonElement).disabled).toBe(true);
+    idle.unmount();
+    activeStub = runningStub as unknown as typeof stub;
+    try {
+      const { getByRole } = render(QueryTab, { props });
+      await fireEvent.click(getByRole("button", { name: "Stop" }));
+      expect(cancelSpy).toHaveBeenCalled();
+    } finally {
+      activeStub = stub;
+    }
+  });
+
+  it("title row Save calls onsave; Run selection is disabled without a selection", async () => {
+    const onsave = vi.fn();
+    const { getByRole } = render(QueryTab, { props: { ...props, onsave } });
+    expect((getByRole("button", { name: "Run selection" }) as HTMLButtonElement).disabled).toBe(true);
+    await fireEvent.click(getByRole("button", { name: "Save" }));
+    expect(onsave).toHaveBeenCalled();
   });
 
   it("right-clicking the editor shows a Run item that runs against the current db and session", async () => {
@@ -328,6 +354,22 @@ describe("QueryTab", () => {
       expect(container.querySelector(".pane-divider")).toBeTruthy();
     } finally {
       activeStub = stub; // restore for subsequent tests
+    }
+  });
+
+  it("the result grid's Quick look opens the document drawer", async () => {
+    activeStub = editableStub as unknown as typeof stub;
+    // The virtualized grid only renders rows into a measured viewport (jsdom reports 0 by default).
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
+    try {
+      const { getAllByRole, findByText } = render(QueryTab, { props });
+      await fireEvent.click(getAllByRole("button", { name: "Quick look" })[0]);
+      expect(await findByText("Document")).toBeTruthy();
+      expect(await findByText('"test"')).toBeTruthy();
+    } finally {
+      activeStub = stub;
+      if (desc) Object.defineProperty(HTMLElement.prototype, "offsetHeight", desc);
     }
   });
 });

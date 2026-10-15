@@ -10,11 +10,18 @@ export interface LogEntry {
 export function createCommandLog(limit = 500) {
   let entries = $state<LogEntry[]>([]);
   let counter = 0;
+  // Entries pushed since the log was last looked at (drives the status-bar dot).
+  let unseen = $state(0);
 
   function push(text: string, sessionId: string, tookMs: number) {
     counter += 1;
     const next = [...entries, { n: counter, text, sessionId, at: Date.now(), tookMs }];
     entries = next.length > limit ? next.slice(next.length - limit) : next;
+    unseen += 1;
+  }
+
+  function markSeen() {
+    unseen = 0;
   }
 
   /** Run `fn`, measuring its wall-clock duration, then push an entry with that duration.
@@ -28,15 +35,20 @@ export function createCommandLog(limit = 500) {
 
   function clear() {
     entries = [];
+    unseen = 0;
   }
 
   return {
     get entries() {
       return entries;
     },
+    get unseen() {
+      return unseen;
+    },
     push,
     pushTimed,
     clear,
+    markSeen,
   };
 }
 

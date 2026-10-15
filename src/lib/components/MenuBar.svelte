@@ -6,25 +6,21 @@
   import { uiSize } from "../stores/uiSize.svelte";
   import { theme } from "../stores/theme.svelte";
   import { collectionSort } from "../stores/collectionSort.svelte";
-  import { settings } from "../stores/settings.svelte";
+  import { settings, type Density } from "../stores/settings.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { UI_SIZES, type UiSizeKey } from "../domain/uiSize";
   import type { CollectionSortMode } from "../domain/namespaces";
-  import type { ContextKind } from "../stores/navigation.svelte";
   import { SHORTCUTS, type Command, type CommandId } from "../domain/commands";
   import { formatCombo } from "../domain/shortcuts";
   import { detectPlatform } from "../stores/platform";
 
   let {
     commands,
-    contextTabs,
-    activeContextKind,
-    onshowcontext,
+    goto,
   }: {
     commands: Partial<Record<CommandId, Command>>;
-    contextTabs: { kind: ContextKind; label: string }[];
-    activeContextKind: ContextKind | null;
-    onshowcontext: (kind: ContextKind) => void;
+    /** "Go to" destinations (Host, Database, Data, Schema, Indexes, Info), built by the page. */
+    goto: { label: string; checked: boolean; disabled?: boolean; shortcut?: string; run: () => void }[];
   } = $props();
 
   // An item is either a leaf (with `run`) or a parent that opens a submenu (`children`).
@@ -51,14 +47,6 @@
       disabled: !c || c.disabled,
     };
   }
-
-  /** Maps a "Go to" context tab to its registry command id, so its menu item can pick up the Mod+1..4 shortcut hint. */
-  const GOTO_CMD: Record<ContextKind, CommandId> = {
-    host: "goto.host",
-    database: "goto.database",
-    collection: "goto.collection",
-    data: "goto.data",
-  };
 
   const LOCALE_NAMES: Record<Locale, string> = { en: "English", vi: "Tiếng Việt" };
 
@@ -100,6 +88,16 @@
             checked: uiSize.current === s.key,
             run: () => uiSize.set(s.key),
           })),
+        },
+        {
+          label: m.menu_density(),
+          children: (
+            [
+              ["compact", m.density_compact()],
+              ["comfortable", m.density_comfortable()],
+              ["spacious", m.density_spacious()],
+            ] as [Density, string][]
+          ).map(([d, label]) => ({ label, checked: settings.density === d, run: () => settings.setDensity(d) })),
         },
         {
           label: m.menu_theme(),
@@ -152,18 +150,13 @@
     {
       name: m.menu_go_to(),
       items: [
-        ...contextTabs.map((c) => ({
-          label: c.label,
-          shortcut: shortcutOf(GOTO_CMD[c.kind]),
-          checked: activeContextKind === c.kind,
-          run: () => onshowcontext(c.kind),
-        })),
+        ...goto.map((g) => ({ label: g.label, shortcut: g.shortcut, checked: g.checked, disabled: g.disabled, run: g.run })),
         cmdItem("goto.nextTab", m.menu_next_tab()),
         cmdItem("goto.prevTab", m.menu_previous_tab()),
       ],
-      disabled: contextTabs.length === 0 && (commands["goto.nextTab"]?.disabled ?? true) && (commands["goto.prevTab"]?.disabled ?? true),
+      disabled: goto.length === 0 && (commands["goto.nextTab"]?.disabled ?? true) && (commands["goto.prevTab"]?.disabled ?? true),
     },
-    { name: m.menu_help(), items: [cmdItem("help.about", m.menu_about())] },
+    { name: m.menu_help(), items: [cmdItem("help.shortcuts", m.menu_keyboard_shortcuts()), cmdItem("help.about", m.menu_about())] },
   ]);
 
   function closeAll() {

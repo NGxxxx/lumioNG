@@ -3,7 +3,7 @@ import type { SshConnectInput } from "../api/connection";
 import { touchConnection } from "../api/connections";
 import { createNamespaceTree } from "./namespaceTree.svelte";
 import { createHostStatus } from "./hostStatus.svelte";
-import { createSessionNav, type SessionNav, type WorkTab, type Active, type ContextKind, type DocumentTabInit } from "./navigation.svelte";
+import { createSessionNav, type SessionNav, type WorkTab, type Active, type DocumentTabInit } from "./navigation.svelte";
 import { savedSessionId, adhocSessionId, adhocLabel, allocColor } from "../domain/session";
 import { nextQuerySeq } from "../domain/queryseq";
 import { commandLog } from "./commandLog.svelte";
@@ -60,8 +60,8 @@ export function createSessionManager() {
     const nav = navOf(sessionId);
     if (nav && nav.selDb === db && nav.selColl === coll) {
       nav.clearCollection();
-      // When the dropped collection is the one being viewed in the active session, demote the context view to the Database tab (not Host).
-      if (sessionId === activeId) zone = { zone: "context", kind: "database" };
+      // clearCollection already moved this session's page to the database; if it was on screen, show it.
+      if (sessionId === activeId && zone?.zone !== "work") zone = { zone: "destination" };
     }
   }
 
@@ -72,8 +72,8 @@ export function createSessionManager() {
     const nav = navOf(sessionId);
     if (nav && nav.selDb === db) {
       nav.clearSelection();
-      // When the dropped db is the one being viewed in the active session, clear the context view.
-      if (sessionId === activeId) zone = null;
+      // clearSelection already moved this session's page to the host overview; if it was on screen, show it.
+      if (sessionId === activeId && zone?.zone !== "work") zone = { zone: "destination" };
     }
   }
 
@@ -127,7 +127,9 @@ export function createSessionManager() {
     const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null);
     sessions = [...sessions, s];
     activeId = id;
-    return performConnect(s);
+    const ok = await performConnect(s);
+    if (ok && activeId === id && zone?.zone !== "work") zone = { zone: "destination" };
+    return ok;
   }
 
   async function reconnect(id: string) {
@@ -220,12 +222,13 @@ export function createSessionManager() {
     if (wasActive) {
       const neighbor = workTabs[idx - 1] ?? workTabs[idx] ?? null;
       if (neighbor) { activeId = neighbor.sessionId; zone = { zone: "work", id: neighbor.id }; }
-      else zone = active ? { zone: "context", kind: "host" } : null;
+      else zone = active ? { zone: "destination" } : null;
     }
   }
 
-  function showContext(kind: ContextKind) {
-    zone = { zone: "context", kind };
+  /** Shows the session's destination tab (host / database / collection page, per its nav). */
+  function showDestination() {
+    zone = { zone: "destination" };
   }
 
   return {
@@ -243,7 +246,7 @@ export function createSessionManager() {
     openDocument,
     activateWork,
     closeWork,
-    showContext,
+    showDestination,
     closeForCollection,
     closeForDatabase,
     renameCollectionTabs,

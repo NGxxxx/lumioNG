@@ -32,6 +32,8 @@ export interface GridPageView {
 
   readonly selected: Set<number>;
   clickRow(row: number, mods: { ctrl: boolean; shift: boolean }): void;
+  /** Replace the selection (real indices into `docs`) — keyboard navigation. */
+  setSelected?(rows: Set<number>): void;
   selectAll?(): void;
   readonly menu: { x: number; y: number; row: number; key: string; source?: "grid" | "tree" } | null;
   openMenu(e: MouseEvent, row: number, key: string, source?: "grid" | "tree"): void;
@@ -48,6 +50,12 @@ export interface GridPageView {
   commitEdit(): void | Promise<void>;
   cancelEdit(): void;
   onEditBlur(): void;
+
+  /** Columns pinned to the left (sticky); collection view only. */
+  readonly pinned?: Set<string>;
+  /** Column header menu (▾ / right-click on a header); collection view only. */
+  headerMenuItems?(path: string): MenuItem[];
+  onHeaderMenuSelect?(path: string, action: string): void | Promise<void>;
 
   readonly sortKeys?: SortKey[];
   toggleSort?(path: string, shift: boolean): void;

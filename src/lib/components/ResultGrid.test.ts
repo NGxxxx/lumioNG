@@ -5,6 +5,8 @@ import { mergeColumns } from "../domain/schema";
 import type { GridPageView } from "../domain/gridView";
 import type { Doc } from "../domain/doc";
 import { activeDataView, type DataViewHandle } from "../stores/activeDataView.svelte";
+import { settings } from "../stores/settings.svelte";
+import { gridRowH } from "./gridInteractions.svelte";
 
 let restoreOffsetHeight: (() => void) | undefined;
 beforeAll(() => {
@@ -112,6 +114,90 @@ describe("ResultGrid", () => {
     });
     const { container } = render(ResultGrid, { props: { v } });
     expect(container.querySelector(".sortarrow")).toBeTruthy();
+  });
+});
+
+describe("ResultGrid cell previews", () => {
+  it("renders objects as a key/value preview and arrays with their length", () => {
+    const docs = [{ _id: { $oid: "a" }, customer: { name: "Lena", tier: "gold" }, items: [{ sku: "S" }, { sku: "T" }] }];
+    const columnFields: GridPageView["columnFields"] = [{ path: "customer" }, { path: "items" }];
+    const { getByText } = render(ResultGrid, { props: { v: baseView(docs, { columnFields }) } });
+    expect(getByText("{ name: Lena, tier: gold }")).toBeTruthy();
+    expect(getByText(/^\[2\] /)).toBeTruthy();
+  });
+
+  it("shows a dim dash for a missing field, distinct from null", () => {
+    const docs = [{ _id: { $oid: "a" }, note: null }, { _id: { $oid: "b" } }];
+    const { container } = render(ResultGrid, { props: { v: baseView(docs) } });
+    const cells = [...container.querySelectorAll("tbody tr")].map((tr) => tr.querySelector("td:last-child .cell"));
+    expect(cells[0]?.textContent).toBe("null");
+    expect(cells[1]?.textContent).toBe("—");
+    expect(cells[1]?.classList.contains("missing")).toBe(true);
+  });
+
+  it("right-aligns numbers", () => {
+    const docs = [{ _id: { $oid: "a" }, total: { $numberDecimal: "12.50" } }];
+    const { getByText } = render(ResultGrid, { props: { v: baseView(docs) } });
+    expect(getByText("12.50").closest("td")?.classList.contains("num")).toBe(true);
+  });
+
+  it("ObjectId cells offer a copy button", () => {
+    const docs = [{ _id: { $oid: "652f1a9e0000000000000c41" } }];
+    const { getByRole } = render(ResultGrid, { props: { v: baseView(docs) } });
+    expect(getByRole("button", { name: "Copy" })).toBeTruthy();
+  });
+});
+
+describe("ResultGrid loading and density", () => {
+  it("first load shows 12 skeleton rows and no data rows", () => {
+    const { container } = render(ResultGrid, { props: { v: baseView([], { loading: true, columnFields: [{ path: "_id" }] }) } });
+    expect(container.querySelectorAll(".skeleton-row").length).toBe(12);
+    expect(container.querySelector(".loading-overlay")).toBeNull();
+  });
+
+  it("reloading keeps the rows and shows a thin progress bar", () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }];
+    const { container } = render(ResultGrid, { props: { v: baseView(docs, { loading: true }) } });
+    expect(container.querySelector(".progress-bar")).toBeTruthy();
+    expect(container.querySelectorAll("tbody tr[data-index]").length).toBe(1);
+  });
+
+  it("row height follows the density setting", () => {
+    settings.setDensity("spacious");
+    try {
+      const { container } = render(ResultGrid, { props: { v: baseView([{ _id: { $oid: "a" } }]) } });
+      expect((container.querySelector(".scroller") as HTMLElement).style.getPropertyValue("--grid-row-h")).toBe("32px");
+      expect(gridRowH()).toBe(32);
+    } finally {
+      settings.setDensity("comfortable");
+    }
+  });
+});
+
+describe("ResultGrid column header menu and pinned columns", () => {
+  const docs = [{ _id: { $oid: "a" }, name: "x", n: 1 }];
+
+  it("the header ▾ button opens the column menu and runs the chosen action", async () => {
+    const onHeaderMenuSelect = vi.fn();
+    const headerMenuItems = vi.fn(() => [{ label: "Pin column", action: "pin" }]);
+    const { getAllByRole, getByText } = render(ResultGrid, { props: { v: baseView(docs, { headerMenuItems, onHeaderMenuSelect }) } });
+    await fireEvent.click(getAllByRole("button", { name: "Column menu" })[1]);
+    expect(headerMenuItems).toHaveBeenCalledWith("name");
+    await fireEvent.click(getByText("Pin column"));
+    expect(onHeaderMenuSelect).toHaveBeenCalledWith("name", "pin");
+  });
+
+  it("no ▾ buttons when the view has no header menu (Query tab)", () => {
+    const { queryAllByRole } = render(ResultGrid, { props: { v: baseView(docs) } });
+    expect(queryAllByRole("button", { name: "Column menu" })).toHaveLength(0);
+  });
+
+  it("pinned columns are sticky with left offsets after the row-number column", () => {
+    const v = baseView(docs, { pinned: new Set(["_id"]), colWidths: { _id: 160, name: 120 } });
+    const { container } = render(ResultGrid, { props: { v } });
+    const th = [...container.querySelectorAll("thead th")].find((t) => t.textContent?.includes("_id")) as HTMLElement;
+    expect(th.classList.contains("pinned")).toBe(true);
+    expect(th.style.left).toBe("42px");
   });
 });
 
@@ -224,6 +310,140 @@ describe("ResultGrid keyboard shortcuts", () => {
     await fireEvent.keyDown(scroller, { key: "i", ctrlKey: true });
     await fireEvent.keyDown(scroller, { key: "c", ctrlKey: true });
     await fireEvent.keyDown(scroller, { key: "Delete", ctrlKey: true });
+  });
+});
+
+describe("ResultGrid cursor navigation", () => {
+  const docs = [0, 1, 2, 3].map((i) => ({ _id: { $oid: String(i) }, n: i }));
+  const setup = (over: Partial<GridPageView> = {}, props: Record<string, unknown> = {}) => {
+    const setSelected = vi.fn();
+    const v = baseView(docs, { setSelected, ...over });
+    const r = render(ResultGrid, { props: { v, ...props } });
+    const scroller = r.container.querySelector(".scroller") as HTMLElement;
+    return { ...r, v, setSelected, scroller };
+  };
+  const cursorRow = (c: HTMLElement) => [...c.querySelectorAll("tbody tr[data-index]")].findIndex((tr) => tr.classList.contains("row-cursor"));
+
+  it("j moves the cursor down and single-selects that row", async () => {
+    const { container, scroller, setSelected } = setup();
+    await fireEvent.keyDown(scroller, { key: "j" });
+    await fireEvent.keyDown(scroller, { key: "j" });
+    expect(cursorRow(container)).toBe(1);
+    expect(setSelected).toHaveBeenLastCalledWith(new Set([1]));
+  });
+
+  it("ArrowUp from no cursor goes to the last row; k clamps at the top", async () => {
+    const { container, scroller } = setup();
+    await fireEvent.keyDown(scroller, { key: "ArrowUp" });
+    expect(cursorRow(container)).toBe(3);
+    for (let i = 0; i < 5; i++) await fireEvent.keyDown(scroller, { key: "k" });
+    expect(cursorRow(container)).toBe(0);
+  });
+
+  it("Shift+ArrowDown extends the selection from the anchor", async () => {
+    const { scroller, setSelected } = setup();
+    await fireEvent.keyDown(scroller, { key: "j" });
+    await fireEvent.keyDown(scroller, { key: "ArrowDown", shiftKey: true });
+    await fireEvent.keyDown(scroller, { key: "ArrowDown", shiftKey: true });
+    expect(setSelected).toHaveBeenLastCalledWith(new Set([0, 1, 2]));
+  });
+
+  it("x toggles the cursor row and keeps the others", async () => {
+    // Live selection, like the real store: setSelected replaces what `selected` returns.
+    let sel = new Set([3]);
+    const setSelected = vi.fn((rows: Set<number>) => (sel = rows));
+    const v = baseView(docs, { setSelected, get selected() { return sel; } });
+    const { container } = render(ResultGrid, { props: { v } });
+    const scroller = container.querySelector(".scroller") as HTMLElement;
+    await fireEvent.click(container.querySelectorAll("tbody tr[data-index]")[0]); // cursor on row 0
+    await fireEvent.keyDown(scroller, { key: "x" }); // add 0, keep 3
+    expect(sel).toEqual(new Set([3, 0]));
+    await fireEvent.keyDown(scroller, { key: "x" }); // remove 0 again
+    expect(sel).toEqual(new Set([3]));
+  });
+
+  it("End / Home jump to the last / first row", async () => {
+    const { container, scroller } = setup();
+    await fireEvent.keyDown(scroller, { key: "End" });
+    expect(cursorRow(container)).toBe(3);
+    await fireEvent.keyDown(scroller, { key: "Home" });
+    expect(cursorRow(container)).toBe(0);
+  });
+
+  it("[ and ] change page", async () => {
+    const { scroller, v } = setup();
+    await fireEvent.keyDown(scroller, { key: "]" });
+    expect(v.nextPage).toHaveBeenCalled();
+    await fireEvent.keyDown(scroller, { key: "[" });
+    expect(v.prevPage).toHaveBeenCalled();
+  });
+
+  it("Space and e ask to peek the cursor row (view / edit)", async () => {
+    const onpeek = vi.fn();
+    const { scroller } = setup({}, { onpeek });
+    await fireEvent.keyDown(scroller, { key: "j" });
+    await fireEvent.keyDown(scroller, { key: " " });
+    expect(onpeek).toHaveBeenLastCalledWith(0, false);
+    await fireEvent.keyDown(scroller, { key: "e" });
+    expect(onpeek).toHaveBeenLastCalledWith(0, true);
+  });
+
+  it("Escape first goes to onescape; when not consumed it clears the selection", async () => {
+    let consumed = true;
+    const onescape = vi.fn(() => consumed);
+    const { scroller, setSelected } = setup({ selected: new Set([1]) }, { onescape });
+    await fireEvent.keyDown(scroller, { key: "Escape" });
+    expect(onescape).toHaveBeenCalled();
+    expect(setSelected).not.toHaveBeenCalled();
+    consumed = false;
+    await fireEvent.keyDown(scroller, { key: "Escape" });
+    expect(setSelected).toHaveBeenLastCalledWith(new Set());
+  });
+
+  it("/ focuses the search box", async () => {
+    const focusSearch = vi.fn();
+    const handle = { canEdit: false, canExport: false, canDelete: false, editSelected: vi.fn(), exportCurrent: vi.fn(), deleteSelected: vi.fn(), focusSearch } as DataViewHandle;
+    activeDataView.register(handle);
+    try {
+      const { scroller } = setup();
+      await fireEvent.keyDown(scroller, { key: "/" });
+      expect(focusSearch).toHaveBeenCalled();
+    } finally {
+      activeDataView.unregister(handle);
+    }
+  });
+
+  it("ignores single-letter keys typed into an input inside the grid", async () => {
+    const { container, setSelected } = setup({ editing: { row: 0, key: "n", kind: "inline" }, editText: "x" });
+    const input = container.querySelector("input.celledit") as HTMLInputElement;
+    await fireEvent.keyDown(input, { key: "j" });
+    expect(setSelected).not.toHaveBeenCalled();
+  });
+
+  it("each row has a Quick look button when onpeek is given", async () => {
+    const onpeek = vi.fn();
+    const { getAllByRole } = setup({}, { onpeek });
+    const buttons = getAllByRole("button", { name: "Quick look" });
+    expect(buttons).toHaveLength(4);
+    await fireEvent.click(buttons[2]);
+    expect(onpeek).toHaveBeenCalledWith(2, false);
+  });
+
+  it("the Quick look button also selects its row, so the drawer can't snap back to another selection", async () => {
+    const { getAllByRole, setSelected } = setup({ selected: new Set([0]) }, { onpeek: vi.fn() });
+    await fireEvent.click(getAllByRole("button", { name: "Quick look" })[2]);
+    expect(setSelected).toHaveBeenLastCalledWith(new Set([2]));
+  });
+
+  it("no Quick look buttons without onpeek", () => {
+    const { queryAllByRole } = setup();
+    expect(queryAllByRole("button", { name: "Quick look" })).toHaveLength(0);
+  });
+
+  it("clicking a row moves the cursor there", async () => {
+    const { container } = setup();
+    await fireEvent.click(container.querySelectorAll("tbody tr[data-index]")[2]);
+    expect(cursorRow(container)).toBe(2);
   });
 });
 

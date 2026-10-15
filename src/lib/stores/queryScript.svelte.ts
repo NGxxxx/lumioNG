@@ -1,6 +1,6 @@
 import { untrack } from "svelte";
 import { runScript, cancelScript, type ConsoleEntry, type Provenance, type ExplainHint } from "../api/script";
-import { queryPage, aggregate, aggregateCount, countDocuments, explainQuery } from "../api/documents";
+import { queryPage, aggregate, aggregateCount, countDocuments, explainQuery, fetchFullDoc } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
 import { mergeColumns, getByPath, limitColumnsToDepth, type ColumnField } from "../domain/schema";
 import { computeColumnWidths, clampWidth } from "../domain/colwidth";
@@ -24,7 +24,7 @@ import { isInlineEditable, isModalEditable, editTextOf, setByPath } from "../dom
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
-import { deleteManyCmd } from "../domain/mongosh";
+import { deleteManyCmd, findOneByIdCmd } from "../domain/mongosh";
 import * as m from "#lib/paraglide/messages.js";
 import { idInFilter } from "../domain/selection";
 import { toJsonArray, toCsv } from "../domain/exporter";
@@ -734,6 +734,25 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     };
   }
 
+  /** The whole document for a result row: re-fetched from the source collection when the result has
+   *  one (a find() may be projected — editing a partial copy would wipe the other fields on save). */
+  async function fullDocFor(d: Doc): Promise<Doc> {
+    const id = idJson(d);
+    if (!provenance || id === null) return d;
+    const { db, coll } = provenance;
+    const full = await commandLog.pushTimed(findOneByIdCmd(coll, id), sessionId, () => fetchFullDoc(sessionId, db, coll, id));
+    return full ?? d;
+  }
+
+  /** Replaces the result row holding the same `_id` (after a save from the quick-look drawer). */
+  function replaceDoc(saved: Doc) {
+    const id = idJson(saved);
+    if (id === null) return;
+    const swap = (list: Doc[]) => list.map((d) => (idJson(d) === id ? saved : d));
+    fullDocs = swap(fullDocs);
+    docs = swap(docs);
+  }
+
   return {
     get statementText() { return statementText; },
     set statementText(v: string) { statementText = v; recipeDirty = true; },
@@ -818,7 +837,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     cancelEdit,
     get selected() { return selection.selected; },
     get menu() { return selection.menu; },
+    replaceDoc,
+    fullDocFor,
     clickRow: selection.clickRow,
+    setSelected: selection.setSelected,
     invertSelection: selection.invertSelection,
     openMenu: selection.openMenu,
     closeMenu: selection.closeMenu,

@@ -35,3 +35,27 @@ export function computeColumnWidths(fields: ColumnField[], docs: Doc[]): Record<
   }
   return widths;
 }
+
+/** Sticky `left` offset (px) for each pinned path; pinned columns render first, in display order, after the row-number column. */
+export function pinnedOffsets(
+  paths: string[],
+  widths: Record<string, number>,
+  pinned: Set<string>,
+  rownumW: number,
+  fallbackW: number,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  let left = rownumW;
+  for (const p of paths) {
+    if (!pinned.has(p)) continue;
+    out[p] = left;
+    left += widths[p] ?? fallbackW;
+  }
+  return out;
+}
+
+/** Display order with pinned columns first; relative order is kept on both sides. */
+export function pinnedFirst<T extends { path: string }>(cols: T[], pinned: ReadonlySet<string>): T[] {
+  if (pinned.size === 0) return cols;
+  return [...cols.filter((c) => pinned.has(c.path)), ...cols.filter((c) => !pinned.has(c.path))];
+}

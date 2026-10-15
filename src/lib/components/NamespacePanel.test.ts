@@ -185,4 +185,29 @@ describe("NamespacePanel", () => {
     const expandBtns = getAllByLabelText("Expand session");
     expect(expandBtns).toHaveLength(1);
   });
+
+  it("selecting a collection opens it as the destination", async () => {
+    sessionManager.openQuery("x"); // a work tab is active
+    const { getByText } = render(NamespacePanel, { props: {} });
+    await fireEvent.click(getByText("shop"));
+    await fireEvent.click(getByText("users"));
+    expect(sessionManager.activeZone).toEqual({ zone: "destination" });
+    expect(sessionManager.active!.nav.page).toBe("collection");
+  });
+
+  it("the Overview row opens the host page", async () => {
+    sessionManager.active!.nav.selectCollection("shop", "users");
+    sessionManager.openQuery("x");
+    const { getByRole } = render(NamespacePanel, { props: {} });
+    await fireEvent.click(getByRole("button", { name: "Overview" }));
+    expect(sessionManager.activeZone).toEqual({ zone: "destination" });
+    expect(sessionManager.active!.nav.page).toBe("host");
+  });
+
+  it("the session header's switcher button opens the session manager", async () => {
+    const onmanagesessions = vi.fn();
+    const { getByRole } = render(NamespacePanel, { props: { onmanagesessions } });
+    await fireEvent.click(getByRole("button", { name: "Session manager" }));
+    expect(onmanagesessions).toHaveBeenCalled();
+  });
 });

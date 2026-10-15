@@ -1151,6 +1151,91 @@ describe("selection-aware context menu", () => {
     expect(writeText).toHaveBeenCalledWith(JSON.stringify({ city: "Hanoi", geo: { lat: 21 } }, null, 2));
   });
 
+  it("single-row menu starts with Quick look, which returns a peek request", async () => {
+    const v = await withTwoDocs();
+    v.openMenu(ev(), 1, "x");
+    expect(v.menuItems()[0]).toEqual({ label: "Quick look", action: "peek" });
+    expect(v.onMenuSelect("peek")).toEqual({ peek: v.docs[1] });
+    expect(v.menu).toBeNull();
+  });
+
+  it("replaceDoc swaps the row with the same _id, immutably", async () => {
+    const v = await withTwoDocs();
+    const before = v.docs;
+    v.replaceDoc({ _id: { $oid: "b" }, x: 99 });
+    expect(v.docs[1]).toEqual({ _id: { $oid: "b" }, x: 99 });
+    expect(v.docs).not.toBe(before);
+    v.replaceDoc({ _id: { $oid: "zzz" }, x: 1 }); // not on this page: no change
+    expect(v.docs.map((d) => d.x)).toEqual([1, 99]);
+  });
+
+  it("requestDeleteDoc targets that document, not the current selection", async () => {
+    const v = await withTwoDocs();
+    v.clickRow(1, { ctrl: false, shift: false });
+    v.requestDeleteDoc(v.docs[0]);
+    expect([...v.selected]).toEqual([0]);
+    expect(v.confirmSelectionDelete).not.toBeNull();
+  });
+
+  it("togglePin pins and unpins a column", async () => {
+    const v = await withTwoDocs();
+    v.togglePin("x");
+    expect([...v.pinned]).toEqual(["x"]);
+    v.togglePin("x");
+    expect(v.pinned.size).toBe(0);
+  });
+
+  it("header menu lists sort / hide / pin / autofit / copy path / exists filters", async () => {
+    const v = await withTwoDocs();
+    expect(v.headerMenuItems("x").map((i) => i.action)).toEqual([
+      "sortAsc", "sortDesc", "clearSort", "hide", "pin", "autofit", "copyPath", "exists", "notExists",
+    ]);
+    v.togglePin("x");
+    expect(v.headerMenuItems("x").find((i) => i.action === "pin")?.label).toBe("Unpin column");
+  });
+
+  it("header menu sort and hide act on that column", async () => {
+    const v = await withTwoDocs();
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    await v.onHeaderMenuSelect("x", "sortDesc");
+    expect(v.sortKeys).toEqual([{ path: "x", dir: -1 }]);
+    await v.onHeaderMenuSelect("x", "hide");
+    expect(v.hidden.has("x")).toBe(true);
+  });
+
+  it("filterBy merges a condition into the filter text and re-runs", async () => {
+    const v = await withTwoDocs();
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    samp.mockResolvedValue([]);
+    v.filterText = '{"x": {"$gt": 0}}';
+    await v.filterBy("address.city", "eq", "Hanoi");
+    expect(JSON.parse(v.filterText)).toEqual({ x: { $gt: 0 }, "address.city": "Hanoi" });
+    expect(JSON.parse(v.appliedFilter)).toEqual({ x: { $gt: 0 }, "address.city": "Hanoi" });
+  });
+
+  it("filterBy with an invalid current filter reports the error and leaves the text alone", async () => {
+    const v = await withTwoDocs();
+    v.filterText = "{oops";
+    await v.filterBy("x", "eq", 1);
+    expect(v.filterText).toBe("{oops");
+    expect(v.filterError).toBe("err_filter_invalid_json");
+  });
+
+  it("cell menu offers Filter by / Exclude this value", async () => {
+    const v = await withTwoDocs();
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    samp.mockResolvedValue([]);
+    v.openMenu(ev(), 0, "address.city");
+    const actions = v.menuItems().map((i) => i.action);
+    expect(actions).toContain("filterEq");
+    expect(actions).toContain("filterNe");
+    v.onMenuSelect("filterNe");
+    await vi.waitFor(() => expect(JSON.parse(v.filterText)).toEqual({ "address.city": { $ne: "Hanoi" } }));
+  });
+
   it("menu offers Field path and copyPath copies the key", async () => {
     const writeText = vi.fn();
     Object.assign(navigator, { clipboard: { writeText } });

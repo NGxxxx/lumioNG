@@ -74,7 +74,7 @@ describe("sessionManager", () => {
     sm.openQuery("");
     const tab = sm.workTabs.at(-1)!;
     await sm.focusOrOpen({ connId: 2, uri: "u2", label: "b" });
-    sm.showContext("host"); // zone is now context, not this work tab
+    sm.showDestination(); // zone is now the destination, not this work tab
 
     sm.focusSession("conn:1");
 
@@ -206,11 +206,22 @@ describe("sessionManager work tabs", () => {
     expect(sm.activeZone).toEqual({ zone: "work", id: sm.workTabs[0].id });
   });
 
-  it("closeWork last work tab with an active session falls back to host context", () => {
+  it("closing the last work tab returns to the destination", () => {
     sm.openDocument(insertDoc("d", "c"));
     sm.closeWork(sm.workTabs[0].id);
     expect(sm.workTabs.length).toBe(0);
-    expect(sm.activeZone).toEqual({ zone: "context", kind: "host" });
+    expect(sm.activeZone).toEqual({ zone: "destination" });
+  });
+
+  it("a successful connect shows the destination (host page)", () => {
+    expect(sm.activeZone).toEqual({ zone: "destination" });
+    expect(sm.active!.nav.page).toBe("host");
+  });
+
+  it("showDestination activates the destination zone", () => {
+    sm.openDocument(insertDoc("d", "c"));
+    sm.showDestination();
+    expect(sm.activeZone).toEqual({ zone: "destination" });
   });
 
   it("closeWork on an inactive tab keeps the active zone unchanged", () => {
@@ -264,22 +275,25 @@ describe("sessionManager DDL tab cleanup", () => {
     expect(sm.active!.nav.selection).toEqual({ db: "d", coll: null });
   });
 
-  it("closeForCollection on the active view demotes the zone to the database context (not host)", () => {
+  it("closeForCollection on the active view falls back to the database page (not host)", () => {
     sm.active!.nav.selectCollection("d", "c");
-    sm.showContext("data");
+    sm.showDestination();
     sm.openDocument(insertDoc("d", "c"));
     sm.closeForCollection("conn:1", "d", "c");
-    expect(sm.activeZone).toEqual({ zone: "context", kind: "database" });
+    expect(sm.activeZone).toEqual({ zone: "destination" });
+    expect(sm.active!.nav.page).toBe("database");
     expect(sm.active!.nav.selColl).toBeNull();
   });
 
   it("closeForCollection on an inactive session does not touch the active zone", async () => {
     sm.active!.nav.selectCollection("d", "c");
-    sm.showContext("data");
     await sm.focusOrOpen({ connId: 2, uri: "u2", label: "b" });
     sm.focusSession("conn:2");
+    sm.openQuery("x");
+    const before = sm.activeZone;
     sm.closeForCollection("conn:1", "d", "c");
-    expect(sm.activeZone).toEqual({ zone: "context", kind: "data" });
+    expect(sm.activeZone).toEqual(before);
+    expect(sm.sessions.find((x) => x.id === "conn:1")!.nav.page).toBe("database");
   });
 
   it("closeForCollection with a non-matching selection leaves selection unchanged", () => {

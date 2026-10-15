@@ -17,6 +17,7 @@ vi.mock("../api/documents", () => ({
   aggregateCount: vi.fn(),
   countDocuments: vi.fn(),
   explainQuery: vi.fn(),
+  fetchFullDoc: vi.fn(),
 }));
 
 vi.mock("../api/indexes", () => ({
@@ -153,6 +154,30 @@ describe("createQueryScript", () => {
     expect(s.consoleEntries.length).toBe(1);
     expect(s.displayMode).toBe("grid-editable");
     expect(s.provenance).toEqual({ db: "d", coll: "c" });
+  });
+
+  it("replaceDoc swaps the result row with the same _id", async () => {
+    (runScript as any).mockResolvedValue(ok([`{"_id":1,"a":2}`, `{"_id":2,"a":3}`], { db: "d", coll: "c" }));
+    const s = createQueryScript("sess", "db.c.find()");
+    await s.run("d");
+    s.replaceDoc({ _id: 2, a: 9 });
+    expect(s.docs.map((d) => d.a)).toEqual([2, 9]);
+  });
+
+  it("fullDocFor re-fetches the whole document from the result's source collection", async () => {
+    (runScript as any).mockResolvedValue(ok([`{"_id":1,"name":"a"}`], { db: "d", coll: "c" }));
+    (docsApi.fetchFullDoc as ReturnType<typeof vi.fn>).mockResolvedValue({ _id: 1, name: "a", secret: 1 });
+    const s = createQueryScript("sess", "db.c.find({}, {name: 1})");
+    await s.run("d");
+    expect(await s.fullDocFor(s.docs[0])).toEqual({ _id: 1, name: "a", secret: 1 });
+    expect(docsApi.fetchFullDoc).toHaveBeenCalledWith("sess", "d", "c", "1");
+  });
+
+  it("fullDocFor returns the row as-is for results without a source collection", async () => {
+    (runScript as any).mockResolvedValue(ok([`{"_id":1,"n":2}`], null));
+    const s = createQueryScript("sess", "db.c.aggregate([])");
+    await s.run("d");
+    expect(await s.fullDocFor(s.docs[0])).toEqual({ _id: 1, n: 2 });
   });
 
   it("surfaces an engine error and clears running", async () => {

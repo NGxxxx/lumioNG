@@ -15,20 +15,11 @@
   const h = $derived(activeHost?.info ?? null);
 
   const nav = $derived(sessionManager.active?.nav ?? null);
+  // The section is switched from the panel header's view switcher.
   const section = $derived<HostSection>(nav?.hostSection ?? "info");
-  function setSection(s: HostSection) {
-    nav?.setHostSection(s);
-  }
 </script>
 
 <div class="hosttab">
-  <div class="subtabs">
-    <button class:active={section === "info"} onclick={() => setSection("info")}>{m.host_tab_info()}</button>
-    <button class:active={section === "currentOps"} onclick={() => setSection("currentOps")}>{m.host_tab_current_ops()}</button>
-    <button class:active={section === "topology"} onclick={() => setSection("topology")}>{m.host_tab_topology()}</button>
-    <button class:active={section === "users"} onclick={() => setSection("users")}>{m.users_roles_toggle_users()}</button>
-    <button class:active={section === "roles"} onclick={() => setSection("roles")}>{m.users_roles_toggle_roles()}</button>
-  </div>
   <div class="subpane">
     {#if section === "info"}
       <div class="host">
@@ -74,9 +65,6 @@
 
 <style>
   .hosttab { display: flex; flex-direction: column; height: 100%; }
-  .subtabs { display: flex; border-bottom: 1px solid var(--border); background: var(--bg); }
-  .subtabs button { border: none; background: none; color: var(--fg); padding: 0.375rem 0.75rem; font-size: var(--fs); cursor: pointer; border-right: 1px solid var(--border); }
-  .subtabs button.active { background: var(--panel); font-weight: 600; }
   .subpane { flex: 1; min-height: 0; overflow: hidden; }
   .host { height: 100%; box-sizing: border-box; overflow: auto; background: var(--panel); padding: 0.875rem 1.125rem; }
   .title { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.1875rem; }

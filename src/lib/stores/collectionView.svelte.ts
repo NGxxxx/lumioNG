@@ -8,7 +8,7 @@ import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { type Doc } from "../domain/doc";
 import { getByPath, inferSchema, mergeColumns, limitColumnsToDepth, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { isInlineEditable, isModalEditable, editTextOf } from "../domain/celledit";
-import { parseFilter } from "../domain/filter";
+import { parseFilter, addCondition, type FilterOp } from "../domain/filter";
 import { matchingIndices } from "../domain/search";
 import {
   cycleSort,
@@ -59,6 +59,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   // happens when switching context tabs away from and back to Data.
   let view = $state<"grid" | "tree">("grid");
   let hidden = $state<Set<string>>(new Set());
+  // Columns kept visible on horizontal scroll (rendered first, sticky); per view, like widths.
+  let pinned = $state<Set<string>>(new Set());
   let hiddenDraft = $state<Set<string>>(new Set());
   let colWidths = $state<Record<string, number>>({});
   let defaultColWidths = $state<Record<string, number>>({});
@@ -311,6 +313,55 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     applySortChange(moveSortKey(sortKeys, path, delta));
   const clearSort = () => applySortChange([]);
 
+  function togglePin(path: string) {
+    const next = new Set(pinned);
+    if (!next.delete(path)) next.add(path);
+    pinned = next;
+  }
+
+  /** Merges `path op value` into the filter text and runs it; an unparsable current filter is reported, not overwritten. */
+  async function filterBy(path: string, op: FilterOp, value?: unknown) {
+    const r = addCondition(filterText, path, op, value);
+    if (!r.ok) {
+      filterError = r.error;
+      return;
+    }
+    filterText = r.text;
+    await applyFilter();
+  }
+
+  function headerMenuItems(path: string): MenuItem[] {
+    return [
+      { label: m.col_menu_sort_asc(), action: "sortAsc" },
+      { label: m.col_menu_sort_desc(), action: "sortDesc" },
+      { label: m.col_menu_clear_sort(), action: "clearSort", disabled: !sortKeys.some((k) => k.path === path) },
+      { label: m.col_menu_hide(), action: "hide", disabled: path === "_id" },
+      { label: pinned.has(path) ? m.col_menu_unpin() : m.col_menu_pin(), action: "pin" },
+      { label: m.col_menu_autofit(), action: "autofit" },
+      { label: m.col_menu_copy_path(), action: "copyPath" },
+      { label: m.col_menu_exists(), action: "exists" },
+      { label: m.col_menu_not_exists(), action: "notExists" },
+    ];
+  }
+
+  async function onHeaderMenuSelect(path: string, action: string) {
+    switch (action) {
+      case "sortAsc": return applySortChange([{ path, dir: 1 }]);
+      case "sortDesc": return applySortChange([{ path, dir: -1 }]);
+      case "clearSort": return applySortChange(removeSortKey(sortKeys, path));
+      case "hide":
+        if (path === "_id") return;
+        hidden = new Set([...hidden, path]);
+        hiddenDraft = new Set(hidden);
+        return reloadDocs();
+      case "pin": return togglePin(path);
+      case "autofit": return resetColWidth(path); // default widths are content-fitted (domain/colwidth)
+      case "copyPath": return copy(path);
+      case "exists": return filterBy(path, "exists");
+      case "notExists": return filterBy(path, "notExists");
+    }
+  }
+
   /** Show all fields (clear the hidden draft). */
   function showAllFieldsDraft() {
     hiddenDraft = new Set();
@@ -392,6 +443,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const n = selection.effectiveSelectionCount();
     const hasId = idJson(docs[menu.row]) !== null;
     const items: MenuItem[] = [];
+    if (n === 1) items.push({ label: m.peek_quick_look(), action: "peek" });
+    if (n === 1) items.push({ label: m.cell_filter_eq(), action: "filterEq" }, { label: m.cell_filter_ne(), action: "filterNe" });
     if (n === 1) items.push({ label: m.context_menu_open_document(), action: "open" });
     if (menu.source === "tree") items.push({ label: m.context_menu_expand_full_depth(), action: "expandFullDepth" });
     items.push({ label: m.context_menu_refresh(), action: "refresh" });
@@ -442,6 +495,16 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     return items;
   }
 
+  /** Replaces the page row holding the same `_id` (after a save elsewhere, e.g. the quick-look drawer). */
+  function replaceDoc(saved: Doc) {
+    const id = idJson(saved);
+    if (id === null) return;
+    const i = docs.findIndex((d) => idJson(d) === id);
+    if (i === -1) return;
+    docs[i] = saved;
+    docs = [...docs];
+  }
+
   function newDocument(): Doc {
     return buildSkeleton(rawColumnFields);
   }
@@ -457,7 +520,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   /** Returns the doc to open for "open", `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate,
    *  or `{ expandFullDepth }` (a tree doc index) for the Tree view's "Expand full depth". */
-  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { expandFullDepth: number } | null {
+  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { expandFullDepth: number } | { peek: Doc } | null {
     const menu = selection.menu;
     if (!menu) return null;
     const row = menu.row;
@@ -465,6 +528,14 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const doc = docs[row];
     // closeMenu() is called AFTER the switch so effectiveRows() (used by requestExport/copySelectedAs) can still read menu.row.
     switch (action) {
+      case "peek":
+        selection.closeMenu();
+        return { peek: doc };
+      case "filterEq":
+      case "filterNe":
+        selection.closeMenu();
+        void filterBy(key, action === "filterEq" ? "eq" : "ne", getByPath(doc, key) ?? null);
+        return null;
       case "open":
         selection.closeMenu();
         return { open: doc };
@@ -549,6 +620,15 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   });
 
   /** Wraps deleteFlow's count-based confirm so the context menu / toolbar can call it with no args. */
+  /** Deletes one specific document (the quick-look drawer's Delete), whatever is selected in the grid. */
+  function requestDeleteDoc(d: Doc) {
+    const id = idJson(d);
+    const row = id === null ? -1 : docs.findIndex((x) => idJson(x) === id);
+    if (row === -1) return;
+    selection.setSelected(new Set([row]));
+    requestDeleteSelected();
+  }
+
   function requestDeleteSelected() {
     deleteFlow.requestDeleteSelected(selection.selectedCount);
   }
@@ -638,6 +718,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get selectedCount() { return selection.selectedCount; },
     get confirmSelectionDelete() { return deleteFlow.confirmSelectionDelete; },
     clickRow: selection.clickRow,
+    setSelected: selection.setSelected,
     selectAll: selection.selectAll,
     invertSelection: selection.invertSelection,
     clearSelection: selection.clearSelection,
@@ -686,6 +767,13 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     applyProjection,
     resetProjectionDraft,
     openDoc,
+    replaceDoc,
+    requestDeleteDoc,
+    get pinned() { return pinned; },
+    togglePin,
+    filterBy,
+    headerMenuItems,
+    onHeaderMenuSelect,
     init,
     startEdit,
     cancelEdit,

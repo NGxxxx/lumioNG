@@ -15,6 +15,9 @@
     serverTimeIso,
     connectedAt = null,
     activityLabel = null,
+    logOpen = false,
+    logUnseen = 0,
+    ontogglelog,
   }: {
     connected: boolean;
     connectionLabel: string | null;
@@ -27,6 +30,10 @@
     serverTimeIso?: string | null;
     connectedAt?: number | null;
     activityLabel?: string | null;
+    logOpen?: boolean;
+    /** Commands logged since the log was last open. */
+    logUnseen?: number;
+    ontogglelog?: () => void;
   } = $props();
 
   const label = $derived(selDb ?? connectionLabel ?? "—");
@@ -69,6 +76,21 @@
 
   <!-- Right: live activity (current operation) or idle -->
   <div class="seg idle" class:busy={activityLabel !== null}>{activityLabel ?? m.status_bar_idle()}</div>
+
+  {#if ontogglelog}
+    <button
+      class="log-btn"
+      class:on={logOpen}
+      aria-pressed={logOpen}
+      aria-label={m.toolbar_command_log()}
+      data-unseen={logUnseen}
+      onclick={ontogglelog}
+    >
+      <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h10M3 8h10M3 12h6" /></svg>
+      <span>Log</span>
+      {#if logUnseen > 0 && !logOpen}<span class="log-dot" aria-hidden="true"></span>{/if}
+    </button>
+  {/if}
 </div>
 
 <style>
@@ -108,6 +130,16 @@
 
   .idle.busy {
     color: var(--accent);
+  }
+
+  .log-btn {
+    position: relative; display: inline-flex; align-items: center; gap: 0.3125rem; height: 1.25rem; padding: 0 0.5rem;
+    margin-left: 0.25rem; border: none; border-radius: var(--radius-sm); background: none; color: var(--muted);
+    font-size: 0.6875rem; cursor: pointer;
+  }
+  .log-btn:hover, .log-btn.on { background: var(--hover); color: var(--fg); }
+  .log-dot {
+    width: 0.375rem; height: 0.375rem; border-radius: 50%; background: var(--accent);
   }
 
   .dot {

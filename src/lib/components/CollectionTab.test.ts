@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { render, fireEvent } from "@testing-library/svelte";
+import { render } from "@testing-library/svelte";
+import { tick } from "svelte";
 
 vi.mock("../api/connection", () => ({
   connect: vi.fn().mockResolvedValue(undefined),
@@ -29,13 +30,16 @@ describe("CollectionTab", () => {
     // Ensure exactly one active session whose nav defaults to the Info section.
     for (const s of [...sessionManager.sessions]) await sessionManager.closeSession(s.id);
     await sessionManager.focusOrOpen({ connId: 1, uri: "mongodb://h", label: "local" });
-    sessionManager.active!.nav.setCollectionSection("info");
+    sessionManager.active!.nav.selectCollection("d", "c");
+    sessionManager.active!.nav.setCollectionView("info");
   });
 
-  it("defaults to Info: Create index button absent; clicking Indexes shows it", async () => {
-    const { getByText, queryByText } = render(CollectionTab, { props: { db: "d", coll: "c" } });
+  it("renders the view chosen in nav: Info has no Create index; Indexes shows it", async () => {
+    const { getByText, queryByText, queryByRole } = render(CollectionTab, { props: { db: "d", coll: "c" } });
     expect(queryByText("＋ Create index")).toBeNull();
-    await fireEvent.click(getByText("Indexes"));
+    expect(queryByRole("button", { name: "Indexes" })).toBeNull(); // no own sub-tab strip
+    sessionManager.active!.nav.setCollectionView("indexes");
+    await tick();
     expect(getByText("＋ Create index")).toBeTruthy();
   });
 });

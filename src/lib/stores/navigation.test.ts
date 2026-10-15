@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { createSessionNav } from "./navigation.svelte";
 
-// The per-session navigation slice holds tree selection + collection-section state.
+// The per-session navigation slice holds tree selection + which destination page/view is shown.
 // The shared tab strip (work tabs, active zone, DDL tab cleanup) lives in sessionManager
 // and is exercised in sessionManager.test.ts.
 
@@ -10,73 +10,78 @@ describe("session nav selection", () => {
     const n = createSessionNav();
     expect(n.selection).toBeNull();
     expect(n.level).toBe("none");
-    expect(n.contextTabs).toEqual([]);
+    expect(n.page).toBeNull();
   });
 
-  it("selectDatabase → selection db, contextTabs=[host,database]", () => {
+  it("page is null until connected, host after connect", () => {
+    const n = createSessionNav();
+    expect(n.page).toBeNull();
+    n.setConnected(true);
+    expect(n.page).toBe("host");
+  });
+
+  it("selectDatabase opens the database page", () => {
     const n = createSessionNav();
     n.setConnected(true);
     n.selectDatabase("shop");
     expect(n.selection).toEqual({ db: "shop", coll: null });
     expect(n.level).toBe("db");
-    expect(n.contextTabs).toEqual(["host", "database"]);
+    expect(n.page).toBe("database");
   });
 
-  it("selectCollection → selection coll, 4 contextTabs", () => {
+  it("selectCollection opens the collection page on the data view", () => {
     const n = createSessionNav();
     n.setConnected(true);
-    n.selectCollection("shop", "users");
-    expect(n.selection).toEqual({ db: "shop", coll: "users" });
+    n.setCollectionView("indexes");
+    n.selectCollection("shop", "orders");
+    expect(n.selection).toEqual({ db: "shop", coll: "orders" });
     expect(n.level).toBe("coll");
-    expect(n.contextTabs).toEqual(["host", "database", "collection", "data"]);
+    expect(n.page).toBe("collection");
+    expect(n.collectionView).toBe("data");
   });
 
-  it("setCollectionSection updates the section", () => {
+  it("setCollectionView switches the collection view", () => {
     const n = createSessionNav();
     n.selectCollection("d", "c");
-    expect(n.collectionSection).toBe("info");
-    n.setCollectionSection("indexes");
-    expect(n.collectionSection).toBe("indexes");
+    n.setCollectionView("schema");
+    expect(n.collectionView).toBe("schema");
   });
 
-  it("setConnected(false) clears selection", () => {
+  it("switching the collection view from the host page opens the collection page", () => {
+    const n = createSessionNav();
+    n.setConnected(true);
+    n.selectCollection("shop", "orders");
+    n.selectHost();
+    n.setCollectionView("schema");
+    expect(n.page).toBe("collection");
+  });
+
+  it("selectHost keeps the tree selection", () => {
+    const n = createSessionNav();
+    n.setConnected(true);
+    n.selectCollection("shop", "orders");
+    n.selectHost();
+    expect(n.page).toBe("host");
+    expect(n.selection).toEqual({ db: "shop", coll: "orders" });
+  });
+
+  it("clearCollection falls back to the database page; clearSelection to host", () => {
+    const n = createSessionNav();
+    n.setConnected(true);
+    n.selectCollection("shop", "orders");
+    n.clearCollection();
+    expect(n.page).toBe("database");
+    n.clearSelection();
+    expect(n.page).toBe("host");
+  });
+
+  it("setConnected(false) clears selection and page", () => {
     const n = createSessionNav();
     n.setConnected(true);
     n.selectCollection("d", "c");
     n.setConnected(false);
     expect(n.selection).toBeNull();
-    expect(n.contextTabs).toEqual([]);
-  });
-});
-
-describe("session nav contextTabs with connection and selection state", () => {
-  it("not connected → contextTabs is empty", () => {
-    const n = createSessionNav();
-    n.selectCollection("shop", "orders");
-    expect(n.contextTabs).toEqual([]);
-  });
-  it("connected, no selection → host only", () => {
-    const n = createSessionNav();
-    n.setConnected(true);
-    expect(n.contextTabs).toEqual(["host"]);
-  });
-  it("connected + db selected → host, database", () => {
-    const n = createSessionNav();
-    n.setConnected(true);
-    n.selectDatabase("shop");
-    expect(n.contextTabs).toEqual(["host", "database"]);
-  });
-  it("connected + collection selected → host, database, collection, data", () => {
-    const n = createSessionNav();
-    n.setConnected(true);
-    n.selectCollection("shop", "orders");
-    expect(n.contextTabs).toEqual(["host", "database", "collection", "data"]);
-  });
-  it("query is not a context tab", () => {
-    const n = createSessionNav();
-    n.setConnected(true);
-    n.selectCollection("shop", "orders");
-    expect(n.contextTabs).not.toContain("query");
+    expect(n.page).toBeNull();
   });
 });
 

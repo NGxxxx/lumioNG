@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampWidth, computeColumnWidths, COLWIDTH_SAMPLE, MIN_COL_W, MAX_COL_W } from "./colwidth";
+import { clampWidth, computeColumnWidths, pinnedOffsets, COLWIDTH_SAMPLE, MIN_COL_W, MAX_COL_W, pinnedFirst } from "./colwidth";
 import type { ColumnField } from "./schema";
 import type { Doc } from "./doc";
 
@@ -51,5 +51,31 @@ describe("computeColumnWidths", () => {
     docs.push({ v: "y".repeat(300) }); // long, just past the sample → must be ignored
     // header "v" (1) ≥ sampled content (1) → 1*7+20 = 27 → clamp to MIN; a full scan would hit MAX
     expect(computeColumnWidths(fields, docs).v).toBe(MIN_COL_W);
+  });
+});
+
+describe("pinnedOffsets", () => {
+  it("single pinned column starts after the row-number column", () => {
+    expect(pinnedOffsets(["a", "b", "c"], { a: 100, b: 50 }, new Set(["b"]), 42, 160)).toEqual({ b: 42 });
+  });
+  it("second pinned offset = rownum + first width, in display order", () => {
+    expect(pinnedOffsets(["a", "b", "c"], { a: 100, b: 50, c: 70 }, new Set(["c", "a"]), 42, 160)).toEqual({ a: 42, c: 142 });
+  });
+  it("missing width uses fallback", () => {
+    expect(pinnedOffsets(["a", "b"], {}, new Set(["a", "b"]), 10, 160)).toEqual({ a: 10, b: 170 });
+  });
+  it("nothing pinned → {}", () => {
+    expect(pinnedOffsets(["a"], {}, new Set(), 42, 160)).toEqual({});
+  });
+});
+
+describe("pinnedFirst", () => {
+  it("moves pinned columns to the front, keeping relative order on both sides", () => {
+    const cols = [{ path: "a" }, { path: "b" }, { path: "c" }, { path: "d" }];
+    expect(pinnedFirst(cols, new Set(["c", "a"])).map((c) => c.path)).toEqual(["a", "c", "b", "d"]);
+  });
+  it("returns the same order when nothing is pinned", () => {
+    const cols = [{ path: "a" }, { path: "b" }];
+    expect(pinnedFirst(cols, new Set()).map((c) => c.path)).toEqual(["a", "b"]);
   });
 });

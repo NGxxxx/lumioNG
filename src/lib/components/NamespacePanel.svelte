@@ -239,6 +239,15 @@
           </svg>
         </span>
       {/if}
+      <!-- Session manager (switch / edit connections) -->
+      <button
+        class="session-switch"
+        aria-label={m.toolbar_session_manager()}
+        title={m.toolbar_session_manager()}
+        onclick={(e) => { e.stopPropagation(); onmanagesessions?.(); }}
+      >
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M5 6l3-3 3 3M5 10l3 3 3-3" /></svg>
+      </button>
       <!-- Close button -->
       <button
         class="session-close"
@@ -250,6 +259,18 @@
 
     <!-- Tree body (shown when not collapsed) -->
     {#if !isCollapsed}
+      {#if sess.status === "connected"}
+        <button
+          class="overview"
+          class:active={sessionManager.activeId === sess.id && sess.nav.page === "host" && sessionManager.activeZone?.zone === "destination"}
+          onclick={() => { sessionManager.focusSession(sess.id); sess.nav.selectHost(); sessionManager.showDestination(); }}
+        >
+          <svg aria-hidden="true" width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2">
+            <rect x="2" y="2.5" width="12" height="4" rx="1" /><rect x="2" y="9.5" width="12" height="4" rx="1" />
+          </svg>
+          {m.nav_overview()}
+        </button>
+      {/if}
       {#if sess.tree?.error}
         <div class="error">{sess.tree.error}</div>
       {/if}
@@ -257,9 +278,9 @@
         databases={filtered.databases}
         forceExpand={appliedQuery ? filtered.expand : null}
         selected={sess.nav.selection}
-        onselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); onselect?.(d); }}
-        ondblselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); sessionManager.showContext("data"); onselect?.(d); }}
-        onselectdb={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectDatabase(d.db); onselectdb?.(d); }}
+        onselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); sessionManager.showDestination(); onselect?.(d); }}
+        ondblselect={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectCollection(d.db, d.coll); sessionManager.showDestination(); onselect?.(d); }}
+        onselectdb={(d) => { sessionManager.focusSession(sess.id); sess.nav.selectDatabase(d.db); sessionManager.showDestination(); onselectdb?.(d); }}
         onmenu={(t) => (menu = { ...t, sessionId: sess.id })}
       />
     {/if}
@@ -478,4 +499,21 @@
   }
   .session-header:hover .session-close { opacity: 1; }
   .session-close:hover { background: var(--error-bg); color: var(--error); opacity: 1; }
+
+  .overview {
+    display: flex; align-items: center; gap: 0.5rem; width: calc(100% - 0.875rem); height: 1.625rem;
+    margin: 0.125rem 0.375rem 0.125rem 0.5rem; padding: 0 0.375rem 0 0.75rem; box-sizing: border-box;
+    border: none; border-radius: var(--radius); background: none; color: var(--c-subtext1);
+    font-size: var(--fs); text-align: left; cursor: pointer;
+  }
+  .overview svg { color: var(--c-overlay2); }
+  .overview:hover { background: var(--hover); color: var(--fg); }
+  .overview.active { background: var(--menu-hover); color: var(--fg); font-weight: 500; box-shadow: inset 2px 0 0 var(--accent); }
+  .session-switch {
+    flex: none; width: 1.25rem; height: 1.25rem; display: flex; align-items: center; justify-content: center;
+    border: none; border-radius: var(--radius-sm); background: none; color: var(--muted); cursor: pointer; padding: 0;
+    opacity: 0; transition: opacity 0.1s;
+  }
+  .session-header:hover .session-switch, .session-switch:focus-visible { opacity: 1; }
+  .session-switch:hover { background: var(--menu-hover); color: var(--fg); }
 </style>

@@ -11,6 +11,9 @@
   import ResultPager from "./ResultPager.svelte";
   import CollectionToolbar from "./CollectionToolbar.svelte";
   import CollectionDialogs from "./CollectionDialogs.svelte";
+  import DocPeekDrawer from "./DocPeekDrawer.svelte";
+  import { docPeekFor } from "../stores/docPeek.svelte";
+  import { settings } from "../stores/settings.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let {
@@ -59,6 +62,10 @@
 
     get selected() { return v.selected; },
     clickRow: v.clickRow,
+    setSelected: v.setSelected,
+    get pinned() { return v.pinned; },
+    headerMenuItems: v.headerMenuItems,
+    onHeaderMenuSelect: v.onHeaderMenuSelect,
     selectAll: v.selectAll,
     get menu() { return v.menu; },
     openMenu: v.openMenu,
@@ -86,9 +93,48 @@
     duplicateSelected: v.duplicateSelected,
   };
 
+  // ── Quick-look drawer ──
+  // Owned by the cached view, so an open drawer — and any unsaved draft — survives view/tab switches.
+  const peek = docPeekFor(v, {
+    sessionId: () => sessionManager.active?.id ?? "",
+    db: () => db,
+    coll: () => coll,
+    loadFull: (d) => v.openDoc(d),
+    readOnly: () => sessionManager.active?.readOnly ?? false,
+    onSaved: (saved) => v.replaceDoc(saved),
+  });
+  const singleSelected = $derived(v.selectedCount === 1 ? (v.docs[[...v.selected][0]] ?? null) : null);
+  // While open, the drawer follows the single selected row (keyboard or click).
+  $effect(() => {
+    const d = singleSelected;
+    if (!d || !peek.open) return;
+    untrack(() => void peek.follow(d)); // no-op for the document already shown; asks first when dirty
+  });
+  // Rows changed (reload, page, inline edit): the drawer refreshes, keeps a dirty draft, or closes.
+  $effect(() => {
+    const docs = v.docs;
+    untrack(() => peek.sync(docs));
+  });
+  function onPeek(row: number, edit: boolean) {
+    const d = v.docs[row];
+    if (d) void peek.show(d, edit);
+  }
+  /** Esc in the grid closes the drawer first (unless it has unsaved edits, which keep it open). */
+  function onGridEscape(): boolean {
+    if (!peek.open) return false;
+    peek.requestClose();
+    return true;
+  }
+  async function onBulk(action: "copy" | "export" | "delete") {
+    if (action === "copy") await v.copySelectedAs("json");
+    else if (action === "export") v.requestExport("selection");
+    else v.requestDeleteSelected();
+  }
+
   async function onMenuSelect(action: string) {
     const r = v.onMenuSelect(action);
-    if (r && "open" in r) onopendocument(await v.openDoc(r.open), "edit");
+    if (r && "peek" in r) void peek.show(r.peek);
+    else if (r && "open" in r) onopendocument(await v.openDoc(r.open), "edit");
     else if (r && "insert" in r) onopendocument(r.insert, "insert");
     else if (r && "expandFullDepth" in r) treeRef?.expandFullDepth(r.expandFullDepth);
   }
@@ -137,9 +183,25 @@
     treeAllExpanded={treeRef?.isAllExpanded() ?? false}
     ontoggleexpand={() => treeRef?.toggleExpandAll()} />
 
-  <div class="content">
+  <div class="content" class:with-pinned={peek.open && settings.peekPinned && v.view === "grid"}>
     {#if v.view === "grid"}
-      <ResultGrid v={gridView} {onopendocument} />
+      <div class="grid-host">
+        <ResultGrid v={gridView} {onopendocument} onpeek={onPeek} onescape={onGridEscape} />
+      </div>
+      {#if peek.open}
+        <DocPeekDrawer
+          {peek}
+          pinned={settings.peekPinned}
+          width={settings.peekWidth}
+          selectionCount={v.selectedCount}
+          onresize={(px) => settings.setPeekWidth(px)}
+          onpin={(b) => settings.setPeekPinned(b)}
+          onopentab={async (d) => onopendocument(await v.openDoc(d), "edit")}
+          onduplicate={(d) => { const { _id, ...rest } = d; void _id; onopendocument(rest as Doc, "insert"); }}
+          ondelete={() => { if (peek.doc) v.requestDeleteDoc(peek.doc); }}
+          onbulk={onBulk}
+        />
+      {/if}
     {:else}
       <div class="tree-wrap">
         <ResultTree bind:this={treeRef} docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
@@ -156,7 +218,9 @@
 <style>
   /* ── Layout ── */
   .result { display: flex; flex-direction: column; height: 100%; }
-  .content { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .content { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; }
+  .content.with-pinned { flex-direction: row; }
+  .grid-host { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 
   /* ── Error / status messages ── */
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; }

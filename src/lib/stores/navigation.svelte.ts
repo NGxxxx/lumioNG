@@ -1,7 +1,9 @@
 import type { Doc } from "../domain/doc";
 
-export type ContextKind = "host" | "database" | "collection" | "data";
-export type CollectionSection = "info" | "indexes" | "schema";
+/** Which destination page the (single, non-closable) destination tab shows. */
+export type Page = "host" | "database" | "collection";
+/** The collection page's views, switched from the panel header. */
+export type CollectionView = "data" | "schema" | "indexes" | "info";
 export type HostSection = "info" | "currentOps" | "topology" | "users" | "roles";
 
 export type DocumentTab = {
@@ -28,16 +30,18 @@ export type WorkTab = DocumentTab | QueryTab;
 export type DocumentTabInit = Omit<DocumentTab, "id" | "sessionId">;
 
 export type Active =
-  | { zone: "context"; kind: ContextKind }
+  | { zone: "destination" }
   | { zone: "work"; id: number }
   | null;
 
-/** Per-session tree-selection slice; holds only selection + collection-section state (the shared tab strip lives in `sessionManager`). */
+/** Per-session tree-selection slice: selection + which destination page/view is shown (the shared tab strip lives in `sessionManager`). */
 export function createSessionNav() {
   let selDb = $state<string | null>(null);
   let selColl = $state<string | null>(null);
   let connected = $state(false);
-  let collectionSection = $state<CollectionSection>("info");
+  // Explicit host choice; otherwise the page follows the selection depth.
+  let hostChosen = $state(true);
+  let collectionView = $state<CollectionView>("data");
   let hostSection = $state<HostSection>("info");
   let versions = $state<Record<string, number>>({});
 
@@ -45,28 +49,31 @@ export function createSessionNav() {
 
   const selection = $derived(selDb ? { db: selDb, coll: selColl } : null);
   const level = $derived<"none" | "db" | "coll">(selColl ? "coll" : selDb ? "db" : "none");
-  const contextTabs = $derived<ContextKind[]>(
-    !connected
-      ? []
-      : selColl
-        ? ["host", "database", "collection", "data"]
-        : selDb
-          ? ["host", "database"]
-          : ["host"],
+  const page = $derived<Page | null>(
+    !connected ? null : hostChosen || !selDb ? "host" : selColl ? "collection" : "database",
   );
+
+  function selectHost() {
+    hostChosen = true;
+  }
 
   function selectDatabase(db: string) {
     selDb = db;
     selColl = null;
+    hostChosen = false;
   }
 
   function selectCollection(db: string, coll: string) {
     selDb = db;
     selColl = coll;
+    hostChosen = false;
+    collectionView = "data";
   }
 
-  function setCollectionSection(s: CollectionSection) {
-    collectionSection = s;
+  /** Switches the collection page's view — and shows that page (e.g. Mod+4 from the host overview). */
+  function setCollectionView(v: CollectionView) {
+    collectionView = v;
+    if (selColl) hostChosen = false;
   }
 
   function setHostSection(s: HostSection) {
@@ -75,6 +82,7 @@ export function createSessionNav() {
 
   function setConnected(v: boolean) {
     connected = v;
+    hostChosen = true;
     if (!v) {
       selDb = null;
       selColl = null;
@@ -88,6 +96,7 @@ export function createSessionNav() {
   function clearSelection() {
     selDb = null;
     selColl = null;
+    hostChosen = true;
   }
 
   function setSelColl(coll: string | null) {
@@ -109,12 +118,13 @@ export function createSessionNav() {
     get selection() { return selection; },
     get level() { return level; },
     get connected() { return connected; },
-    get contextTabs() { return contextTabs; },
-    get collectionSection() { return collectionSection; },
+    get page() { return page; },
+    get collectionView() { return collectionView; },
     get hostSection() { return hostSection; },
+    selectHost,
     selectDatabase,
     selectCollection,
-    setCollectionSection,
+    setCollectionView,
     setHostSection,
     setConnected,
     clearCollection,

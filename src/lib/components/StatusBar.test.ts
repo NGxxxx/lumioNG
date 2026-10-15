@@ -1,6 +1,6 @@
 // src/lib/components/StatusBar.test.ts
-import { describe, it, expect } from "vitest";
-import { render } from "@testing-library/svelte";
+import { describe, it, expect, vi } from "vitest";
+import { render, fireEvent } from "@testing-library/svelte";
 import StatusBar from "./StatusBar.svelte";
 
 describe("StatusBar", () => {
@@ -57,5 +57,25 @@ describe("StatusBar", () => {
     });
     expect(getByText("MongoDB 7.0.5")).toBeTruthy();
     expect(getByText("Uptime: 1h 2m")).toBeTruthy();
+  });
+
+  it("has a Command log toggle showing the unseen count, which calls ontogglelog", async () => {
+    const ontogglelog = vi.fn();
+    const { getByRole } = render(StatusBar, {
+      props: { connected: true, connectionLabel: "L", dbCount: 1, collCount: 1, selDb: null, selColl: null, logOpen: false, logUnseen: 2, ontogglelog },
+    });
+    const btn = getByRole("button", { name: "Command log" });
+    expect(btn.getAttribute("data-unseen")).toBe("2");
+    expect(btn.getAttribute("aria-pressed")).toBe("false");
+    await fireEvent.click(btn);
+    expect(ontogglelog).toHaveBeenCalled();
+  });
+
+  it("hides the unseen dot when there is nothing new", () => {
+    const { getByRole, container } = render(StatusBar, {
+      props: { connected: true, connectionLabel: "L", dbCount: 1, collCount: 1, selDb: null, selColl: null, logOpen: true, logUnseen: 0, ontogglelog: vi.fn() },
+    });
+    expect(getByRole("button", { name: "Command log" }).getAttribute("aria-pressed")).toBe("true");
+    expect(container.querySelector(".log-dot")).toBeNull();
   });
 });

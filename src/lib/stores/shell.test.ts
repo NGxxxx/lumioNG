@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import { createShell } from "./shell.svelte";
 
 describe("createShell", () => {
+  it("the command log starts closed", () => {
+    expect(createShell().logOpen).toBe(false);
+  });
+
   it("setConnection / toggleSession / toggleLog", () => {
     const s = createShell();
     expect(s.connection).toBeNull();

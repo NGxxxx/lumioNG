@@ -8,6 +8,25 @@ const WRAP_KEY = "wrap-long-lines";
 const EDITOR_H_KEY = "query-editor-height-px";
 const GRID_DEPTH_KEY = "grid-max-depth";
 const SHOW_SYSTEM_DBS_KEY = "show-system-databases";
+const DENSITY_KEY = "grid-density";
+const PEEK_WIDTH_KEY = "peek-width";
+const PEEK_PINNED_KEY = "peek-pinned";
+/** Quick-look drawer width bounds (px); the 50%-of-grid maximum is applied by the component. */
+export const PEEK_MIN_W = 280;
+const PEEK_DEFAULT_W = 360;
+
+/** Grid row density (row heights live in components/gridInteractions.svelte.ts). */
+export type Density = "compact" | "comfortable" | "spacious";
+const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
+
+function readDensity(): Density {
+  try {
+    const v = localStorage.getItem(DENSITY_KEY);
+    return (DENSITIES as readonly string[]).includes(v ?? "") ? (v as Density) : "comfortable";
+  } catch {
+    return "comfortable";
+  }
+}
 
 /** Absolute floor (px) for either side of the Query tab's editor/bottom split. */
 export const MIN_PANE_PX = 120;
@@ -83,6 +102,11 @@ export function createSettings() {
     hasStorage ? untrack(() => readGridDepth()) : DEFAULT_GRID_DEPTH,
   );
   let showSystemDatabases = $state<boolean>(hasStorage ? untrack(() => readBool(SHOW_SYSTEM_DBS_KEY)) : false);
+  let density = $state<Density>(hasStorage ? untrack(readDensity) : "comfortable");
+  let peekWidth = $state<number>(
+    hasStorage ? untrack(() => Math.max(PEEK_MIN_W, readPosInt(PEEK_WIDTH_KEY, PEEK_DEFAULT_W))) : PEEK_DEFAULT_W,
+  );
+  let peekPinned = $state<boolean>(hasStorage ? untrack(() => readBool(PEEK_PINNED_KEY)) : false);
 
   return {
     get suppressDestructiveWarning(): boolean {
@@ -156,6 +180,27 @@ export function createSettings() {
     setShowSystemDatabases(v: boolean) {
       showSystemDatabases = v;
       writeKey(SHOW_SYSTEM_DBS_KEY, v ? "true" : "false");
+    },
+    get density(): Density {
+      return density;
+    },
+    setDensity(d: Density) {
+      density = d;
+      writeKey(DENSITY_KEY, d);
+    },
+    get peekWidth(): number {
+      return peekWidth;
+    },
+    setPeekWidth(px: number) {
+      peekWidth = Math.max(PEEK_MIN_W, Math.round(px));
+      writeKey(PEEK_WIDTH_KEY, String(peekWidth));
+    },
+    get peekPinned(): boolean {
+      return peekPinned;
+    },
+    setPeekPinned(v: boolean) {
+      peekPinned = v;
+      writeKey(PEEK_PINNED_KEY, v ? "true" : "false");
     },
   };
 }

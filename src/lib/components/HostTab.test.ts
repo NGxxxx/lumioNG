@@ -1,3 +1,4 @@
+import { tick } from "svelte";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import type { HostInfo } from "../domain/host";
@@ -103,28 +104,37 @@ describe("HostTab", () => {
     expect(getByText("query")).toBeTruthy();
   });
 
-  it("defaults to Info; clicking Current Operations switches the sub-pane", async () => {
+  it("has no section strip of its own (the panel header switches sections)", () => {
+    mockInfo = null;
+    const { queryByRole } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
+    expect(queryByRole("button", { name: "Topology" })).toBeNull();
+  });
+
+  it("renders the section chosen in nav: current ops", async () => {
     mockInfo = null;
     const { getByText, queryByText } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
     expect(queryByText("No active operations.")).toBeNull();
-    await fireEvent.click(getByText("Current Operations"));
+    nav.setHostSection("currentOps");
+    await tick();
     expect(getByText("No active operations.")).toBeTruthy();
   });
 
-  it("Users and Roles are flat host subtabs switching the sub-pane", async () => {
+  it("renders the section chosen in nav: users, then roles", async () => {
     mockInfo = null;
-    const { getByText, getByRole } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
-    await fireEvent.click(getByRole("button", { name: "Users" }));
+    const { getByText } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
+    nav.setHostSection("users");
+    await tick();
     expect(getByText("＋ Create user")).toBeTruthy();
-    // Scoped to role="button": UserList's "Roles" table column header is also on screen.
-    await fireEvent.click(getByRole("button", { name: "Roles" }));
+    nav.setHostSection("roles");
+    await tick();
     expect(getByText("＋ Create role")).toBeTruthy();
   });
 
-  it("clicking Topology switches the sub-pane", async () => {
+  it("renders the section chosen in nav: topology", async () => {
     mockInfo = null;
-    const { getByText, getByRole } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
-    await fireEvent.click(getByRole("button", { name: "Topology" }));
+    const { getByText } = render(HostTab, { props: { connection: { label: "local", uri: "mongodb://h" } } });
+    nav.setHostSection("topology");
+    await tick();
     expect(getByText("Standalone server (not part of a replica set or sharded cluster).")).toBeTruthy();
   });
 });
