@@ -10,6 +10,9 @@ export interface IndexInfo {
   sparse: boolean;
   ttl: number | null; // expireAfterSeconds when present
   isId: boolean; // true when name === "_id_"
+  hidden: boolean; // `hidden: true` in the index spec
+  partial: boolean; // has a partialFilterExpression
+  collation: string | null; // JSON text of the collation spec, or null
 }
 
 function normalizeKeyValue(v: unknown): IndexKeyValue {
@@ -34,6 +37,9 @@ export function parseIndexList(jsonStrings: string[]): IndexInfo[] {
       sparse: doc.sparse === true,
       ttl: numFromExt(doc.expireAfterSeconds),
       isId: name === "_id_",
+      hidden: doc.hidden === true,
+      partial: doc.partialFilterExpression != null,
+      collation: doc.collation != null ? JSON.stringify(doc.collation) : null,
     };
   });
 }

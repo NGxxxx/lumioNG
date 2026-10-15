@@ -175,3 +175,50 @@ describe("DocPeekDrawer", () => {
     expect(container.querySelector(".body")).toBeTruthy();
   });
 });
+
+describe("DocPeekDrawer — references", () => {
+  const ORDER: Doc = { _id: { $oid: "652f1a9e0000000000000c41" }, customerId: { $oid: "652f1a9e0000000000000001" }, total: 5 };
+  const CUST: Doc = { _id: { $oid: "652f1a9e0000000000000001" }, name: "Lena" };
+
+  it("→ next to an ObjectId field (not _id) calls onref with the field path", async () => {
+    const peek = makePeek();
+    await peek.show(ORDER);
+    const onref = vi.fn();
+    const { getAllByRole } = render(DocPeekDrawer, { props: props(peek, { onref }) });
+    const arrows = getAllByRole("button", { name: "Open the referenced document" });
+    expect(arrows).toHaveLength(1);
+    await fireEvent.click(arrows[0]);
+    expect(onref).toHaveBeenCalledWith("customerId", ORDER.customerId, expect.anything());
+  });
+
+  it("a followed document shows the trail and Back; host-only actions are replaced by Open in tab", async () => {
+    const peek = makePeek();
+    await peek.show(ORDER);
+    peek.showRef(CUST, { db: "shop", coll: "customers" }, "customerId");
+    const onopenreftab = vi.fn();
+    const { getByText, getByRole, queryByRole } = render(DocPeekDrawer, { props: props(peek, { onref: vi.fn(), onopenreftab }) });
+    expect(getByText("orders")).toBeTruthy();
+    expect(getByText(/› customerId/)).toBeTruthy();
+    expect(getByText("customers")).toBeTruthy();
+    expect(queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(queryByRole("button", { name: "Duplicate" })).toBeNull();
+    await fireEvent.click(getByRole("button", { name: "Open in customers tab" }));
+    expect(onopenreftab).toHaveBeenCalledWith({ db: "shop", coll: "customers" }, CUST);
+    await fireEvent.click(getByRole("button", { name: "Back" }));
+    await tick();
+    expect(peek.doc).toEqual(ORDER);
+    expect(queryByRole("button", { name: "Back" })).toBeNull();
+  });
+
+  it("Backspace / Alt+← go back", async () => {
+    const peek = makePeek();
+    await peek.show(ORDER);
+    peek.showRef(CUST, { db: "shop", coll: "customers" }, "customerId");
+    const { getByRole } = render(DocPeekDrawer, { props: props(peek, { onref: vi.fn() }) });
+    await fireEvent.keyDown(getByRole("complementary"), { key: "Backspace" });
+    expect(peek.doc).toEqual(ORDER);
+    peek.showRef(CUST, { db: "shop", coll: "customers" }, "customerId");
+    await fireEvent.keyDown(getByRole("complementary"), { key: "ArrowLeft", altKey: true });
+    expect(peek.doc).toEqual(ORDER);
+  });
+});

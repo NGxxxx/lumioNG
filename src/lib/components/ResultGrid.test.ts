@@ -637,3 +637,36 @@ describe("ResultGrid quick-search index mapping", () => {
     expect(rows[1].textContent).toContain("Gamma");
   });
 });
+
+describe("ResultGrid reference jump", () => {
+  const oid = (n: string) => ({ $oid: `652f1a9e00000000000000${n}` });
+  const docs = [{ _id: oid("01"), customerId: oid("02"), tagIds: [oid("03")], pair: [oid("04"), oid("05")], name: "x" }];
+
+  it("shows → for ObjectId cells and one-element ObjectId arrays, never for _id; click calls onref", async () => {
+    const onref = vi.fn();
+    const { container } = render(ResultGrid, { props: { v: baseView(docs), onref } });
+    const cells = [...container.querySelectorAll("td.data-cell")];
+    const withArrow = cells.filter((c) => c.querySelector(".ref-go")).length;
+    expect(withArrow).toBe(2);
+    expect(cells[0].querySelector(".ref-go")).toBeNull();
+    await fireEvent.click(cells[1].querySelector(".ref-go")!);
+    expect(onref).toHaveBeenCalledWith("customerId", oid("02"), expect.objectContaining({ x: expect.any(Number) }));
+  });
+
+  it("no onref → no arrows (e.g. results without a session)", () => {
+    const { container } = render(ResultGrid, { props: { v: baseView(docs) } });
+    expect(container.querySelector(".ref-go")).toBeNull();
+  });
+
+  it("g follows the clicked cell's reference, else the row's first one", async () => {
+    const onref = vi.fn();
+    const { container, getByRole } = render(ResultGrid, { props: { v: baseView(docs), onref } });
+    const cells = container.querySelectorAll("td.data-cell");
+    await fireEvent.click(cells[4]); // "name" cell: not followable → first reference in the row
+    await fireEvent.keyDown(getByRole("grid"), { key: "g" });
+    expect(onref).toHaveBeenLastCalledWith("customerId", oid("02"), null);
+    await fireEvent.click(cells[2]); // tagIds
+    await fireEvent.keyDown(getByRole("grid"), { key: "g" });
+    expect(onref).toHaveBeenLastCalledWith("tagIds", oid("03"), null);
+  });
+});

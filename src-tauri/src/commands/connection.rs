@@ -114,6 +114,26 @@ pub async fn list_namespaces(
     try_join_all(fetches).await
 }
 
+/// Names of a database's real collections (no views, no `system.*`): a lookup by `_id` on a view
+/// would run its whole pipeline, so the reference search never touches one.
+fn plain_collections_filter() -> mongodb::bson::Document {
+    mongodb::bson::doc! { "type": "collection", "name": { "$not": { "$regex": "^system\\." } } }
+}
+
+#[tauri::command]
+pub async fn list_plain_collections(
+    session_id: String,
+    db: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let client = state.client(&session_id).await?;
+    Ok(client
+        .database(&db)
+        .list_collection_names()
+        .filter(plain_collections_filter())
+        .await?)
+}
+
 fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app
         .path()
@@ -178,4 +198,17 @@ pub fn touch_connection(app: AppHandle, id: u32) -> Result<Vec<SavedConnection>,
     let list = registry::touch(registry::load(&path)?, id, now_ms());
     registry::save(&path, &list)?;
     Ok(list)
+}
+
+#[cfg(test)]
+mod plain_collections_tests {
+    use super::*;
+
+    #[test]
+    fn filter_keeps_only_real_non_system_collections() {
+        let f = plain_collections_filter();
+        assert_eq!(f.get_str("type").unwrap(), "collection");
+        let re = f.get_document("name").unwrap().get_document("$not").unwrap().get_str("$regex").unwrap();
+        assert_eq!(re, "^system\\.");
+    }
 }

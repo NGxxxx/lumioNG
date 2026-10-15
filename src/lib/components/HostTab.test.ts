@@ -67,6 +67,17 @@ vi.mock("../stores/usersRoles.svelte", () => ({
   }),
 }));
 
+vi.mock("../stores/overviewPoller.svelte", () => ({
+  OVERVIEW_INTERVALS: [2000, 5000, 10000],
+  SLOW_THRESHOLDS: [1, 5, 30],
+  createOverviewPoller: () => ({
+    intervalMs: 2000, threshold: 1, latest: null, rates: null,
+    series: { ops: [], conns: [], net: [], mem: [] }, slowOps: [], profiler: null,
+    permitted: true, stale: false, retryInSecs: 2, running: false, destructive: { pending: null, running: false, error: null, seq: 0, request: vi.fn(), confirm: vi.fn(), cancel: vi.fn() },
+    start: vi.fn(), stop: vi.fn(), setIntervalMs: vi.fn(), setThreshold: vi.fn(), requestKill: vi.fn(),
+  }),
+}));
+
 import HostTab from "./HostTab.svelte";
 
 describe("HostTab", () => {

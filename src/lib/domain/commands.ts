@@ -55,6 +55,7 @@ export type CommandId =
   | "grid.toggleRow"
   | "grid.peek"
   | "grid.peekEdit"
+  | "grid.followRef"
   | "grid.clearOrClose"
   | "grid.slashFilter"
   | "help.shortcuts"
@@ -118,6 +119,7 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "grid.toggleRow": "x",
   "grid.peek": "Space",
   "grid.peekEdit": "e",
+  "grid.followRef": "g",
   "grid.clearOrClose": "Escape",
   "grid.slashFilter": "/",
   "help.shortcuts": "?",
@@ -151,7 +153,7 @@ export const COMMAND_GROUPS: { group: "general" | "navigation" | "grid" | "edito
     ids: [
       "grid.cursorDown", "grid.cursorUp", "grid.extendDown", "grid.extendUp", "grid.first", "grid.last",
       "grid.pageUp", "grid.pageDown", "grid.prevPage", "grid.nextPage", "grid.toggleRow", "grid.peek",
-      "grid.peekEdit", "grid.clearOrClose", "grid.slashFilter", "grid.focusFilter", "grid.selectAll",
+      "grid.peekEdit", "grid.followRef", "grid.clearOrClose", "grid.slashFilter", "grid.focusFilter", "grid.selectAll",
       "grid.invertSelection", "grid.copySelected", "grid.newDocument", "grid.duplicateDocument",
       "grid.editDocument", "grid.deleteDocument", "grid.commitEdit", "grid.cancelEdit",
     ],

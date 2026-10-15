@@ -12,6 +12,11 @@
   import CollectionToolbar from "./CollectionToolbar.svelte";
   import CollectionDialogs from "./CollectionDialogs.svelte";
   import DocPeekDrawer from "./DocPeekDrawer.svelte";
+  import RefMenu from "./RefMenu.svelte";
+  import { createRefJump } from "../stores/refJump.svelte";
+  import { sessionEnvironment, sessionMeta } from "../stores/sessionEnv";
+  import { setPendingFilter, takePendingFilter } from "../stores/pendingFilter";
+  import { filterFromChips } from "../domain/filterChips";
   import { docPeekFor } from "../stores/docPeek.svelte";
   import { settings } from "../stores/settings.svelte";
   import { undo } from "../stores/undo.svelte";
@@ -104,11 +109,49 @@
     readOnly: () => sessionManager.active?.readOnly ?? false,
     onSaved: (saved) => v.replaceDoc(saved),
   });
+  // ── Following ObjectId references (→ / g) into the drawer ──
+  const sid = untrack(() => sessionManager.active?.id ?? "");
+  const collectionsOf = (d: string) => sessionManager.active?.tree?.databases.find((x) => x.name === d)?.collections ?? [];
+  const refs = createRefJump({
+    sessionId: () => sessionManager.active?.id ?? "",
+    connId: () => sessionMeta(sid).connId,
+    collections: collectionsOf,
+    peek,
+    prod: () => sessionEnvironment(sid) === "prod",
+  });
+  // A grid cell belongs to this collection; a drawer field to whatever document the drawer shows.
+  function onGridRef(path: string, value: unknown, anchor: { x: number; y: number } | null) {
+    void refs.jump({ path, value, db, coll }, anchor);
+  }
+  function onDrawerRef(path: string, value: unknown, anchor: { x: number; y: number } | null) {
+    void refs.jump({ path, value, db: peek.source?.db ?? db, coll: peek.source?.coll ?? coll }, anchor);
+  }
+  /** "Open in <coll> tab": the referenced document's collection, filtered to it by an `_id` chip. */
+  function openRefTab(src: { db: string; coll: string }, d: Doc) {
+    const filter = filterFromChips([{ field: "_id", op: "eq", values: [JSON.stringify(d._id)] }]);
+    if (src.db === db && src.coll === coll) {
+      v.filterText = filter;
+      void v.applyFilter();
+      return;
+    }
+    setPendingFilter(sid, src.db, src.coll, filter);
+    const nav = sessionManager.active?.nav;
+    nav?.selectCollection(src.db, src.coll);
+    nav?.setCollectionView("data");
+  }
+  const pendingFilter = untrack(() => takePendingFilter(sid, db, coll));
+
   const singleSelected = $derived(v.selectedCount === 1 ? (v.docs[[...v.selected][0]] ?? null) : null);
-  // While open, the drawer follows the single selected row (keyboard or click).
+  // While open, the drawer follows the single selected row (keyboard or click) — but a document reached
+  // through a reference stays until the user actually selects another row.
+  let followedRow: Doc | null = null;
   $effect(() => {
     const d = singleSelected;
-    if (!d || !peek.open) return;
+    const isOpen = peek.open;
+    const changed = d !== followedRow;
+    followedRow = d;
+    if (!d || !isOpen) return;
+    if (!changed && untrack(() => peek.isRef)) return;
     untrack(() => void peek.follow(d)); // no-op for the document already shown; asks first when dirty
   });
   // An undo wrote to this collection: reload the page.
@@ -188,7 +231,13 @@
   };
 
   onMount(() => {
-    if (isNew) v.init();
+    if (isNew) {
+      if (pendingFilter) v.presetFilter(pendingFilter);
+      v.init();
+    } else if (pendingFilter) {
+      v.filterText = pendingFilter;
+      void v.applyFilter();
+    }
     activeDataView.register(dataViewHandle);
   });
   onDestroy(() => activeDataView.unregister(dataViewHandle));
@@ -204,34 +253,38 @@
   <div class="content" class:with-pinned={peek.open && settings.peekPinned && v.view === "grid"}>
     {#if v.view === "grid"}
       <div class="grid-host">
-        <ResultGrid v={gridView} {onopendocument} onpeek={onPeek} onescape={onGridEscape} peekOpen={peek.open} onpeekclose={() => peek.requestClose()} onbackground={onGridBackground} />
+        <ResultGrid v={gridView} {onopendocument} onpeek={onPeek} onescape={onGridEscape} peekOpen={peek.open} onpeekclose={() => peek.requestClose()} onbackground={onGridBackground} onref={onGridRef} />
       </div>
-      {#if peek.open}
-        <DocPeekDrawer
-          {peek}
-          pinned={settings.peekPinned}
-          width={settings.peekWidth}
-          selectionCount={v.selectedCount}
-          onresize={(px) => settings.setPeekWidth(px)}
-          onpin={(b) => settings.setPeekPinned(b)}
-          onopentab={async (d) => onopendocument(await v.openDoc(d), "edit")}
-          onduplicate={(d) => { const { _id, ...rest } = d; void _id; onopendocument(rest as Doc, "insert"); }}
-          ondelete={() => { if (peek.doc) v.requestDeleteDoc(peek.doc); }}
-          onbulk={onBulk}
-        />
-      {/if}
     {:else}
       <div class="tree-wrap">
         <ResultTree bind:this={treeRef} docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
-          onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
+          onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} onref={onGridRef} />
         {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
       </div>
+    {/if}
+    <!-- Outside the grid/tree switch: a reference followed from the Tree view opens here too. -->
+    {#if peek.open}
+      <DocPeekDrawer
+        {peek}
+        pinned={settings.peekPinned && v.view === "grid"}
+        width={settings.peekWidth}
+        selectionCount={v.selectedCount}
+        onresize={(px) => settings.setPeekWidth(px)}
+        onpin={(b) => settings.setPeekPinned(b)}
+        onopentab={async (d) => onopendocument(await v.openDoc(d), "edit")}
+        onduplicate={(d) => { const { _id, ...rest } = d; void _id; onopendocument(rest as Doc, "insert"); }}
+        ondelete={() => { if (peek.doc) v.requestDeleteDoc(peek.doc); }}
+        onbulk={onBulk}
+        onref={onDrawerRef}
+        onopenreftab={openRefTab}
+      />
     {/if}
   </div>
   <ResultPager {v} />
 </div>
 
 <CollectionDialogs {v} {coll} {onMenuSelect} />
+<RefMenu jump={refs} collections={collectionsOf} />
 
 <style>
   /* ── Layout ── */

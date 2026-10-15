@@ -5,17 +5,27 @@
   import type { Doc } from "../domain/doc";
   import { flattenDocs, fieldPath, fullDepthPaths, type TreeRow } from "../domain/treeFlatten";
   import { describeValue, truncateForDisplay } from "../domain/extjson";
+  import { followableValue } from "../domain/refTarget";
   import { jsonValueColor, bsonValueKind } from "../domain/theme";
   import { settings } from "../stores/settings.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   /** Shared, virtualized nested tree (collection grid + query results). Rows come pre-flattened
    *  from domain/treeFlatten so every visible row costs the same and 25k+ docs stay smooth. */
-  let { docs, startIndex = 0, onRowMenu }: {
+  let { docs, startIndex = 0, onRowMenu, onref }: {
     docs: Doc[];
     startIndex?: number;
     onRowMenu?: (e: MouseEvent, docIndex: number, key: string) => void;
+    /** Follow an ObjectId / DBRef value (→ button). Absent: no reference affordance. */
+    onref?: (path: string, value: unknown, anchor: { x: number; y: number } | null) => void;
   } = $props();
+
+  function goRef(e: MouseEvent, row: TreeRow) {
+    e.stopPropagation();
+    const path = fieldPath(row.path);
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    onref?.(path, followableValue(path, row.value), { x: r.left, y: r.bottom });
+  }
 
   /** Depth-1 default: every doc row starts with its immediate fields expanded (nested containers stay collapsed) — all-collapsed shows nothing but `_id`s. */
   function depthOneOpen(docs: Doc[]): Set<string> {
@@ -172,11 +182,17 @@
             <span class="tree-key">{row.key}</span><span class="tree-colon">:</span>
             <span class="tree-muted">{info.type === "array" ? `[${row.childCount}]` : `{${row.childCount}}`}</span>
             {#if !isOpen}<span class="tree-preview">{truncateForDisplay(info.display, 200)}</span>{/if}
+            {#if onref && info.type !== "array" && followableValue(fieldPath(row.path), row.value) !== null}
+              <button class="tree-ref" aria-label={m.ref_follow()} title={m.ref_follow()} onclick={(e) => goRef(e, row)}>→</button>
+            {/if}
           {:else}
             <!-- Leaf row: key: value  <type> -->
             {@const info = describeValue(row.value)}
             <span class="tree-key">{row.key}</span><span class="tree-colon">:</span>
             <span class="tree-val" style={valColor(row.value)}>{truncateForDisplay(info.display)}</span>
+            {#if onref && followableValue(fieldPath(row.path), row.value) !== null}
+              <button class="tree-ref" aria-label={m.ref_follow()} title={m.ref_follow()} onclick={(e) => goRef(e, row)}>→</button>
+            {/if}
             <span class="tree-type">{info.type}</span>
           {/if}
         </div>
@@ -186,6 +202,9 @@
 {/if}
 
 <style>
+  /* Reference jump: shown on row hover only (CSS), nothing computed until clicked. */
+  .tree-ref { display: none; margin-left: 0.375rem; padding: 0 0.3125rem; border: 1px solid var(--c-surface1); border-radius: var(--radius-sm); background: var(--popover); color: var(--accent); font-size: 0.6875rem; line-height: 1.2; cursor: pointer; }
+  .tree-row:hover .tree-ref, .tree-ref:focus-visible { display: inline-block; }
   .empty { padding: 1rem; color: var(--muted); font-size: var(--fs); }
   .tree-scroller {
     overflow: auto;

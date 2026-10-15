@@ -36,3 +36,8 @@ export async function forgetSshHostKey(host: string, port: number): Promise<void
 export async function listNamespaces(sessionId: string, includeSystemDbs = false): Promise<DbInfo[]> {
   return await invoke<DbInfo[]>("list_namespaces", { sessionId, includeSystemDbs });
 }
+
+/** A database's real collections (views and system.* excluded). */
+export async function listPlainCollections(sessionId: string, db: string): Promise<string[]> {
+  return await invoke<string[]>("list_plain_collections", { sessionId, db });
+}

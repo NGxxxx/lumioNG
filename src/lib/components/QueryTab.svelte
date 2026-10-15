@@ -9,6 +9,11 @@
   import ResultGrid from "./ResultGrid.svelte";
   import DocPeekDrawer from "./DocPeekDrawer.svelte";
   import { docPeekFor } from "../stores/docPeek.svelte";
+  import RefMenu from "./RefMenu.svelte";
+  import { createRefJump } from "../stores/refJump.svelte";
+  import { sessionEnvironment, sessionMeta } from "../stores/sessionEnv";
+  import { setPendingFilter } from "../stores/pendingFilter";
+  import { filterFromChips } from "../domain/filterChips";
   import { idJson } from "../domain/docid";
   import ResultPager from "./ResultPager.svelte";
   import ResultTree from "./ResultTree.svelte";
@@ -113,6 +118,30 @@
     readOnly: () => sessionManager.active?.readOnly ?? false,
     onSaved: (saved) => v.replaceDoc?.(saved),
   });
+
+  // ── Following ObjectId references from results into the drawer ──
+  const collectionsOf = (d: string) => sessionManager.active?.tree?.databases.find((x) => x.name === d)?.collections ?? [];
+  const refs = createRefJump({
+    sessionId: () => sessionId,
+    connId: () => sessionMeta(sessionId).connId,
+    collections: collectionsOf,
+    peek,
+    prod: () => sessionEnvironment(sessionId) === "prod",
+  });
+  function onGridRef(path: string, value: unknown, anchor: { x: number; y: number } | null) {
+    const db = v.provenance?.db ?? currentDb;
+    if (db) void refs.jump({ path, value, db, coll: v.provenance?.coll ?? "" }, anchor);
+  }
+  function onDrawerRef(path: string, value: unknown, anchor: { x: number; y: number } | null) {
+    const db = peek.source?.db ?? v.provenance?.db ?? currentDb;
+    if (db) void refs.jump({ path, value, db, coll: peek.source?.coll ?? v.provenance?.coll ?? "" }, anchor);
+  }
+  function openRefTab(src: { db: string; coll: string }, d: Doc) {
+    setPendingFilter(sessionId, src.db, src.coll, filterFromChips([{ field: "_id", op: "eq", values: [JSON.stringify(d._id)] }]));
+    const nav = sessionManager.active?.nav;
+    nav?.selectCollection(src.db, src.coll);
+    nav?.setCollectionView("data");
+  }
   function onPeek(row: number, edit: boolean) {
     const d = v.docs[row];
     if (d) void peek.show(d, edit);
@@ -417,7 +446,7 @@
           <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
         {:else if showDocs}
           <div class="grid-host" class:with-pinned={peek.open && settings.peekPinned}>
-            <div class="grid-main"><ResultGrid {v} onpeek={onPeek} onescape={onGridEscape} peekOpen={peek.open} onpeekclose={() => peek.requestClose()} onbackground={onGridBackground} /></div>
+            <div class="grid-main"><ResultGrid {v} onpeek={onPeek} onescape={onGridEscape} peekOpen={peek.open} onpeekclose={() => peek.requestClose()} onbackground={onGridBackground} onref={onGridRef} /></div>
             {#if peek.open}
               <DocPeekDrawer
                 {peek}
@@ -431,8 +460,11 @@
                 onduplicate={() => {}}
                 ondelete={deleteShown}
                 onbulk={(a) => { if (a === "delete") v.requestDeleteSelected?.(); }}
+                onref={onDrawerRef}
+                onopenreftab={openRefTab}
               />
             {/if}
+            <RefMenu jump={refs} collections={collectionsOf} />
           </div>
         {:else if v.displayMode === "ack" && v.ackJson !== null}
           <div class="value-display"><pre>{v.ackJson}</pre></div>

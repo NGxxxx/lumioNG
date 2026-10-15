@@ -17,7 +17,8 @@ export async function currentOps(sessionId: string): Promise<string> {
   return await invoke<string>("current_ops", { sessionId });
 }
 
-export async function killOp(sessionId: string, opid: number): Promise<void> {
+/** `opid` is a number on mongod, a `"shard:1234"` string on mongos. */
+export async function killOp(sessionId: string, opid: number | string): Promise<void> {
   await invoke<void>("kill_op", { sessionId, opid });
 }
 
@@ -35,4 +36,23 @@ export async function listShards(sessionId: string): Promise<string> {
 
 export async function balancerStatus(sessionId: string): Promise<string> {
   return await invoke<string>("balancer_status", { sessionId });
+}
+
+/** serverStatus subset for the Overview dashboard (opcounters, connections, network, mem, uptime, host, version). */
+export async function serverMetrics(sessionId: string): Promise<string> {
+  return await invoke<string>("server_metrics", { sessionId });
+}
+
+/** Active ops running at least `thresholdSecs` (filtered on the server). */
+export async function slowOps(sessionId: string, thresholdSecs: number): Promise<string[]> {
+  return await invoke<string[]>("slow_ops", { sessionId, thresholdSecs });
+}
+
+/** JSON array text `[{db, level, slowms}]`; never changes the profiler. */
+export async function profilerStatus(sessionId: string): Promise<string> {
+  return await invoke<string>("profiler_status", { sessionId });
+}
+
+export async function recentSlowQueries(sessionId: string, db: string, limit: number): Promise<string[]> {
+  return await invoke<string[]>("recent_slow_queries", { sessionId, db, limit });
 }

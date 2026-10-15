@@ -2,7 +2,7 @@ import type { Environment } from "./environment";
 
 export type DestructiveOp =
   | "deleteOne" | "deleteMany" | "updateMany" | "dropCollection"
-  | "truncate" | "dropIndex" | "dropDatabase" | "script";
+  | "truncate" | "dropIndex" | "dropDatabase" | "script" | "killOp";
 
 /** How much friction an operation needs before it runs (spec §2.1). */
 export function confirmLevel(env: Environment, op: DestructiveOp, count: number | null): "none" | "confirm" | "type" {
@@ -13,6 +13,8 @@ export function confirmLevel(env: Environment, op: DestructiveOp, count: number 
     case "deleteMany":
     case "updateMany":
       return env === "prod" || count === null ? "type" : "confirm";
+    case "killOp":
+      return env === "prod" ? "type" : "confirm";
     default:
       return "type"; // drops / truncate
   }
@@ -26,7 +28,7 @@ export function canSuppress(env: Environment, op: DestructiveOp): boolean {
 /** Dialog content as message keys (the component translates them). */
 export function describeDestructive(
   op: DestructiveOp,
-  target: { db: string; coll?: string; index?: string; colls?: string[] },
+  target: { db: string; coll?: string; index?: string; colls?: string[]; opid?: string },
   count: number | null,
   level: "none" | "confirm" | "type",
   undoable: boolean,
@@ -34,7 +36,11 @@ export function describeDestructive(
   const many = (target.colls?.length ?? 0) > 1 && (op === "dropCollection" || op === "truncate");
   let expectedName: string | null = null;
   if (level === "type") {
-    expectedName = op === "dropDatabase" || many ? target.db : op === "dropIndex" ? (target.index ?? null) : (target.coll ?? null);
+    expectedName =
+      op === "dropDatabase" || many ? target.db
+      : op === "dropIndex" ? (target.index ?? null)
+      : op === "killOp" ? (target.opid ?? null)
+      : (target.coll ?? null);
   }
   return {
     titleKey: many ? (op === "dropCollection" ? "destructive_title_dropCollections" : "destructive_title_truncateMany") : `destructive_title_${op}`,

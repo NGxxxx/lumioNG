@@ -8,6 +8,8 @@ export const COUNT_TIMEOUT_MS = 5000;
 
 export type DestructiveTarget = {
   db: string; coll?: string; index?: string;
+  /** killOp: the operation id (typed to confirm on PROD). */
+  opid?: string;
   /** Several collections at once (database page bulk actions). */
   colls?: string[];
   /** Extra line, e.g. `_id = …`. */ detail?: string;

@@ -365,3 +365,8 @@ export async function explainQuery(
     ? await invoke<string>("explain_aggregate", { sessionId, db, coll, pipeline: query, skip, limit, timeoutMs })
     : await invoke<string>("explain_find", { sessionId, db, coll, filter: query, sort, projection, skip, limit, timeoutMs });
 }
+
+/** One document by `_id`; `id` is the canonical ExtJSON text of the `_id` value. null when absent. */
+export async function findById(sessionId: string, db: string, coll: string, id: string): Promise<string | null> {
+  return await invoke<string | null>("find_by_id", { sessionId, db, coll, id });
+}

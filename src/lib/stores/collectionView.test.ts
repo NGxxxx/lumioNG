@@ -1642,3 +1642,17 @@ describe("createCollectionView — remembered layout", () => {
   });
 });
 
+
+describe("createCollectionView — presetFilter", () => {
+  it("a preset filter is what the first load uses (one query, already filtered)", async () => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValue(1);
+    qp.mockResolvedValue([{ _id: 1 }]);
+    const v = createCollectionView("conn:1", "shop", "customers");
+    v.presetFilter('{"_id": {"$oid": "652f1a9e0000000000000c41"}}');
+    await v.init();
+    expect(qp).toHaveBeenCalledTimes(1);
+    expect(qp.mock.calls[0]).toContain('{"_id": {"$oid": "652f1a9e0000000000000c41"}}');
+    expect(v.chips).toEqual([{ field: "_id", op: "eq", values: ['{"$oid": "652f1a9e0000000000000c41"}'] }]);
+  });
+});

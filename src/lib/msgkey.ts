@@ -4,9 +4,9 @@ import { plural } from "./domain/plural";
 
 const _m = m as unknown as Record<string, ((p?: Record<string, string>) => string) | undefined>;
 
-export function msgKey(key: string | null | undefined): string {
+export function msgKey(key: string | null | undefined, params?: Record<string, string>): string {
   if (!key) return "";
-  return _m[key]?.() ?? key;
+  return _m[key]?.(params) ?? key;
 }
 
 /** A counted message: `<key>_one` when `count` is 1 (if that variant exists), else `<key>`.

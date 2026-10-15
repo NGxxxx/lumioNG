@@ -56,6 +56,7 @@ const LABELS: Record<CommandId, () => string> = {
   "grid.toggleRow": m.cmd_grid_toggle_row,
   "grid.peek": m.peek_quick_look,
   "grid.peekEdit": m.cmd_grid_peek_edit,
+  "grid.followRef": m.cmd_grid_follow_ref,
   "grid.clearOrClose": m.cmd_grid_clear_or_close,
   "grid.slashFilter": m.toolbar_find_title,
   "editor.run": m.menu_run_query,

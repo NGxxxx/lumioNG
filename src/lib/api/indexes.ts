@@ -35,3 +35,12 @@ export async function createIndexesRaw(
 ): Promise<void> {
   await invoke("create_indexes_raw", { sessionId, db, coll, indexesJson });
 }
+
+/** `$indexStats` entries (one per index per host/shard). */
+export async function indexStats(sessionId: string, db: string, coll: string): Promise<string[]> {
+  return await invoke<string[]>("index_stats", { sessionId, db, coll });
+}
+
+export async function setIndexHidden(sessionId: string, db: string, coll: string, name: string, hidden: boolean): Promise<void> {
+  await invoke<void>("set_index_hidden", { sessionId, db, coll, name, hidden });
+}

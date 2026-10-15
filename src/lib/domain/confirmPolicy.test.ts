@@ -14,6 +14,7 @@ const TABLE: Record<DestructiveOp, [Level, Level, Level, Level]> = {
   dropIndex: ["type", "type", "type", "type"],
   dropDatabase: ["type", "type", "type", "type"],
   script: ["confirm", "confirm", "confirm", "confirm"],
+  killOp: ["confirm", "confirm", "confirm", "type"],
 };
 const ENVS: Environment[] = ["", "dev", "staging", "prod"];
 
@@ -85,3 +86,11 @@ describe("describeDestructive — several collections", () => {
   });
 });
 
+
+describe("killOp", () => {
+  it("confirms off PROD, types the opid on PROD", () => {
+    expect(confirmLevel("staging", "killOp", null)).toBe("confirm");
+    expect(confirmLevel("prod", "killOp", null)).toBe("type");
+    expect(describeDestructive("killOp", { db: "admin", opid: "4411" }, null, "type", false).expectedName).toBe("4411");
+  });
+});

@@ -23,6 +23,28 @@ export interface DocPeekDeps {
 /** A pending "unsaved changes" question: closing the drawer, or switching it to another document. */
 export type PeekConfirm = "close" | "switch";
 
+/** Max documents remembered behind the current one while following references. */
+export const PEEK_BACK_LIMIT = 20;
+
+/** One step of the reference trail: the collection a document came from and the field followed out of it. */
+export type PeekCrumb = { coll: string; via: string | null; idTail: string | null };
+
+type Frame = {
+  /** null: the drawer was closed when the reference was followed — Back closes it again. */
+  doc: Doc | null;
+  source: { db: string | null; coll: string | null } | null;
+  lastRow: Doc | null;
+  targetId: string | null;
+  refMode: boolean;
+  via: string;
+};
+
+const idTail = (d: Doc | null): string | null => {
+  const id = d?._id as { $oid?: unknown } | undefined;
+  if (id && typeof id === "object" && typeof id.$oid === "string") return id.$oid.slice(-4);
+  return d && d._id !== undefined ? String(JSON.stringify(d._id)).slice(0, 12) : null;
+};
+
 export function createDocPeek(deps: DocPeekDeps) {
   let open = $state(false);
   let mode = $state<"view" | "edit">("view");
@@ -43,7 +65,12 @@ export function createDocPeek(deps: DocPeekDeps) {
   let lastEdit = false;
   let targetId: string | null = null;
   let pendingTarget: Doc | null = null;
+  let pendingRef: { doc: Doc; source: { db: string; coll: string }; via: string } | null = null;
   let loadSeq = 0;
+  // Reference trail: documents opened by following an ObjectId live outside the host's rows, so the
+  // host's sync() must leave them alone (refMode) and Back restores the previous one.
+  let backStack = $state.raw<Frame[]>([]);
+  let refMode = $state(false);
 
   const changes = $derived<DocChange[]>(mode === "edit" && doc && draft ? diffDocs(doc, draft) : []);
   const dirty = $derived(changes.length > 0);
@@ -62,6 +89,8 @@ export function createDocPeek(deps: DocPeekDeps) {
     lastEdit = edit;
     targetId = idJson(d);
     source = { db: deps.db(), coll: deps.coll() };
+    backStack = [];
+    refMode = false;
     try {
       const full = await deps.loadFull(d);
       if (seq !== loadSeq) return;
@@ -80,11 +109,78 @@ export function createDocPeek(deps: DocPeekDeps) {
     return load(d, edit);
   }
 
+  /**
+   * Shows a document reached by following a reference (already fetched by `_id` from `src`). The current
+   * document goes on the back stack; with unsaved edits it asks first (returns "dirty").
+   */
+  function showRef(refDoc: Doc, src: { db: string; coll: string }, via: string): "ok" | "dirty" {
+    if (dirty) {
+      pendingRef = { doc: refDoc, source: src, via };
+      confirm = "switch";
+      return "dirty";
+    }
+    // A host load still in flight (the drawer was following another row) means that row is what the
+    // user is on: Back returns there, not to the document it was about to replace.
+    const origin: Frame = open && loading && lastRow
+      ? { doc: lastRow, source, lastRow, targetId, refMode, via }
+      : open && doc
+      ? { doc, source, lastRow, targetId, refMode, via }
+      : { doc: null, source: { db: deps.db(), coll: deps.coll() }, lastRow: null, targetId: null, refMode: false, via };
+    backStack = [...backStack, origin].slice(-PEEK_BACK_LIMIT);
+    loadSeq++; // an in-flight host load must not overwrite the referenced document
+    open = true;
+    loading = false;
+    error = null;
+    stale = false;
+    confirm = null;
+    mode = "view";
+    draft = null;
+    doc = refDoc;
+    source = { db: src.db, coll: src.coll };
+    lastRow = refDoc;
+    targetId = idJson(refDoc);
+    refMode = true;
+    return "ok";
+  }
+
+  /** Returns to the document the current one was reached from. False when there is none or edits are unsaved. */
+  function back(): boolean {
+    const prev = backStack.at(-1);
+    if (!prev || dirty) return false;
+    if (prev.doc === null) {
+      reset(); // followed from the grid with the drawer closed: back to just the grid
+      return true;
+    }
+    backStack = backStack.slice(0, -1);
+    loadSeq++;
+    mode = "view";
+    draft = null;
+    error = null;
+    stale = false;
+    confirm = null;
+    doc = prev.doc;
+    source = prev.source;
+    lastRow = prev.lastRow;
+    targetId = prev.targetId;
+    refMode = prev.refMode;
+    return true;
+  }
+
+  const crumbs = $derived<PeekCrumb[]>(
+    backStack.length === 0
+      ? []
+      : [
+          ...backStack.map((f) => ({ coll: f.source?.coll ?? "", via: f.via, idTail: idTail(f.doc) })),
+          { coll: source?.coll ?? "", via: null, idTail: idTail(doc) },
+        ],
+  );
+
   /** An undo wrote to `change`'s collection: reload a clean drawer showing it; flag a dirty one. */
   function refreshIfShowing(change: { sessionId: string; db: string; coll: string } | null) {
     if (!change || !open || !source || !lastRow) return;
     if (change.sessionId !== deps.sessionId() || change.db !== source.db || change.coll !== source.coll) return;
-    if (dirty) {
+    if (dirty || refMode) {
+      // A referenced document can't be reloaded through the host's loader: flag it instead.
       stale = true;
       return;
     }
@@ -122,6 +218,9 @@ export function createDocPeek(deps: DocPeekDeps) {
     lastRow = null;
     targetId = null;
     pendingTarget = null;
+    pendingRef = null;
+    backStack = [];
+    refMode = false;
   }
 
   /** Closes unless there are unsaved edits (returns "dirty" without asking). */
@@ -142,9 +241,12 @@ export function createDocPeek(deps: DocPeekDeps) {
   async function continuePending() {
     const kind = confirm;
     const target = pendingTarget;
+    const ref = pendingRef;
     confirm = null;
     pendingTarget = null;
-    if (kind === "switch" && target) await load(target, false);
+    pendingRef = null;
+    if (kind === "switch" && ref) showRef(ref.doc, ref.source, ref.via);
+    else if (kind === "switch" && target) await load(target, false);
     else if (kind === "close") reset();
   }
 
@@ -160,6 +262,7 @@ export function createDocPeek(deps: DocPeekDeps) {
   function confirmStay() {
     confirm = null;
     pendingTarget = null;
+    pendingRef = null;
   }
 
   function startEdit() {
@@ -197,7 +300,9 @@ export function createDocPeek(deps: DocPeekDeps) {
       mode = "view";
       stale = false;
       lastRow = next; // the host swaps this object into its rows; sync() must not treat it as a change
-      deps.onSaved(next);
+      // Only a document from the host's own collection may replace a host row (matching is by _id,
+      // and a referenced document from elsewhere can share an _id with an unrelated row).
+      if (db === deps.db() && coll === deps.coll()) deps.onSaved(next);
       return true;
     } catch (e) {
       error = errorMessage(e);
@@ -213,7 +318,7 @@ export function createDocPeek(deps: DocPeekDeps) {
    * as a conflict (stale) when dirty, so a save never silently reverts someone else's change.
    */
   function sync(rows: Doc[]) {
-    if (!open || targetId === null) return;
+    if (!open || targetId === null || refMode) return;
     const row = rows.find((r) => idJson(r) === targetId);
     if (!row) {
       if (dirty) stale = true;
@@ -241,7 +346,16 @@ export function createDocPeek(deps: DocPeekDeps) {
     get canEdit() { return canEdit; },
     get stale() { return stale; },
     get confirm() { return confirm; },
+    /** Reference trail (empty unless a reference was followed); last entry is the shown document. */
+    get crumbs() { return crumbs; },
+    get canBack() { return backStack.length > 0; },
+    /** The shown document was reached through a reference (lives outside the host's rows). */
+    get isRef() { return refMode; },
+    /** Where the shown document lives (its own collection when reached through a reference). */
+    get source() { return source; },
     show,
+    showRef,
+    back,
     follow,
     retry,
     refreshIfShowing,

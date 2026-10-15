@@ -38,3 +38,22 @@ describe("ResultTree", () => {
     expect(parseInt(sizer().style.height)).toBe(expanded);
   });
 });
+
+describe("ResultTree reference jump", () => {
+  it("→ on ObjectId leaves (not the doc's _id) calls onref with the field path", async () => {
+    const { fireEvent } = await import("@testing-library/svelte");
+    const { vi } = await import("vitest");
+    const oid = { $oid: "652f1a9e0000000000000c41" };
+    const onref = vi.fn();
+    // The tree is virtualized: give elements a height so jsdom renders rows.
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "offsetHeight");
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 600 });
+    const { container } = render(ResultTree, { props: { docs: [{ _id: oid, customerId: oid, name: "x" }], onref } });
+    await tick();
+    if (desc) Object.defineProperty(HTMLElement.prototype, "offsetHeight", desc);
+    const arrows = container.querySelectorAll(".tree-ref");
+    expect(arrows).toHaveLength(1);
+    await fireEvent.click(arrows[0]);
+    expect(onref).toHaveBeenCalledWith("customerId", oid, expect.anything());
+  });
+});

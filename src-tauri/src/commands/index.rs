@@ -6,6 +6,7 @@ use mongodb::bson::{doc, Document};
 use mongodb::options::{Collation, IndexOptions};
 use mongodb::IndexModel;
 use std::time::Duration;
+use futures::stream::TryStreamExt;
 use tauri::State;
 
 #[tauri::command]
@@ -125,4 +126,60 @@ pub async fn drop_index(
         .drop_index(name)
         .await?;
     Ok(())
+}
+
+/// Per-index usage counters (`$indexStats`): one entry per index per host/shard.
+#[tauri::command]
+pub async fn index_stats(
+    session_id: String,
+    db: String,
+    coll: String,
+    state: State<'_, AppState>,
+) -> Result<Vec<String>, AppError> {
+    let client = state.client(&session_id).await?;
+    let mut cursor = client
+        .database(&db)
+        .collection::<Document>(&coll)
+        .aggregate(vec![doc! { "$indexStats": {} }])
+        .await?;
+    let mut out = Vec::new();
+    while let Some(d) = cursor.try_next().await? {
+        out.push(doc_to_canonical_string(d)?);
+    }
+    Ok(out)
+}
+
+fn hide_index_command(coll: &str, name: &str, hidden: bool) -> Document {
+    doc! { "collMod": coll, "index": { "name": name, "hidden": hidden } }
+}
+
+/// Hide / unhide an index (MongoDB 4.4+): the planner ignores a hidden index but keeps maintaining it.
+#[tauri::command]
+pub async fn set_index_hidden(
+    session_id: String,
+    db: String,
+    coll: String,
+    name: String,
+    hidden: bool,
+    state: State<'_, AppState>,
+) -> Result<(), AppError> {
+    let client = state.writable_client(&session_id).await?;
+    client
+        .database(&db)
+        .run_command(hide_index_command(&coll, &name, hidden))
+        .await?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hide_index_command_shape() {
+        assert_eq!(
+            hide_index_command("orders", "a_1", true),
+            doc! { "collMod": "orders", "index": { "name": "a_1", "hidden": true } }
+        );
+    }
 }

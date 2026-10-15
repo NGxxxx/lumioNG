@@ -4,6 +4,7 @@
   import { settings } from "../stores/settings.svelte";
   import { createRowVirtualizer } from "./rowVirtualizer.svelte";
   import { getByPath } from "../domain/schema";
+  import { firstFollowable, followableValue } from "../domain/refTarget";
   import { statusPill, jsonValueColor, bsonValueKind } from "../domain/theme";
   import { clipboardTextOf } from "../domain/extjson";
   import { previewCell } from "../domain/cellPreview";
@@ -29,6 +30,7 @@
     peekOpen = false,
     onpeekclose,
     onbackground,
+    onref,
   }: {
     v: GridPageView;
     onopendocument?: (doc: Doc, mode: "insert") => void;
@@ -41,7 +43,21 @@
     onpeekclose?: () => void;
     /** A click on empty grid space (not a row, header or button). */
     onbackground?: () => void;
+    /** Follow an ObjectId / DBRef in a cell (→ button or `g`). Absent: no reference affordance. */
+    onref?: (path: string, value: unknown, anchor: { x: number; y: number } | null) => void;
   } = $props();
+
+  // The cell last clicked, so `g` follows the reference the user pointed at (else the row's first one).
+  let lastCell: { row: number; key: string } | null = null;
+
+  function followFromCursor() {
+    if (!onref || cursorRow === null) return;
+    const d = v.docs[cursorRow];
+    if (!d) return;
+    const preferred = lastCell && lastCell.row === cursorRow ? lastCell.key : null;
+    const hit = firstFollowable(d, cols.map((c) => c.path), getByPath, preferred);
+    if (hit) onref(hit.path, hit.value, null);
+  }
 
   const copyText = createClipboardCopy((msg) => toast.push(msg, "error"));
   const FALLBACK_COL_W = 160;
@@ -243,7 +259,10 @@
       e.preventDefault();
       return;
     }
-    if (mod && (e.key === "a" || e.key === "A")) {
+    if (!mod && !e.altKey && e.key === "g" && onref) {
+      e.preventDefault();
+      followFromCursor();
+    } else if (mod && (e.key === "a" || e.key === "A")) {
       e.preventDefault();
       v.selectAll?.();
     } else if (mod && (e.key === "i" || e.key === "I")) {
@@ -361,6 +380,7 @@
               <td class="data-cell" class:num={p.align === "right"} class:pinned={k in pinLeft}
                 style:left={k in pinLeft ? `${pinLeft[k]}px` : undefined}
                 class:cell-editing-modal={v.editing?.kind === "modal" && v.editing.row === row && v.editing.key === k}
+                onclick={() => (lastCell = { row, key: k })}
                 oncontextmenu={(e) => v.openMenu(e, row, k)} ondblclick={() => v.startEdit(row, k)}>
                 {#if v.editing && v.editing.row === row && v.editing.key === k && v.editing.kind === "inline"}
                   <input class="celledit" bind:value={v.editText} disabled={v.saving} onkeydown={onEditKey} onblur={v.onEditBlur} use:focusSelect />
@@ -378,6 +398,17 @@
                       <button class="cell-copy" aria-label={m.cell_copy()} title={m.cell_copy()}
                         onclick={(e) => { e.stopPropagation(); copyText(clipboardTextOf(val)); }}>
                         <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5" /><path d="M10.5 5V3.5A1 1 0 0 0 9.5 2.5H3.5a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1H5" /></svg>
+                      </button>
+                    {/if}
+                    {#if onref && (p.kind === "objectId" || p.kind === "array" || p.kind === "object") && followableValue(k, val) !== null}
+                      <button class="ref-go" class:beside-copy={p.kind === "objectId"} aria-label={m.ref_follow()} title={m.ref_follow()}
+                        onclick={(e) => {
+                          e.stopPropagation();
+                          const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                          applyNav(jumpTo(navState(), vi.index, rowCount));
+                          onref(k, followableValue(k, val), { x: r.left, y: r.bottom });
+                        }}>
+                        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h9.5M9 4.5L12.5 8 9 11.5" /></svg>
                       </button>
                     {/if}
                   {/if}
@@ -551,6 +582,15 @@
     border: 1px solid var(--c-surface1); border-radius: var(--radius-sm); background: var(--popover); color: var(--muted); cursor: pointer;
   }
   .data-cell:hover .cell-copy { display: inline-flex; }
+  /* Reference jump: CSS-only on hover — nothing is computed for a cell until it is clicked. */
+  .data-cell .ref-go {
+    position: absolute; top: 50%; right: 0.25rem; transform: translateY(-50%);
+    display: none; align-items: center; justify-content: center; width: 1.25rem; height: 1.25rem; padding: 0;
+    border: 1px solid var(--c-surface1); border-radius: var(--radius-sm); background: var(--popover); color: var(--accent); cursor: pointer;
+  }
+  .data-cell .ref-go.beside-copy { right: 1.75rem; }
+  .data-cell:hover .ref-go, .data-cell .ref-go:focus-visible { display: inline-flex; }
+  .data-cell .ref-go:hover { background: var(--menu-hover); }
   .data-cell .cell-copy:hover { color: var(--fg); }
   /* Previews: keys and punctuation read dim, so the eye lands on values. */
   .data-cell .cell.object, .data-cell .cell.array { color: var(--c-subtext1); font-size: 0.75rem; }

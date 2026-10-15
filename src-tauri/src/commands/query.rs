@@ -368,10 +368,42 @@ pub async fn explain_aggregate(
     .await
 }
 
+/// `{ _id: <value> }` from the canonical ExtJSON text of an `_id` value (ObjectId, string, number…).
+fn id_filter(id: &str) -> Result<Document, AppError> {
+    canonical_string_to_doc(&format!("{{\"_id\": {id}}}"))
+}
+
+/// One document by `_id` — the ObjectId reference jump. Uses the `_id` index; never scans.
+#[tauri::command]
+pub async fn find_by_id(
+    session_id: String,
+    db: String,
+    coll: String,
+    id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, AppError> {
+    let client = state.client(&session_id).await?;
+    let found = client
+        .database(&db)
+        .collection::<Document>(&coll)
+        .find_one(id_filter(&id)?)
+        .await?;
+    found.map(doc_to_canonical_string).transpose()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mongodb::bson::doc;
+    use mongodb::bson::{doc, oid::ObjectId, Bson};
+
+    #[test]
+    fn id_filter_keeps_the_id_type() {
+        let oid = ObjectId::parse_str("652f0a1b2c3d4e5f60718293").unwrap();
+        assert_eq!(id_filter(r#"{"$oid":"652f0a1b2c3d4e5f60718293"}"#).unwrap(), doc! { "_id": oid });
+        assert_eq!(id_filter(r#""abc""#).unwrap(), doc! { "_id": "abc" });
+        assert_eq!(id_filter(r#"{"$numberInt":"7"}"#).unwrap().get("_id"), Some(&Bson::Int32(7)));
+        assert!(id_filter("not json").is_err());
+    }
 
     #[test]
     fn deadline_from_none_uses_the_default_timeout() {

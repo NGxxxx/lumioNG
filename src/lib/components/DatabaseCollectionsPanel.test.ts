@@ -23,6 +23,14 @@ vi.mock("../stores/databaseCollections.svelte", () => ({
   }),
 }));
 
+const check = vi.hoisted(() => ({
+  running: false, done: 2, total: 2, failed: [] as string[], minDays: null as number | null,
+  rows: [] as unknown[],
+  start: vi.fn(), cancel: vi.fn(),
+}));
+const createCheck = vi.hoisted(() => vi.fn(() => check));
+vi.mock("../stores/dbIndexCheck.svelte", () => ({ createDbIndexCheck: createCheck }));
+
 import DatabaseCollectionsPanel from "./DatabaseCollectionsPanel.svelte";
 
 describe("DatabaseCollectionsPanel", () => {
@@ -48,5 +56,45 @@ describe("DatabaseCollectionsPanel", () => {
     await fireEvent.click(getAllByRole("checkbox")[1]);
     await fireEvent.click(getByRole("button", { name: /drop/i }));
     expect(requestBulk).toHaveBeenCalledWith("drop", ["users"], expect.any(Function));
+  });
+
+  it("index check runs only on click, lists results and opens the collection's indexes", async () => {
+    mockRows = [{ name: "orders", state: "idle", stats: null, error: null }];
+    check.rows = [{
+      coll: "orders", status: "unused", size: 356_000_000, redundantWith: null, usage: { name: "legacyRef_1", ops: 0, since: 0 },
+      info: { name: "legacyRef_1", entries: [{ field: "legacyRef", value: 1 }], unique: false, sparse: false, ttl: null, isId: false, hidden: false, partial: false, collation: null },
+    }];
+    const onopenindexes = vi.fn();
+    const { getByRole, getByText, unmount } = render(DatabaseCollectionsPanel, { props: { db: "shop", onopen: vi.fn(), onopenindexes } });
+    expect(createCheck).not.toHaveBeenCalled();
+    await fireEvent.click(getByRole("button", { name: "Check indexes in this database" }));
+    expect(check.start).toHaveBeenCalledTimes(1);
+    expect(getByText("legacyRef_1")).toBeTruthy();
+    expect(getByText("Unused")).toBeTruthy();
+    await fireEvent.click(getByText("legacyRef_1").closest("tr")!);
+    expect(onopenindexes).toHaveBeenCalledWith("orders");
+    unmount();
+    expect(check.cancel).toHaveBeenCalled();
+  });
+
+  it("while running shows progress and Cancel", async () => {
+    mockRows = [];
+    check.running = true;
+    check.rows = [];
+    const { getByRole, getByText } = render(DatabaseCollectionsPanel, { props: { db: "shop", onopen: vi.fn() } });
+    await fireEvent.click(getByRole("button", { name: "Check indexes in this database" }));
+    expect(getByText("2 / 2 collections")).toBeTruthy();
+    await fireEvent.click(getByRole("button", { name: "Cancel" }));
+    expect(check.cancel).toHaveBeenCalled();
+    check.running = false;
+  });
+
+  it("index check warns when there are fewer than 7 days of usage data", async () => {
+    mockRows = [];
+    check.minDays = 2;
+    const { getByRole, getByText } = render(DatabaseCollectionsPanel, { props: { db: "shop", onopen: vi.fn() } });
+    await fireEvent.click(getByRole("button", { name: "Check indexes in this database" }));
+    expect(getByText(/Only 2 days of usage data/)).toBeTruthy();
+    check.minDays = null;
   });
 });

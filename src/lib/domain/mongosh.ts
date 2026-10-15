@@ -67,6 +67,8 @@ export function createIndexCmd(
 }
 
 export const dropIndexCmd = (coll: string, name: string) => `${c(coll)}.dropIndex("${name}")`;
+export const hideIndexCmd = (coll: string, name: string, hidden: boolean) =>
+  `${c(coll)}.${hidden ? "hideIndex" : "unhideIndex"}(${JSON.stringify(name)})`;
 
 export const collStatsCmd = (coll: string) =>
   `${c(coll)}.aggregate([{ "$collStats": { "storageStats": {} } }])`;

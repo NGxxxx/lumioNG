@@ -15,6 +15,8 @@ const compoundIdx =
   '{"v":{"$numberInt":"2"},"key":{"age":{"$numberInt":"-1"},"name":{"$numberInt":"1"}},"name":"age_-1_name_1"}';
 const ttlIdx =
   '{"v":{"$numberInt":"2"},"key":{"createdAt":{"$numberInt":"1"}},"name":"createdAt_1","expireAfterSeconds":{"$numberInt":"3600"},"sparse":true}';
+const hiddenPartialIdx =
+  '{"v":{"$numberInt":"2"},"key":{"status":{"$numberInt":"1"}},"name":"status_1","hidden":true,"partialFilterExpression":{"status":{"$exists":true}},"collation":{"locale":"en","strength":{"$numberInt":"2"}}}';
 const textIdx =
   '{"v":{"$numberInt":"2"},"key":{"body":"text"},"name":"body_text"}';
 
@@ -44,6 +46,20 @@ describe("parseIndexList", () => {
     const [r] = parseIndexList([ttlIdx]);
     expect(r.ttl).toBe(3600);
     expect(r.sparse).toBe(true);
+  });
+
+  it("hidden, partial and collation", () => {
+    const [r] = parseIndexList([hiddenPartialIdx]);
+    expect(r.hidden).toBe(true);
+    expect(r.partial).toBe(true);
+    expect(r.collation).toBe('{"locale":"en","strength":{"$numberInt":"2"}}');
+  });
+
+  it("defaults: not hidden, not partial, no collation", () => {
+    const [r] = parseIndexList([emailIdx]);
+    expect(r.hidden).toBe(false);
+    expect(r.partial).toBe(false);
+    expect(r.collation).toBeNull();
   });
 
   it("non-numeric key value is kept as a string", () => {

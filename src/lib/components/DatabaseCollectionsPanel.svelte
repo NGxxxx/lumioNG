@@ -7,14 +7,24 @@
   import ExportWizard from "./ExportWizard.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
   import { toast } from "../stores/toast.svelte";
+  import { createDbIndexCheck, type DbIndexCheck } from "../stores/dbIndexCheck.svelte";
+  import DbIndexCheckPanel from "./DbIndexCheckPanel.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
-  let { db, onopen }: { db: string; onopen: (coll: string) => void } = $props();
+  let { db, onopen, onopenindexes }: {
+    db: string;
+    onopen: (coll: string) => void;
+    /** Opens a collection on its Indexes view (from the database-wide index check). */
+    onopenindexes?: (coll: string) => void;
+  } = $props();
   // Pass the ACTIVE session's tree — the default `namespaceTree` singleton stays empty in multi-session mode.
   const v = untrack(() =>
     createDatabaseCollections(sessionManager.active?.id ?? "", db, sessionManager.active?.tree),
   );
-  onMount(() => v.init());
+  onMount(() => {
+    v.init();
+    return () => indexCheck?.cancel();
+  });
 
   const cols: { key: SortCol; label: () => string }[] = [
     { key: "name", label: () => m.db_collections_col_collection() },
@@ -42,6 +52,18 @@
 
   let exportWizard = $state<ExportWizardInput | null>(null);
 
+  // Database-wide index check: nothing runs until the button is clicked; results are dropped on close.
+  let indexCheck = $state<DbIndexCheck | null>(null);
+  function startIndexCheck() {
+    indexCheck?.cancel();
+    indexCheck = createDbIndexCheck(sessionManager.active?.id ?? "", db, () => v.rows.map((r) => r.name));
+    void indexCheck.start();
+  }
+  function closeIndexCheck() {
+    indexCheck?.cancel();
+    indexCheck = null;
+  }
+
   function runBulk(action: "truncate" | "drop") {
     v.requestBulk(action, [...selected], (failed) => {
       selected = new Set(failed);
@@ -64,6 +86,7 @@
   {#if v.error}<div class="error">{v.error}</div>{/if}
   <div class="bar">
     <button onclick={() => v.loadAll()}>{m.db_collections_load_stats()}</button>
+    <button onclick={startIndexCheck} disabled={indexCheck?.running}>{m.dbidx_check()}</button>
     {#if selected.size > 0}
       <span class="sel-count">{m.db_collections_selected_count({ count: selected.size })}</span>
       <button onclick={() => runBulk("truncate")}>{m.db_collections_bulk_truncate()}</button>
@@ -71,6 +94,9 @@
       <button onclick={openBulkExport}>{m.db_collections_bulk_export()}</button>
     {/if}
   </div>
+  {#if indexCheck}
+    <DbIndexCheckPanel check={indexCheck} onopen={(c) => (onopenindexes ?? onopen)(c)} onclose={closeIndexCheck} />
+  {/if}
   <table class="grid">
     <thead>
       <tr>

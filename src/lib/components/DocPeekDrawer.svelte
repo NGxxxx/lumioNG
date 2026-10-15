@@ -7,6 +7,7 @@
   import { previewCell } from "../domain/cellPreview";
   import { formatChange } from "../domain/docDiff";
   import { idJson } from "../domain/docid";
+  import { followableValue } from "../domain/refTarget";
   import { PEEK_MIN_W } from "../stores/settings.svelte";
   import { createClipboardCopy } from "../stores/clipboardCopy";
   import { toast } from "../stores/toast.svelte";
@@ -26,6 +27,8 @@
     ondelete,
     onbulk,
     canDuplicate = true,
+    onref,
+    onopenreftab,
   }: {
     peek: DocPeek;
     pinned: boolean;
@@ -39,7 +42,30 @@
     onbulk: (action: "copy" | "export" | "delete") => void;
     /** False where a copy can't be inserted (query results with no single source). */
     canDuplicate?: boolean;
+    /** Follow an ObjectId / DBRef shown in the drawer (field path relative to the document). */
+    onref?: (path: string, value: unknown, anchor: { x: number; y: number } | null) => void;
+    /** Open the referenced document's own collection in a Data tab, filtered to it. */
+    onopenreftab?: (source: { db: string; coll: string }, doc: Doc) => void;
   } = $props();
+
+  const fieldPath = (rowPath: string) => rowPath.replace(/^#\d+\.?/, "");
+  const refSource = $derived(peek.isRef && peek.source?.db && peek.source?.coll ? { db: peek.source.db, coll: peek.source.coll } : null);
+
+  function onDrawerKey(e: KeyboardEvent) {
+    if (!peek.canBack || peek.mode === "edit") return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (e.key === "Backspace" || (e.altKey && e.key === "ArrowLeft")) {
+      e.preventDefault();
+      peek.back();
+    }
+  }
+
+  function goRef(e: MouseEvent, rowPath: string, value: unknown) {
+    e.stopPropagation();
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    onref?.(fieldPath(rowPath), followableValue(fieldPath(rowPath), value), { x: r.left, y: r.bottom });
+  }
 
   const copy = createClipboardCopy((msg) => toast.push(msg, "error"));
 
@@ -87,7 +113,8 @@
   }
 </script>
 
-<aside class="drawer" class:pinned bind:this={el} style="width:{width}px" aria-label={m.peek_title()}>
+<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+<aside class="drawer" class:pinned bind:this={el} style="width:{width}px" aria-label={m.peek_title()} onkeydown={onDrawerKey}>
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="resize" onpointerdown={startResize}></div>
 
@@ -97,7 +124,7 @@
       <button class="id" onclick={() => peek.doc && copy(idJson(peek.doc) ?? "")} title={m.peek_copy_id()} aria-label={m.peek_copy_id()}>{shortId}</button>
     {/if}
     <span class="spacer"></span>
-    {#if peek.doc}
+    {#if peek.doc && !peek.isRef}
       <button class="icon" aria-label={m.peek_open_tab()} title={m.peek_open_tab()} onclick={() => peek.doc && onopentab(peek.doc)}>
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M9 2.5h4.5V7M13.5 2.5L8 8M6.5 3.5h-4v10h10v-4" /></svg>
       </button>
@@ -110,7 +137,21 @@
     </button>
   </header>
 
-  {#if selectionCount > 1 && !peek.dirty}
+  {#if peek.crumbs.length}
+    <nav class="crumbs" aria-label={m.ref_follow()}>
+      <button class="back" onclick={() => peek.back()} disabled={peek.dirty} aria-label={m.ref_back()} title={m.ref_back()}>
+        <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13 8H3.5M7 4.5L3.5 8 7 11.5" /></svg>
+      </button>
+      <span class="trail">
+        {#each peek.crumbs as c, i (i)}
+          {#if i > 0}<span class="sep">→</span>{/if}
+          <span class="coll">{c.coll}</span>{#if c.via}<span class="via">› {c.via}</span>{:else if c.idTail}<span class="via">/ …{c.idTail}</span>{/if}
+        {/each}
+      </span>
+    </nav>
+  {/if}
+
+  {#if selectionCount > 1 && !peek.dirty && !peek.isRef}
     <div class="bulk">
       <p>{msgCount("peek_selected_count", selectionCount)}</p>
       <div class="bulk-actions">
@@ -156,10 +197,10 @@
                     {#if open.has(r.path)}<path d="M4 6l4 4 4-4" />{:else}<path d="M6 4l4 4-4 4" />{/if}
                   </svg>{r.key}
                 </button>
-                <span class="val dim">{type === "array" ? `[ ${r.childCount} ]` : `{ ${r.childCount} }`}</span>
+                <span class="val dim">{type === "array" ? `[ ${r.childCount} ]` : `{ ${r.childCount} }`}{#if onref && type !== "array" && followableValue(fieldPath(r.path), r.value) !== null}<button class="ref-go" aria-label={m.ref_follow()} title={m.ref_follow()} onclick={(e) => goRef(e, r.path, r.value)}>→</button>{/if}</span>
               {:else}
                 <span class="key">{r.key}</span>
-                <span class="val {type}">{valueText(r.value)}</span>
+                <span class="val {type}">{valueText(r.value)}{#if onref && followableValue(fieldPath(r.path), r.value) !== null}<button class="ref-go" aria-label={m.ref_follow()} title={m.ref_follow()} onclick={(e) => goRef(e, r.path, r.value)}>→</button>{/if}</span>
               {/if}
               <span class="type">{type}</span>
             </div>
@@ -199,8 +240,13 @@
           <button class="btn" onclick={() => peek.discard()}>{m.peek_discard()}</button>
         {:else}
           {#if peek.canEdit}<button class="btn" onclick={() => peek.startEdit()}>{m.peek_edit()}</button>{/if}
-          {#if canDuplicate}<button class="btn" onclick={() => peek.doc && onduplicate(peek.doc)}>{m.peek_duplicate()}</button>{/if}
-          {#if peek.canEdit}<button class="btn danger" aria-label={m.peek_delete()} onclick={ondelete}>{m.peek_delete()}</button>{/if}
+          {#if refSource}
+            <!-- A referenced document lives in another collection: the host's duplicate/delete would act on the wrong one. -->
+            {#if onopenreftab}<button class="btn" onclick={() => refSource && peek.doc && onopenreftab(refSource, peek.doc)}>{m.ref_open_tab({ coll: refSource.coll })}</button>{/if}
+          {:else}
+            {#if canDuplicate}<button class="btn" onclick={() => peek.doc && onduplicate(peek.doc)}>{m.peek_duplicate()}</button>{/if}
+            {#if peek.canEdit}<button class="btn danger" aria-label={m.peek_delete()} onclick={ondelete}>{m.peek_delete()}</button>{/if}
+          {/if}
         {/if}
       </footer>
     {/if}
@@ -208,6 +254,15 @@
 </aside>
 
 <style>
+  .crumbs { display: flex; align-items: center; gap: 0.375rem; padding: 0.3125rem 0.625rem; border-bottom: 1px solid var(--border); font-size: 0.6875rem; color: var(--muted); }
+  .crumbs .back { display: inline-flex; align-items: center; justify-content: center; width: 1.375rem; height: 1.375rem; padding: 0; border: 1px solid var(--c-surface1); border-radius: var(--radius-sm); background: none; color: var(--fg); cursor: pointer; flex: none; }
+  .crumbs .back:disabled { opacity: 0.4; cursor: default; }
+  .trail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .trail .coll { color: var(--fg); font-family: var(--mono); }
+  .trail .sep { margin: 0 0.25rem; }
+  .trail .via { margin-left: 0.25rem; }
+  .ref-go { margin-left: 0.25rem; padding: 0 0.3125rem; border: 1px solid var(--c-surface1); border-radius: var(--radius-sm); background: none; color: var(--accent); cursor: pointer; font-size: 0.6875rem; line-height: 1.2; }
+  .ref-go:hover { background: var(--menu-hover); }
   .drawer {
     position: absolute; top: 0; right: 0; bottom: 0; z-index: 8; display: flex; flex-direction: column; min-width: 0;
     background: var(--popover); border-left: 1px solid var(--c-surface1); box-shadow: -12px 0 32px rgba(0, 0, 0, 0.18);

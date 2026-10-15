@@ -464,6 +464,14 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     await loadPage();
   }
 
+  /** Sets the filter a not-yet-initialized view starts with (no load; `init()` then loads it once). */
+  function presetFilter(text: string) {
+    const r = parseFilter(text);
+    if (!r.ok) return;
+    filterText = r.json;
+    appliedFilter = r.json;
+  }
+
   async function applyFilter() {
     const r = parseFilter(filterText);
     if (!r.ok) {
@@ -764,6 +772,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     requestShowAll: showAll.requestShowAll,
     confirmShowAll: showAll.confirmShowAll,
     cancelShowAll: showAll.cancelShowAll,
+    presetFilter,
     get filterText() {
       return filterText;
     },

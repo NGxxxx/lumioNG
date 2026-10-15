@@ -4,7 +4,15 @@ vi.mock("../api/indexes", () => ({
   listIndexes: vi.fn(),
   createIndex: vi.fn(),
   dropIndex: vi.fn(),
+  indexStats: vi.fn(),
+  setIndexHidden: vi.fn(),
 }));
+vi.mock("../api/stats", () => ({ collStats: vi.fn() }));
+vi.mock("../api/mongoServer", () => ({ isMaster: vi.fn() }));
+vi.mock("../api/documents", () => ({ findById: vi.fn() }));
+import * as statsApi from "../api/stats";
+import * as serverApi from "../api/mongoServer";
+import * as docsApi from "../api/documents";
 
 import * as api from "../api/indexes";
 import { createIndexView } from "./indexView.svelte";
@@ -23,6 +31,9 @@ describe("createIndexView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     listIdx.mockResolvedValue([]);
+    (api.indexStats as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (statsApi.collStats as ReturnType<typeof vi.fn>).mockResolvedValue("{}");
+    (serverApi.isMaster as ReturnType<typeof vi.fn>).mockResolvedValue(JSON.stringify({ maxWireVersion: 21 }));
   });
 
   it("init loads and parses the index list", async () => {
@@ -144,5 +155,92 @@ describe("indexView activity", () => {
       v.create([{ field: "email", dir: 1 }], false, null, false, null, "", "{not valid json"),
     ).rejects.toBeTruthy();
     expect(activity.busy).toBe(false);
+  });
+
+  describe("usage, sizes, hide", () => {
+    const DAY = 86_400_000;
+    const since = (days: number) => ({ $date: { $numberLong: String(Date.now() - days * DAY) } });
+    const idx = (name: string, extra = "") => `{"v":2,"key":{"${name.replace(/_1$/, "")}":1},"name":"${name}"${extra}}`;
+    const stat = (name: string, ops: number, days = 30) => JSON.stringify({ name, accesses: { ops: { $numberLong: String(ops) }, since: since(days) } });
+    const stats = api.indexStats as ReturnType<typeof vi.fn>;
+    const hide = api.setIndexHidden as ReturnType<typeof vi.fn>;
+    const cs = statsApi.collStats as ReturnType<typeof vi.fn>;
+
+    beforeEach(() => {
+      listIdx.mockResolvedValue(['{"v":2,"key":{"_id":1},"name":"_id_"}', idx("a_1"), idx("b_1"), idx("c_1", ',"unique":true')]);
+      stats.mockResolvedValue([stat("_id_", 0), stat("a_1", 0), stat("b_1", 900), stat("c_1", 0)]);
+      cs.mockResolvedValue(JSON.stringify({ indexSizes: { _id_: 1000, a_1: 340_000_000, b_1: 2000, c_1: 500 } }));
+      (serverApi.isMaster as ReturnType<typeof vi.fn>).mockResolvedValue(JSON.stringify({ maxWireVersion: 21 }));
+    });
+
+    it("rows put unused first; summary counts only unprotected unused", async () => {
+      const v = createIndexView("conn:1", "d", "c");
+      await v.init();
+      expect(v.rows[0].info.name).toBe("a_1");
+      expect(v.rows[0].status).toBe("unused");
+      expect(v.rows.find((r) => r.info.name === "c_1")?.status).toBe("protectedUnique");
+      expect(v.summary).toEqual({ count: 1, bytes: 340_000_000 });
+      expect(v.dataDays).toBe(30);
+    });
+
+    it("$indexStats refused → tab still loads with sizes, usage error set", async () => {
+      stats.mockRejectedValue({ kind: "Query", message: "not authorized" });
+      const v = createIndexView("conn:1", "d", "c");
+      await v.init();
+      expect(v.error).toBeNull();
+      expect(v.usageError).toMatch(/not authorized/);
+      expect(v.rows.find((r) => r.info.name === "a_1")?.size).toBe(340_000_000);
+      expect(v.dataDays).toBeNull();
+    });
+
+    it("hide asks first, then hides and refreshes; unhide is one call", async () => {
+      const v = createIndexView("conn:1", "d", "c");
+      await v.init();
+      v.requestHide("a_1");
+      expect(v.pendingHide).toBe("a_1");
+      expect(hide).not.toHaveBeenCalled();
+      await v.confirmHide();
+      expect(hide).toHaveBeenCalledWith("conn:1", "d", "c", "a_1", true);
+      expect(listIdx).toHaveBeenCalledTimes(2);
+      await v.unhide("a_1");
+      expect(hide).toHaveBeenLastCalledWith("conn:1", "d", "c", "a_1", false);
+    });
+
+    it("protected indexes and servers below 4.4 cannot hide", async () => {
+      const v = createIndexView("conn:1", "d", "c");
+      await v.init();
+      v.requestHide("c_1");
+      expect(v.pendingHide).toBeNull();
+      (serverApi.isMaster as ReturnType<typeof vi.fn>).mockResolvedValue(JSON.stringify({ maxWireVersion: 8 }));
+      const old = createIndexView("conn:1", "d", "c");
+      await old.init();
+      expect(old.traits.canHide).toBe(false);
+      old.requestHide("a_1");
+      expect(old.pendingHide).toBeNull();
+    });
+
+    it("Drop on a hideable index suggests hiding first; either path works", async () => {
+      const v = createIndexView("conn:1", "d", "c");
+      await v.init();
+      v.requestDrop("a_1");
+      expect(v.dropAdvice).toBe("a_1");
+      expect(v.destructive.pending).toBeFalsy();
+      await v.hideInstead();
+      expect(hide).toHaveBeenCalledWith("conn:1", "d", "c", "a_1", true);
+      v.requestDrop("a_1");
+      v.dropAnyway();
+      expect(v.dropAdvice).toBeNull();
+      expect(v.destructive.pending).toBeTruthy();
+    });
+
+    it("sharded: shard key read from config.collections protects its index", async () => {
+      (serverApi.isMaster as ReturnType<typeof vi.fn>).mockResolvedValue(JSON.stringify({ maxWireVersion: 21, msg: "isdbgrid" }));
+      (docsApi.findById as ReturnType<typeof vi.fn>).mockResolvedValue(JSON.stringify({ _id: "d.c", key: { a: 1 } }));
+      const v = createIndexView("conn:1", "d", "c");
+      await v.init();
+      expect(docsApi.findById).toHaveBeenCalledWith("conn:1", "config", "collections", '"d.c"');
+      expect(v.rows.find((r) => r.info.name === "a_1")?.status).toBe("protectedShardKey");
+      expect(v.traits.topology).toBe("sharded");
+    });
   });
 });

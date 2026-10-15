@@ -651,7 +651,8 @@
           {@const db = sel.db}
           <div class="tabpane">
             {#key db}
-              <DatabaseCollectionsPanel {db} onopen={(c) => nav?.selectCollection(db, c)} />
+              <DatabaseCollectionsPanel {db} onopen={(c) => nav?.selectCollection(db, c)}
+                onopenindexes={(c) => { nav?.selectCollection(db, c); nav?.setCollectionView("indexes"); }} />
             {/key}
           </div>
         {/if}
