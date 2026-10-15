@@ -3,7 +3,7 @@
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
   import { pushModal } from "#lib/stores/modalStack.js";
-  import { openDialog, importFileSize, readTextFileIfExists } from "../api/files";
+  import { pickFile, fileSize, readOptionalTextFile } from "../stores/desktop";
   import { metadataPathFor } from "../domain/collectionMetadata";
   import { describeSqlImportTargets, describeImportTarget, isLargeImportFile, formatFileSize } from "../domain/importPlan";
   import { validateCollectionName } from "../domain/namespaces";
@@ -103,13 +103,13 @@
   async function checkMetadata(p: string) {
     metadataBundle = null;
     if (p.toLowerCase().endsWith(".sql")) return;
-    const text = await readTextFileIfExists(metadataPathFor(p));
+    const text = await readOptionalTextFile(metadataPathFor(p));
     if (path === p) metadataBundle = text; // ignore a stale check if the user picked another file meanwhile
   }
 
   async function browse() {
     const filters = [{ name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] }];
-    const p = await openDialog(filters);
+    const p = await pickFile(filters);
     if (p) {
       path = p;
       fileSizeChecked = false;
@@ -122,7 +122,7 @@
     if (showTarget && targetErrorMsg) return;
     if (!fileSizeChecked) {
       const checkedPath = path;
-      const size = await importFileSize(checkedPath);
+      const size = await fileSize(checkedPath);
       if (path !== checkedPath) return; // user picked a different file while the size check was in flight
       if (isLargeImportFile(size)) {
         pendingSize = size;

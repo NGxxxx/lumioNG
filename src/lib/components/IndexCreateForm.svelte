@@ -64,27 +64,27 @@
   {#each rows as row, i}
     <div class="row">
       <!-- svelte-ignore a11y_autofocus -->
-      <input bind:value={row.field} placeholder="field" aria-label={`field-${i}`} autofocus={i === 0} />
-      <select bind:value={row.dir} aria-label={`dir-${i}`}>
-        <option value={1}>asc</option>
-        <option value={-1}>desc</option>
+      <input bind:value={row.field} placeholder={m.index_create_field_placeholder()} aria-label={m.index_create_field_aria({ n: String(i + 1) })} autofocus={i === 0} />
+      <select bind:value={row.dir} aria-label={m.index_create_dir_aria({ n: String(i + 1) })}>
+        <option value={1}>{m.index_create_asc()}</option>
+        <option value={-1}>{m.index_create_desc()}</option>
       </select>
       {#if rows.length > 1}
-        <button class="rm" onclick={() => removeRow(i)} aria-label={`remove-${i}`}>×</button>
+        <button class="rm" onclick={() => removeRow(i)} aria-label={m.index_create_remove_aria({ n: String(i + 1) })}>×</button>
       {/if}
     </div>
   {/each}
   <button class="addfield" onclick={addRow}>{m.index_create_add_field()}</button>
-  <label class="opt"><input type="checkbox" bind:checked={unique} aria-label="unique" /> {m.index_create_unique_label()}</label>
-  <label class="opt">{m.index_create_name_label()}<input bind:value={name} aria-label="index-name" /></label>
+  <label class="opt"><input type="checkbox" bind:checked={unique} /> {m.index_create_unique_label()}</label>
+  <label class="opt">{m.index_create_name_label()}<input bind:value={name} /></label>
   <button type="button" class="advanced-toggle" onclick={() => (advancedOpen = !advancedOpen)}>
     {advancedOpen ? m.index_create_advanced_hide() : m.index_create_advanced_show()}
   </button>
   {#if advancedOpen}
-    <label class="opt"><input type="checkbox" bind:checked={sparse} aria-label="sparse" /> {m.index_create_sparse_label()}</label>
+    <label class="opt"><input type="checkbox" bind:checked={sparse} /> {m.index_create_sparse_label()}</label>
     <label class="opt ttl-row">
-      <input type="checkbox" bind:checked={ttlEnabled} aria-label="ttl-enabled" /> {m.index_create_ttl_label()}
-      <input type="number" min="0" bind:value={ttlSeconds} disabled={!ttlEnabled} aria-label="ttl-seconds" />
+      <input type="checkbox" bind:checked={ttlEnabled} /> {m.index_create_ttl_label()}
+      <input type="number" min="0" bind:value={ttlSeconds} disabled={!ttlEnabled} aria-label={m.index_create_ttl_seconds_aria()} />
     </label>
     <label class="opt">{m.index_create_partial_label()}
       <div class="jsoneditor"><CodeEditor value={partialFilter} onChange={(v) => (partialFilter = v)} /></div>

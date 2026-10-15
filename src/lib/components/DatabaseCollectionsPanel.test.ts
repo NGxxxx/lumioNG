@@ -5,6 +5,7 @@ import type { CollRow } from "../stores/databaseCollections.svelte";
 let mockRows: CollRow[] = [];
 const setSort = vi.fn();
 const loadStats = vi.fn();
+const requestBulk = vi.hoisted(() => vi.fn());
 vi.mock("../stores/databaseCollections.svelte", () => ({
   createDatabaseCollections: () => ({
     get rows() { return mockRows; },
@@ -17,6 +18,8 @@ vi.mock("../stores/databaseCollections.svelte", () => ({
     loadStats,
     loadAll: vi.fn(),
     setSort,
+    requestBulk,
+    destructive: { pending: null, running: false, error: null, seq: 0, request: vi.fn(), confirm: vi.fn(), cancel: vi.fn() },
   }),
 }));
 
@@ -37,5 +40,13 @@ describe("DatabaseCollectionsPanel", () => {
     const { getByText } = render(DatabaseCollectionsPanel, { props: { db: "shop", onopen: vi.fn() } });
     await fireEvent.click(getByText("Documents"));
     expect(setSort).toHaveBeenCalledWith("count");
+  });
+
+  it("bulk drop asks the store with the selected collections", async () => {
+    mockRows = [{ name: "users", state: "idle", stats: null, error: null }];
+    const { getAllByRole, getByRole } = render(DatabaseCollectionsPanel, { props: { db: "shop", onopen: vi.fn() } });
+    await fireEvent.click(getAllByRole("checkbox")[1]);
+    await fireEvent.click(getByRole("button", { name: /drop/i }));
+    expect(requestBulk).toHaveBeenCalledWith("drop", ["users"], expect.any(Function));
   });
 });

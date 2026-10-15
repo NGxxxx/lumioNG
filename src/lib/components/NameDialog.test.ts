@@ -13,7 +13,7 @@ describe("NameDialog", () => {
     const { getByText, getByLabelText } = render(NameDialog, {
       props: { title: "New collection", label: "Name", onsubmit, oncancel: vi.fn() },
     });
-    await fireEvent.input(getByLabelText("name-input"), { target: { value: "  users  " } });
+    await fireEvent.input(getByLabelText("Name"), { target: { value: "  users  " } });
     await fireEvent.click(getByText("OK"));
     expect(onsubmit).toHaveBeenCalledWith("users");
   });
@@ -23,7 +23,7 @@ describe("NameDialog", () => {
     const { getByText, getByLabelText, findByText } = render(NameDialog, {
       props: { title: "New collection", label: "Name", onsubmit, oncancel: vi.fn() },
     });
-    await fireEvent.input(getByLabelText("name-input"), { target: { value: "a$b" } });
+    await fireEvent.input(getByLabelText("Name"), { target: { value: "a$b" } });
     await fireEvent.click(getByText("OK"));
     expect(await findByText("bad name")).toBeTruthy();
   });
@@ -33,7 +33,7 @@ describe("NameDialog", () => {
     const { getByLabelText } = render(NameDialog, {
       props: { title: "New collection", label: "Name", onsubmit, oncancel: vi.fn() },
     });
-    await fireEvent.input(getByLabelText("name-input"), { target: { value: "users" } });
+    await fireEvent.input(getByLabelText("Name"), { target: { value: "users" } });
     handleModalKeydown(key("Enter"));
     expect(onsubmit).toHaveBeenCalledWith("users");
   });

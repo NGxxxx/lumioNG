@@ -26,17 +26,18 @@ export function canSuppress(env: Environment, op: DestructiveOp): boolean {
 /** Dialog content as message keys (the component translates them). */
 export function describeDestructive(
   op: DestructiveOp,
-  target: { db: string; coll?: string; index?: string },
+  target: { db: string; coll?: string; index?: string; colls?: string[] },
   count: number | null,
   level: "none" | "confirm" | "type",
   undoable: boolean,
 ): { titleKey: string; countText: string | null; irreversible: boolean; expectedName: string | null; actionKey: string; count: number | null } {
+  const many = (target.colls?.length ?? 0) > 1 && (op === "dropCollection" || op === "truncate");
   let expectedName: string | null = null;
   if (level === "type") {
-    expectedName = op === "dropDatabase" ? target.db : op === "dropIndex" ? (target.index ?? null) : (target.coll ?? null);
+    expectedName = op === "dropDatabase" || many ? target.db : op === "dropIndex" ? (target.index ?? null) : (target.coll ?? null);
   }
   return {
-    titleKey: `destructive_title_${op}`,
+    titleKey: many ? (op === "dropCollection" ? "destructive_title_dropCollections" : "destructive_title_truncateMany") : `destructive_title_${op}`,
     actionKey: `destructive_action_${op}`,
     countText: count === null ? null : count.toLocaleString("en-US"),
     irreversible: !undoable,

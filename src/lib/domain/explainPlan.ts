@@ -86,7 +86,7 @@ function emptySummary(): ExplainSummary {
 function buildSummary(
   execRoot: Record<string, unknown> | null,
   executionStats: Record<string, unknown>,
-  trailingStageNames: string[],
+  trailing: { name: string; nReturned: number | null; executionTimeMs: number | null }[],
 ): ExplainSummary {
   const { stages, indexName } = flattenExecutionStages(execRoot);
   if (stages.length === 0) return emptySummary();
@@ -105,8 +105,8 @@ function buildSummary(
       ? (isInefficient ? "ixscan-inefficient" : "ixscan")
       : "other";
 
-  const trailingStages: ExplainStage[] = trailingStageNames.map((name) => ({
-    name, nReturned: null, docsExamined: null, keysExamined: null, executionTimeMs: null,
+  const trailingStages: ExplainStage[] = trailing.map((t) => ({
+    name: t.name, nReturned: t.nReturned, docsExamined: null, keysExamined: null, executionTimeMs: t.executionTimeMs,
   }));
 
   return {
@@ -134,7 +134,7 @@ export function summarizeExplain(raw: unknown): ExplainSummary {
   const stagesArr = doc["stages"];
   if (Array.isArray(stagesArr)) {
     let cursorExecutionStats: Record<string, unknown> | null = null;
-    const trailingNames: string[] = [];
+    const trailing: { name: string; nReturned: number | null; executionTimeMs: number | null }[] = [];
     for (const raw of stagesArr) {
       const stage = asObj(raw);
       if (!stage) continue;
@@ -144,14 +144,74 @@ export function summarizeExplain(raw: unknown): ExplainSummary {
         continue;
       }
       if (cursorExecutionStats) {
-        const opName = Object.keys(stage)[0];
-        if (opName) trailingNames.push(opName);
+        // Later pipeline stages: `{ "$group": {...}, "nReturned": n, "executionTimeMillisEstimate": t }`.
+        const opName = Object.keys(stage).find((k) => k.startsWith("$"));
+        if (opName) trailing.push({ name: opName, nReturned: numFromExt(stage["nReturned"]), executionTimeMs: numFromExt(stage["executionTimeMillisEstimate"]) });
       }
     }
     if (cursorExecutionStats) {
-      return buildSummary(asObj(cursorExecutionStats["executionStages"]), cursorExecutionStats, trailingNames);
+      return buildSummary(asObj(cursorExecutionStats["executionStages"]), cursorExecutionStats, trailing);
     }
   }
 
   return emptySummary();
 }
+
+export type ExplainFlowRow = {
+  name: string;
+  keys: number | null;
+  /** Documents this step handled (examined, or returned when nothing was examined). */
+  docs: number | null;
+  returned: number | null;
+  ms: number | null;
+  /** Bar width relative to the busiest step, 0–100. */
+  widthPct: number;
+  slowest: boolean;
+};
+
+/** The plan as a top-to-bottom flow of documents (spec §3.3). */
+export function explainFlow(s: ExplainSummary): ExplainFlowRow[] {
+  const docsOf = (st: ExplainStage) => st.docsExamined ?? st.nReturned ?? st.keysExamined;
+  const max = s.stages.reduce((mx, st) => Math.max(mx, docsOf(st) ?? 0), 0);
+  let slowIdx = -1;
+  let slowMs = -1;
+  s.stages.forEach((st, i) => {
+    if (st.executionTimeMs !== null && st.executionTimeMs > slowMs) {
+      slowMs = st.executionTimeMs;
+      slowIdx = i;
+    }
+  });
+  return s.stages.map((st, i) => {
+    const docs = docsOf(st);
+    return {
+      name: st.name, keys: st.keysExamined, docs, returned: st.nReturned, ms: st.executionTimeMs,
+      widthPct: max > 0 && docs !== null ? Math.round((docs / max) * 1000) / 10 : 0,
+      slowest: i === slowIdx,
+    };
+  });
+}
+
+/** How much of what was read came back (percent, one decimal); null when unknown. */
+export function efficiency(s: ExplainSummary): { returned: number; examined: number; pct: number } | null {
+  const examined = s.totalDocsExamined;
+  const returned = s.totalDocsReturned;
+  if (examined === null || returned === null || examined <= 0) return null;
+  return { returned, examined, pct: Math.round((returned / examined) * 1000) / 10 };
+}
+
+export type ExplainAdvice = { key: "create_index" | "move_match_first" | "in_memory_sort" };
+
+const RESHAPING = new Set(["$group", "$project", "$unwind", "$addFields", "$set", "$lookup", "$replaceRoot"]);
+
+/** Concrete things to try, most useful first. */
+export function explainAdvice(s: ExplainSummary, pipeline: { name: string; body: unknown }[] | null): ExplainAdvice[] {
+  const out: ExplainAdvice[] = [];
+  if (s.verdict === "collscan" || s.verdict === "ixscan-inefficient") out.push({ key: "create_index" });
+  if (pipeline) {
+    const firstReshape = pipeline.findIndex((st) => RESHAPING.has(st.name));
+    if (firstReshape !== -1 && pipeline.slice(firstReshape + 1).some((st) => st.name === "$match")) out.push({ key: "move_match_first" });
+  }
+  if (s.stages.some((st) => st.name === "SORT")) out.push({ key: "in_memory_sort" });
+  return out;
+}
+

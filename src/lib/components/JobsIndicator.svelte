@@ -2,10 +2,18 @@
 <script lang="ts">
   import type { createJobs, JobEntry, JobState } from "../stores/jobs.svelte";
   import * as m from "#lib/paraglide/messages.js";
+  import { msgCount } from "#lib/msgkey.js";
 
   let { jobs }: { jobs: ReturnType<typeof createJobs> } = $props();
 
   let open = $state(false);
+  let showDetails = $state<Set<number>>(new Set());
+  function toggleDetails(id: number) {
+    const next = new Set(showDetails);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    showDetails = next;
+  }
   const running = $derived(jobs.list.filter((j) => j.finishedAt === null));
   const one = $derived(running.length === 1 ? running[0] : null);
 
@@ -34,7 +42,7 @@
       {:else}
         <svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8.5l3 3 7-7" /></svg>
       {/if}
-      <span>{one ? `${one.source.label}${pct(one)}` : running.length > 1 ? m.jobs_tasks({ count: String(running.length) }) : m.jobs_title()}</span>
+      <span>{one ? `${one.source.label}${pct(one)}` : running.length > 1 ? msgCount("jobs_tasks", running.length) : m.jobs_title()}</span>
       {#if one && one.source.progress() !== null}
         <span class="bar" aria-hidden="true"><span style="width:{one.source.progress()}%"></span></span>
       {/if}
@@ -53,7 +61,15 @@
               <span class="job-state {st}">{st === "running" && p !== null ? `${Math.round(p)}%` : stateLabel(st)}</span>
             </div>
             <div class="track"><span class:indet={st === "running" && p === null} style="width:{st === 'running' ? (p ?? 30) : 100}%"></span></div>
+            {#if j.source.details && showDetails.has(j.id)}
+              <ul class="details">
+                {#each j.source.details() as d (d.label)}<li><span>{d.label}</span><span class="dim">{d.state}</span></li>{/each}
+              </ul>
+            {/if}
             <div class="job-actions">
+              {#if j.source.details}
+                <button class="link" aria-expanded={showDetails.has(j.id)} onclick={() => toggleDetails(j.id)}>{m.jobs_details()}</button>
+              {/if}
               {#if st === "running" && j.source.cancel}
                 <button class="link" onclick={() => jobs.cancel(j.id)}>{m.jobs_cancel()}</button>
               {:else if st !== "running"}
@@ -98,7 +114,10 @@
   .track span { display: block; height: 100%; background: var(--accent); transition: width 0.2s; }
   .track span.indet { animation: indet 1.2s ease-in-out infinite; }
   @keyframes indet { from { transform: translateX(-100%); } to { transform: translateX(330%); } }
-  .job-actions { display: flex; justify-content: flex-end; }
+  .job-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
+  .details { list-style: none; margin: 0.25rem 0; padding: 0; font-size: 0.6875rem; max-height: 8rem; overflow: auto; }
+  .details li { display: flex; justify-content: space-between; gap: 0.5rem; padding: 0.0625rem 0; }
+  .details .dim { color: var(--muted); }
   .link { border: none; background: none; padding: 0; color: var(--link); font-size: 0.75rem; cursor: pointer; }
   .link:hover { text-decoration: underline; }
 </style>

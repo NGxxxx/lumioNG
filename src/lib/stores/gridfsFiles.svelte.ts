@@ -1,4 +1,7 @@
 import { queryPage, countDocuments } from "../api/documents";
+
+/** Preview bytes of one GridFS file (for the preview panel). */
+export { gridfsPreviewBytes } from "../api/gridfs";
 import { toGridfsFileRow, escapeRegexLiteral, type GridfsFileRow } from "../domain/gridfsFiles";
 import { createDebouncer, SEARCH_DEBOUNCE_MS } from "../domain/timing";
 import { errorMessage } from "../api/errors";

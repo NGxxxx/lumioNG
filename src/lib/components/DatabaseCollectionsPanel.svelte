@@ -3,7 +3,7 @@
   import { createDatabaseCollections, type SortCol } from "../stores/databaseCollections.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { formatBytes, formatCount } from "../domain/stats";
-  import DropConfirmDialog from "./DropConfirmDialog.svelte";
+  import DestructiveDialog from "./DestructiveDialog.svelte";
   import ExportWizard from "./ExportWizard.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
   import { toast } from "../stores/toast.svelte";
@@ -40,29 +40,13 @@
     selected = allSelected ? new Set() : new Set(v.rows.map((r) => r.name));
   }
 
-  let bulkDialog = $state<"truncate" | "drop" | null>(null);
   let exportWizard = $state<ExportWizardInput | null>(null);
 
-  async function runBulk(action: "truncate" | "drop") {
-    const tree = sessionManager.active?.tree;
-    if (!tree) return;
-    // Each collection is attempted independently — one failure shouldn't abort the rest of the
-    // batch, and the caller needs to know exactly which ones didn't go through.
-    const failed: string[] = [];
-    for (const name of selected) {
-      try {
-        if (action === "truncate") await tree.truncate(db, name);
-        else await tree.dropCollection(db, name);
-      } catch {
-        failed.push(name);
-      }
-    }
-    selected = new Set(failed);
-    await v.init();
-    bulkDialog = null;
-    if (failed.length > 0) {
-      toast.push(m.db_collections_bulk_failed({ names: failed.join(", ") }), "error");
-    }
+  function runBulk(action: "truncate" | "drop") {
+    v.requestBulk(action, [...selected], (failed) => {
+      selected = new Set(failed);
+      if (failed.length > 0) toast.push(m.db_collections_bulk_failed({ names: failed.join(", ") }), "error");
+    });
   }
 
   function openBulkExport() {
@@ -74,8 +58,7 @@
   {#if v.summary}
     {@const s = v.summary}
     <div class="summary">
-      {formatCount(s.collections)} collections · {formatCount(s.objects)} objects ·
-      {formatBytes(s.dataSize)} data · {formatBytes(s.storageSize)} storage
+      {m.db_collections_summary({ collections: formatCount(s.collections), objects: formatCount(s.objects), data: formatBytes(s.dataSize), storage: formatBytes(s.storageSize) })}
     </div>
   {/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
@@ -83,15 +66,15 @@
     <button onclick={() => v.loadAll()}>{m.db_collections_load_stats()}</button>
     {#if selected.size > 0}
       <span class="sel-count">{m.db_collections_selected_count({ count: selected.size })}</span>
-      <button onclick={() => (bulkDialog = "truncate")}>{m.db_collections_bulk_truncate()}</button>
-      <button class="danger" onclick={() => (bulkDialog = "drop")}>{m.db_collections_bulk_drop()}</button>
+      <button onclick={() => runBulk("truncate")}>{m.db_collections_bulk_truncate()}</button>
+      <button class="danger" onclick={() => runBulk("drop")}>{m.db_collections_bulk_drop()}</button>
       <button onclick={openBulkExport}>{m.db_collections_bulk_export()}</button>
     {/if}
   </div>
   <table class="grid">
     <thead>
       <tr>
-        <th class="checkcol"><input type="checkbox" checked={allSelected} onchange={toggleAll} aria-label="select-all" /></th>
+        <th class="checkcol"><input type="checkbox" checked={allSelected} onchange={toggleAll} aria-label={m.db_collections_select_all()} /></th>
         {#each cols as c (c.key)}
           <th onclick={() => v.setSort(c.key)}>{c.label()}{arrow(c.key)}</th>
         {/each}
@@ -130,25 +113,7 @@
   </table>
 </div>
 
-{#if bulkDialog === "truncate"}
-  <DropConfirmDialog
-    title={m.db_collections_bulk_truncate_title({ count: selected.size })}
-    message={m.db_collections_bulk_truncate_message({ names: [...selected].join(", ") })}
-    expectedName="TRUNCATE"
-    confirmLabel={m.db_collections_bulk_truncate()}
-    onconfirm={() => runBulk("truncate")}
-    oncancel={() => (bulkDialog = null)}
-  />
-{:else if bulkDialog === "drop"}
-  <DropConfirmDialog
-    title={m.db_collections_bulk_drop_title({ count: selected.size })}
-    message={m.db_collections_bulk_drop_message({ names: [...selected].join(", ") })}
-    expectedName="DROP"
-    confirmLabel={m.db_collections_bulk_drop()}
-    onconfirm={() => runBulk("drop")}
-    oncancel={() => (bulkDialog = null)}
-  />
-{/if}
+<DestructiveDialog gate={v.destructive} />
 
 {#if exportWizard}
   <ExportWizard input={exportWizard} onclose={() => (exportWizard = null)} />

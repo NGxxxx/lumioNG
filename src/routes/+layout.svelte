@@ -5,6 +5,7 @@
   import "../app.css";
   import { dev } from "$app/env";
   import { handleModalKeydown } from "#lib/stores/modalStack.js";
+  import { blocksNativeSelectAll } from "#lib/domain/shortcuts.js";
   let { children } = $props();
 
   // Hide the webview's native right-click menu in release builds (every surface has its own custom menu); dev keeps it for devtools access.
@@ -14,13 +15,7 @@
 
   // Ctrl/Cmd+A must not "select all" the whole desktop UI; allow it only when an editable field has focus.
   function onKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
-      const el = e.target as HTMLElement | null;
-      const tag = el?.tagName;
-      const editable =
-        tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable === true;
-      if (!editable) e.preventDefault();
-    }
+    if (blocksNativeSelectAll(e)) e.preventDefault();
     handleModalKeydown(e);
   }
 </script>

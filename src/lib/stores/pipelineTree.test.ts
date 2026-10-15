@@ -1,7 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const aggregateMock = vi.fn(async (..._args: unknown[]) => [{ _id: 1 }]);
+const aggregateMock = vi.fn(async (..._args: unknown[]): Promise<unknown[]> => [{ _id: 1 }]);
 vi.mock("../api/documents", () => ({ aggregate: (...args: unknown[]) => aggregateMock(...args) }));
+const listIndexesMock = vi.fn(async (..._a: unknown[]) => ['{"key":{"_id":1}}']);
+vi.mock("../api/indexes", () => ({ listIndexes: (...a: unknown[]) => listIndexesMock(...a) }));
 
 import { createPipelineTree, resetClipboardForTests } from "./pipelineTree.svelte";
 
@@ -257,5 +259,116 @@ describe("createPipelineTree — stage clipboard (cut/copy/paste/duplicate)", ()
     expect(treeB.hasClipboard).toBe(true);
     treeB.pasteStageAfter(0);
     expect(treeB.stages.map((s) => s.name)).toEqual(["$limit", "$match"]);
+  });
+});
+
+describe("pipelineTree — builder (selection, counts, preview)", () => {
+  const SCRIPT = 'db.getCollection("orders").aggregate([{ "$match": { "s": "a" } }, { "$group": { "_id": "$t", "count": { "$sum": 1 } } }, { "$sort": { "count": -1 } }])';
+  function setup(script = SCRIPT) {
+    const text = { v: script };
+    const show = vi.fn();
+    const clear = vi.fn();
+    const tree = createPipelineTree("conn:1", {
+      get: () => text.v, set: (t: string) => { text.v = t; },
+      db: () => "shop", preview: { show, clear },
+    });
+    tree.syncFromScript();
+    return { tree, text, show, clear };
+  }
+  beforeEach(() => {
+    vi.useFakeTimers();
+    aggregateMock.mockReset();
+    aggregateMock.mockImplementation(async (..._a: unknown[]) => [{ _id: 1 }]);
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("selecting a stage previews the pipeline through it (20-doc sample) into the result pane", async () => {
+    const { tree, show } = setup();
+    tree.select(tree.stages[1].id);
+    await vi.advanceTimersByTimeAsync(460);
+    const call = aggregateMock.mock.calls.find((c) => !String(c[3]).includes("$count"))!;
+    expect(JSON.parse(call[3] as string)).toEqual([{ $match: { s: "a" } }, { $group: { _id: "$t", count: { $sum: 1 } } }]);
+    expect(call[5]).toBe(20);
+    expect(show).toHaveBeenCalledWith([{ _id: 1 }], { stage: 2, of: 3 });
+  });
+
+  it("deselecting brings the run's result back", async () => {
+    const { tree, clear } = setup();
+    tree.select(tree.stages[0].id);
+    tree.select(null);
+    expect(clear).toHaveBeenCalled();
+  });
+
+  it("an edit during an in-flight preview discards the older result", async () => {
+    const { tree, show } = setup();
+    let release!: (v: unknown[]) => void;
+    aggregateMock.mockImplementationOnce(() => new Promise((r) => (release = r)));
+    tree.select(tree.stages[0].id);
+    await vi.advanceTimersByTimeAsync(460);
+    tree.updateStageBody(0, { s: "b" });
+    await vi.advanceTimersByTimeAsync(460);
+    release([{ old: true }]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(show).not.toHaveBeenCalledWith([{ old: true }], expect.anything());
+  });
+
+  it("counts every stage; a failure shows as error", async () => {
+    aggregateMock.mockImplementation(async (...a: unknown[]) => {
+      const p = JSON.parse(a[3] as string) as object[];
+      if (p.length === 4) throw new Error("timeout"); // 3 stages + $count
+      return [{ n: (p.length - 1) * 10 + 10 }];
+    });
+    const { tree } = setup();
+    tree.refreshCounts();
+    await vi.advanceTimersByTimeAsync(460);
+    const [a, b, c] = tree.stages.map((s) => tree.counts[s.id]);
+    expect([a, b, c]).toEqual([20, 30, "error"]);
+  });
+
+  it("a disabled stage leaves the script and comes back where it was", () => {
+    const { tree, text } = setup();
+    tree.setEnabled(1, false);
+    expect(text.v).not.toContain("$group");
+    expect(tree.stages[1].enabled).toBe(false);
+    tree.setEnabled(1, true);
+    expect(text.v.indexOf("$group")).toBeLessThan(text.v.indexOf("$sort"));
+  });
+
+  it("editing the script directly drops disabled stages and says so", () => {
+    const { tree, text } = setup();
+    tree.setEnabled(1, false);
+    text.v = text.v.replace('"a"', '"z"');
+    tree.syncFromScript();
+    expect(tree.discardedNotice).toBe(1);
+    expect(tree.stages).toHaveLength(2);
+  });
+
+  it("syncing never rewrites the script text", () => {
+    const original = 'db.getCollection("orders").aggregate([{ "$match": { "$expr": { "$gt": ["$a", 1] } } }])';
+    const { text } = setup(original);
+    expect(text.v).toBe(original);
+  });
+
+  it("a $out stage stops counting and preview at that point", async () => {
+    const { tree, show } = setup('db.getCollection("orders").aggregate([{ "$match": {} }, { "$out": "x" }])');
+    tree.select(tree.stages[1].id);
+    tree.refreshCounts();
+    await vi.advanceTimersByTimeAsync(460);
+    expect(aggregateMock.mock.calls.every((c) => !String(c[3]).includes("$out"))).toBe(true);
+    expect(show).not.toHaveBeenCalled();
+    expect(tree.warnings.some((w) => w.key === "writes_disable_preview")).toBe(true);
+  });
+
+  it("templates append their stages; next-step chips follow the last stage", () => {
+    const { tree } = setup('db.getCollection("orders").aggregate([])');
+    tree.applyTemplate("topN", { field: "status", n: 5 });
+    expect(tree.stages.map((s) => s.name)).toEqual(["$group", "$sort", "$limit"]);
+    expect(tree.nextSteps.length).toBe(0); // last is $limit
+  });
+
+  it("moveMatchFirst puts a late $match before the first reshaping stage", () => {
+    const { tree } = setup('db.getCollection("o").aggregate([{ "$limit": 5 }, { "$group": { "_id": "$a" } }, { "$match": { "_id": 1 } }])');
+    tree.moveMatchFirst();
+    expect(tree.stages.map((s) => s.name)).toEqual(["$limit", "$match", "$group"]);
   });
 });

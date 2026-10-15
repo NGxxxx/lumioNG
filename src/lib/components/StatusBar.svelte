@@ -45,11 +45,12 @@
   let now = $state(Date.now());
   $effect(() => {
     if (!connected || connectedAt === null) return;
+    now = Date.now(); // the clock was last read at mount, which can be before this connect time
     const id = setInterval(() => { now = Date.now(); }, 60_000);
     return () => clearInterval(id);
   });
   const connectedFor = $derived(
-    connected && connectedAt !== null ? formatUptime((now - connectedAt) / 1000) : "—",
+    connected && connectedAt !== null ? formatUptime(Math.max(0, now - connectedAt) / 1000) : "—",
   );
 </script>
 

@@ -75,3 +75,13 @@ describe("describeDestructive", () => {
     expect(describeDestructive("deleteMany", { db: "s", coll: "c" }, 3, "confirm", true).expectedName).toBeNull();
   });
 });
+
+describe("describeDestructive — several collections", () => {
+  it("names the count in the title and asks for the database name", () => {
+    const d = describeDestructive("dropCollection", { db: "shop", colls: ["a", "b"] }, 7, "type", false);
+    expect(d.titleKey).toBe("destructive_title_dropCollections");
+    expect(d.expectedName).toBe("shop");
+    expect(describeDestructive("truncate", { db: "shop", colls: ["a", "b"] }, 7, "type", false).titleKey).toBe("destructive_title_truncateMany");
+  });
+});
+

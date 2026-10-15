@@ -15,6 +15,8 @@ export interface StageEntry {
   /** Stage operator name including the leading "$", e.g. "$match". */
   name: string;
   body: unknown;
+  /** false = kept in the builder but left out of the script (spec §1.1). */
+  enabled?: boolean;
 }
 
 let nextStageId = 0;
@@ -73,7 +75,7 @@ export function parsePipelineFromScript(script: string): ParsedPipeline | ParseP
 
 /** Rebuilds runnable script text from a stage list — the inverse of `parsePipelineFromScript`. */
 export function stagesToScript(coll: string, stages: StageEntry[]): string {
-  const pipeline = stages.map((s) => ({ [s.name]: s.body }));
+  const pipeline = stages.filter((s) => s.enabled !== false).map((s) => ({ [s.name]: s.body }));
   return `db.getCollection("${coll}").aggregate(\n${JSON.stringify(pipeline, null, 2)}\n)`;
 }
 

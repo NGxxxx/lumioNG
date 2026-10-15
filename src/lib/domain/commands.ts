@@ -15,6 +15,7 @@ export type CommandId =
   | "query.explain"
   | "query.aggregate"
   | "query.save"
+  | "query.history"
   | "goto.nextTab"
   | "goto.prevTab"
   | "goto.host"
@@ -23,6 +24,7 @@ export type CommandId =
   | "goto.schema"
   | "view.closeWorkTab"
   | "view.resetToDefault"
+  | "view.resetLayout"
   | "view.commandPalette"
   | "view.toggleLog"
   | "view.toggleWrap"
@@ -80,6 +82,7 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "query.explain": "Mod+Shift+F9",
   "query.aggregate": "Mod+Alt+A",
   "query.save": "Mod+S",
+  "query.history": "Mod+Shift+H",
   "goto.nextTab": "Mod+Tab",
   "goto.prevTab": "Mod+Shift+Tab",
   "goto.host": "Mod+1",
@@ -136,7 +139,7 @@ export const COMMAND_GROUPS: { group: "general" | "navigation" | "grid" | "edito
     ids: [
       "view.commandPalette", "help.shortcuts", "help.about", "file.refresh", "file.newQuery", "file.newDocument",
       "file.import", "file.export", "query.run", "query.runSelection", "query.stop", "query.explain",
-      "query.aggregate", "query.save", "view.closeWorkTab", "edit.undo",
+      "query.aggregate", "query.save", "query.history", "view.closeWorkTab", "edit.undo",
     ],
   },
   {

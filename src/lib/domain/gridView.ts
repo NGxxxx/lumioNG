@@ -58,6 +58,9 @@ export interface GridPageView {
   onHeaderMenuSelect?(path: string, action: string): void | Promise<void>;
 
   readonly sortKeys?: SortKey[];
+  /** Changes whenever a different set of rows is shown (page, filter, sort, re-run, quick search) —
+   *  never on an in-place edit. The grid resets its keyboard cursor on change. */
+  readonly loadGen?: string;
   toggleSort?(path: string, shift: boolean): void;
 
   // Grid-scoped keyboard shortcuts (Slice 4) — all optional since the two backing stores

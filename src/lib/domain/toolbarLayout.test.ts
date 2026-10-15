@@ -12,6 +12,7 @@ describe("toolbarFor", () => {
       "grid.focusFilter",
       "view.toggleWrap",
       "view.toggleSavedQueries",
+      "view.resetLayout",
       "file.newDocument",
     ]);
     expect(entries.filter((e) => e.style === "primary").map((e) => e.id)).toEqual(["file.newDocument"]);
@@ -20,6 +21,7 @@ describe("toolbarFor", () => {
       "grid.focusFilter",
       "view.toggleWrap",
       "view.toggleSavedQueries",
+      "view.resetLayout",
     ]);
   });
 

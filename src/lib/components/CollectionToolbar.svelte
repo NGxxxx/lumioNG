@@ -2,6 +2,9 @@
   import { tick } from "svelte";
 import type { createCollectionView } from "../stores/collectionView.svelte";
   import * as m from "#lib/paraglide/messages.js";
+  import FilterChips from "./FilterChips.svelte";
+  import { clickOutside } from "../actions/clickOutside";
+  import { chipsFromFilter } from "../domain/filterChips";
   import { msgKey } from "#lib/msgkey.js";
   import GridDepthSelect from "./GridDepthSelect.svelte";
 
@@ -11,6 +14,11 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     treeAllExpanded?: boolean;
     ontoggleexpand?: () => void;
   } = $props();
+
+  // Chips are the default view of the filter; JSON is the escape hatch (and the only view for
+  // filters chips can't express).
+  let filterMode = $state<"chips" | "json">("chips");
+  const parseableAsChips = $derived(chipsFromFilter(v.filterText.trim() || "{}") !== null);
 
   let openDropdown = $state<"sort" | "fields" | null>(null);
   let searchInputEl = $state<HTMLInputElement | null>(null);
@@ -44,18 +52,6 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     openDropdown = null;
   }
 
-  /** Close dropdown when clicking outside the button/popover group. */
-  function clickOutside(node: HTMLElement, onOut: () => void) {
-    function handle(e: PointerEvent) {
-      if (!node.contains(e.target as Node)) onOut();
-    }
-    document.addEventListener("pointerdown", handle, true);
-    return {
-      destroy() {
-        document.removeEventListener("pointerdown", handle, true);
-      },
-    };
-  }
 
   const visibleColumns = $derived(v.columnFields.filter((c) => !v.hidden.has(c.path)));
 
@@ -84,7 +80,22 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
 
 <!-- Filter bar: find { … } monospace display + Run button -->
 <div class="filterbar">
-  <span class="filter-label">find</span>
+  {#if filterMode === "chips" && v.chips !== null}
+    <FilterChips
+      chips={v.chips}
+      fields={v.fieldInfos}
+      valuesFor={v.valuesFor}
+      slowHint={v.slowFieldHint}
+      zero={v.zeroResult}
+      history={v.filterHistory}
+      onchange={(c) => v.setChips(c)}
+      onhistory={(t) => { v.filterText = t; void v.applyFilter(); }}
+      onpin={v.pinFilter}
+      onclearhistory={v.clearFilterHistory}
+    />
+    <button class="mode-btn" title={m.chips_json()} aria-label={m.chips_json()} onclick={() => { v.filterText = v.appliedFilter; filterMode = "json"; }}>{"{ }"}</button>
+  {:else}
+  {#if v.chips === null && v.appliedFilter !== "{}"}<span class="advanced" title={m.chips_advanced()}>{m.chips_advanced()}</span>{/if}
   <input
     class="filter-input"
     bind:value={v.filterText}
@@ -100,6 +111,10 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     <svg aria-hidden="true" width="11" height="11" viewBox="0 0 16 16"><path d="M4 3l9 5-9 5z" fill="#fff"/></svg>
     {m.result_table_run()}
   </button>
+  {#if parseableAsChips}
+    <button class="mode-btn" title={m.chips_chips()} aria-label={m.chips_chips()} onclick={() => (filterMode = "chips")}>≡</button>
+  {/if}
+  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="dropwrap" use:clickOutside={closeDropdown} onkeydown={(e) => { if (e.key === "Escape") closeDropdown(); }} role="group" tabindex="-1">
     <button class="drop-btn" onclick={() => toggleDropdown("sort")} title={m.result_table_sort_title()}>
@@ -233,7 +248,12 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     border-bottom: 1px solid var(--border);
     padding: 0 0.75rem 0 0.875rem;
   }
-  .filter-label { color: var(--muted); font-size: 0.75rem; }
+  .mode-btn {
+    flex: none; height: 1.875rem; min-width: 1.875rem; padding: 0 0.375rem; border: 1px solid var(--c-surface1);
+    border-radius: var(--radius); background: var(--panel); color: var(--muted); font-family: var(--mono); font-size: 0.75rem; cursor: pointer;
+  }
+  .mode-btn:hover { color: var(--fg); background: var(--menu-hover); }
+  .advanced { flex: none; color: var(--warn-fg); font-size: 0.6875rem; white-space: nowrap; }
   .filter-input {
     flex: 1;
     min-width: 8rem;

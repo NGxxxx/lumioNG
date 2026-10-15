@@ -3,7 +3,7 @@
   import { untrack, tick } from "svelte";
   import { getQueryRun } from "../stores/queryRuns.svelte";
   import { getPipelineTree } from "../stores/pipelineTreeRuns.svelte";
-  import PipelineTreeEditor from "./PipelineTreeEditor.svelte";
+  import BuilderPanel from "./builder/BuilderPanel.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
   import ResultGrid from "./ResultGrid.svelte";
@@ -27,6 +27,10 @@
   import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
   import GridDepthSelect from "./GridDepthSelect.svelte";
   import { settings } from "../stores/settings.svelte";
+  import { undo } from "../stores/undo.svelte";
+  import { queryHistory } from "../stores/queryHistory.svelte";
+  import type { HistoryEntry } from "../domain/queryHistory";
+  import QueryHistoryPanel from "./QueryHistoryPanel.svelte";
   import { createPaneResize } from "./paneResize.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
@@ -34,17 +38,28 @@
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
   import type { Doc } from "../domain/doc";
 
-  let { id, seq, initialStatement, sessionId, currentDb, active, onopendocument, onsave }:
+  let { id, seq, initialStatement, sessionId, currentDb, active, onopendocument, onsave, onopenhistory }:
     { id: number; seq: number; initialStatement: string; sessionId: string; currentDb: string | null; active: boolean;
       onopendocument?: (doc: Doc, db: string, coll: string, mode: "edit") => void;
       /** Title-row Save (the page owns save vs. save-as against the query library). */
-      onsave?: () => void } = $props();
+      onsave?: () => void;
+      /** History "Open in new tab" (the page owns tabs and sessions). */
+      onopenhistory?: (e: HistoryEntry) => void } = $props();
+
+  // History "Load": replacing a different script asks first.
+  let replaceWith = $state<HistoryEntry | null>(null);
+  function loadFromHistory(e: HistoryEntry) {
+    if (v.statementText.trim() && v.statementText !== e.script) replaceWith = e;
+    else v.statementText = e.script;
+  }
 
   const v = untrack(() => getQueryRun(id, sessionId, initialStatement));
   const tree = untrack(() =>
     getPipelineTree(id, sessionId, {
       get: () => v.statementText,
       set: (s) => { v.statementText = s; },
+      db: () => currentDb,
+      preview: { show: (docs, label) => v.showPreview(docs, label), clear: () => v.clearPreview() },
     }),
   );
   let editorMode = $state<"script" | "tree">("script");
@@ -111,6 +126,17 @@
     peek.requestClose();
     return true;
   }
+  // An undo elsewhere touched this result's collection (changes from before mount were already loaded).
+  let undoSeen = untrack(() => undo.changed?.seq ?? 0);
+  $effect(() => {
+    const change = undo.changed;
+    if (!change || change.seq <= undoSeen) return;
+    undoSeen = change.seq;
+    untrack(() => {
+      v.syncAfterUndo(change);
+      peek.refreshIfShowing(change);
+    });
+  });
   // A re-run or page change replaces the rows: the drawer refreshes, keeps a dirty draft (flagged), or closes.
   $effect(() => {
     const docs = v.docs;
@@ -234,6 +260,7 @@
   });
 </script>
 
+<div class="query-wrap">
 <div class="query">
   <div class="bar">
     <span class="title"><b>{m.query_tab_title({ seq })}</b></span>
@@ -255,6 +282,9 @@
       </button>
       <button class="icon-btn" onclick={explainFromMenu} disabled={v.running} aria-label={m.toolbar_explain()} use:tooltip={m.toolbar_explain()}>
         <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14M5.5 8.5v-1M7 8.5V6M8.5 8.5V5" /></svg>
+      </button>
+      <button class="icon-btn" class:on={v.historyOpen} onclick={() => v.toggleHistory()} aria-pressed={v.historyOpen} aria-label={m.cmd_query_history()} use:tooltip={m.cmd_query_history()}>
+        <svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6" /><path d="M8 4.5V8l2.5 1.5" /></svg>
       </button>
       {#if onsave}
         <button class="icon-btn" onclick={onsave} aria-label={m.toolbar_save()} use:tooltip={m.toolbar_save()}>
@@ -290,7 +320,7 @@
         onExplain={explainFromMenu}
         complete={completionSource} />
     {:else}
-      <PipelineTreeEditor {tree} db={currentDb ?? ""} />
+      <BuilderPanel {tree} onexplain={explainFromMenu} collections={sessionManager.sessions.find((x) => x.id === sessionId)?.tree.databases.find((d) => d.name === currentDb)?.collections ?? []} />
     {/if}
   </div>
 
@@ -369,10 +399,20 @@
           coll={v.provenance?.coll ?? ""}
           oncreateindex={() => v.createSuggestedIndex()}
           onrefresh={() => v.runExplain()}
+          pipeline={isAggregateStatement ? tree.stages.filter((s) => s.enabled !== false) : null}
+          onmovematchfirst={isAggregateStatement ? () => { tree.moveMatchFirst(); void v.runExplain(); } : undefined}
+          prod={sessionManager.sessions.find((x) => x.id === sessionId)?.environment === "prod"}
         />
       </div>
     {:else}
       <div class="result-pane">
+        {#if v.staleAfterUndo}<div class="stale-note">{m.query_tab_stale_after_undo()}</div>{/if}
+        {#if v.previewLabel}
+          <div class="preview-note">
+            {m.builder_preview_through({ stage: String(v.previewLabel.stage), of: String(v.previewLabel.of) })}
+            <button class="link" onclick={() => tree.select(null)}>{m.builder_preview_back()}</button>
+          </div>
+        {/if}
         {#if showDocs && resultView === "tree"}
           <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
         {:else if showDocs}
@@ -408,6 +448,17 @@
     {/if}
   </div>
   {/if}
+</div>
+{#if v.historyOpen}
+  <QueryHistoryPanel
+    entries={queryHistory.entries}
+    tabId={id}
+    onload={loadFromHistory}
+    onopen={(e) => onopenhistory?.(e)}
+    onclear={() => queryHistory.clear()}
+    onclose={() => v.toggleHistory()}
+  />
+{/if}
 </div>
 
 {#if menu}
@@ -488,6 +539,16 @@
 
 <DestructiveDialog gate={v.destructive} />
 
+{#if replaceWith}
+  {@const e = replaceWith}
+  <ConfirmDialog
+    title={m.history_replace_title()}
+    message={m.history_replace_message()}
+    confirmLabel={m.history_replace()}
+    onconfirm={() => { v.statementText = e.script; replaceWith = null; }}
+    oncancel={() => (replaceWith = null)} />
+{/if}
+
 {#if v.showAllPending !== null}
   <ConfirmDialog
     title={m.result_table_show_all_title()}
@@ -549,4 +610,9 @@
   .grid-host { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; height: 100%; }
   .grid-host.with-pinned { flex-direction: row; }
   .grid-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+  .stale-note { padding: 0.375rem 0.75rem; background: var(--warn-bg); color: var(--warn-fg); font-size: 0.75rem; border-bottom: 1px solid var(--border); }
+  .preview-note { display: flex; align-items: center; gap: 0.75rem; padding: 0.3125rem 0.75rem; background: color-mix(in srgb, var(--accent) 10%, var(--panel)); color: var(--fg); font-size: 0.75rem; border-bottom: 1px solid var(--border); }
+  .preview-note .link { border: none; background: none; padding: 0; color: var(--link); font-size: 0.75rem; cursor: pointer; }
+  .query-wrap { display: flex; height: 100%; min-height: 0; }
+  .query-wrap > .query { flex: 1; min-width: 0; }
 </style>

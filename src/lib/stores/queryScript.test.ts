@@ -591,6 +591,43 @@ describe("selection / delete / menu (editable grid)", () => {
     return s;
   };
 
+  it("an undo on this namespace flags script results as stale without re-running the script", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    (runScript as any).mockClear();
+    s.syncAfterUndo({ sessionId: "sess", db: "d", coll: "other" });
+    expect(s.staleAfterUndo).toBe(false);
+    s.syncAfterUndo({ sessionId: "sess", db: "d", coll: "c" });
+    expect(s.staleAfterUndo).toBe(true);
+    expect(runScript).not.toHaveBeenCalled();
+    await s.run("d");
+    expect(s.staleAfterUndo).toBe(false);
+  });
+
+  it("showPreview swaps in read-only preview rows; clearPreview restores the run's result", async () => {
+    const s = await setup({ db: "d", coll: "c" });
+    s.showPreview([{ _id: 9, g: 1 }], { stage: 2, of: 4 });
+    expect(s.docs).toEqual([{ _id: 9, g: 1 }]);
+    expect(s.previewLabel).toEqual({ stage: 2, of: 4 });
+    expect(s.displayMode).toBe("grid-readonly");
+    s.showPreview([{ _id: 8 }], { stage: 1, of: 4 });
+    s.clearPreview();
+    expect(s.docs.map((d) => d._id)).toEqual([1, 2, 3]);
+    expect(s.previewLabel).toBeNull();
+    expect(s.displayMode).toBe("grid-editable");
+  });
+
+  it("each run is recorded in the query history with its outcome", async () => {
+    const { queryHistory } = await import("./queryHistory.svelte");
+    queryHistory.clear();
+    await setup({ db: "d", coll: "c" });
+    expect(queryHistory.entries[0]).toMatchObject({ script: "db.c.find()", db: "d", outcome: { kind: "docs", n: 3 } });
+    (runScript as any).mockRejectedValueOnce(new Error("bad thing\nmore"));
+    const s2 = createQueryScript("sess", "db.c.oops()", { tabId: 77 });
+    await s2.run("d");
+    expect(queryHistory.entries[0]).toMatchObject({ tabId: 77, outcome: { kind: "error", message: expect.stringContaining("bad thing") } });
+    expect(queryHistory.entries[0].outcome.message).not.toContain("more");
+  });
+
   it("clickRow selects a single row; shift extends from the anchor", async () => {
     const s = await setup({ db: "d", coll: "c" });
     s.clickRow(0, { ctrl: false, shift: false });

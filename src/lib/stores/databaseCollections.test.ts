@@ -90,3 +90,33 @@ describe("createDatabaseCollections", () => {
     expect(entry.tookMs).toBeGreaterThanOrEqual(0);
   });
 });
+
+describe("databaseCollections — bulk drop / truncate", () => {
+  const bulkTree = {
+    databases: [{ name: "shop", collections: ["users", "orders"] }],
+    truncate: vi.fn().mockResolvedValue(undefined),
+    dropCollection: vi.fn().mockImplementation(async (_db: string, c: string) => { if (c === "orders") throw new Error("nope"); }),
+  };
+
+  it("counts every collection, requires typing the db name, then runs per collection", async () => {
+    vi.mocked(api.collStats).mockImplementation(async (_s, _d, c) => JSON.stringify({ ns: `shop.${c}`, count: c === "users" ? 3 : 4, size: 10 }));
+    vi.mocked(api.dbStats).mockResolvedValue("{}");
+    const v = createDatabaseCollections("conn:1", "shop", bulkTree);
+    const done = vi.fn();
+    v.requestBulk("drop", ["users", "orders"], done);
+    await vi.waitFor(() => expect(v.destructive.pending?.counting).toBe(false));
+    expect(v.destructive.pending).toMatchObject({ op: "dropCollection", count: 7, level: "type", target: { db: "shop", colls: ["users", "orders"] } });
+    await v.destructive.confirm();
+    expect(bulkTree.dropCollection).toHaveBeenCalledTimes(2);
+    expect(done).toHaveBeenCalledWith(["orders"]);
+  });
+
+  it("one failed count leaves the total unknown", async () => {
+    vi.mocked(api.collStats).mockRejectedValueOnce(new Error("x"));
+    const v = createDatabaseCollections("conn:1", "shop", bulkTree);
+    v.requestBulk("truncate", ["users", "orders"], vi.fn());
+    await vi.waitFor(() => expect(v.destructive.pending?.counting).toBe(false));
+    expect(v.destructive.pending).toMatchObject({ countFailed: true, count: null });
+  });
+});
+

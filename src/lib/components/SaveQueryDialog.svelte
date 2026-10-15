@@ -34,10 +34,10 @@
   {#snippet body()}
     <label>{m.saved_queries_save_name_label()}
       <!-- svelte-ignore a11y_autofocus -->
-      <input bind:value={name} disabled={asyncSubmit.busy} aria-label="name-input" autofocus />
+      <input bind:value={name} disabled={asyncSubmit.busy} autofocus />
     </label>
     <label>{m.saved_queries_save_folder_label()}
-      <select bind:value={parentId} disabled={asyncSubmit.busy} aria-label="folder-select">
+      <select bind:value={parentId} disabled={asyncSubmit.busy}>
         {#each folders as f (f.id)}
           <option value={f.id}>{f.label}</option>
         {/each}

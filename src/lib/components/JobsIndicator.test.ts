@@ -32,4 +32,14 @@ describe("JobsIndicator", () => {
     await fireEvent.click(getByRole("button", { name: "Cancel" }));
     expect(cancel).toHaveBeenCalled();
   });
+
+  it("Details lists the per-target status", async () => {
+    const jobs = createJobs();
+    jobs.register({ ...src("Exporting 2 collections", 50), details: () => [{ label: "shop.a", state: "Done" }, { label: "shop.b", state: "Running" }] });
+    const { getByRole, getByText } = render(JobsIndicator, { props: { jobs } });
+    await fireEvent.click(getByRole("button", { name: /Exporting/ }));
+    await fireEvent.click(getByRole("button", { name: "Details" }));
+    expect(getByText("shop.a")).toBeTruthy();
+    expect(getByText("shop.b")).toBeTruthy();
+  });
 });

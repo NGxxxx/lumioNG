@@ -34,12 +34,14 @@ import { createRowSelection } from "./rowSelection.svelte";
 import { createCommitEditFlow } from "./commitEditFlow.svelte";
 import { createClipboardCopy } from "./clipboardCopy";
 import { createDestructiveGate } from "./destructiveGate.svelte";
-import { sessionEnvironment } from "./sessionEnv";
+import { sessionEnvironment, sessionMeta } from "./sessionEnv";
+import { queryHistory } from "./queryHistory.svelte";
+import type { HistoryEntry } from "../domain/queryHistory";
 import { canSuppress } from "../domain/confirmPolicy";
 import { UNDO_DELETE_CAP, snapshotForUndo, recordDelete } from "./documentWrites";
 
 /** Per-tab state for one QuickJS Query tab: run script + client-side paging + column widths. */
-export function createQueryScript(sessionId: string, initialStatement: string) {
+export function createQueryScript(sessionId: string, initialStatement: string, opts: { tabId?: number } = {}) {
   // Wrap initialStatement with untrack to avoid the state_referenced_locally warning when this store is created inside a reactive context.
   let statementText = $state(untrack(() => initialStatement));
 
@@ -145,8 +147,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   /** Bump on every run/navigation/reload: in-flight fetches captured the old value and bail out, and
    *  any open cell edit is dropped — `editing.row` indexes the OLD page's `docs`, so leaving it open
    *  would silently rebind the edit box (and the eventual $set) to a different document. */
+  // Reactive mirror of `generation` for the grid (cursor reset); plain `generation` stays the race guard.
+  let loadCount = $state(0);
   function bumpGeneration(): number {
     edit.clear();
+    loadCount++;
     return ++generation;
   }
 
@@ -159,7 +164,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   let ioError = $state<string | null>(null);
   // Selection deletes confirm through the environment policy (sessionId is read fresh: it can be rebound).
   const destructive = createDestructiveGate(() => sessionEnvironment(sessionId));
-  let exportRequest = $state<{ rows: Doc[] } | null>(null);
+  let exportRequest = $state.raw<{ rows: Doc[] } | null>(null);
 
   /** True when edit/delete actions are permitted (pure single-collection cursor result). */
   function isEditable(): boolean {
@@ -305,7 +310,55 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     }
   }
 
+  // ── Builder preview (spec §1.3): the selected stage's sample temporarily replaces the result;
+  // the run's own result is stashed and comes back on clearPreview (never by re-running). ──
+  type ResultSnapshot = {
+    fullDocs: Doc[]; docs: Doc[]; rawColumnFields: ColumnField[]; colWidths: Record<string, number>;
+    defaultColWidths: Record<string, number>; displayModeVal: DisplayMode; provenance: Provenance | null;
+    totalCount: number; recipe: PagedRecipe | null; pageReq: number; capped: boolean; valueJson: string | null; ackJson: string | null;
+  };
+  let previewStash: ResultSnapshot | null = null;
+  let previewLabel = $state<{ stage: number; of: number } | null>(null);
+
+  function showPreview(rows: Doc[], label: { stage: number; of: number }) {
+    if (!previewStash) {
+      previewStash = {
+        fullDocs, docs, rawColumnFields, colWidths, defaultColWidths, displayModeVal, provenance,
+        totalCount, recipe, pageReq, capped, valueJson, ackJson,
+      };
+    }
+    bumpGeneration();
+    selection.clearSelection();
+    recipe = null;
+    fullDocs = rows;
+    docs = rows.slice(0, pageSize);
+    rawColumnFields = mergeColumns(null, rows);
+    defaultColWidths = computeColumnWidths(columnFields, rows);
+    colWidths = { ...defaultColWidths };
+    displayModeVal = "grid-readonly";
+    provenance = null;
+    totalCount = rows.length;
+    pageReq = 1;
+    capped = false;
+    valueJson = null;
+    ackJson = null;
+    previewLabel = label;
+  }
+
+  function clearPreview() {
+    const s = previewStash;
+    if (!s) return;
+    previewStash = null;
+    previewLabel = null;
+    bumpGeneration();
+    selection.clearSelection();
+    ({ fullDocs, docs, rawColumnFields, colWidths, defaultColWidths, displayModeVal, provenance, totalCount, recipe, pageReq, capped, valueJson, ackJson } = s);
+  }
+
   async function execute(db: string, script: string) {
+    staleAfterUndo = false;
+    previewStash = null;
+    previewLabel = null;
     running = true;
     error = null;
     selection.clearSelection();
@@ -403,17 +456,57 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       lastElapsedMs = Date.now() - startedAt;
       running = false;
       activity.end();
+      recordHistory(db, script, lastElapsedMs);
     }
+  }
+
+  /** Every user-started run goes to the query history (builder previews and counts never do). */
+  function recordHistory(db: string, script: string, ms: number) {
+    const meta = sessionMeta(sessionId);
+    let outcome: HistoryEntry["outcome"];
+    if (error) outcome = { kind: "error", message: error.split("\n")[0] };
+    else if (displayModeVal === "ack") outcome = { kind: "modified", n: ackCount(ackJson) };
+    else outcome = { kind: "docs", n: totalCount };
+    queryHistory.record({ tabId: opts.tabId ?? null, sessionLabel: meta.label, connId: meta.connId, db, script, at: Date.now(), ms, outcome });
+  }
+
+  function ackCount(json: string | null): number | undefined {
+    try {
+      const a = JSON.parse(json ?? "null") as Record<string, unknown> | null;
+      for (const k of ["modifiedCount", "deletedCount", "insertedCount", "upsertedCount", "nModified", "n"]) {
+        const v = a?.[k];
+        if (typeof v === "number") return v;
+        if (v && typeof v === "object" && typeof (v as Record<string, unknown>).$numberInt === "string") return Number((v as Record<string, string>).$numberInt);
+      }
+    } catch {
+      // unknown ack shape
+    }
+    return undefined;
   }
 
   function clearConsole() {
     consoleEntries = [];
   }
 
+  // An undo changed documents behind a non-paged script result: say so rather than re-run a script
+  // that might write.
+  let staleAfterUndo = $state(false);
+  // History panel visibility (per tab; toggled by the title-row button and Mod+H).
+  let historyOpen = $state(false);
+
+  /** An undo wrote to `change`'s collection: a paged read result reloads its page; any other result
+   *  showing that collection is flagged stale. */
+  function syncAfterUndo(change: { sessionId: string; db: string; coll: string } | null) {
+    if (!change || change.sessionId !== sessionId || !provenance) return;
+    if (change.db !== provenance.db || change.coll !== provenance.coll) return;
+    if (recipe) void refreshResults();
+    else staleAfterUndo = true;
+  }
+
   async function run(db: string | null, script: string = statementText, intendedSessionId?: string) {
     if (guardSessionSwitch(intendedSessionId, () => run(db, script, intendedSessionId))) return;
     if (!db) {
-      error = "Select a database first.";
+      error = m.query_tab_select_db_first();
       return;
     }
     const critical = scanCritical(script);
@@ -766,12 +859,20 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     get visibleIndices() { return visibleIndices; },
     get columnFields() { return columnFields; },
     get searchTerm() { return quickSearch.searchTerm; },
+    get staleAfterUndo() { return staleAfterUndo; },
+    get historyOpen() { return historyOpen; },
+    toggleHistory() { historyOpen = !historyOpen; },
+    syncAfterUndo,
+    get loadGen() { return `${loadCount}|${quickSearch.appliedSearchRegex?.source ?? ""}`; },
     set searchTerm(v: string) { quickSearch.searchTerm = v; },
     get searchInvalid() { return quickSearch.searchInvalid; },
     get consoleEntries() { return consoleEntries; },
     get lastElapsedMs() { return lastElapsedMs; },
     clearConsole,
     get displayMode() { return displayModeVal; },
+    get previewLabel() { return previewLabel; },
+    showPreview,
+    clearPreview,
     get valueJson() { return valueJson; },
     get ackJson() { return ackJson; },
     get capped() { return capped; },

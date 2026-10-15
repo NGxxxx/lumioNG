@@ -12,6 +12,8 @@ export type DataViewHandle = {
   /** Whether this view's own embedded Command log sub-tab is showing, if it has one (instead of the app-wide docked panel). */
   readonly logOpen?: boolean;
   toggleLog?: () => void;
+  /** Forget the remembered grid layout (collection Data view only). */
+  resetLayout?: () => void;
 };
 
 export function createActiveDataView() {

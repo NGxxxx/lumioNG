@@ -1,6 +1,5 @@
 <script lang="ts">
-  import { openDialog } from "../api/files";
-  import { forgetSshHostKey } from "../api/connection";
+  import { pickCertFile as chooseCertFile, pickAnyFile, forgetHostKey } from "../stores/desktop";
   import * as m from "#lib/paraglide/messages.js";
   import type { createConnectionRegistry } from "../stores/connections.svelte";
   import { ENV_META, suggestEnvironment, type Environment } from "../domain/environment";
@@ -44,18 +43,18 @@
   }
 
   async function pickCertFile() {
-    const path = await openDialog([{ name: "PEM", extensions: ["pem", "crt", "cer"] }]);
+    const path = await chooseCertFile();
     if (path) r.tlsCertificateKeyFile = path;
   }
   async function pickSshKeyFile() {
-    const path = await openDialog([{ name: "All files", extensions: ["*"] }]);
+    const path = await pickAnyFile();
     if (path) r.sshPrivateKeyPath = path;
   }
   async function doForgetSshHostKey() {
     forgettingHostKey = true;
     forgotHostKey = false;
     try {
-      await forgetSshHostKey(r.sshHost, r.sshPort ?? 22);
+      await forgetHostKey(r.sshHost, r.sshPort ?? 22);
       forgotHostKey = true;
     } finally {
       forgettingHostKey = false;
@@ -126,7 +125,7 @@
       </div>
 
       <span class="form-label">{m.session_manager_label_session_name()}</span>
-      <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" aria-label={m.session_manager_col_name()} />
+      <input class="form-input" bind:value={r.label} placeholder={m.connection_form_name_placeholder()} aria-label={m.session_manager_col_name()} />
 
       <span class="form-label">{m.env_label()}:</span>
       <div class="env-cell">
@@ -216,7 +215,7 @@
       />
 
       <span class="form-label">{m.session_manager_label_replica_set()}</span>
-      <input class="form-input mono" bind:value={r.replicaSet} disabled={r.sshEnabled} title={r.sshEnabled ? m.session_manager_tooltip_ssh_lock() : undefined} placeholder="(optional)" aria-label={m.session_manager_label_replica_set()} />
+      <input class="form-input mono" bind:value={r.replicaSet} disabled={r.sshEnabled} title={r.sshEnabled ? m.session_manager_tooltip_ssh_lock() : undefined} placeholder={m.connection_form_optional()} aria-label={m.session_manager_label_replica_set()} />
 
       <span class="form-label">{m.session_manager_label_tls()}</span>
       <label class="form-check">

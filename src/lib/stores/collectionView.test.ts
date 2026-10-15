@@ -14,6 +14,9 @@ vi.mock("../api/documents", () => ({
   exportQueryProgress: vi.fn(),
 }));
 
+vi.mock("../api/indexes", () => ({
+  listIndexes: vi.fn().mockResolvedValue(['{"v":2,"key":{"_id":1},"name":"_id_"}', '{"v":2,"key":{"status":1},"name":"status_1"}']),
+}));
 vi.mock("../api/files", () => ({
   openDialog: vi.fn(),
   openDirDialog: vi.fn(),
@@ -35,6 +38,9 @@ const samp = documents.sampleDocuments as ReturnType<typeof vi.fn>;
 const full = documents.fetchFullDoc as ReturnType<typeof vi.fn>;
 const expQ = documents.exportQueryProgress as ReturnType<typeof vi.fn>;
 const cnt = documents.countDocuments as ReturnType<typeof vi.fn>;
+
+// Layouts are remembered per namespace in local storage; most tests share "conn:1/d/c".
+beforeEach(() => localStorage.clear());
 
 describe("createCollectionView — paging", () => {
   beforeEach(() => {
@@ -1516,3 +1522,123 @@ describe("createCollectionView — grid depth limit", () => {
     setSessionEnvironment("conn:6", null);
   });
 });
+
+describe("createCollectionView — filter chips", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    cnt.mockResolvedValue(2);
+    qp.mockResolvedValue([{ _id: 1, status: "shipped", total: 5 }, { _id: 2, status: "pending", total: 7 }]);
+    samp.mockResolvedValue([]);
+  });
+
+  it("chips mirror the applied filter; setChips applies at once", async () => {
+    const v = createCollectionView("conn:1", "shop", "orders");
+    await v.init();
+    expect(v.chips).toEqual([]);
+    await v.setChips([{ field: "status", op: "eq", values: ['"shipped"'] }]);
+    expect(JSON.parse(v.appliedFilter)).toEqual({ status: "shipped" });
+    expect(v.chips).toEqual([{ field: "status", op: "eq", values: ['"shipped"'] }]);
+  });
+
+  it("an advanced filter has no chips", async () => {
+    const v = createCollectionView("conn:1", "shop", "orders");
+    v.filterText = '{"$expr": {"$gt": ["$a", "$b"]}}';
+    await v.applyFilter();
+    expect(v.chips).toBeNull();
+  });
+
+  it("applied filters go to the history of that collection", async () => {
+    const v = createCollectionView("conn:1", "shop", "history_only");
+    await v.setChips([{ field: "total", op: "gt", values: ["100"] }]);
+    expect(v.filterHistory.map((e) => JSON.parse(e.text))).toEqual([{ total: { $gt: 100 } }]);
+  });
+
+  it("knows field types, indexes, sample values, slow-field and zero-result hints", async () => {
+    const v = createCollectionView("conn:1", "shop", "orders");
+    await v.init();
+    await vi.waitFor(() => expect(v.fieldInfos.find((f) => f.path === "status")?.indexed).toBe(true));
+    expect(v.valuesFor("status")).toEqual(['"shipped"', '"pending"']);
+    expect(v.slowFieldHint("total")).toBe(false); // small collection
+    cnt.mockResolvedValue(0);
+    qp.mockResolvedValue([]);
+    await v.setChips([{ field: "status", op: "eq", values: ['"nope"'] }]);
+    expect(v.zeroResult).toBe(true);
+  });
+
+  it("cell menu offers 'field exists' and adds it as a chip", async () => {
+    const v = createCollectionView("conn:1", "shop", "orders");
+    await v.init();
+    v.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 1, clientY: 1 } as unknown as MouseEvent, 0, "total");
+    expect(v.menuItems().map((i) => i.action)).toContain("filterExists");
+    v.onMenuSelect("filterExists");
+    await vi.waitFor(() => expect(JSON.parse(v.appliedFilter)).toEqual({ total: { $exists: true } }));
+  });
+
+  it("cell menu 'is empty' keeps an applied filter that is not chip-shaped", async () => {
+    const v = createCollectionView("conn:1", "shop", "orders");
+    await v.init();
+    v.filterText = '{"$or": [{"a": 1}, {"b": 2}]}';
+    await v.applyFilter();
+    expect(v.chips).toBeNull();
+    v.openMenu({ preventDefault() {}, stopPropagation() {}, clientX: 1, clientY: 1 } as unknown as MouseEvent, 0, "total");
+    v.onMenuSelect("filterEmpty");
+    await vi.waitFor(() =>
+      expect(JSON.parse(v.appliedFilter)).toEqual({ $and: [{ $or: [{ a: 1 }, { b: 2 }] }, { total: { $in: [null, "", []] } }] }),
+    );
+  });
+});
+
+describe("createCollectionView — remembered layout", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    cnt.mockResolvedValue(1);
+    qp.mockResolvedValue([{ _id: 1, a: 1, b: 2 }]);
+    samp.mockResolvedValue([]);
+  });
+
+  it("hidden / pinned / widths / sort / mode come back for the same collection", async () => {
+    vi.useFakeTimers();
+    try {
+      const v = createCollectionView("conn:1", "shop", "layout1");
+      await v.init();
+      v.togglePin("a");
+      v.setColWidth("b", 333);
+      v.view = "tree";
+      await v.onHeaderMenuSelect("b", "sortDesc");
+      await v.onHeaderMenuSelect("a", "hide");
+      vi.advanceTimersByTime(400);
+      const again = createCollectionView("conn:1", "shop", "layout1");
+      expect([...again.pinned]).toEqual(["a"]);
+      expect([...again.hidden]).toEqual(["a"]);
+      expect(again.sortKeys).toEqual([{ path: "b", dir: -1 }]);
+      expect(again.view).toBe("tree");
+      await again.init();
+      expect(again.colWidths.b).toBe(333);
+      expect(qp.mock.calls.at(-1)?.[6]).toBe('{"b":-1,"_id":1}');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the filter is not remembered; reset layout restores defaults", async () => {
+    vi.useFakeTimers();
+    try {
+      const v = createCollectionView("conn:1", "shop", "layout2");
+      await v.init();
+      v.togglePin("a");
+      v.filterText = '{"a": 1}';
+      await v.applyFilter();
+      vi.advanceTimersByTime(400);
+      const again = createCollectionView("conn:1", "shop", "layout2");
+      expect(again.appliedFilter).toBe("{}");
+      await again.resetLayout();
+      expect([...again.pinned]).toEqual([]);
+      expect(createCollectionView("conn:1", "shop", "layout2").pinned.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+

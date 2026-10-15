@@ -85,6 +85,8 @@ function writeKey(key: string, value: string) {
   }
 }
 
+const RECORD_HISTORY_KEY = "lumio.recordQueryHistory";
+
 /** App-wide UI preferences persisted in localStorage. */
 export function createSettings() {
   const hasStorage = typeof localStorage !== "undefined";
@@ -107,8 +109,17 @@ export function createSettings() {
     hasStorage ? untrack(() => Math.max(PEEK_MIN_W, readPosInt(PEEK_WIDTH_KEY, PEEK_DEFAULT_W))) : PEEK_DEFAULT_W,
   );
   let peekPinned = $state<boolean>(hasStorage ? untrack(() => readBool(PEEK_PINNED_KEY)) : false);
+  // On unless explicitly turned off (spec §3.1).
+  let recordQueryHistory = $state<boolean>(hasStorage ? untrack(() => localStorage.getItem(RECORD_HISTORY_KEY) !== "false") : true);
 
   return {
+    get recordQueryHistory(): boolean {
+      return recordQueryHistory;
+    },
+    setRecordQueryHistory(v: boolean) {
+      recordQueryHistory = v;
+      writeKey(RECORD_HISTORY_KEY, v ? "true" : "false");
+    },
     get suppressDestructiveWarning(): boolean {
       return suppress;
     },

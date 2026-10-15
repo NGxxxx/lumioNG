@@ -1,5 +1,8 @@
 import { createQueryScript } from "./queryScript.svelte";
 
+/** Interrupts the script running on a session (toolbar Stop). */
+export { cancelScript } from "../api/script";
+
 /** A single Query tab's run store. */
 export type QueryRun = ReturnType<typeof createQueryScript>;
 
@@ -10,7 +13,7 @@ const runs = new Map<number, QueryRun>();
 export function getQueryRun(id: number, sessionId: string, initialStatement: string): QueryRun {
   let r = runs.get(id);
   if (!r) {
-    r = createQueryScript(sessionId, initialStatement);
+    r = createQueryScript(sessionId, initialStatement, { tabId: id });
     runs.set(id, r);
   }
   return r;

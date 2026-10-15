@@ -465,8 +465,17 @@ describe("ResultGrid cursor navigation", () => {
     await fireEvent.keyDown(r.scroller, { key: "j" });
     expect(cursorRow(r.container)).toBe(0);
     const other = [5, 6].map((i) => ({ _id: { $oid: String(i) }, n: i }));
-    await r.rerender({ v: baseView(other, { setSelected: vi.fn() }) });
+    await r.rerender({ v: baseView(other, { setSelected: vi.fn(), loadGen: "2" }) });
     expect(cursorRow(r.container)).toBe(-1);
+  });
+
+  it("the cursor stays when the same rows are re-assigned (inline edit), even with a changed first row", async () => {
+    const r = setup({ loadGen: "1" });
+    await fireEvent.keyDown(r.scroller, { key: "j" });
+    await fireEvent.keyDown(r.scroller, { key: "j" });
+    const edited = r.v.docs.map((d, i) => (i === 0 ? { ...d, _id: { $oid: "edited" } } : d));
+    await r.rerender({ v: baseView(edited, { setSelected: vi.fn(), loadGen: "1" }) });
+    expect(cursorRow(r.container)).toBe(1);
   });
 
   it("navigation stays fast with a huge filtered selection", async () => {

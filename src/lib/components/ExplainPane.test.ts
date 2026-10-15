@@ -79,4 +79,27 @@ describe("ExplainPane", () => {
     await fireEvent.click(getByText("Refresh"));
     expect(onrefresh).toHaveBeenCalled();
   });
+
+  it("shows the efficiency sentence and the flow with numbers", () => {
+    const { getByText } = render(ExplainPane, { props: { ...base, summary: collscan } });
+    expect(getByText("Read 10,000 to return 42 — 0.4%")).toBeTruthy();
+    expect(getByText("docs 10,000")).toBeTruthy();
+    expect(getByText("→ 42 returned")).toBeTruthy();
+  });
+
+  it("pipeline advice: move $match first runs the action", async () => {
+    const onmovematchfirst = vi.fn();
+    const { getByRole } = render(ExplainPane, {
+      props: { ...base, summary: ixscan, pipeline: [{ name: "$group", body: {} }, { name: "$match", body: {} }], onmovematchfirst },
+    });
+    await fireEvent.click(getByRole("button", { name: "Move $match first" }));
+    expect(onmovematchfirst).toHaveBeenCalled();
+  });
+
+  it("on PROD the create-index confirmation says so", async () => {
+    const suggestion = { keys: { status: 1 as const }, snippet: 'db.getCollection("orders").createIndex({"status":1})' };
+    const { getByRole, getByText } = render(ExplainPane, { props: { ...base, summary: collscan, suggestion, prod: true } });
+    await fireEvent.click(getByRole("button", { name: "Create index" }));
+    expect(getByText(/This creates the index on PROD/)).toBeTruthy();
+  });
 });

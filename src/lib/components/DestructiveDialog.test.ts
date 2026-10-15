@@ -55,4 +55,9 @@ describe("DestructiveDialog", () => {
     expect((getByLabelText(/Type orders to confirm/) as HTMLInputElement).value).toBe("");
     expect((getByRole("button", { name: "Delete 5,000 documents" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("one document reads singular", async () => {
+    const { getByRole } = await open("dev", { op: "deleteMany", target: { db: "shop", coll: "orders" }, count: 1, undoable: true });
+    expect(getByRole("button", { name: "Delete 1 document" })).toBeTruthy();
+  });
 });

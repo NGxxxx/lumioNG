@@ -6,6 +6,11 @@ import {
 import type { Doc } from "../domain/doc";
 import { createAsyncGuard } from "./asyncGuard.svelte";
 import { settings } from "./settings.svelte";
+import { listIndexes } from "../api/indexes";
+import { errorMessage } from "../api/errors";
+import { nextSteps as nextStepsFor, expandTemplate, stageWarnings } from "../domain/stageForms";
+import { inferSchema, mergeColumns } from "../domain/schema";
+import { fieldInfos, indexedLeadingFields, type FieldInfo } from "../domain/fieldInfo";
 
 /** Shared across every PipelineTree instance on purpose — copying a stage in one Query tab's
  *  Builder and pasting it into a different tab's Builder should work, so this deliberately isn't
@@ -33,7 +38,15 @@ const EMPTY_PREVIEW: PreviewState = { docs: [], loading: false, error: null, has
 export interface ScriptBinding {
   get: () => string;
   set: (script: string) => void;
+  /** Database the tab runs against (previews / counts need it). */
+  db?: () => string | null;
+  /** Where the selected stage's preview goes (the tab's Result pane). */
+  preview?: { show: (docs: Doc[], label: { stage: number; of: number }) => void; clear: () => void };
 }
+
+export type TemplateId = Parameters<typeof expandTemplate>[0];
+export type StageCount = number | "error" | null;
+const COUNT_TIMEOUT_MS = 5000;
 
 const PREVIEW_DEBOUNCE_MS = 450;
 const PREVIEW_SAMPLE_SIZE = 20;
@@ -54,6 +67,171 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
   let lastSyncedScript: string | null = null;
   let selfGeneratedScript: string | null = null;
   const debouncers = new Map<string, ReturnType<typeof createDebouncer>>();
+
+  // ── Builder state (spec §1): selection drives the Result pane; every card shows its count ──
+  let selectedId = $state<string | null>(null);
+  let counts = $state.raw<Record<string, StageCount>>({});
+  let discardedNotice = $state(0);
+  let previewError = $state<string | null>(null);
+  let indexCache = $state.raw<Record<string, string[] | null>>({});
+  let previewSeq = 0;
+  let countSeq = 0;
+  const selectDebouncer = createDebouncer(PREVIEW_DEBOUNCE_MS);
+  const countDebouncer = createDebouncer(PREVIEW_DEBOUNCE_MS);
+  const outputs = new Map<string, Doc[]>(); // stage id → last sampled output (feeds fieldsAt)
+
+  const enabledStages = $derived(stages.filter((s) => s.enabled !== false));
+  const warnings = $derived.by(() => {
+    const base = stageWarnings(
+      stages.map((s) => ({ name: s.name, body: s.body, enabled: s.enabled !== false })),
+      (c) => indexCache[c] ?? null,
+    );
+    const zero = stages.flatMap((s, index) => (counts[s.id] === 0 ? [{ index, key: "zero_docs" }] : []));
+    return [...base, ...zero];
+  });
+  const nextSteps = $derived(nextStepsFor(enabledStages.map((s) => ({ name: s.name, body: s.body }))));
+
+  const toPipelineJson = (list: StageEntry[]) => JSON.stringify(list.map((s) => ({ [s.name]: s.body })));
+  /** Enabled stages up to and including `index`. */
+  const prefixThrough = (index: number) => stages.slice(0, index + 1).filter((s) => s.enabled !== false);
+
+  function select(id: string | null) {
+    selectedId = id;
+    previewSeq++;
+    previewError = null;
+    if (id === null) {
+      selectDebouncer.cancel();
+      script.preview?.clear();
+      return;
+    }
+    selectDebouncer.schedule(() => void runSelectedPreview());
+  }
+
+  async function runSelectedPreview() {
+    const my = ++previewSeq;
+    const idx = stages.findIndex((s) => s.id === selectedId);
+    const db = script.db?.() ?? null;
+    if (idx === -1 || !db || !coll) return;
+    const prefix = prefixThrough(idx);
+    if (prefix.some((s) => WRITE_STAGES.has(s.name))) return;
+    try {
+      const docs = await aggregate(sessionId, db, coll, toPipelineJson(prefix), 0, PREVIEW_SAMPLE_SIZE, settings.queryTimeoutMs);
+      if (my !== previewSeq) return;
+      outputs.set(stages[idx].id, docs);
+      script.preview?.show(docs, { stage: prefix.length, of: enabledStages.length });
+    } catch (e) {
+      if (my === previewSeq) previewError = errorMessage(e);
+    }
+  }
+
+  /** Recounts every card from `from` on (debounced; superseded counts are dropped). */
+  function refreshCounts(from = 0) {
+    const stale: Record<string, StageCount> = { ...counts };
+    for (const s of stages.slice(from)) stale[s.id] = null;
+    counts = stale;
+    countDebouncer.schedule(() => void runCounts(from));
+  }
+
+  async function runCounts(from: number) {
+    const my = ++countSeq;
+    const db = script.db?.() ?? null;
+    if (!db || !coll) return;
+    const timeout = Math.min(settings.queryTimeoutMs ?? COUNT_TIMEOUT_MS, COUNT_TIMEOUT_MS);
+    for (let i = from; i < stages.length; i++) {
+      const s = stages[i];
+      if (s.enabled === false) continue;
+      const prefix = prefixThrough(i);
+      if (prefix.some((p) => WRITE_STAGES.has(p.name))) break; // never run a pipeline that writes
+      let value: StageCount;
+      try {
+        const rows = await aggregate(sessionId, db, coll, JSON.stringify([...prefix.map((p) => ({ [p.name]: p.body })), { $count: "n" }]), 0, 1, timeout);
+        const n = (rows[0] as { n?: unknown } | undefined)?.n;
+        value = typeof n === "number" ? n : 0;
+      } catch {
+        value = "error";
+      }
+      if (my !== countSeq) return;
+      counts = { ...counts, [s.id]: value };
+    }
+  }
+
+  /** Loads (once) the index lists the warnings need: the source collection and every $lookup target. */
+  function ensureIndexes() {
+    const db = script.db?.() ?? null;
+    if (!db || !coll) return;
+    const wanted = new Set<string>([coll]);
+    for (const s of stages) {
+      const from = s.name === "$lookup" ? (s.body as { from?: unknown } | null)?.from : undefined;
+      if (typeof from === "string") wanted.add(from);
+    }
+    for (const c of wanted) {
+      if (c in indexCache) continue;
+      indexCache = { ...indexCache, [c]: null };
+      listIndexes(sessionId, db, c)
+        .then((raw) => { indexCache = { ...indexCache, [c]: [...indexedLeadingFields(raw), "_id"] }; })
+        .catch(() => {});
+    }
+  }
+
+  /** After any edit at `index`: stale previews/counts from there on, re-preview the selection. */
+  function afterEdit(index: number) {
+    previewSeq++;
+    for (const s of stages.slice(Math.max(0, index))) outputs.delete(s.id);
+    refreshCounts(Math.max(0, index));
+    ensureIndexes();
+    if (selectedId) selectDebouncer.schedule(() => void runSelectedPreview());
+  }
+
+  /** Explain advice: moves the first $match that follows a reshaping stage in front of it. */
+  function moveMatchFirst() {
+    const RESHAPING = new Set(["$group", "$project", "$unwind", "$addFields", "$set", "$lookup", "$replaceRoot"]);
+    const reshape = stages.findIndex((s) => RESHAPING.has(s.name));
+    if (reshape === -1) return;
+    const match = stages.findIndex((s, i) => i > reshape && s.name === "$match");
+    if (match !== -1) reorderStage(match, reshape);
+  }
+
+  function setEnabled(index: number, on: boolean) {
+    stages = stages.map((s, i) => (i === index ? { ...s, enabled: on } : s));
+    regenerate();
+    afterEdit(index);
+  }
+
+  function applyTemplate(id: TemplateId, args: Record<string, string | number>) {
+    const added = expandTemplate(id, args).map((s) => ({ id: newStageId(), name: s.name, body: s.body }));
+    const at = stages.length;
+    stages = [...stages, ...added];
+    regenerate();
+    afterEdit(at);
+  }
+
+  function addStep(stage: { name: string; body: unknown }) {
+    const at = stages.length;
+    stages = [...stages, { id: newStageId(), name: stage.name, body: stage.body }];
+    regenerate();
+    afterEdit(at);
+  }
+
+  /** Fields available as input to stage `index`: the sampled output of the stage before it, or
+   *  the collection itself for the first stage. */
+  async function fieldsAt(index: number): Promise<FieldInfo[]> {
+    const db = script.db?.() ?? null;
+    if (!db || !coll) return [];
+    const prev = index > 0 ? stages[index - 1] : null;
+    let docs = prev ? outputs.get(prev.id) : outputs.get("__source");
+    if (!docs) {
+      const prefix = index > 0 ? prefixThrough(index - 1) : [];
+      if (prefix.some((s) => WRITE_STAGES.has(s.name))) return [];
+      try {
+        docs = await aggregate(sessionId, db, coll, toPipelineJson(prefix), 0, PREVIEW_SAMPLE_SIZE, settings.queryTimeoutMs);
+      } catch {
+        return [];
+      }
+      outputs.set(prev ? prev.id : "__source", docs);
+    }
+    const indexed = new Set(index === 0 ? (indexCache[coll] ?? []) : []);
+    return fieldInfos(mergeColumns(inferSchema(docs), docs), indexed);
+  }
 
   // Matches TreeEditor.svelte's own ROWS_DEBOUNCE_MS: `updateStageBody` fires on every keystroke
   // from TreeLeafInput (no debounce of its own there — it's a shared component other callers rely
@@ -83,9 +261,15 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
       return;
     }
     parseError = null;
+    const disabled = stages.filter((s) => s.enabled === false).length;
+    discardedNotice = disabled;
     coll = result.coll;
     stages = result.stages;
     previews = {};
+    outputs.clear();
+    if (selectedId && !stages.some((s) => s.id === selectedId)) select(null);
+    refreshCounts(0);
+    ensureIndexes();
   }
 
   function addStage(name: string, atIndex: number): void {
@@ -94,6 +278,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     stages = next;
     invalidatePreviewsFrom(atIndex);
     regenerate();
+    afterEdit(atIndex);
   }
 
   /** Drops cached preview state for every stage at or after `fromIndex` in the CURRENT `stages`
@@ -117,6 +302,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     }
     invalidatePreviewsFrom(index);
     regenerate();
+    afterEdit(index);
   }
 
   function reorderStage(from: number, to: number): void {
@@ -127,12 +313,14 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     stages = next;
     invalidatePreviewsFrom(Math.min(from, to));
     regenerate();
+    afterEdit(Math.min(from, to));
   }
 
   function renameStage(index: number, name: string): void {
     stages = stages.map((s, i) => (i === index ? { id: s.id, name, body: defaultStageBody(name) } : s));
     invalidatePreviewsFrom(index);
     regenerate();
+    afterEdit(index);
   }
 
   function cutStage(index: number): void {
@@ -159,6 +347,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     stages = next;
     invalidatePreviewsFrom(index + 1);
     regenerate();
+    afterEdit(index + 1);
   }
 
   function duplicateStage(index: number): void {
@@ -169,6 +358,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     stages = next;
     invalidatePreviewsFrom(index + 1);
     regenerate();
+    afterEdit(index + 1);
   }
 
   /** Debounced regenerate: called on every keystroke (via TreeLeafInput's onchange), so the
@@ -177,6 +367,7 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
     stages = stages.map((s, i) => (i === index ? { ...s, body } : s));
     invalidatePreviewsFrom(index);
     regenerateDebouncer.schedule(regenerate);
+    afterEdit(index);
   }
 
   function setPreview(id: string, patch: Partial<PreviewState>): void {
@@ -241,6 +432,21 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
 
   return {
     get stages() { return stages; },
+    get selectedId() { return selectedId; },
+    select,
+    get counts() { return counts; },
+    refreshCounts,
+    get warnings() { return warnings; },
+    get nextSteps() { return nextSteps; },
+    addStep,
+    applyTemplate,
+    setEnabled,
+    moveMatchFirst,
+    fieldsAt,
+    get previewError() { return previewError; },
+    /** Disabled stages dropped by a direct script edit (0 = nothing to say). */
+    get discardedNotice() { return discardedNotice; },
+    dismissDiscardedNotice() { discardedNotice = 0; },
     get coll() { return coll; },
     get sessionId() { return sessionId; },
     rebindSession,

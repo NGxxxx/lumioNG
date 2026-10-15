@@ -118,7 +118,10 @@
     const change = undo.changed;
     if (!change || change.seq <= undoSeen) return;
     undoSeen = change.seq;
-    untrack(() => v.syncAfterUndo(change));
+    untrack(() => {
+      v.syncAfterUndo(change);
+      peek.refreshIfShowing(change);
+    });
   });
   // Rows changed (reload, page, inline edit): the drawer refreshes, keeps a dirty draft, or closes.
   $effect(() => {
@@ -155,6 +158,7 @@
 
   // Bridge for the global toolbar (Edit document / Export); getters keep it reactive to selection.
   const dataViewHandle = {
+    resetLayout: () => void v.resetLayout(),
     get canEdit() {
       if (v.selectedCount !== 1) return false;
       const d = v.docs[[...v.selected][0]];

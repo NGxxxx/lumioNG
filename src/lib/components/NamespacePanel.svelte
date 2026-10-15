@@ -221,19 +221,19 @@
       <EnvBadge env={sess.environment} />
       <!-- Status indicator -->
       {#if sess.status === "connecting"}
-        <span class="status-spinner" aria-label="Connecting" title="Connecting…">
+        <span class="status-spinner" aria-label={m.namespace_panel_status_connecting()} title={m.namespace_panel_status_connecting()}>
           <svg aria-hidden="true" width="10" height="10" viewBox="0 0 24 24" class="spin">
             <circle cx="12" cy="12" r="9" fill="none" stroke="var(--muted)" stroke-width="2.5" stroke-dasharray="30 56"/>
           </svg>
         </span>
       {:else if sess.status === "error"}
-        <span class="status-error" aria-label="Connection error" title="Connection error">
+        <span class="status-error" aria-label={m.namespace_panel_status_error()} title={m.namespace_panel_status_error()}>
           <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10">
             <circle cx="5" cy="5" r="4" fill="var(--danger)" stroke="none"/>
           </svg>
         </span>
       {:else}
-        <span class="status-ok" aria-label="Connected" title="Connected">
+        <span class="status-ok" aria-label={m.namespace_panel_status_connected()} title={m.namespace_panel_status_connected()}>
           <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10">
             <circle cx="5" cy="5" r="4" fill="var(--ok-strong)" stroke="none"/>
           </svg>
@@ -251,8 +251,8 @@
       <!-- Close button -->
       <button
         class="session-close"
-        aria-label="Close session"
-        title="Close session"
+        aria-label={m.namespace_panel_close_session()}
+        title={m.namespace_panel_close_session()}
         onclick={(e) => { e.stopPropagation(); confirmDisconnect = { label: sess.label, run: () => sessionManager.closeSession(sess.id) }; }}
       >✕</button>
     </div>

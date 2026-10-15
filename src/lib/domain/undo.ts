@@ -52,6 +52,7 @@ export function inverseUpdate(entry: UndoEntry & { kind: "cell" }): string {
 }
 
 /** Message key + document count for the undo toast / list. */
-export function describeUndo(entry: UndoEntry): { key: string; count: number } {
+export function describeUndo(entry: UndoEntry): { key: string; count: number; path?: string } {
+  if (entry.kind === "cell") return { key: "undo_cell", count: 1, path: entry.path };
   return { key: `undo_${entry.kind}`, count: entry.kind === "delete" ? entry.docs.length : 1 };
 }

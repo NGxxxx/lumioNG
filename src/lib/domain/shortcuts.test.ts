@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesEvent, formatCombo, isDefaultWebviewAccelerator } from "./shortcuts";
+import { matchesEvent, formatCombo, isDefaultWebviewAccelerator, blocksNativeSelectAll } from "./shortcuts";
 
 function evt(partial: {
   key: string;
@@ -140,3 +140,28 @@ describe("formatCombo", () => {
     expect(formatCombo("Mod+Shift+Tab", "mac")).toBe("⌘⇧Tab");
   });
 });
+
+describe("matchesEvent with Alt-modified characters", () => {
+  const ev = (o: Partial<KeyboardEvent>) => ({ key: "", code: "", ctrlKey: false, metaKey: false, shiftKey: false, altKey: false, ...o }) as KeyboardEvent;
+  it("matches by physical key when Alt changes the character (mac Option, AltGr)", () => {
+    expect(matchesEvent("Mod+Alt+A", ev({ key: "å", code: "KeyA", metaKey: true, altKey: true }), "mac")).toBe(true);
+    expect(matchesEvent("Mod+Alt+A", ev({ key: "ą", code: "KeyA", ctrlKey: true, altKey: true }), "other")).toBe(true);
+  });
+  it("still requires the right modifiers", () => {
+    expect(matchesEvent("Mod+Alt+A", ev({ key: "å", code: "KeyA", altKey: true }), "other")).toBe(false);
+  });
+});
+
+describe("blocksNativeSelectAll", () => {
+  const ev = (o: Partial<KeyboardEvent>, tag = "DIV") =>
+    ({ key: "a", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, target: { tagName: tag, isContentEditable: false }, ...o }) as unknown as KeyboardEvent;
+  it("blocks plain Mod+A outside editable fields", () => {
+    expect(blocksNativeSelectAll(ev({ ctrlKey: true }))).toBe(true);
+    expect(blocksNativeSelectAll(ev({ ctrlKey: true }, "INPUT"))).toBe(false);
+  });
+  it("leaves Mod+Alt+A / Mod+Shift+A to the app's shortcuts", () => {
+    expect(blocksNativeSelectAll(ev({ ctrlKey: true, altKey: true }))).toBe(false);
+    expect(blocksNativeSelectAll(ev({ metaKey: true, shiftKey: true }))).toBe(false);
+  });
+});
+

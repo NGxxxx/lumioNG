@@ -5,10 +5,10 @@
   import { pushModal } from "#lib/stores/modalStack.js";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
-  import { jobs, exportJobSource } from "../stores/jobs.svelte";
+  import { jobs, exportJobSource, exportTargetLabel } from "../stores/jobs.svelte";
   import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, type ExportWizardInput } from "../domain/exportPlan";
   import type { BsonType } from "../domain/extjson";
-  import { saveDialog, openDirDialog } from "../api/files";
+  import { pickSavePath, pickDirectory } from "../stores/desktop";
   import * as m from "#lib/paraglide/messages.js";
 
   let { input, onclose }: { input: ExportWizardInput; onclose: () => void } = $props();
@@ -80,7 +80,7 @@
   }
 
   async function chooseFolder() {
-    const d = await openDirDialog();
+    const d = await pickDirectory();
     if (d !== null) dir = d;
   }
 
@@ -99,14 +99,14 @@
         source: { kind: "query", filter: "{}", sort: null, projection: null },
       }));
       job = createExportJob(sessionManager.active!.id, { targets: exTargets, format, dir: dir!, includeMetadata });
-      jobs.register(exportJobSource(job, exTargets.length === 1 ? `${exTargets[0].db}.${exTargets[0].coll}` : `${exTargets.length} collections`));
+      jobs.register(exportJobSource(job, exportTargetLabel(exTargets, null)));
       await job.run();
       return;
     }
 
     // Scoped: single file.
     const name = `${input.coll}.${ext}`;
-    const path = await saveDialog(name, [{ name: ext.toUpperCase(), extensions: [ext] }]);
+    const path = await pickSavePath(name, ext);
     if (path === null) return;
 
     let target: ExportTarget;
@@ -122,7 +122,7 @@
       targets: [target], format, filePath: path,
       includeMetadata: input.mode === "scopedCollection" && includeMetadata,
     });
-    jobs.register(exportJobSource(job, path.split(/[\\/]/).pop() ?? path));
+    jobs.register(exportJobSource(job, exportTargetLabel(null, path)));
     await job.run();
   }
 

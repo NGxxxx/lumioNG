@@ -35,7 +35,7 @@
     <p>{message}</p>
     <p>{m.drop_dialog_confirm_prefix()} <code>{expectedName}</code> {m.drop_dialog_confirm_suffix()}</p>
     <!-- svelte-ignore a11y_autofocus -->
-    <input bind:value={typed} disabled={asyncSubmit.busy} aria-label="confirm-name" autofocus />
+    <input bind:value={typed} disabled={asyncSubmit.busy} aria-label={m.drop_dialog_confirm_aria()} autofocus />
     {#if asyncSubmit.error}<div class="dlg-error">{asyncSubmit.error}</div>{/if}
   {/snippet}
   {#snippet footer()}

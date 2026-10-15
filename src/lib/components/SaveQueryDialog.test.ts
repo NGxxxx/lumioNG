@@ -19,7 +19,7 @@ describe("SaveQueryDialog", () => {
     const { getByLabelText, getByText } = render(SaveQueryDialog, { onsubmit, oncancel: () => {} });
     const ok = getByText("OK") as HTMLButtonElement;
     expect(ok.disabled).toBe(true);
-    await fireEvent.input(getByLabelText("name-input"), { target: { value: "  My query  " } });
+    await fireEvent.input(getByLabelText("Name"), { target: { value: "  My query  " } });
     expect(ok.disabled).toBe(false);
     await fireEvent.click(ok);
     expect(onsubmit).toHaveBeenCalledWith("My query", null);
@@ -35,7 +35,7 @@ describe("SaveQueryDialog", () => {
   it("Enter submits once a name is typed", async () => {
     const onsubmit = vi.fn().mockResolvedValue(undefined);
     const { getByLabelText } = render(SaveQueryDialog, { onsubmit, oncancel: () => {} });
-    await fireEvent.input(getByLabelText("name-input"), { target: { value: "My query" } });
+    await fireEvent.input(getByLabelText("Name"), { target: { value: "My query" } });
     handleModalKeydown(key("Enter"));
     expect(onsubmit).toHaveBeenCalledWith("My query", null);
   });

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { summarizeExplain } from "./explainPlan";
+import { summarizeExplain, explainFlow, efficiency, explainAdvice } from "./explainPlan";
 
 describe("summarizeExplain", () => {
   it("find-shape COLLSCAN produces a collscan verdict with one stage", () => {
@@ -181,5 +181,43 @@ describe("summarizeExplain", () => {
       },
     };
     expect(summarizeExplain(raw).verdict).toBe("other");
+  });
+});
+
+describe("explain flow, efficiency and advice", () => {
+  const aggExplain = {
+    stages: [
+      { $cursor: { executionStats: { executionTimeMillis: 40, totalDocsExamined: 48213, nReturned: 120,
+        executionStages: { stage: "PROJECTION_SIMPLE", nReturned: 120, executionTimeMillisEstimate: 39,
+          inputStage: { stage: "COLLSCAN", nReturned: 120, docsExamined: 48213, executionTimeMillisEstimate: 38 } } } } },
+      { $group: { _id: "$tier" }, nReturned: 3, executionTimeMillisEstimate: 41 },
+      { $sort: { sortKey: { count: -1 } }, nReturned: 3, executionTimeMillisEstimate: 41 },
+    ],
+  };
+
+  it("aggregate trailing stages carry their reported numbers", () => {
+    const s = summarizeExplain(aggExplain);
+    expect(s.stages.map((x) => x.name)).toEqual(["COLLSCAN", "PROJECTION_SIMPLE", "$group", "$sort"]);
+    expect(s.stages[2]).toMatchObject({ nReturned: 3, executionTimeMs: 41 });
+  });
+
+  it("flow rows scale by documents and mark the slowest stage", () => {
+    const rows = explainFlow(summarizeExplain(aggExplain));
+    expect(rows[0]).toMatchObject({ name: "COLLSCAN", docs: 48213, returned: 120, widthPct: 100 });
+    expect(rows[2].widthPct).toBeLessThan(1);
+    expect(rows.filter((r) => r.slowest).map((r) => r.name)).toEqual(["$group"]);
+  });
+
+  it("efficiency is returned / examined", () => {
+    expect(efficiency(summarizeExplain(aggExplain))).toEqual({ returned: 120, examined: 48213, pct: 0.2 });
+    expect(efficiency({ ...summarizeExplain(aggExplain), totalDocsExamined: 0 })).toBeNull();
+  });
+
+  it("advice: index for a collection scan, $match after $group, in-memory sort", () => {
+    const s = summarizeExplain(aggExplain);
+    const pipeline = [{ name: "$group", body: {} }, { name: "$match", body: { a: 1 } }];
+    expect(explainAdvice(s, pipeline).map((a) => a.key)).toEqual(["create_index", "move_match_first"]);
+    const sorted = { ...s, verdict: "ixscan" as const, stages: [...s.stages, { name: "SORT", nReturned: 1, docsExamined: null, keysExamined: null, executionTimeMs: 1 }] };
+    expect(explainAdvice(sorted, null).map((a) => a.key)).toEqual(["in_memory_sort"]);
   });
 });

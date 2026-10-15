@@ -239,4 +239,19 @@ describe("docPeek", () => {
     expect(peek.error).toBeNull();
     expect(peek.doc).not.toBeNull();
   });
+
+  it("refreshIfShowing reloads a clean drawer and flags a dirty one", async () => {
+    const { peek, loadFull } = setup();
+    await peek.show(doc());
+    loadFull.mockClear();
+    peek.refreshIfShowing({ sessionId: "s1", db: "shop", coll: "elsewhere" });
+    expect(loadFull).not.toHaveBeenCalled();
+    peek.refreshIfShowing({ sessionId: "s1", db: "shop", coll: "orders" });
+    await vi.waitFor(() => expect(loadFull).toHaveBeenCalledTimes(1));
+    peek.startEdit();
+    peek.setDraft({ ...peek.doc!, status: "x" });
+    peek.refreshIfShowing({ sessionId: "s1", db: "shop", coll: "orders" });
+    expect(peek.stale).toBe(true);
+    expect(peek.draft).toMatchObject({ status: "x" });
+  });
 });

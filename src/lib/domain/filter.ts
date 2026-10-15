@@ -1,6 +1,7 @@
 /** Validate and normalize a user-supplied query filter (Extended JSON object). */
 /** Condition kinds `addCondition` can merge into a filter. */
-export type FilterOp = "eq" | "ne" | "exists" | "notExists";
+/** `empty` = null, "" or [] (the cell menu's "is empty"). */
+export type FilterOp = "eq" | "ne" | "exists" | "notExists" | "empty";
 
 export type ParseResult =
   | { ok: true; json: string }
@@ -37,7 +38,10 @@ export function addCondition(
   const current = JSON.parse(parsed.json) as Record<string, unknown>;
 
   const cond: unknown =
-    op === "eq" ? value : op === "ne" ? { $ne: value } : { $exists: op === "exists" };
+    op === "eq" ? value
+    : op === "ne" ? { $ne: value }
+    : op === "empty" ? { $in: [null, "", []] }
+    : { $exists: op === "exists" };
   const member = `${JSON.stringify(path)}: ${JSON.stringify(cond)}`;
 
   if (Object.keys(current).length === 0) return { ok: true, text: `{${member}}` };

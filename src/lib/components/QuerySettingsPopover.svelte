@@ -33,6 +33,11 @@
           <span>{m.query_tab_settings_cap_all()}</span>
         </label>
       </div>
+      <label class="checkbox-row history-row">
+        <input type="checkbox" checked={settings.recordQueryHistory}
+          onchange={(e) => settings.setRecordQueryHistory(e.currentTarget.checked)} />
+        <span>{m.settings_record_history()}</span>
+      </label>
     </div>
   {/if}
 </div>

@@ -4,7 +4,7 @@
   import type { DestructiveGate } from "../stores/destructiveGate.svelte";
   import { describeDestructive } from "../domain/confirmPolicy";
   import { formatBytes } from "../domain/stats";
-  import { msgKey } from "#lib/msgkey.js";
+  import { msgKey, msgCount } from "#lib/msgkey.js";
   import * as m from "#lib/paraglide/messages.js";
 
   let { gate }: { gate: DestructiveGate } = $props();
@@ -20,13 +20,11 @@
   const target = $derived(p ? (p.target.coll ? m.destructive_target_coll({ db: p.target.db, coll: p.target.coll }) : p.target.db) : "");
   const ready = $derived(!!p && !p.counting && !gate.running && (d?.expectedName == null || typed === d.expectedName));
 
-  const _m = m as unknown as Record<string, ((a: Record<string, string>) => string) | undefined>;
+  const COUNTED = new Set(["deleteMany", "updateMany", "truncate"]);
   const action = $derived.by(() => {
     if (!p || !d) return "";
-    if (p.count === 1 && p.op === "deleteMany") return m.destructive_action_deleteOne();
-    const withCount = _m[d.actionKey];
-    if (d.countText !== null && withCount) return withCount({ count: d.countText });
-    return msgKey(d.titleKey);
+    if (COUNTED.has(p.op)) return p.count !== null ? msgCount(d.actionKey, p.count) : msgKey(d.titleKey);
+    return msgKey(d.actionKey);
   });
 
   const countLine = $derived.by(() => {
@@ -37,10 +35,11 @@
     switch (p.op) {
       case "deleteMany":
       case "updateMany":
-        return m.destructive_count_match({ count: d.countText, target });
+        return msgCount("destructive_count_match", p.count!, { target });
       case "dropCollection":
       case "truncate":
-        return m.destructive_count_coll({ target, count: d.countText, size: formatBytes(p.bytes) });
+        if ((p.target.colls?.length ?? 0) > 1) return msgCount("destructive_count_total", p.count!);
+        return msgCount("destructive_count_coll", p.count!, { target, size: formatBytes(p.bytes) });
       case "dropDatabase":
         return m.destructive_count_db({ db: p.target.db, collections: String(p.collections ?? "?"), count: d.countText });
       default:
@@ -57,6 +56,9 @@
   <Modal title={msgKey(d.titleKey)} ondismiss={() => gate.cancel()} onenter={submit} enterDisabled={() => !ready}>
     {#snippet body()}
       <div class="dd">
+        {#if (p.target.colls?.length ?? 0) > 1}
+          <p class="mono">{m.destructive_colls_line({ count: String(p.target.colls!.length), names: p.target.colls!.join(", ") })}</p>
+        {/if}
         {#if p.op === "dropIndex" && p.target.index}
           <p>{m.destructive_index_line({ index: p.target.index, target })}</p>
         {:else if p.target.detail}

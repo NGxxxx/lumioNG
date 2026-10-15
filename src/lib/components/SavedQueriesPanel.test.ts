@@ -32,7 +32,7 @@ describe("SavedQueriesPanel", () => {
   it("header + button opens the new-folder dialog and creates a root folder", async () => {
     const { getByLabelText, getByText } = render(SavedQueriesPanel, { onopen: () => {} });
     await fireEvent.click(getByLabelText("New folder"));
-    await fireEvent.input(getByLabelText("name-input"), { target: { value: "Reports" } });
+    await fireEvent.input(getByLabelText("Folder name"), { target: { value: "Reports" } });
     await fireEvent.click(getByText("OK"));
     expect(queryLibrary.nodes).toContainEqual(expect.objectContaining({ kind: "folder", name: "Reports", parentId: null }));
   });

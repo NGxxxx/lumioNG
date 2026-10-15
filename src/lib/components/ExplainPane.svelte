@@ -1,5 +1,5 @@
 <script lang="ts">
-  import type { ExplainSummary } from "../domain/explainPlan";
+  import { explainFlow, efficiency, explainAdvice, type ExplainSummary } from "../domain/explainPlan";
   import type { IndexSuggestion } from "../domain/indexAdvisor";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import { copyToClipboard } from "../clipboard";
@@ -7,6 +7,7 @@
 
   let {
     summary, prevSummary, rawJson, loading, suggestion, coll, oncreateindex, onrefresh,
+    pipeline = null, onmovematchfirst, prod = false,
   }: {
     summary: ExplainSummary | null;
     prevSummary: ExplainSummary | null;
@@ -16,18 +17,17 @@
     coll: string;
     oncreateindex: () => void;
     onrefresh: () => void;
+    /** The builder's stages, when the explained statement is a pipeline (enables pipeline advice). */
+    pipeline?: { name: string; body: unknown }[] | null;
+    onmovematchfirst?: () => void;
+    /** The session is PROD: the create-index confirmation says so. */
+    prod?: boolean;
   } = $props();
+
+  const fmt = (n: number | null) => (n === null ? "—" : n.toLocaleString("en-US"));
 
   let confirmingCreate = $state(false);
 
-  function maxDocsExamined(stages: ExplainSummary["stages"]): number {
-    return stages.reduce((max, s) => Math.max(max, s.docsExamined ?? 0), 0);
-  }
-
-  function barPct(stage: ExplainSummary["stages"][number], max: number): number {
-    if (max <= 0 || stage.docsExamined === null) return 0;
-    return Math.round((stage.docsExamined / max) * 100);
-  }
 
   function improvementPct(before: ExplainSummary, after: ExplainSummary): number | null {
     const b = before.totalDocsExamined;
@@ -69,35 +69,42 @@
   {#if loading}
     <div class="status">{m.explain_pane_loading()}</div>
   {:else if summary}
-    {@const max = maxDocsExamined(summary.stages)}
+    {@const flow = explainFlow(summary)}
+    {@const eff = efficiency(summary)}
+    {@const advice = explainAdvice(summary, pipeline)}
     {@render banner(summary)}
 
-    {#if summary.stages.length > 0}
-      <table class="stages">
-        <thead>
-          <tr>
-            <th>{m.explain_pane_stage_header_name()}</th>
-            <th>{m.explain_pane_stage_header_returned()}</th>
-            <th>{m.explain_pane_stage_header_examined()}</th>
-            <th>{m.explain_pane_stage_header_keys()}</th>
-            <th>{m.explain_pane_stage_header_time()}</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each summary.stages as stage (stage.name)}
-            <tr>
-              <td>{stage.name}</td>
-              <td>{stage.nReturned ?? "—"}</td>
-              <td>{stage.docsExamined ?? "—"}</td>
-              <td>{stage.keysExamined ?? "—"}</td>
-              <td>{stage.executionTimeMs ?? "—"}</td>
-              <td class="bar-cell"><div class="bar" style={`width:${barPct(stage, max)}%`}></div></td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
+    {#if eff}<div class="eff">{m.explain_efficiency({ examined: fmt(eff.examined), returned: fmt(eff.returned), pct: String(eff.pct) })}</div>{/if}
+
+    {#if flow.length > 0}
+      <ol class="flow">
+        {#each flow as row, i (i)}
+          <li class:slow={row.slowest}>
+            <div class="f-head">
+              <span class="f-name">{row.name}</span>
+              {#if row.slowest}<span class="f-slow">{m.explain_slowest()}</span>{/if}
+              <span class="f-nums">
+                {#if row.keys !== null}<span>{m.explain_flow_keys({ n: fmt(row.keys) })}</span>{/if}
+                {#if row.docs !== null}<span>{m.explain_flow_docs({ n: fmt(row.docs) })}</span>{/if}
+                {#if row.returned !== null}<span>{m.explain_flow_returned({ n: fmt(row.returned) })}</span>{/if}
+                {#if row.ms !== null}<span class="ms">{m.explain_flow_ms({ n: String(row.ms) })}</span>{/if}
+              </span>
+            </div>
+            <div class="f-track"><div class="f-bar" style={`width:${Math.max(row.widthPct, row.docs ? 0.6 : 0)}%`}></div></div>
+          </li>
+        {/each}
+      </ol>
     {/if}
+
+    {#each advice as a (a.key)}
+      {#if a.key === "move_match_first"}
+        <div class="advice">{m.explain_advice_move_match_first()}{#if onmovematchfirst}<button onclick={onmovematchfirst}>{m.explain_advice_move()}</button>{/if}</div>
+      {:else if a.key === "in_memory_sort"}
+        <div class="advice">{m.explain_advice_in_memory_sort()}</div>
+      {:else if !suggestion}
+        <div class="advice">{m.explain_advice_create_index()}</div>
+      {/if}
+    {/each}
 
     {#if (summary.verdict === "collscan" || summary.verdict === "ixscan-inefficient") && suggestion}
       <div class="suggestion">
@@ -144,7 +151,7 @@
 {#if confirmingCreate && suggestion}
   <ConfirmDialog
     title={m.explain_confirm_create_index_title()}
-    message={m.explain_confirm_create_index_message({ snippet: suggestion.snippet, coll })}
+    message={prod ? `${m.explain_confirm_create_index_message({ snippet: suggestion.snippet, coll })} ${m.explain_prod_note()}` : m.explain_confirm_create_index_message({ snippet: suggestion.snippet, coll })}
     onconfirm={() => { confirmingCreate = false; oncreateindex(); }}
     oncancel={() => (confirmingCreate = false)}
   />
@@ -158,11 +165,20 @@
   .banner.caution { background: var(--warn-bg); color: var(--warn-fg); }
   .banner.ok { background: var(--bg); color: var(--fg); }
   .banner .time { font-variant-numeric: tabular-nums; color: var(--muted); }
-  table.stages { border-collapse: collapse; font-size: var(--fs); width: 100%; }
-  table.stages th, table.stages td { padding: 0.1875rem 0.5rem; text-align: left; }
-  table.stages th { color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--border); }
-  .bar-cell { width: 6rem; }
-  .bar { height: 0.5rem; background: var(--accent); border-radius: var(--radius-sm); }
+  .eff { font-size: 0.8125rem; color: var(--fg); }
+  .flow { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.375rem; }
+  .flow li { position: relative; padding-left: 0.875rem; }
+  .flow li::before { content: ""; position: absolute; left: 0.25rem; top: 0.375rem; bottom: -0.5rem; width: 1px; background: var(--border); }
+  .flow li:last-child::before { display: none; }
+  .f-head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+  .f-name { font-family: var(--mono); font-size: 0.75rem; font-weight: 600; }
+  .f-slow { font-size: 0.625rem; padding: 0 0.3125rem; border-radius: var(--radius-sm); background: var(--warn-bg); color: var(--warn-fg); }
+  .f-nums { display: flex; gap: 0.625rem; font-size: 0.6875rem; color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+  .flow li.slow .ms { color: var(--warn-fg); font-weight: 600; }
+  .f-track { height: 0.375rem; margin-top: 0.1875rem; border-radius: var(--radius-sm); background: var(--bg); overflow: hidden; }
+  .f-bar { height: 100%; background: var(--accent); border-radius: var(--radius-sm); }
+  .advice { display: flex; align-items: center; gap: 0.75rem; padding: 0.375rem 0.625rem; border-radius: var(--radius); background: var(--warn-bg2); color: var(--warn-fg); font-size: 0.75rem; }
+  .advice button { height: 1.5rem; padding: 0 0.5rem; border: 1px solid var(--c-surface1); border-radius: var(--radius); background: var(--panel); color: var(--fg); font-size: 0.75rem; cursor: pointer; }
   .suggestion { border: 1px solid var(--gray-cf); border-radius: var(--radius); padding: 0.5rem 0.625rem; display: flex; flex-direction: column; gap: 0.375rem; }
   .suggestion-title { font-weight: 600; font-size: var(--fs); }
   .suggestion code { font-family: var(--mono); font-size: var(--fs); background: var(--bg); padding: 0.25rem 0.375rem; border-radius: var(--radius); }

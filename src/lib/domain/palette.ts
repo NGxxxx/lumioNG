@@ -1,4 +1,5 @@
 // src/lib/domain/palette.ts — pure ranking/grouping for the ⌘K command palette (no Svelte, no Tauri).
+import type { HistoryEntry } from "./queryHistory";
 
 /** One row the palette can show. `group` is the section heading; `detail` is muted secondary text. */
 export type PaletteItem = {
@@ -79,6 +80,14 @@ export function matchText(text: string, query: string): { score: number; ranges:
 }
 
 /**
+ * Added to the score of "recent"-group items. Score tiers differ by 150 (word-start vs mid-word,
+ * prefix vs word-start) and ~500 (substring vs subsequence), while label length breaks ties by up to
+ * ~200. 120 lifts a recent item over an equally-matching one (even a few dozen chars longer) but
+ * never over a match one tier better.
+ */
+export const RECENT_BOOST = 120;
+
+/**
  * Ranks enabled items against `query`. The label is matched first (with highlight ranges); `detail`
  * and `keywords` can still surface an item, at a lower score and without highlights. An empty query
  * keeps the items' own order.
@@ -87,16 +96,17 @@ export function filterPalette(items: PaletteItem[], query: string, limit = 60): 
   const enabled = items.filter((it) => !it.disabled);
   if (query.trim() === "") return enabled.slice(0, limit).map((item) => ({ item, score: 0, ranges: [] }));
 
+  const boost = (it: PaletteItem) => (it.id.startsWith("recent:") ? RECENT_BOOST : 0);
   const out: { m: PaletteMatch; i: number }[] = [];
   enabled.forEach((item, i) => {
     const onLabel = matchText(item.label, query);
     if (onLabel) {
-      out.push({ m: { item, score: onLabel.score, ranges: onLabel.ranges }, i });
+      out.push({ m: { item, score: onLabel.score + boost(item), ranges: onLabel.ranges }, i });
       return;
     }
     const extra = [item.detail, item.keywords].filter(Boolean).join(" ");
     const onExtra = extra ? matchText(extra, query) : null;
-    if (onExtra) out.push({ m: { item, score: onExtra.score - 400, ranges: [] }, i });
+    if (onExtra) out.push({ m: { item, score: onExtra.score - 400 + boost(item), ranges: [] }, i });
   });
   out.sort((a, b) => b.m.score - a.m.score || a.i - b.i);
   return out.slice(0, limit).map((x) => x.m);
@@ -170,4 +180,40 @@ export function parseNamespaceId(id: string): NamespaceTarget | null {
     /* not ours */
   }
   return null;
+}
+
+const RECENT_LIMIT = 5;
+
+/** "Recent" palette rows: the last few distinct queries, then the last few opened collections. */
+export function recentPaletteItems(
+  q: HistoryEntry[],
+  colls: { connId: number | null; db: string; coll: string }[],
+): PaletteItem[] {
+  const out: PaletteItem[] = [];
+  const seenQ = new Set<string>();
+  for (const e of q) {
+    if (out.length >= RECENT_LIMIT) break;
+    const k = JSON.stringify([e.db, e.script]);
+    if (seenQ.has(k)) continue;
+    seenQ.add(k);
+    const first = e.script.split(/\r?\n/).map((l) => l.trim()).find((l) => l !== "") ?? "";
+    out.push({
+      id: `recent:q:${e.id}`,
+      group: "recent",
+      label: first.slice(0, 80),
+      detail: `${e.sessionLabel} · ${e.db}`,
+      keywords: e.script.trim().slice(0, 500),
+    });
+  }
+  const seenC = new Set<string>();
+  let n = 0;
+  for (const c of colls) {
+    if (n >= RECENT_LIMIT) break;
+    const id = `recent:c:${c.connId ?? ""}/${c.db}/${c.coll}`;
+    if (seenC.has(id)) continue;
+    seenC.add(id);
+    n++;
+    out.push({ id, group: "recent", label: `${c.db}.${c.coll}` });
+  }
+  return out;
 }

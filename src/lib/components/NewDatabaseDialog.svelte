@@ -27,9 +27,9 @@
     <p class="hint">{m.new_db_hint()}</p>
     <label>{m.new_db_name_label()}
       <!-- svelte-ignore a11y_autofocus -->
-      <input bind:value={db} disabled={asyncSubmit.busy} aria-label="db-input" autofocus />
+      <input bind:value={db} disabled={asyncSubmit.busy} autofocus />
     </label>
-    <label>{m.new_db_first_collection_label()}<input bind:value={coll} disabled={asyncSubmit.busy} aria-label="coll-input" /></label>
+    <label>{m.new_db_first_collection_label()}<input bind:value={coll} disabled={asyncSubmit.busy} /></label>
     {#if asyncSubmit.error}<div class="dlg-error">{msgKey(asyncSubmit.error)}</div>{/if}
   {/snippet}
   {#snippet footer()}

@@ -27,6 +27,7 @@ const LAYOUT: Record<ViewKey, ToolbarEntry[]> = {
     more("grid.focusFilter"),
     more("view.toggleWrap"),
     more("view.toggleSavedQueries"),
+    more("view.resetLayout"),
     { id: "file.newDocument", style: "primary" },
   ],
   "collection.schema": [icon("file.refresh")],

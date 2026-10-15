@@ -31,10 +31,21 @@ describe("QuerySettingsPopover", () => {
   it("toggling No limit (ALL) sets queryResultCapUnlimited and disables the cap input", async () => {
     const { getByText, getByRole, container } = render(QuerySettingsPopover);
     await fireEvent.click(getByText("⚙"));
-    const checkbox = getByRole("checkbox") as HTMLInputElement;
+    const checkbox = getByRole("checkbox", { name: "No limit (ALL)" }) as HTMLInputElement;
     await fireEvent.click(checkbox);
     expect(settings.queryResultCapUnlimited).toBe(true);
     const capInput = container.querySelectorAll("input")[1] as HTMLInputElement;
     expect(capInput.disabled).toBe(true);
+  });
+
+  it("turns query history recording off and on", async () => {
+    const { getByRole, getByLabelText } = render(QuerySettingsPopover);
+    await fireEvent.click(getByRole("button", { name: "Run settings" }));
+    const box = getByLabelText("Record query history") as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    await fireEvent.click(box);
+    expect(settings.recordQueryHistory).toBe(false);
+    await fireEvent.click(box);
+    expect(settings.recordQueryHistory).toBe(true);
   });
 });

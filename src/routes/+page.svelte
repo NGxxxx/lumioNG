@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
   import { idJson } from "#lib/domain/docid.js";
   import { detectGridFsBucket } from "#lib/domain/gridfsBucket.js";
   import { isGridfsFilesEmpty } from "#lib/stores/gridfsBucketProbe.svelte.js";
   import { aggregateTemplate } from "#lib/domain/queryStatement.js";
-  import { buildInsertSkeleton } from "#lib/api/insertSkeleton.js";
-  import { cancelScript } from "#lib/api/script.js";
+  import { buildInsertSkeleton } from "#lib/stores/documentWrites.js";
+  import { cancelScript } from "#lib/stores/queryRuns.svelte.js";
   import { sessionManager } from "#lib/stores/sessionManager.svelte.js";
   import { getQueryRun } from "#lib/stores/queryRuns.svelte.js";
   import { shell } from "#lib/stores/shell.svelte.js";
@@ -14,7 +14,8 @@
   import { activeDocumentForm } from "#lib/stores/activeDocumentForm.svelte.js";
   import { activity } from "#lib/stores/activity.svelte.js";
   import { commandLog } from "#lib/stores/commandLog.svelte.js";
-  import { quit } from "#lib/api/window.js";
+  import { windowControls } from "#lib/stores/desktop.js";
+  const { quit } = windowControls;
   import type { Doc } from "#lib/domain/doc.js";
   import type { SshConnectInput } from "#lib/api/connection.js";
   import type { Environment } from "#lib/domain/environment.js";
@@ -40,7 +41,10 @@
   import Toolbar from "#lib/components/Toolbar.svelte";
   import CommandPalette from "#lib/components/CommandPalette.svelte";
   import ShortcutsDialog from "#lib/components/ShortcutsDialog.svelte";
-  import { namespacePaletteItems, parseNamespaceId, type PaletteItem } from "#lib/domain/palette.js";
+  import { namespacePaletteItems, parseNamespaceId, recentPaletteItems, type PaletteItem } from "#lib/domain/palette.js";
+  import { queryHistory } from "#lib/stores/queryHistory.svelte.js";
+  import { recentCollections } from "#lib/stores/recentCollections.svelte.js";
+  import type { HistoryEntry } from "#lib/domain/queryHistory.js";
   import { formatCombo } from "#lib/domain/shortcuts.js";
   import { settings } from "#lib/stores/settings.svelte.js";
   import { theme } from "#lib/stores/theme.svelte.js";
@@ -281,7 +285,9 @@
     "view.toggleWrap": { disabled: false, run: () => settings.setWrapLongLines(!settings.wrapLongLines) },
     "view.toggleSavedQueries": { disabled: false, run: () => shell.toggleSavedQueries() },
     "view.resetToDefault": { disabled: false, run: requestReset },
+    "view.resetLayout": { disabled: !dataViewActive, run: () => activeDataView.handle?.resetLayout?.() },
     "help.about": { disabled: false, run: () => (aboutOpen = true) },
+    "query.history": { disabled: !activeQueryRun, run: () => activeQueryRun?.toggleHistory() },
     "edit.undo": { disabled: undo.entries.length === 0 || undo.busy, run: () => void undo.undoLast() },
     "help.shortcuts": { disabled: false, run: () => (shortcutsOpen = true) },
     "grid.focusFilter": { disabled: !canUseDataView, run: () => activeDataView.handle?.focusSearch?.() },
@@ -320,6 +326,7 @@
     "view.toggleWrap": m.wrap_toggle_label(),
     "view.toggleSavedQueries": m.toolbar_saved_queries(),
     "view.toggleLog": m.toolbar_command_log(),
+    "view.resetLayout": m.cmd_reset_layout(),
   });
   const headerActive = $derived(
     new Set<CommandId>([
@@ -380,6 +387,7 @@
     ["goto.prevTab", m.menu_previous_tab, "navigate"],
     ["view.resetToDefault", m.menu_reset_to_default, "view"],
     ["edit.undo", m.undo_last, "actions"],
+    ["query.history", m.cmd_query_history, "query"],
     ["help.shortcuts", m.menu_keyboard_shortcuts, "view"],
     ["help.about", m.menu_about, "view"],
     ["file.quit", m.menu_quit, "view"],
@@ -423,7 +431,8 @@
       collections: m.palette_group_collections(),
     });
     // Namespaces first: jumping to a collection is the most common reason to open the palette.
-    return [...ns, ...cmds, ...saved, ...toggles];
+    const recent = recentPaletteItems(queryHistory.entries, recentCollections.list).map((it) => ({ ...it, group: m.palette_group_recent() }));
+    return [...recent, ...ns, ...cmds, ...saved, ...toggles];
   });
 
   // Header breadcrumb: a document tab names its own namespace; a query tab has its own title row.
@@ -441,7 +450,38 @@
     [shell.connection?.label, sel ? (sel.coll ? `${sel.db}.${sel.coll}` : sel.db) : null].filter((x): x is string => !!x),
   );
 
+  /** Re-opens a history entry on its own session (and database) in a new query tab. */
+  function openHistoryEntry(e: HistoryEntry) {
+    const s = sm.sessions.find((x) => (e.connId !== null ? x.connId === e.connId : x.label === e.sessionLabel));
+    if (!s || s.status !== "connected") {
+      toast.push(m.history_connect_first({ label: e.sessionLabel }), "error");
+      return;
+    }
+    if (s.tree.databases.some((d) => d.name === e.db)) s.nav.selectDatabase(e.db);
+    sm.openQuery(e.script, null, s.id);
+  }
+
+  // Collections opened lately feed the palette's "Recent" group.
+  $effect(() => {
+    const s = sel;
+    if (s?.coll) untrack(() => recentCollections.touch(sm.active?.connId ?? null, s.db, s.coll!));
+  });
+
   function runPaletteItem(id: string) {
+    if (id.startsWith("recent:q:")) {
+      const e = queryHistory.entries.find((x) => `recent:q:${x.id}` === id);
+      if (e) openHistoryEntry(e);
+      return;
+    }
+    if (id.startsWith("recent:c:")) {
+      const [, , rest] = id.split(":");
+      const [, db, coll] = rest.split("/");
+      if (db && coll) {
+        nav?.selectCollection(db, coll);
+        sm.showDestination();
+      }
+      return;
+    }
     const target = parseNamespaceId(id);
     if (target) {
       if (target.coll) nav?.selectCollection(target.db, target.coll);
@@ -656,6 +696,7 @@
                 <QueryTabView id={tab.id} seq={tab.seq} initialStatement={tab.initialStatement}
                   sessionId={tab.sessionId} currentDb={dbForSession(tab.sessionId)} active={isActiveTab}
                   onsave={saveActiveQuery}
+                  onopenhistory={openHistoryEntry}
                   onopendocument={(doc: Doc, db: string, coll: string) => openDocument(db, coll, doc, "edit")} />
               {:else}
                 <div class="empty">{m.status_bar_loading()}</div>

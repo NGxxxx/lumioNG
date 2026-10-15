@@ -16,7 +16,7 @@ import { disposeCollectionViews } from "./collectionViews.svelte";
 import { disposeGridfsFiles } from "./gridfsFilesCache.svelte";
 import { disposeGridfsBucketProbes } from "./gridfsBucketProbe.svelte";
 import { disposeFieldSuggestions } from "./fieldSuggestions";
-import { setSessionEnvironment } from "./sessionEnv";
+import { setSessionEnvironment, setSessionMeta } from "./sessionEnv";
 
 export type SessionStatus = "connecting" | "connected" | "error";
 export type Session = {
@@ -100,6 +100,7 @@ export function createSessionManager() {
   ): Session {
     const color = savedColor || allocColor(sessions.map((s) => s.color));
     setSessionEnvironment(id, environment);
+    setSessionMeta(id, { label, connId });
     const nav = createSessionNav();
     const tree = createNamespaceTree(id, {
       closeForCollection: (db, coll) => closeForCollection(id, db, coll),
@@ -178,6 +179,7 @@ export function createSessionManager() {
   async function closeSession(id: string) {
     await disconnect(id).catch(() => {});
     setSessionEnvironment(id, null);
+    setSessionMeta(id, null);
     for (const t of workTabs.filter((t) => t.sessionId === id)) {
       disposeQueryRun(t.id);
       disposePipelineTree(t.id);

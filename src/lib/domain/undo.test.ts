@@ -58,7 +58,8 @@ describe("inverseUpdate", () => {
 describe("describeUndo", () => {
   it("key per kind, count of documents", () => {
     expect(describeUndo({ ...meta, kind: "replace", before: {}, after: {} })).toEqual({ key: "undo_replace", count: 1 });
-    expect(describeUndo(cell(1, 2))).toEqual({ key: "undo_cell", count: 1 });
+    expect(describeUndo(cell(1, 2))).toMatchObject({ key: "undo_cell", count: 1 });
+    expect(describeUndo(cell(1, 2)).path).toBeDefined();
     expect(describeUndo({ ...meta, kind: "insert", doc: {} })).toEqual({ key: "undo_insert", count: 1 });
     expect(describeUndo({ ...meta, kind: "delete", docs: [{}, {}, {}] })).toEqual({ key: "undo_delete", count: 3 });
   });

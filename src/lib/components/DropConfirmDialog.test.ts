@@ -15,9 +15,9 @@ describe("DropConfirmDialog", () => {
     });
     const drop = getByText("Drop") as HTMLButtonElement;
     expect(drop.disabled).toBe(true);
-    await fireEvent.input(getByLabelText("confirm-name"), { target: { value: "wrong" } });
+    await fireEvent.input(getByLabelText("Name to confirm"), { target: { value: "wrong" } });
     expect(drop.disabled).toBe(true);
-    await fireEvent.input(getByLabelText("confirm-name"), { target: { value: "users" } });
+    await fireEvent.input(getByLabelText("Name to confirm"), { target: { value: "users" } });
     expect(drop.disabled).toBe(false);
     await fireEvent.click(drop);
     expect(onconfirm).toHaveBeenCalled();
@@ -30,7 +30,7 @@ describe("DropConfirmDialog", () => {
     });
     handleModalKeydown(key("Enter"));
     expect(onconfirm).not.toHaveBeenCalled();
-    await fireEvent.input(getByLabelText("confirm-name"), { target: { value: "users" } });
+    await fireEvent.input(getByLabelText("Name to confirm"), { target: { value: "users" } });
     handleModalKeydown(key("Enter"));
     expect(onconfirm).toHaveBeenCalled();
   });

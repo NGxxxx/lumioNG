@@ -16,6 +16,8 @@ export type JobSource = {
   cancel?: () => void;
   /** Completion message (defaults to "<label>: Done"). */
   summary?: () => string;
+  /** Per-target lines for the popover's Details (e.g. each exported collection). */
+  details?: () => { label: string; state: string }[];
 };
 
 export type JobEntry = { id: number; source: JobSource; finishedAt: number | null };
@@ -75,11 +77,21 @@ export function createJobs() {
 /** App-wide singleton. */
 export const jobs = createJobs();
 
+/** Short name of what an export writes: one namespace, "N collections", or the file's name. */
+export function exportTargetLabel(targets: { db: string; coll: string }[] | null, filePath: string | null): string {
+  if (targets && targets.length === 1) return targets[0].db ? `${targets[0].db}.${targets[0].coll}` : targets[0].coll;
+  if (targets && targets.length > 1) return m.jobs_collections({ count: String(targets.length) });
+  return filePath ? (filePath.split(/[\\/]/).pop() ?? filePath) : "";
+}
+
 // ── Adapters: the existing job stores → JobSource ──
 
 /** An export job (stores/exportJob). */
 export function exportJobSource(
-  job: { running: boolean; done: boolean; cancelled?: boolean; overall: { percent: number }; succeeded: number; failed: number; cancel: () => void },
+  job: {
+    running: boolean; done: boolean; cancelled?: boolean; overall: { percent: number }; succeeded: number; failed: number; cancel: () => void;
+    rows?: { db: string; coll: string; status: string }[];
+  },
   target: string,
 ): JobSource {
   let cancelled = false; // also set when cancelled from the indicator before the job reports it
@@ -94,6 +106,7 @@ export function exportJobSource(
     },
     cancel: () => { cancelled = true; job.cancel(); },
     summary: () => m.jobs_export_finished({ ok: String(job.succeeded), fail: String(job.failed) }),
+    details: job.rows ? () => (job.rows ?? []).map((r) => ({ label: r.db ? `${r.db}.${r.coll}` : r.coll, state: r.status })) : undefined,
   };
 }
 

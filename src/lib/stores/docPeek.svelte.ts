@@ -80,6 +80,17 @@ export function createDocPeek(deps: DocPeekDeps) {
     return load(d, edit);
   }
 
+  /** An undo wrote to `change`'s collection: reload a clean drawer showing it; flag a dirty one. */
+  function refreshIfShowing(change: { sessionId: string; db: string; coll: string } | null) {
+    if (!change || !open || !source || !lastRow) return;
+    if (change.sessionId !== deps.sessionId() || change.db !== source.db || change.coll !== source.coll) return;
+    if (dirty) {
+      stale = true;
+      return;
+    }
+    void load(lastRow, false);
+  }
+
   /** Re-runs the last load (after a failure). */
   async function retry(): Promise<void> {
     if (lastRow) await load(lastRow, lastEdit);
@@ -233,6 +244,7 @@ export function createDocPeek(deps: DocPeekDeps) {
     show,
     follow,
     retry,
+    refreshIfShowing,
     close,
     requestClose,
     confirmSave,

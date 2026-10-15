@@ -7,8 +7,11 @@ import {
   splitByRanges,
   namespacePaletteItems,
   parseNamespaceId,
+  recentPaletteItems,
+  RECENT_BOOST,
   type PaletteItem,
 } from "./palette";
+import type { HistoryEntry } from "./queryHistory";
 
 const item = (id: string, label: string, extra: Partial<PaletteItem> = {}): PaletteItem => ({
   id,
@@ -134,5 +137,55 @@ describe("namespacePaletteItems / parseNamespaceId", () => {
     expect(parseNamespaceId("query.run")).toBeNull();
     expect(parseNamespaceId("ns:{bad")).toBeNull();
     expect(parseNamespaceId('ns:[1,2]')).toBeNull();
+  });
+});
+
+describe("recentPaletteItems", () => {
+  const he = (id: string, script: string, over: Partial<HistoryEntry> = {}): HistoryEntry => ({
+    id, tabId: 1, sessionLabel: "local", connId: 1, db: "shop", script, at: 1, ms: 1,
+    outcome: { kind: "docs", n: 1 }, runs: 1, ...over,
+  });
+  it("maps the first 5 distinct queries, then up to 5 collections", () => {
+    const q = [he("a", "db.a.find()"), he("b", "db.a.find()"), ...["c", "d", "e", "f", "g"].map((s) => he(s, `db.${s}.find()`))];
+    const colls = Array.from({ length: 7 }, (_, i) => ({ connId: 1, db: "d", coll: `c${i}` }));
+    const out = recentPaletteItems(q, colls);
+    expect(out.map((i) => i.id)).toEqual([
+      "recent:q:a", "recent:q:c", "recent:q:d", "recent:q:e", "recent:q:f",
+      ...[0, 1, 2, 3, 4].map((i) => `recent:c:1/d/c${i}`),
+    ]);
+    expect(out.every((i) => i.group === "recent")).toBe(true);
+  });
+  it("builds label (first non-empty line, 80 chars), detail and keywords", () => {
+    const long = "x".repeat(100);
+    const [a, b] = recentPaletteItems([he("a", `\n  \n  ${long}\nsecond`), he("b", "y".repeat(600), { db: "crm" })], []);
+    expect(a.label).toBe("x".repeat(80));
+    expect(a.detail).toBe("local · shop");
+    expect(a.keywords).toContain("second");
+    expect(b.keywords).toHaveLength(500);
+  });
+  it("labels collections db.coll, dedupes, and tolerates null connId", () => {
+    const out = recentPaletteItems([], [
+      { connId: null, db: "shop", coll: "orders" },
+      { connId: null, db: "shop", coll: "orders" },
+    ]);
+    expect(out).toEqual([{ id: "recent:c:/shop/orders", group: "recent", label: "shop.orders" }]);
+  });
+});
+
+describe("RECENT_BOOST", () => {
+  const recent = (id: string, label: string) => item(`recent:${id}`, label, { group: "recent" });
+  it("lifts a recent item above an equally-matching non-recent one", () => {
+    const r = filterPalette([item("n", "orders"), recent("r", "orders-x")], "ord");
+    expect(r[0].item.id).toBe("recent:r");
+  });
+  it("does not lift a recent item above a clearly better (word-start vs mid-word) match", () => {
+    expect(RECENT_BOOST).toBeGreaterThan(0);
+    expect(RECENT_BOOST).toBeLessThan(150);
+    const r = filterPalette([recent("r", "records"), item("n", "orders")], "ord");
+    expect(r[0].item.id).toBe("n");
+  });
+  it("does not lift a recent subsequence match above a plain substring match", () => {
+    const r = filterPalette([recent("r", "o_r_d"), item("n", "a/orders")], "ord");
+    expect(r[0].item.id).toBe("n");
   });
 });

@@ -60,6 +60,7 @@ describe("addCondition", () => {
     expect(parse(addCondition("", "a", "ne", "x"))).toEqual({ a: { $ne: "x" } });
     expect(parse(addCondition("", "a", "exists"))).toEqual({ a: { $exists: true } });
     expect(parse(addCondition("", "a", "notExists"))).toEqual({ a: { $exists: false } });
+    expect(parse(addCondition('{"b": 1}', "a", "empty"))).toEqual({ b: 1, a: { $in: [null, "", []] } });
   });
   it("ExtJSON value is preserved", () => {
     expect(parse(addCondition("", "_id", "eq", { $oid: "652f0a1b2c3d4e5f60718293" }))).toEqual({ _id: { $oid: "652f0a1b2c3d4e5f60718293" } });

@@ -7,7 +7,7 @@
     base64ToUtf8Text,
     imageMimeType,
   } from "../domain/gridfsPreview";
-  import { gridfsPreviewBytes } from "../api/gridfs";
+  import { gridfsPreviewBytes } from "../stores/gridfsFiles.svelte";
   import { createGridfsDownload } from "../stores/gridfsDownload.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { errorMessage } from "../api/errors";

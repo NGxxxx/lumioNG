@@ -14,7 +14,6 @@
   import { toast } from "../stores/toast.svelte";
   import type { GridPageView } from "../domain/gridView";
   import type { Doc } from "../domain/doc";
-  import { idJson } from "../domain/docid";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
   import * as m from "#lib/paraglide/messages.js";
@@ -122,13 +121,11 @@
     vis.forEach((row, pos) => map.set(row, pos));
     return map;
   });
-  // A different set of rows (page, filter, sort, quick search) invalidates the cursor. Keyed on
-  // shape, not array identity, so an inline edit (which reassigns docs) keeps it.
-  const rowsKey = $derived(
-    `${v.currentPage}|${JSON.stringify(v.sortKeys ?? null)}|${v.docs.length}|${v.docs.length ? idJson(v.docs[0]) : ""}|${v.visibleIndices?.length ?? -1}|${v.visibleIndices?.[0] ?? -1}`,
-  );
+  // A different set of rows (page, filter, sort, re-run, quick search) invalidates the cursor; the
+  // store says when via `loadGen` (an inline edit reassigns docs but keeps it).
+  const loadGen = $derived(v.loadGen ?? v.docs); // no loadGen (simple hosts) → any new rows
   $effect(() => {
-    void rowsKey;
+    void loadGen;
     untrack(() => {
       cursor = null;
       navAnchor = null;

@@ -6,7 +6,12 @@ import type { Environment } from "../domain/environment";
 
 export const COUNT_TIMEOUT_MS = 5000;
 
-export type DestructiveTarget = { db: string; coll?: string; index?: string; /** Extra line, e.g. `_id = …`. */ detail?: string };
+export type DestructiveTarget = {
+  db: string; coll?: string; index?: string;
+  /** Several collections at once (database page bulk actions). */
+  colls?: string[];
+  /** Extra line, e.g. `_id = …`. */ detail?: string;
+};
 export type CountResult = { count: number; bytes?: number | null; collections?: number | null };
 
 export type PendingDestructive = {

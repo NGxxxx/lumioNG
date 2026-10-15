@@ -1,13 +1,15 @@
 import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/svelte";
 
-vi.mock("#lib/api/window.js", () => ({
-  minimize: vi.fn(),
-  toggleMaximize: vi.fn(),
-  isMaximized: vi.fn().mockResolvedValue(false),
-  onMaximizedChange: vi.fn().mockResolvedValue(() => {}),
+vi.mock("#lib/stores/desktop.js", () => ({
+  windowControls: {
+    minimize: vi.fn(),
+    toggleMaximize: vi.fn(),
+    isMaximized: vi.fn().mockResolvedValue(false),
+    onMaximizedChange: vi.fn().mockResolvedValue(() => {}),
+  },
+  appVersion: vi.fn().mockResolvedValue("1.0.0"),
 }));
-vi.mock("#lib/api/app.js", () => ({ getAppVersion: vi.fn().mockResolvedValue("1.0.0") }));
 
 import TitleBar from "./TitleBar.svelte";
 

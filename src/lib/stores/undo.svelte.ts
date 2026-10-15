@@ -8,7 +8,7 @@ import { replaceCmd, updateOneCmd, insertCmd, deleteOneCmd } from "../domain/mon
 import { commandLog } from "./commandLog.svelte";
 import { toast } from "./toast.svelte";
 import type { Doc } from "../domain/doc";
-import { msgKey } from "#lib/msgkey.js";
+import { msgCount } from "#lib/msgkey.js";
 import * as m from "#lib/paraglide/messages.js";
 
 export const UNDO_CAP = 20;
@@ -17,11 +17,9 @@ const TOAST_MS = 10_000;
 type NewEntry = UndoEntry extends infer E ? (E extends UndoEntry ? Omit<E, "id" | "at"> : never) : never;
 export type UndoResult = "ok" | "conflict" | "partial" | "failed" | "empty";
 
-const _m = m as unknown as Record<string, ((a: Record<string, string>) => string) | undefined>;
-
 function label(e: UndoEntry): string {
   const d = describeUndo(e);
-  return _m[d.key]?.({ count: d.count.toLocaleString("en-US") }) ?? msgKey(d.key);
+  return msgCount(d.key, d.count, d.path !== undefined ? { path: d.path } : {});
 }
 
 function idOf(e: UndoEntry): string | null {
@@ -34,7 +32,7 @@ function idOf(e: UndoEntry): string | null {
 export function createUndo() {
   let entries = $state.raw<UndoEntry[]>([]);
   let conflict = $state.raw<UndoEntry | null>(null);
-  let changed = $state.raw<{ sessionId: string; db: string; coll: string; seq: number } | null>(null);
+  let changed = $state.raw<{ sessionId: string; db: string; coll: string; ids: string[]; seq: number } | null>(null);
   let busy = $state(false);
   let nextId = 1;
   let seq = 0;
@@ -52,7 +50,10 @@ export function createUndo() {
   }
 
   function markChanged(e: UndoEntry) {
-    changed = { sessionId: e.sessionId, db: e.db, coll: e.coll, seq: ++seq };
+    const ids = e.kind === "delete"
+      ? e.docs.flatMap((d) => (d._id === undefined ? [] : [JSON.stringify(d._id)]))
+      : [idOf(e)].filter((x): x is string => x !== null);
+    changed = { sessionId: e.sessionId, db: e.db, coll: e.coll, ids, seq: ++seq };
   }
 
   /** Writes the inverse of `e` (no conflict check). */
@@ -100,7 +101,7 @@ export function createUndo() {
           return restored === 0 ? "failed" : "partial";
         }
         if (restored === total) {
-          toast.push(m.undo_restored({ count: total.toLocaleString("en-US") }));
+          toast.push(msgCount("undo_restored", total));
           return "ok";
         }
         toast.push(m.undo_partial({ restored: String(restored), total: String(total), failed: String(duplicates) }), "error", 6000);

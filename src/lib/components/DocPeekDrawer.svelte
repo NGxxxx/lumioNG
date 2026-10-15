@@ -12,6 +12,7 @@
   import { toast } from "../stores/toast.svelte";
   import TreeEditor from "./TreeEditor.svelte";
   import * as m from "#lib/paraglide/messages.js";
+  import { msgCount } from "#lib/msgkey.js";
 
   let {
     peek,
@@ -111,7 +112,7 @@
 
   {#if selectionCount > 1 && !peek.dirty}
     <div class="bulk">
-      <p>{m.peek_selected_count({ count: selectionCount })}</p>
+      <p>{msgCount("peek_selected_count", selectionCount)}</p>
       <div class="bulk-actions">
         <button class="btn" onclick={() => onbulk("copy")}>{m.peek_copy_json()}</button>
         <button class="btn" onclick={() => onbulk("export")}>{m.peek_export_selection()}</button>

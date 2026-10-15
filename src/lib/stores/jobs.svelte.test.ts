@@ -90,4 +90,12 @@ describe("job adapters", () => {
     expect(exportJobSource(job, "x").state()).toBe("cancelled");
     expect(exportJobSource({ ...job, cancelled: false, failed: 1 }, "x").state()).toBe("failed");
   });
+
+  it("exportTargetLabel: one collection, many, or a file", async () => {
+    const { exportTargetLabel } = await import("./jobs.svelte");
+    expect(exportTargetLabel([{ db: "shop", coll: "orders" }], null)).toBe("shop.orders");
+    expect(exportTargetLabel([{ db: "a", coll: "b" }, { db: "a", coll: "c" }], null)).toBe("2 collections");
+    expect(exportTargetLabel(null, "/home/me/out/users.json")).toBe("users.json");
+    expect(exportTargetLabel(null, "C:\\x\\users.csv")).toBe("users.csv");
+  });
 });

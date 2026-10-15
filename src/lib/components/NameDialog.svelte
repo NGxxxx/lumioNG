@@ -33,7 +33,7 @@
   {#snippet body()}
     <label>{label}
       <!-- svelte-ignore a11y_autofocus -->
-      <input bind:value disabled={asyncSubmit.busy} aria-label="name-input" autofocus />
+      <input bind:value disabled={asyncSubmit.busy} autofocus />
     </label>
     {#if asyncSubmit.error}<div class="dlg-error">{msgKey(asyncSubmit.error)}</div>{/if}
   {/snippet}

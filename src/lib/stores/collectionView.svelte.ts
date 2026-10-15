@@ -38,6 +38,12 @@ import { createDeleteFlow } from "./deleteFlow.svelte";
 import { createDestructiveGate } from "./destructiveGate.svelte";
 import { sessionEnvironment } from "./sessionEnv";
 import { createCommitEditFlow } from "./commitEditFlow.svelte";
+import { chipsFromFilter, filterFromChips, type Chip } from "../domain/filterChips";
+import { fieldInfos as buildFieldInfos, distinctValueTexts, indexedLeadingFields, type FieldInfo } from "../domain/fieldInfo";
+import { listIndexes } from "../api/indexes";
+import { filterHistory as filterHistoryStore } from "./filterHistory.svelte";
+import { loadLayout, saveLayout, clearLayout } from "./gridLayout";
+import { createDebouncer } from "../domain/timing";
 import { createClipboardCopy } from "./clipboardCopy";
 
 /** State and actions for one collection view: data, paging, inline edit, context menu, and delete. */
@@ -67,6 +73,31 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   let colWidths = $state<Record<string, number>>({});
   let defaultColWidths = $state<Record<string, number>>({});
   let colWidthSig = "";
+
+  // ── Remembered layout (spec §2.4): restored before the first load so the saved sort applies; the
+  // filter is deliberately not part of it. ──
+  const layoutKey = `${sessionId}/${db}/${coll}`;
+  const savedLayout = loadLayout(layoutKey);
+  let savedWidths: Record<string, number> = savedLayout?.widths ?? {};
+  if (savedLayout) {
+    hidden = new Set(savedLayout.hidden);
+    hiddenDraft = new Set(savedLayout.hidden);
+    pinned = new Set(savedLayout.pinned);
+    sortKeys = savedLayout.sort;
+    view = savedLayout.mode;
+  }
+  function writeLayout() {
+    const widths: Record<string, number> = { ...savedWidths };
+    for (const [k, w] of Object.entries(colWidths)) if (w !== defaultColWidths[k]) widths[k] = w; else delete widths[k];
+    savedWidths = widths;
+    saveLayout(layoutKey, { hidden: [...hidden], pinned: [...pinned], widths, sort: sortKeys, mode: view });
+  }
+  // Column drags fire continuously: widths are written once the drag settles; everything else at once.
+  const widthSaver = createDebouncer(300);
+  function saveLayoutSoon() {
+    widthSaver.cancel();
+    writeLayout();
+  }
   let pageSize = $state(50);
   let currentPage = $state(1);
   let totalCount = $state(0);
@@ -80,8 +111,11 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   /** Bump on every navigation/reload: in-flight loads captured the old value and bail out, and any
    *  open cell edit is dropped — `editing.row` indexes the OLD `docs`, so leaving it open would
    *  silently rebind the edit box (and the eventual $set) to whatever document lands on that row. */
+  // Reactive mirror of `generation` for the grid (cursor reset); plain `generation` stays the race guard.
+  let loadCount = $state(0);
   function bumpGeneration(): number {
     edit.clear();
+    loadCount++;
     return ++generation;
   }
 
@@ -97,6 +131,27 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     rawColumnFields = mergeColumns(schema, docs);
   }
   const columnFields = $derived(limitColumnsToDepth(rawColumnFields, settings.gridMaxDepth));
+
+  // ── Filter chips (spec §2): chips mirror the applied filter; null = not chip-representable ──
+  const SLOW_FIELD_MIN_DOCS = 100_000;
+  const historyKey = `${sessionId}/${db}/${coll}`;
+  let indexedFields = $state.raw<Set<string>>(new Set());
+  const chips = $derived<Chip[] | null>(chipsFromFilter(appliedFilter));
+  const fieldInfoList = $derived<FieldInfo[]>(buildFieldInfos(rawColumnFields, indexedFields));
+
+  async function loadIndexedFields() {
+    try {
+      indexedFields = indexedLeadingFields(await listIndexes(sessionId, db, coll));
+    } catch {
+      // hints only — no index list, no "may be slow" dots
+    }
+  }
+
+  /** Replaces the filter with these chips and applies it at once. */
+  async function setChips(next: Chip[]) {
+    filterText = filterFromChips(next);
+    await applyFilter();
+  }
   // Search only currently-visible columns (matches what the column chooser hid and what the grid actually renders), not the full unfiltered columnFields.
   const searchableColumns = $derived(columnFields.filter((c) => !hidden.has(c.path)));
   const visibleIndices = $derived(matchingIndices(docs, searchableColumns, quickSearch.appliedSearchRegex));
@@ -107,16 +162,38 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     if (sig === colWidthSig) return;
     colWidthSig = sig;
     defaultColWidths = computeColumnWidths(columnFields, docs);
-    colWidths = { ...defaultColWidths };
+    const restored: Record<string, number> = {};
+    for (const c of columnFields) if (savedWidths[c.path] !== undefined) restored[c.path] = savedWidths[c.path];
+    colWidths = { ...defaultColWidths, ...restored };
   }
 
   function setColWidth(path: string, px: number) {
     colWidths = { ...colWidths, [path]: clampWidth(px) };
+    widthSaver.schedule(writeLayout);
   }
 
   function resetColWidth(path: string) {
     if (defaultColWidths[path] === undefined) return;
     colWidths = { ...colWidths, [path]: defaultColWidths[path] };
+    saveLayoutSoon();
+  }
+
+  /** Forgets the remembered layout and goes back to the defaults. */
+  async function resetLayout() {
+    widthSaver.cancel();
+    clearLayout(layoutKey);
+    savedWidths = {};
+    hidden = new Set();
+    hiddenDraft = new Set();
+    pinned = new Set();
+    view = "grid";
+    colWidths = { ...defaultColWidths };
+    sortKeys = [];
+    clearLayout(layoutKey);
+    bumpGeneration();
+    currentPage = 1;
+    await refreshCount();
+    await loadPage();
   }
 
   async function loadSchema() {
@@ -137,6 +214,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   }
 
   async function init() {
+    void loadIndexedFields();
     const schemaP = loadSchema();
     await refreshCount();
     await loadPage();
@@ -279,6 +357,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   /** Commit draft → live projection and reload. */
   async function applyProjection() {
     hidden = new Set(hiddenDraft);
+    saveLayoutSoon();
     await reloadDocs();
   }
 
@@ -300,6 +379,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   /** Apply a new sortKeys set: reset to page 1 and reload (shared by header-click and dropdown). */
   async function applySortChange(next: SortKey[]) {
     sortKeys = next;
+    saveLayoutSoon();
     bumpGeneration();
     currentPage = 1;
     await refreshCount();
@@ -319,6 +399,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const next = new Set(pinned);
     if (!next.delete(path)) next.add(path);
     pinned = next;
+    saveLayoutSoon();
   }
 
   /** Merges `path op value` into the filter text and runs it; an unparsable current filter is reported, not overwritten. */
@@ -356,6 +437,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         if (path === "_id") return;
         hidden = new Set([...hidden, path]);
         hiddenDraft = new Set(hidden);
+        saveLayoutSoon();
         return reloadDocs();
       case "pin": return togglePin(path);
       case "autofit": return resetColWidth(path); // default widths are content-fitted (domain/colwidth)
@@ -390,6 +472,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     }
     appliedFilter = r.json;
     filterError = null;
+    filterHistoryStore.record(historyKey, r.json);
     schema = null;
     bumpGeneration();
     currentPage = 1;
@@ -448,6 +531,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     const items: MenuItem[] = [];
     if (n === 1) items.push({ label: m.peek_quick_look(), action: "peek" });
     if (n === 1) items.push({ label: m.cell_filter_eq(), action: "filterEq" }, { label: m.cell_filter_ne(), action: "filterNe" });
+    if (n === 1) items.push({ label: m.cell_filter_exists(), action: "filterExists" }, { label: m.cell_filter_empty(), action: "filterEmpty" });
     if (n === 1) items.push({ label: m.context_menu_open_document(), action: "open" });
     if (menu.source === "tree") items.push({ label: m.context_menu_expand_full_depth(), action: "expandFullDepth" });
     items.push({ label: m.context_menu_refresh(), action: "refresh" });
@@ -538,6 +622,16 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       case "filterNe":
         selection.closeMenu();
         void filterBy(key, action === "filterEq" ? "eq" : "ne", getByPath(doc, key) ?? null);
+        return null;
+      case "filterExists":
+        selection.closeMenu();
+        void filterBy(key, "exists");
+        return null;
+      case "filterEmpty":
+        selection.closeMenu();
+        // Spliced into the applied text like the other cell filters, so a filter that is not
+        // chip-shaped (e.g. `$or`) is kept instead of replaced.
+        void filterBy(key, "empty");
         return null;
       case "open":
         selection.closeMenu();
@@ -680,6 +774,20 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       return filterError;
     },
     applyFilter,
+    /** Chips of the applied filter; null when it can only be edited as JSON. */
+    get chips() { return chips; },
+    setChips,
+    get fieldInfos() { return fieldInfoList; },
+    /** Distinct values of a field in the loaded page (JSON text), [] when there are too many. */
+    valuesFor: (path: string) => distinctValueTexts(docs, path, 20),
+    slowFieldHint: (path: string) => !indexedFields.has(path) && totalCount > SLOW_FIELD_MIN_DOCS,
+    get zeroResult() { return totalCount === 0 && appliedFilter !== "{}" && !loading; },
+    get filterHistory() { return filterHistoryStore.entriesFor(historyKey); },
+    pinFilter: (text: string, pinned: boolean) => filterHistoryStore.pin(historyKey, text, pinned),
+    clearFilterHistory: () => filterHistoryStore.clear(historyKey),
+    get loadGen() {
+      return `${loadCount}|${quickSearch.appliedSearchRegex?.source ?? ""}`;
+    },
     get searchTerm() {
       return quickSearch.searchTerm;
     },
@@ -736,6 +844,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     },
     set view(v: "grid" | "tree") {
       view = v;
+      saveLayoutSoon();
     },
     get hidden() {
       return hidden;
@@ -777,6 +886,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     headerMenuItems,
     onHeaderMenuSelect,
     init,
+    resetLayout,
     /** Reloads the page when an undo wrote to this collection. */
     syncAfterUndo(change: { sessionId: string; db: string; coll: string } | null) {
       if (change && change.sessionId === sessionId && change.db === db && change.coll === coll) void reloadDocs();

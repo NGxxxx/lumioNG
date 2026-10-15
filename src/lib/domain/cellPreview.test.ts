@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { previewCell } from "./cellPreview";
 
 describe("previewCell", () => {
@@ -65,9 +65,12 @@ describe("previewCell", () => {
 
   it("cost does not grow with a huge value inside a container (no full stringify)", () => {
     const big = { blob: "x".repeat(5_000_000), n: 1 };
-    const t0 = performance.now();
+    // Deterministic (not wall-clock): the 5 MB string must never be serialized as a whole.
+    const spy = vi.spyOn(JSON, "stringify");
     const p = previewCell(big);
-    expect(performance.now() - t0).toBeLessThan(5);
+    const hugeArg = spy.mock.calls.some(([arg]) => arg === big || (typeof arg === "string" && arg.length > 10_000));
+    spy.mockRestore();
+    expect(hugeArg).toBe(false);
     expect(p.kind).toBe("object");
     expect(p.text.length).toBeLessThanOrEqual(120);
   });

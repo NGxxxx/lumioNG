@@ -1,7 +1,7 @@
 <!-- src/lib/components/AboutDialog.svelte -->
 <script lang="ts">
   import Modal from "./Modal.svelte";
-  import { getAppVersion } from "#lib/api/app.js";
+  import { appVersion as getAppVersion } from "#lib/stores/desktop.js";
   import appIcon from "#lib/assets/app-icon.png";
   import * as m from "#lib/paraglide/messages.js";
 

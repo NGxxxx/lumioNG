@@ -70,7 +70,7 @@
       const connId = selectedId !== null ? selectedId : (r.editingId ?? null);
       const ok = await onconnected({ connId, label: connLabel, uri: result.uri, readOnly: r.readOnly, ssh: result.ssh, environment: r.environment, color: r.color });
       if (ok) onclose();
-      else connectError = "Connection failed. Check your connection settings and try again.";
+      else connectError = m.session_manager_connect_failed();
     } finally {
       connecting = false;
     }

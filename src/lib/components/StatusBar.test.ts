@@ -78,4 +78,17 @@ describe("StatusBar", () => {
     expect(getByRole("button", { name: "Command log" }).getAttribute("aria-pressed")).toBe("true");
     expect(container.querySelector(".log-dot")).toBeNull();
   });
+
+  it("a connect time that arrives after mount shows a duration, not a dash", async () => {
+    vi.useFakeTimers();
+    try {
+      const base = { connected: true, connectionLabel: "Local", dbCount: 1, collCount: 1, selDb: null, selColl: null };
+      const { getByText, rerender } = render(StatusBar, { props: { ...base, connectedAt: null } });
+      vi.advanceTimersByTime(5_000);
+      await rerender({ ...base, connectedAt: Date.now() });
+      expect(getByText("Connected: 0m")).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

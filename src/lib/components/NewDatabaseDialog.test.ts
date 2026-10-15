@@ -13,8 +13,8 @@ describe("NewDatabaseDialog", () => {
     const { getByText, getByLabelText } = render(NewDatabaseDialog, {
       props: { onsubmit, oncancel: vi.fn() },
     });
-    await fireEvent.input(getByLabelText("db-input"), { target: { value: " shop " } });
-    await fireEvent.input(getByLabelText("coll-input"), { target: { value: " users " } });
+    await fireEvent.input(getByLabelText("Database name"), { target: { value: " shop " } });
+    await fireEvent.input(getByLabelText("First collection"), { target: { value: " users " } });
     await fireEvent.click(getByText("Create"));
     expect(onsubmit).toHaveBeenCalledWith("shop", "users");
   });
@@ -22,8 +22,8 @@ describe("NewDatabaseDialog", () => {
   it("Enter submits the current (db, coll) values", async () => {
     const onsubmit = vi.fn().mockResolvedValue(undefined);
     const { getByLabelText } = render(NewDatabaseDialog, { props: { onsubmit, oncancel: vi.fn() } });
-    await fireEvent.input(getByLabelText("db-input"), { target: { value: "shop" } });
-    await fireEvent.input(getByLabelText("coll-input"), { target: { value: "users" } });
+    await fireEvent.input(getByLabelText("Database name"), { target: { value: "shop" } });
+    await fireEvent.input(getByLabelText("First collection"), { target: { value: "users" } });
     handleModalKeydown(key("Enter"));
     expect(onsubmit).toHaveBeenCalledWith("shop", "users");
   });

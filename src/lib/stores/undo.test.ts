@@ -115,4 +115,18 @@ describe("undo", () => {
     expect(await u.undoLast()).toBe("failed");
     expect(toast.toasts.at(-1)).toMatchObject({ kind: "error" });
   });
+
+  it("the cell-edit toast names the field", () => {
+    const u = createUndo();
+    u.record({ ...NS, kind: "cell", idJson: "1", path: "status", before: "a", after: "b" });
+    expect(toast.toasts.at(-1)?.message).toBe("Updated status");
+  });
+
+  it("changed carries the affected _ids", async () => {
+    vi.mocked(fetchFullDoc).mockResolvedValue({ status: "b", _id: 1 });
+    const u = createUndo();
+    u.record({ ...NS, kind: "replace", before, after });
+    await u.undoLast();
+    expect(u.changed?.ids).toEqual(["1"]);
+  });
 });

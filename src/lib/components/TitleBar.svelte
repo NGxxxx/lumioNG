@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy, type Snippet } from "svelte";
   import { buildBreadcrumb } from "#lib/domain/breadcrumb.js";
-  import { minimize, toggleMaximize, isMaximized, onMaximizedChange } from "#lib/api/window.js";
-  import { getAppVersion } from "#lib/api/app.js";
+  import { windowControls, appVersion as getAppVersion } from "#lib/stores/desktop.js";
+  const { minimize, toggleMaximize, isMaximized, onMaximizedChange } = windowControls;
   import * as m from "#lib/paraglide/messages.js";
   import EnvBadge from "./EnvBadge.svelte";
   import type { Environment } from "#lib/domain/environment.js";

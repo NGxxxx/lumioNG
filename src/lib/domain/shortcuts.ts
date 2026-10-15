@@ -23,7 +23,12 @@ function parseCombo(combo: string, platform: Platform): ParsedCombo {
 export function matchesEvent(combo: string, e: KeyboardEvent, platform: Platform): boolean {
   if (!e.key) return false;
   const p = parseCombo(combo, platform);
-  if (e.key.toLowerCase() !== p.key) return false;
+  // With Alt held, mac Option / AltGr layouts turn the key into another character ("å" for A),
+  // so letters and digits fall back to the physical key code.
+  const physical = e.altKey && typeof e.code === "string"
+    ? /^Key([A-Z])$/.exec(e.code)?.[1]?.toLowerCase() ?? /^Digit([0-9])$/.exec(e.code)?.[1]
+    : undefined;
+  if (e.key.toLowerCase() !== p.key && physical !== p.key) return false;
   if (e.ctrlKey !== p.ctrl) return false;
   if (e.metaKey !== p.meta) return false;
   if (e.shiftKey !== p.shift) return false;
@@ -103,3 +108,14 @@ export function formatCombo(combo: string, platform: Platform): string {
   const sep = mac ? "" : "+";
   return [...displayMods, displayKey].join(sep);
 }
+
+/** Plain Mod+A outside an editable field would "select all" the whole desktop UI — block it.
+ *  Mod+Alt+A / Mod+Shift+A are app shortcuts and must reach the dispatcher untouched. */
+export function blocksNativeSelectAll(e: KeyboardEvent): boolean {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return false;
+  if (e.key !== "a" && e.key !== "A") return false;
+  const el = e.target as HTMLElement | null;
+  const tag = el?.tagName;
+  return !(tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable === true);
+}
+

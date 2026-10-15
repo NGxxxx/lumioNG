@@ -7,6 +7,9 @@ import { insertCmd, replaceCmd } from "../domain/mongosh";
 import type { Doc } from "../domain/doc";
 import { commandLog } from "./commandLog.svelte";
 import { undo } from "./undo.svelte";
+
+/** Skeleton document for a new insert (field names/types sampled from the collection). */
+export { buildInsertSkeleton } from "../api/insertSkeleton";
 import { toast } from "./toast.svelte";
 import * as m from "#lib/paraglide/messages.js";
 

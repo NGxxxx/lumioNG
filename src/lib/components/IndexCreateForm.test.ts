@@ -20,7 +20,7 @@ describe("IndexCreateForm", () => {
     const { getByText, getByLabelText } = render(IndexCreateForm, {
       props: { onsubmit, oncancel: vi.fn() },
     });
-    await fireEvent.input(getByLabelText("field-0"), { target: { value: "email" } });
+    await fireEvent.input(getByLabelText("Field 1"), { target: { value: "email" } });
     await fireEvent.click(getByText("Create"));
     expect(onsubmit).toHaveBeenCalledWith([{ field: "email", dir: 1 }], false, "", false, null, "", "");
   });
@@ -30,7 +30,7 @@ describe("IndexCreateForm", () => {
       props: { onsubmit: vi.fn().mockResolvedValue(undefined), oncancel: vi.fn() },
     });
     await fireEvent.click(getByText("＋ field"));
-    expect(getByLabelText("field-1")).toBeTruthy();
+    expect(getByLabelText("Field 2")).toBeTruthy();
   });
 
   it("onsubmit reject shows inline error", async () => {
@@ -49,8 +49,8 @@ describe("IndexCreateForm", () => {
     expect(queryByLabelText("sparse")).toBeNull();
     await fireEvent.click(getByText("Advanced options"));
     expect(getByLabelText("sparse")).toBeTruthy();
-    expect(getByLabelText("ttl-enabled")).toBeTruthy();
-    expect(getByLabelText("ttl-seconds")).toBeTruthy();
+    expect(getByLabelText("Expire after (seconds)", { exact: false, selector: "input[type=checkbox]" })).toBeTruthy();
+    expect(getByLabelText("Seconds until expiry")).toBeTruthy();
   });
 
   it("TTL seconds input is disabled until the TTL checkbox is checked", async () => {
@@ -58,9 +58,9 @@ describe("IndexCreateForm", () => {
       props: { onsubmit: vi.fn().mockResolvedValue(undefined), oncancel: vi.fn() },
     });
     await fireEvent.click(getByText("Advanced options"));
-    expect((getByLabelText("ttl-seconds") as HTMLInputElement).disabled).toBe(true);
-    await fireEvent.click(getByLabelText("ttl-enabled"));
-    expect((getByLabelText("ttl-seconds") as HTMLInputElement).disabled).toBe(false);
+    expect((getByLabelText("Seconds until expiry") as HTMLInputElement).disabled).toBe(true);
+    await fireEvent.click(getByLabelText("Expire after (seconds)", { exact: false, selector: "input[type=checkbox]" }));
+    expect((getByLabelText("Seconds until expiry") as HTMLInputElement).disabled).toBe(false);
   });
 
   it("checking sparse and TTL sends them in onsubmit", async () => {
@@ -68,11 +68,11 @@ describe("IndexCreateForm", () => {
     const { getByText, getByLabelText } = render(IndexCreateForm, {
       props: { onsubmit, oncancel: vi.fn() },
     });
-    await fireEvent.input(getByLabelText("field-0"), { target: { value: "createdAt" } });
+    await fireEvent.input(getByLabelText("Field 1"), { target: { value: "createdAt" } });
     await fireEvent.click(getByText("Advanced options"));
     await fireEvent.click(getByLabelText("sparse"));
-    await fireEvent.click(getByLabelText("ttl-enabled"));
-    await fireEvent.input(getByLabelText("ttl-seconds"), { target: { value: "3600" } });
+    await fireEvent.click(getByLabelText("Expire after (seconds)", { exact: false, selector: "input[type=checkbox]" }));
+    await fireEvent.input(getByLabelText("Seconds until expiry"), { target: { value: "3600" } });
     await fireEvent.click(getByText("Create"));
     expect(onsubmit).toHaveBeenCalledWith(
       [{ field: "createdAt", dir: 1 }], false, "", true, 3600, "", "",

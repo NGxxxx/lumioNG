@@ -4,8 +4,15 @@ import { parseCollStats, parseDbStats, type CollStatsInfo, type DbStatsInfo } fr
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
 import { collStatsCmd, dbStatsCmd } from "../domain/mongosh";
+import { createDestructiveGate } from "./destructiveGate.svelte";
+import { countCollection } from "./destructiveCounts";
+import { sessionEnvironment } from "./sessionEnv";
 
-type TreeLike = { readonly databases: { name: string; collections: string[] }[] };
+type TreeLike = {
+  readonly databases: { name: string; collections: string[] }[];
+  truncate?: (db: string, coll: string) => Promise<void>;
+  dropCollection?: (db: string, coll: string) => Promise<void>;
+};
 
 export type RowState = "idle" | "loading" | "loaded" | "error";
 export interface CollRow {
@@ -92,7 +99,42 @@ export function createDatabaseCollections(sessionId: string, db: string, tree: T
     return arr;
   });
 
+  const destructive = createDestructiveGate(() => sessionEnvironment(sessionId));
+
+  /** Drop / truncate several collections after one confirmation (total count, PROD policy). Each
+   *  collection runs independently; `done` gets the names that failed. */
+  function requestBulk(kind: "drop" | "truncate", colls: string[], done: (failed: string[]) => void) {
+    if (colls.length === 0) return;
+    void destructive.request(
+      {
+        op: kind === "drop" ? "dropCollection" : "truncate",
+        target: { db, coll: colls.length === 1 ? colls[0] : undefined, colls },
+        fetchCount: async () => {
+          let total = 0;
+          for (const c of colls) total += (await countCollection(sessionId, db, c)).count;
+          return total;
+        },
+      },
+      async () => {
+        const failed: string[] = [];
+        for (const c of colls) {
+          try {
+            if (kind === "truncate") await tree.truncate?.(db, c);
+            else await tree.dropCollection?.(db, c);
+          } catch {
+            failed.push(c);
+          }
+        }
+        await init();
+        done(failed);
+      },
+    );
+  }
+
   return {
+    /** The bulk drop / truncate waiting for confirmation (rendered by DestructiveDialog). */
+    get destructive() { return destructive; },
+    requestBulk,
     get rows() { return sorted; },
     get summary() { return summary; },
     get error() { return error; },

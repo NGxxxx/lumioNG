@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { insertWithUndo, replaceWithUndo } from "../stores/documentWrites";
+  import { undo } from "../stores/undo.svelte";
   import { errorMessage } from "../api/errors";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { activeDocumentForm, type DocumentFormHandle } from "../stores/activeDocumentForm.svelte";
@@ -46,6 +47,17 @@
   let error = $state<string | null>(null);
   let saving = $state(false);
   const idText = $derived(mode === "edit" && initial ? idJson(initial) : null);
+
+  // An undo rewrote or removed this very document while the tab is open: say so (no auto-reload —
+  // the tab may hold edits).
+  let changedByUndo = $state(false);
+  let undoSeen = untrack(() => undo.changed?.seq ?? 0);
+  $effect(() => {
+    const change = undo.changed;
+    if (!change || change.seq <= undoSeen) return;
+    undoSeen = change.seq;
+    if (idText !== null && change.db === db && change.coll === coll && change.ids.includes(idText)) changedByUndo = true;
+  });
 
   const fieldCount = $derived(Object.keys(docValue).length);
   // db/coll are immutable for this component's instance lifetime (a new DocumentForm is mounted
@@ -264,6 +276,7 @@
     {/if}
   </div>
 
+  {#if changedByUndo}<div class="note">{m.document_form_changed_note()}</div>{/if}
   {#if error}<div class="error">{error}</div>{/if}
   {#if view === "tree" && !treeValid}<div class="error">{m.document_form_invalid_fields_error()}</div>{/if}
 
@@ -473,4 +486,5 @@
   }
   .btn-cancel:hover:not(:disabled) { background: var(--bg); }
   .btn-cancel:disabled { opacity: 0.6; cursor: default; }
+  .note { margin: 0 0 0.5rem; padding: 0.375rem 0.5rem; border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-fg); font-size: 0.75rem; }
 </style>
