@@ -35,6 +35,8 @@ import { createShowAllFlow } from "./showAllFlow.svelte";
 import { createRowSelection } from "./rowSelection.svelte";
 import { createExportRequest } from "./exportRequest.svelte";
 import { createDeleteFlow } from "./deleteFlow.svelte";
+import { createDestructiveGate } from "./destructiveGate.svelte";
+import { sessionEnvironment } from "./sessionEnv";
 import { createCommitEditFlow } from "./commitEditFlow.svelte";
 import { createClipboardCopy } from "./clipboardCopy";
 
@@ -321,7 +323,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   /** Merges `path op value` into the filter text and runs it; an unparsable current filter is reported, not overwritten. */
   async function filterBy(path: string, op: FilterOp, value?: unknown) {
-    const r = addCondition(filterText, path, op, value);
+    // Build on what is actually applied — an unapplied draft in the box must not sneak in.
+    const r = addCondition(appliedFilter, path, op, value);
     if (!r.ok) {
       filterError = r.error;
       return;
@@ -594,8 +597,11 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     return null;
   }
 
+  // One pending destructive operation per view (single / selection / bulk deletes and updates).
+  const destructive = createDestructiveGate(() => sessionEnvironment(sessionId));
+
   const bulk = createCollectionBulk({
-    sessionId, db, coll,
+    sessionId, db, coll, gate: destructive,
     getAppliedFilter: () => appliedFilter,
     getSelectedIds: selection.selectedIds,
     reload: reloadDocs,
@@ -612,7 +618,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   });
 
   const deleteFlow = createDeleteFlow({
-    sessionId, db, coll,
+    sessionId, db, coll, gate: destructive,
     getSelectedIds: selection.selectedIds,
     setError: (msg) => { error = msg; },
     setLoading: (v) => { loading = v; },
@@ -686,9 +692,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get visibleIndices() {
       return visibleIndices;
     },
-    get confirmDoc() {
-      return deleteFlow.confirmDoc;
-    },
+    /** The destructive operation waiting for confirmation (rendered by DestructiveDialog). */
+    get destructive() { return destructive; },
     get editing() {
       return edit.editing;
     },
@@ -716,7 +721,6 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     },
     get selected() { return selection.selected; },
     get selectedCount() { return selection.selectedCount; },
-    get confirmSelectionDelete() { return deleteFlow.confirmSelectionDelete; },
     clickRow: selection.clickRow,
     setSelected: selection.setSelected,
     selectAll: selection.selectAll,
@@ -724,8 +728,6 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     clearSelection: selection.clearSelection,
     selectedIds: selection.selectedIds,
     requestDeleteSelected,
-    cancelDeleteSelected: deleteFlow.cancelDeleteSelected,
-    confirmDeleteSelected: deleteFlow.confirmDeleteSelected,
     get sortKeys() {
       return sortKeys;
     },
@@ -775,6 +777,10 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     headerMenuItems,
     onHeaderMenuSelect,
     init,
+    /** Reloads the page when an undo wrote to this collection. */
+    syncAfterUndo(change: { sessionId: string; db: string; coll: string } | null) {
+      if (change && change.sessionId === sessionId && change.db === db && change.coll === coll) void reloadDocs();
+    },
     startEdit,
     cancelEdit,
     commitEdit: commitFlow.commitEdit,
@@ -783,8 +789,6 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     menuItems,
     onMenuSelect,
     requestDelete: deleteFlow.requestDelete,
-    cancelDelete: deleteFlow.cancelDelete,
-    confirmDelete: deleteFlow.confirmDelete,
     copy,
     get appliedFilter() { return appliedFilter; },
     get bulkMode() { return bulk.bulkMode; },
@@ -795,9 +799,6 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get bulkCounting() { return bulk.bulkCounting; },
     get bulkRunning() { return bulk.bulkRunning; },
     get bulkScope() { return bulk.bulkScope; },
-    get bulkTypeConfirm() { return bulk.bulkTypeConfirm; },
-    confirmBulkAll: bulk.confirmBulkAll,
-    cancelBulkAll: bulk.cancelBulkAll,
     get bulkResult() { return bulk.bulkResult; },
     get bulkError() { return bulk.bulkError; },
     get canRunBulk() { return bulk.canRunBulk; },

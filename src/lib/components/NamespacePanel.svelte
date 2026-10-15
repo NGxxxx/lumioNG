@@ -1,12 +1,14 @@
 <script lang="ts">
   import { sessionManager } from "../stores/sessionManager.svelte";
   import NamespaceTree, { type TreeMenuTarget } from "./NamespaceTree.svelte";
+  import EnvBadge from "./EnvBadge.svelte";
+  import { jobs } from "../stores/jobs.svelte";
   import { filterNamespaces } from "../domain/nsfilter";
   import ContextMenu from "./ContextMenu.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import NameDialog from "./NameDialog.svelte";
   import NewDatabaseDialog from "./NewDatabaseDialog.svelte";
-  import DropConfirmDialog from "./DropConfirmDialog.svelte";
+  import DestructiveDialog from "./DestructiveDialog.svelte";
   import ExportWizard from "./ExportWizard.svelte";
   import ImportDialog from "./ImportDialog.svelte";
   import type { ExportWizardInput } from "../domain/exportPlan";
@@ -86,10 +88,7 @@
     | { type: "newDb"; sessionId: string }
     | { type: "newColl"; db: string; sessionId: string }
     | { type: "rename"; db: string; coll: string; sessionId: string }
-    | { type: "duplicate"; db: string; coll: string; sessionId: string }
-    | { type: "dropColl"; db: string; coll: string; sessionId: string }
-    | { type: "dropDb"; db: string; sessionId: string }
-    | { type: "truncate"; db: string; coll: string; sessionId: string };
+    | { type: "duplicate"; db: string; coll: string; sessionId: string };
 
   let dialog = $state<Dialog | null>(null);
   let exportWizard = $state<ExportWizardInput | null>(null);
@@ -131,7 +130,7 @@
         exportWizard = { mode: "pick", preChecked: (db?.collections ?? []).map((c) => ({ db: target.db, coll: c })) };
       }
       else if (action === "import") openImportDialog(target.sessionId, target.db, null);
-      else if (action === "dropDb") dialog = { type: "dropDb", db: target.db, sessionId: target.sessionId };
+      else if (action === "dropDb") tree?.requestDropDatabase(target.db);
     } else {
       if (action === "newQuery") onnewquery?.({ sessionId: target.sessionId, db: target.db, coll: target.coll });
       else if (action === "refresh") tree?.refresh();
@@ -144,8 +143,8 @@
       else if (action === "copyName") copyName(target.coll);
       else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "duplicate") dialog = { type: "duplicate", db: target.db, coll: target.coll, sessionId: target.sessionId };
-      else if (action === "truncate") dialog = { type: "truncate", db: target.db, coll: target.coll, sessionId: target.sessionId };
-      else if (action === "dropColl") dialog = { type: "dropColl", db: target.db, coll: target.coll, sessionId: target.sessionId };
+      else if (action === "truncate") tree?.requestTruncate(target.db, target.coll);
+      else if (action === "dropColl") tree?.requestDropCollection(target.db, target.coll);
     }
   }
 
@@ -219,6 +218,7 @@
       <span class="session-dot" style="background:{sess.color}"></span>
       <!-- Label -->
       <span class="session-label">{sess.label}</span>
+      <EnvBadge env={sess.environment} />
       <!-- Status indicator -->
       {#if sess.status === "connecting"}
         <span class="status-spinner" aria-label="Connecting" title="Connecting…">
@@ -342,39 +342,11 @@
     }}
     oncancel={() => (dialog = null)}
   />
-{:else if dialog?.type === "dropColl"}
-  {@const d = dialog}
-  <DropConfirmDialog
-    title={m.drop_dialog_drop() + " collection"}
-    message={m.namespace_panel_drop_coll_message({ coll: d.coll, db: d.db })}
-    expectedName={d.coll}
-    onconfirm={async () => {
-      await sessionById(d.sessionId)?.tree?.dropCollection(d.db, d.coll);
-      dialog = null;
-    }}
-    oncancel={() => (dialog = null)}
-  />
-{:else if dialog?.type === "dropDb"}
-  {@const d = dialog}
-  <DropConfirmDialog
-    title={m.drop_dialog_drop() + " database"}
-    message={m.namespace_panel_drop_db_message({ db: d.db })}
-    expectedName={d.db}
-    onconfirm={async () => {
-      await sessionById(d.sessionId)?.tree?.dropDatabase(d.db);
-      dialog = null;
-    }}
-    oncancel={() => (dialog = null)}
-  />
-{:else if dialog?.type === "truncate"}
-  {@const d = dialog}
-  <DropConfirmDialog title={m.namespace_panel_truncate_title()}
-    message={m.namespace_panel_truncate_message({ coll: d.coll })}
-    expectedName={d.coll}
-    confirmLabel={m.drop_dialog_truncate()}
-    onconfirm={async () => { await sessionById(d.sessionId)?.tree?.truncate(d.db, d.coll); dialog = null; }}
-    oncancel={() => (dialog = null)} />
 {/if}
+
+{#each sessionManager.sessions as sess (sess.id)}
+  <DestructiveDialog gate={sess.tree.destructive} />
+{/each}
 
 {#if exportWizard}
   <ExportWizard input={exportWizard} onclose={() => (exportWizard = null)} />
@@ -384,7 +356,9 @@
   {@const cd = confirmDisconnect}
   <ConfirmDialog
     title={m.namespace_panel_disconnect_confirm_title()}
-    message={m.namespace_panel_disconnect_confirm_message({ label: cd.label })}
+    message={jobs.running > 0
+      ? `${m.namespace_panel_disconnect_confirm_message({ label: cd.label })} ${m.jobs_running_warning({ count: String(jobs.running) })}`
+      : m.namespace_panel_disconnect_confirm_message({ label: cd.label })}
     confirmLabel={m.namespace_panel_menu_disconnect()}
     danger
     onconfirm={() => { cd.run(); confirmDisconnect = null; }}

@@ -18,6 +18,7 @@
   import { commandLog } from "../stores/commandLog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import DestructiveConfirm from "./DestructiveConfirm.svelte";
+  import DestructiveDialog from "./DestructiveDialog.svelte";
   import DropConfirmDialog from "./DropConfirmDialog.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import ExportWizard from "./ExportWizard.svelte";
@@ -100,6 +101,10 @@
   function onPeek(row: number, edit: boolean) {
     const d = v.docs[row];
     if (d) void peek.show(d, edit);
+  }
+  /** A click on empty grid space closes an unpinned drawer with nothing unsaved. */
+  function onGridBackground() {
+    if (peek.open && !settings.peekPinned && !peek.dirty) peek.close();
   }
   function onGridEscape(): boolean {
     if (!peek.open) return false;
@@ -372,7 +377,7 @@
           <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
         {:else if showDocs}
           <div class="grid-host" class:with-pinned={peek.open && settings.peekPinned}>
-            <div class="grid-main"><ResultGrid {v} onpeek={onPeek} onescape={onGridEscape} /></div>
+            <div class="grid-main"><ResultGrid {v} onpeek={onPeek} onescape={onGridEscape} peekOpen={peek.open} onpeekclose={() => peek.requestClose()} onbackground={onGridBackground} /></div>
             {#if peek.open}
               <DocPeekDrawer
                 {peek}
@@ -382,6 +387,7 @@
                 onresize={(px) => settings.setPeekWidth(px)}
                 onpin={(b) => settings.setPeekPinned(b)}
                 onopentab={(d) => { if (v.provenance) onopendocument?.(d, v.provenance.db, v.provenance.coll, "edit"); }}
+                canDuplicate={false}
                 onduplicate={() => {}}
                 ondelete={deleteShown}
                 onbulk={(a) => { if (a === "delete") v.requestDeleteSelected?.(); }}
@@ -427,6 +433,7 @@
 {#if v.destructiveConfirm}
   <DestructiveConfirm
     ops={v.destructiveConfirm.ops}
+    prod={v.destructiveConfirm.prod}
     onrun={async () => {
       await v.confirmRun();
       applyPostRunView();
@@ -479,15 +486,7 @@
     oncancel={() => v.discardBlurEdit()} />
 {/if}
 
-{#if v.confirmDelete !== null}
-  <ConfirmDialog
-    title={m.result_table_delete_selection_title()}
-    message={m.result_table_delete_selection_message({ count: v.confirmDelete.count })}
-    confirmLabel={m.common_delete()}
-    danger
-    onconfirm={() => v.confirmDeleteRun()}
-    oncancel={() => v.cancelDelete()} />
-{/if}
+<DestructiveDialog gate={v.destructive} />
 
 {#if v.showAllPending !== null}
   <ConfirmDialog

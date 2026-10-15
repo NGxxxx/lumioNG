@@ -5,6 +5,7 @@ import { updateOne } from "../api/documents";
 import { updateOneCmd } from "../domain/mongosh";
 import { errorMessage } from "../api/errors";
 import { commandLog } from "./commandLog.svelte";
+import { undo } from "./undo.svelte";
 import type { Doc } from "../domain/doc";
 import type { CellEdit } from "./cellEditEntry.svelte";
 
@@ -65,6 +66,7 @@ export function createCommitEditFlow(args: {
     try {
       await commandLog.pushTimed(updateOneCmd(target.coll, filter, update), sessionId, () =>
         updateOne(sessionId, target.db, target.coll, filter, update, false));
+      undo.record({ kind: "cell", sessionId, db: target.db, coll: target.coll, idJson: id, path: key, before: original, after: r.value });
       // The write itself targeted `_id`, so it always landed on the right document; only the local
       // patch is index-based, so skip it when a reload during the round-trip repopulated `docs`.
       // A stale generation means a newer edit may already own `edit`'s state — leave it alone.

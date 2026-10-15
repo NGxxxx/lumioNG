@@ -210,4 +210,10 @@ describe("NamespacePanel", () => {
     await fireEvent.click(getByRole("button", { name: "Session manager" }));
     expect(onmanagesessions).toHaveBeenCalled();
   });
+
+  it("the session header shows the environment badge", async () => {
+    await sessionManager.focusOrOpen({ connId: 5, uri: "mongodb://p", label: "prod", environment: "prod" });
+    const { getByText } = render(NamespacePanel, { props: {} });
+    expect(getByText("PROD")).toBeTruthy();
+  });
 });

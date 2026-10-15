@@ -89,4 +89,24 @@ describe("Toolbar", () => {
     expect(parts[1].classList.contains("strong")).toBe(true);
     expect(container.querySelectorAll(".crumb .slash")).toHaveLength(1);
   });
+
+  it("Escape closes the ⋯ menu and returns focus to its button", async () => {
+    const { getByRole, queryByRole } = render(Toolbar, { props: dataProps() });
+    const more = getByRole("button", { name: "More actions" });
+    await fireEvent.click(more);
+    const menu = getByRole("menu");
+    await fireEvent.keyDown(menu, { key: "Escape" });
+    expect(queryByRole("menu")).toBeNull();
+    expect(document.activeElement).toBe(more);
+  });
+
+  it("ArrowDown moves focus through the ⋯ menu items", async () => {
+    const { getByRole, getAllByRole } = render(Toolbar, { props: dataProps() });
+    await fireEvent.click(getByRole("button", { name: "More actions" }));
+    const items = [...getByRole("menu").querySelectorAll("button")];
+    expect(document.activeElement).toBe(items[0]);
+    await fireEvent.keyDown(items[0], { key: "ArrowDown" });
+    expect(document.activeElement).toBe(items[1]);
+    void getAllByRole;
+  });
 });

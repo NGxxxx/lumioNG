@@ -20,6 +20,12 @@ function localDateTime(iso: string): string | null {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** `s.slice(0, n)` that drops a trailing high surrogate instead of leaving half an emoji. */
+function clip(s: string, n: number): string {
+  const end = n > 0 && n < s.length && /[\uD800-\uDBFF]/.test(s[n - 1]) ? n - 1 : n;
+  return s.slice(0, end);
+}
+
 /** A value nested inside a container preview: leaves show their text, containers collapse so previews stay one level deep. */
 /** No single nested value needs more than this; the whole preview is capped at `max` anyway. */
 const NESTED_MAX = 200;
@@ -29,7 +35,7 @@ function nestedText(v: unknown): string {
   if (c === "array") return "[…]";
   if (c === "object") return "{…}";
   // Clip long strings before they are concatenated: copying a multi-MB value only to slice it is the cost being avoided.
-  if (typeof v === "string") return v.length > NESTED_MAX ? v.slice(0, NESTED_MAX) : v;
+  if (typeof v === "string") return v.length > NESTED_MAX ? clip(v, NESTED_MAX) : v;
   return describeValue(v).display;
 }
 
@@ -81,6 +87,6 @@ export function previewCell(value: unknown, max = 120): CellPreview {
     if (iso) title = iso;
   } else text = describeValue(value).display;
 
-  if (text.length > max) text = text.slice(0, max - 1) + "…";
+  if (text.length > max) text = clip(text, max - 1) + "…";
   return { text, kind, ...(title ? { title } : {}), align: NUMERIC.has(kind) ? "right" : "left" };
 }

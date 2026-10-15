@@ -25,7 +25,7 @@ export function parseFilter(text: string): ParseResult {
   return { ok: true, json: trimmed };
 }
 
-/** Merge a single-field condition into the current filter text; returns pretty Extended JSON, or the parse error when the current text is unusable. */
+/** Merge a single-field condition into the current filter text by splicing it into the user's own text (big integers, `1.0`, key order and duplicates survive); wraps in `$and` when the path or `$or`/`$and` is already used. Returns the parse error when the current text is unusable. */
 export function addCondition(
   filterText: string,
   path: string,
@@ -38,13 +38,13 @@ export function addCondition(
 
   const cond: unknown =
     op === "eq" ? value : op === "ne" ? { $ne: value } : { $exists: op === "exists" };
-  const clause = { [path]: cond };
+  const member = `${JSON.stringify(path)}: ${JSON.stringify(cond)}`;
 
-  let next: Record<string, unknown>;
-  if (Object.keys(current).length === 0) next = clause;
-  else if (Array.isArray(current.$and)) next = { ...current, $and: [...current.$and, clause] };
-  else if (path in current || "$or" in current) next = { $and: [current, clause] };
-  else next = { ...current, ...clause };
-
-  return { ok: true, text: JSON.stringify(next, null, 2) };
+  if (Object.keys(current).length === 0) return { ok: true, text: `{${member}}` };
+  if (path in current || "$or" in current || "$and" in current) {
+    return { ok: true, text: `{"$and": [${parsed.json}, {${member}}]}` };
+  }
+  // parseFilter guarantees a non-empty object, so the last "}" closes it.
+  const head = parsed.json.slice(0, parsed.json.lastIndexOf("}")).trimEnd();
+  return { ok: true, text: `${head}, ${member}${parsed.json.slice(head.length)}` };
 }

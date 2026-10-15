@@ -33,6 +33,10 @@ import type { MenuItem } from "../domain/gridView";
 import { createRowSelection } from "./rowSelection.svelte";
 import { createCommitEditFlow } from "./commitEditFlow.svelte";
 import { createClipboardCopy } from "./clipboardCopy";
+import { createDestructiveGate } from "./destructiveGate.svelte";
+import { sessionEnvironment } from "./sessionEnv";
+import { canSuppress } from "../domain/confirmPolicy";
+import { UNDO_DELETE_CAP, snapshotForUndo, recordDelete } from "./documentWrites";
 
 /** Per-tab state for one QuickJS Query tab: run script + client-side paging + column widths. */
 export function createQueryScript(sessionId: string, initialStatement: string) {
@@ -95,7 +99,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   // Guards against overlapping in-flight paged-mode fetches (double-click nextPage, fast page-jump typing, etc.), same pattern as collectionView.svelte.ts.
   let generation = 0;
 
-  let destructiveConfirm = $state<{ ops: string[] } | null>(null);
+  let destructiveConfirm = $state<{ ops: string[]; /** PROD: cannot be suppressed, says so. */ prod: boolean } | null>(null);
   /** Critical-tier destructive ops (dropDatabase/drop/dropIndex(es), or an empty-filter mass
    *  write) — always confirmed via typed name, bypassing `settings.suppressDestructiveWarning`. */
   let criticalConfirm = $state<{ ops: string[] } | null>(null);
@@ -153,7 +157,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     getVisibleIndices: () => visibleIndices,
   });
   let ioError = $state<string | null>(null);
-  let confirmDelete = $state<{ count: number; picked: Doc[] } | null>(null);
+  // Selection deletes confirm through the environment policy (sessionId is read fresh: it can be rebound).
+  const destructive = createDestructiveGate(() => sessionEnvironment(sessionId));
   let exportRequest = $state<{ rows: Doc[] } | null>(null);
 
   /** True when edit/delete actions are permitted (pure single-collection cursor result). */
@@ -418,9 +423,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
       return;
     }
     const ops = scanDestructive(script);
-    if (ops.length && !settings.suppressDestructiveWarning) {
+    // "Don't ask again" never applies on PROD.
+    const prod = !canSuppress(sessionEnvironment(sessionId), "script");
+    if (ops.length && (prod || !settings.suppressDestructiveWarning)) {
       pending = { db, script };
-      destructiveConfirm = { ops };
+      destructiveConfirm = { ops, prod };
       return;
     }
     await execute(db, script);
@@ -451,7 +458,7 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   async function dontAskAgain() {
-    settings.setSuppressDestructiveWarning(true);
+    if (!destructiveConfirm?.prod) settings.setSuppressDestructiveWarning(true);
     await confirmRun();
   }
 
@@ -644,14 +651,11 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
   }
 
   function requestDelete(picked: Doc[]) {
-    if (picked.length === 0) return;
-    confirmDelete = { count: picked.length, picked };
-  }
-  function cancelDelete() { confirmDelete = null; }
-  async function confirmDeleteRun() {
-    const c = confirmDelete;
-    confirmDelete = null;
-    if (c) await deleteSelected(c.picked);
+    if (picked.length === 0 || !provenance) return;
+    void destructive.request(
+      { op: "deleteMany", target: { db: provenance.db, coll: provenance.coll }, count: picked.length, undoable: picked.length <= UNDO_DELETE_CAP },
+      () => deleteSelected(picked),
+    );
   }
 
   // ── activeDataView bridge: mirrors ResultTable's DataViewHandle shape, backed by `selected`/`docs` instead of collectionView's selection/paging state. ──
@@ -689,8 +693,10 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     const filter = idInFilter(ids);
     loading = true;
     try {
+      const snapshot = await snapshotForUndo(sessionId, prov.db, prov.coll, ids);
       await commandLog.pushTimed(deleteManyCmd(prov.coll, filter), sessionId, () =>
         deleteMany(sessionId, prov.db, prov.coll, filter, false));
+      recordDelete(sessionId, prov.db, prov.coll, snapshot);
       selection.clearSelection();
       edit.clear();
       if (recipe) {
@@ -847,9 +853,8 @@ export function createQueryScript(sessionId: string, initialStatement: string) {
     menuItems,
     onMenuSelect,
     get ioError() { return ioError; },
-    get confirmDelete() { return confirmDelete; },
-    cancelDelete,
-    confirmDeleteRun,
+    /** The selection delete waiting for confirmation (rendered by DestructiveDialog). */
+    get destructive() { return destructive; },
     get exportRequest() { return exportRequest; },
     cancelExport,
     exportInput,

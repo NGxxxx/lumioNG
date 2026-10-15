@@ -14,6 +14,7 @@
   import { toast } from "../stores/toast.svelte";
   import type { GridPageView } from "../domain/gridView";
   import type { Doc } from "../domain/doc";
+  import { idJson } from "../domain/docid";
   import { portal } from "../actions/portal";
   import { backdropClose } from "../actions/backdropClose";
   import * as m from "#lib/paraglide/messages.js";
@@ -26,6 +27,9 @@
     onopendocument,
     onpeek,
     onescape,
+    peekOpen = false,
+    onpeekclose,
+    onbackground,
   }: {
     v: GridPageView;
     onopendocument?: (doc: Doc, mode: "insert") => void;
@@ -33,6 +37,11 @@
     onpeek?: (row: number, edit: boolean) => void;
     /** Esc: returns true when the host consumed it (e.g. closed the drawer); otherwise the grid clears its selection. */
     onescape?: () => boolean;
+    /** The quick-look drawer is open: Space closes it (via onpeekclose) instead of re-opening. */
+    peekOpen?: boolean;
+    onpeekclose?: () => void;
+    /** A click on empty grid space (not a row, header or button). */
+    onbackground?: () => void;
   } = $props();
 
   const copyText = createClipboardCopy((msg) => toast.push(msg, "error"));
@@ -105,8 +114,30 @@
   let navAnchor = $state<number | null>(null);
   const cursorRow = $derived(cursor !== null && cursor < rowCount ? rowAt(cursor) : null);
 
+  // Real row → display position, built once per visibleIndices (no per-row indexOf).
+  const posOf = $derived.by(() => {
+    const vis = v.visibleIndices;
+    if (!vis) return null;
+    const map = new Map<number, number>();
+    vis.forEach((row, pos) => map.set(row, pos));
+    return map;
+  });
+  // A different set of rows (page, filter, sort, quick search) invalidates the cursor. Keyed on
+  // shape, not array identity, so an inline edit (which reassigns docs) keeps it.
+  const rowsKey = $derived(
+    `${v.currentPage}|${JSON.stringify(v.sortKeys ?? null)}|${v.docs.length}|${v.docs.length ? idJson(v.docs[0]) : ""}|${v.visibleIndices?.length ?? -1}|${v.visibleIndices?.[0] ?? -1}`,
+  );
+  $effect(() => {
+    void rowsKey;
+    untrack(() => {
+      cursor = null;
+      navAnchor = null;
+    });
+  });
+
   function navState(): NavState {
-    const toPos = (row: number) => (v.visibleIndices ? v.visibleIndices.indexOf(row) : row);
+    const map = posOf;
+    const toPos = (row: number) => (map ? (map.get(row) ?? -1) : row);
     const selected = new Set([...v.selected].map(toPos).filter((p) => p >= 0));
     return { cursor, anchor: navAnchor, selected };
   }
@@ -162,6 +193,12 @@
         v.prevPage();
         return true;
       case " ":
+        if (peekOpen && onpeekclose) {
+          onpeekclose();
+          return true;
+        }
+        if (cursorRow !== null) onpeek?.(cursorRow, false);
+        return true;
       case "e":
         if (cursorRow !== null) onpeek?.(cursorRow, e.key === "e");
         return true;
@@ -182,7 +219,7 @@
   async function commitAndAdvance(row: number, key: string) {
     await v.commitEdit();
     if (v.editing !== null) return; // commit failed; stay put
-    const pos = v.visibleIndices ? v.visibleIndices.indexOf(row) : row;
+    const pos = posOf ? (posOf.get(row) ?? -1) : row;
     if (pos !== -1 && pos + 1 < rowCount) v.startEdit(rowAt(pos + 1), key);
   }
 
@@ -202,6 +239,8 @@
   function onGridKey(e: KeyboardEvent) {
     if (v.editing?.kind === "inline") return; // let the input's native copy/paste through
     if (isEditable(e.target)) return; // typing in a field inside the grid is never a shortcut
+    // A focused button inside the grid (eye, column ▾, copy) handles its own keys.
+    if (e.target instanceof HTMLElement && e.target !== scrollerEl && e.target.closest("button")) return;
     const mod = e.ctrlKey || e.metaKey;
     if (!mod && !e.altKey && onNavKey(e)) {
       e.preventDefault();
@@ -248,6 +287,7 @@
 <div class="grid-region">
   {#if v.loading && v.docs.length > 0}<div class="progress-bar" role="progressbar" aria-label={m.common_loading()}></div>{/if}
   <div class="scroller" role="grid" tabindex="0" aria-label={m.result_table_aria_grid()} onkeydown={onGridKey} bind:this={scrollerEl}
+    onclick={(e) => { if (!(e.target as Element).closest("tr[data-index], thead, button, input, .modal-editor")) onbackground?.(); }}
     style="--grid-row-h: {gridRowH()}px">
     {#if v.columnFields.length === 0}
       <div class="empty">{m.query_result_grid_empty()}</div>

@@ -32,6 +32,34 @@
   const inline = $derived(entries.filter((e) => !e.overflow));
   const overflow = $derived(entries.filter((e) => e.overflow));
   let moreOpen = $state(false);
+  let moreBtn: HTMLButtonElement | undefined = $state();
+
+  /** Focuses the first enabled item when the ⋯ menu opens. */
+  function focusFirst(node: HTMLElement) {
+    node.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }
+
+  function onMenuKey(e: KeyboardEvent) {
+    const menu = e.currentTarget as HTMLElement;
+    const items = [...menu.querySelectorAll<HTMLButtonElement>("button:not(:disabled)")];
+    const at = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      moreOpen = false;
+      moreBtn?.focus();
+    } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const n = items.length;
+      const down = e.key === "ArrowDown";
+      if (n) items[at < 0 ? (down ? 0 : n - 1) : (at + (down ? 1 : n - 1)) % n].focus();
+    } else if (e.key === "Home" || e.key === "End") {
+      e.preventDefault();
+      items[e.key === "Home" ? 0 : items.length - 1]?.focus();
+    } else if (e.key === "Tab") {
+      moreOpen = false;
+    }
+  }
 
   const labelOf = (id: CommandId) => labels[id] ?? id;
   const disabledOf = (id: CommandId) => !commands[id] || commands[id]!.disabled;
@@ -44,6 +72,7 @@
   }
 
   function run(id: CommandId) {
+    if (moreOpen) moreBtn?.focus();
     moreOpen = false;
     if (!disabledOf(id)) commands[id]?.run();
   }
@@ -115,6 +144,7 @@
       <button
         class="btn-icon"
         class:active={moreOpen}
+        bind:this={moreBtn}
         aria-label={m.toolbar_more()}
         aria-haspopup="menu"
         aria-expanded={moreOpen}
@@ -123,7 +153,8 @@
         <svg aria-hidden="true" width="15" height="15" viewBox="0 0 16 16" fill="currentColor"><circle cx="3.5" cy="8" r="1.2" /><circle cx="8" cy="8" r="1.2" /><circle cx="12.5" cy="8" r="1.2" /></svg>
       </button>
       {#if moreOpen}
-        <div class="menu" role="menu">
+        <!-- svelte-ignore a11y_interactive_supports_focus -->
+        <div class="menu" role="menu" use:focusFirst onkeydown={onMenuKey}>
           {#each overflow as e (e.id)}
             <button
               class="item"

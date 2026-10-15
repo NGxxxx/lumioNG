@@ -13,6 +13,7 @@ import { createSessionManager } from "./sessionManager.svelte";
 import { SESSION_COLORS } from "../domain/session";
 import { connect } from "../api/connection";
 import { commandLog } from "./commandLog.svelte";
+import { sessionEnvironment } from "./sessionEnv";
 
 describe("sessionManager", () => {
   let sm: ReturnType<typeof createSessionManager>;
@@ -23,6 +24,15 @@ describe("sessionManager", () => {
     expect(sm.sessions.length).toBe(1);
     expect(sm.activeId).toBe("conn:1");
     expect(sm.active?.label).toBe("local");
+  });
+
+  it("a session carries its environment and uses the saved color when set", async () => {
+    await sm.focusOrOpen({ connId: 1, uri: "mongodb://h", label: "prod", environment: "prod", color: "#e5484d" });
+    expect(sm.active?.environment).toBe("prod");
+    expect(sm.active?.color).toBe("#e5484d");
+    await sm.focusOrOpen({ connId: 2, uri: "mongodb://h2", label: "x" });
+    expect(sm.active?.environment).toBe("");
+    expect(SESSION_COLORS).toContain(sm.active?.color);
   });
 
   it("focusOrOpen pushes connectCmd with a measured duration", async () => {
@@ -323,5 +333,12 @@ describe("sessionManager DDL tab cleanup", () => {
     expect(renamed.coll).toBe("new");
     expect(sm.active!.nav.selection).toEqual({ db: "d", coll: "new" });
     expect(sm.active!.nav.collectionVersion("d", "new")).toBe(1);
+  });
+
+  it("reconnecting to an open session picks up a changed environment", async () => {
+    await sm.focusOrOpen({ connId: 31, uri: "mongodb://h", label: "x", environment: "" });
+    await sm.focusOrOpen({ connId: 31, uri: "mongodb://h", label: "x", environment: "prod" });
+    expect(sm.active?.environment).toBe("prod");
+    expect(sessionEnvironment("conn:31")).toBe("prod");
   });
 });

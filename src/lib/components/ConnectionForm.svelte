@@ -3,6 +3,10 @@
   import { forgetSshHostKey } from "../api/connection";
   import * as m from "#lib/paraglide/messages.js";
   import type { createConnectionRegistry } from "../stores/connections.svelte";
+  import { ENV_META, suggestEnvironment, type Environment } from "../domain/environment";
+  import { SESSION_COLORS } from "../domain/session";
+  import { createClipboardCopy } from "../stores/clipboardCopy";
+  import { toast } from "../stores/toast.svelte";
 
   let {
     registry: r,
@@ -12,10 +16,32 @@
     connectError: string | null;
   } = $props();
 
-  let importUri = $state("");
+  let uriText = $state("");
+  let uriError = $state(false);
+  let filled = $state<number | null>(null);
+  const copy = createClipboardCopy((msg) => toast.push(msg, "error"));
   let activeTab = $state<"general" | "ssh">("general");
   let forgettingHostKey = $state(false);
   let forgotHostKey = $state(false);
+
+  const ENVS: Environment[] = ["", "dev", "staging", "prod"];
+  const SWATCHES = SESSION_COLORS.slice(0, 6);
+  // Once the user picks an environment themselves, stop suggesting one.
+  let envPicked = $state(false);
+  const suggestion = $derived(!envPicked && r.environment === "" ? suggestEnvironment(r.label, r.host) : null);
+  const suggestText = (e: Environment) =>
+    e === "prod" ? m.env_suggest_prod() : e === "staging" ? m.env_suggest_staging() : m.env_suggest_dev();
+
+  // Another connection in the form: suggestions apply again.
+  $effect(() => {
+    void r.editingId;
+    envPicked = false;
+  });
+
+  function pickEnv(e: Environment) {
+    envPicked = true;
+    r.environment = e;
+  }
 
   async function pickCertFile() {
     const path = await openDialog([{ name: "PEM", extensions: ["pem", "crt", "cer"] }]);
@@ -36,8 +62,26 @@
     }
   }
 
-  function doImport() {
-    if (importUri.trim()) { r.importFromUri(importUri.trim()); importUri = ""; }
+  function applyUri(text: string) {
+    if (!text.trim()) return;
+    const res = r.fillFromUri(text);
+    uriError = !res.ok;
+    filled = res.ok ? res.filled : null;
+    if (res.ok) uriText = "";
+  }
+  function onUriPaste(e: ClipboardEvent) {
+    const text = e.clipboardData?.getData("text") ?? "";
+    if (!text.trim()) return;
+    e.preventDefault();
+    applyUri(text);
+  }
+  function undoFill() {
+    r.undoFill();
+    filled = null;
+  }
+  async function copyUri(withPassword: boolean) {
+    await copy(r.formUri(withPassword));
+    toast.push(m.conn_uri_copied());
   }
 </script>
 
@@ -53,8 +97,67 @@
 
   {#if activeTab === "general"}
     <div class="form-grid">
+      <span class="form-label">{m.conn_uri_label()}:</span>
+      <div class="uri-cell">
+        <input
+          id="conn-uri-input"
+          class="form-input mono"
+          bind:value={uriText}
+          placeholder={m.conn_uri_placeholder()}
+          aria-label={m.conn_uri_label()}
+          aria-invalid={uriError}
+          onpaste={onUriPaste}
+          oninput={() => (uriError = false)}
+          onkeydown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyUri(uriText); } }}
+          onchange={() => applyUri(uriText)}
+          spellcheck="false"
+          autocomplete="off"
+        />
+        {#if uriError}<span class="uri-error">{m.conn_uri_invalid()}</span>{/if}
+        {#if filled !== null && r.canUndoFill}
+          <span class="uri-note">{m.conn_uri_filled({ count: String(filled) })} · <button type="button" class="hint-btn" onclick={undoFill}>{m.conn_uri_undo()}</button></span>
+        {/if}
+        {#if r.editingId !== null}
+          <span class="uri-copy">
+            <button type="button" class="hint-btn" onclick={() => copyUri(false)}>{m.conn_copy_uri()}</button>
+            {#if r.password}<button type="button" class="hint-btn" onclick={() => copyUri(true)}>{m.conn_copy_uri_password()}</button>{/if}
+          </span>
+        {/if}
+      </div>
+
       <span class="form-label">{m.session_manager_label_session_name()}</span>
       <input class="form-input" bind:value={r.label} placeholder="e.g. Local Dev" aria-label={m.session_manager_col_name()} />
+
+      <span class="form-label">{m.env_label()}:</span>
+      <div class="env-cell">
+        <div class="segmented" role="radiogroup" aria-label={m.env_label()}>
+          {#each ENVS as e (e)}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={r.environment === e}
+              class="seg {ENV_META[e].tone ?? ''}"
+              class:on={r.environment === e}
+              data-env={e || "none"}
+              onclick={() => pickEnv(e)}
+            >{e === "" ? m.env_none() : e === "staging" ? "STAGING" : ENV_META[e].short}</button>
+          {/each}
+        </div>
+        {#if suggestion}
+          <button type="button" class="hint-btn" onclick={() => pickEnv(suggestion)}>{suggestText(suggestion)}</button>
+        {/if}
+        {#if r.environment === "prod" && !r.readOnly}
+          <span class="hint">{m.env_prod_readonly_hint()}</span>
+        {/if}
+      </div>
+
+      <span class="form-label">{m.color_label()}:</span>
+      <div class="swatches" role="radiogroup" aria-label={m.color_label()}>
+        <button type="button" role="radio" class="swatch auto" class:on={r.color === ""} aria-checked={r.color === ""} aria-label={m.color_auto()} title={m.color_auto()} onclick={() => (r.color = "")}>A</button>
+        {#each SWATCHES as c (c)}
+          <button type="button" role="radio" class="swatch" class:on={r.color === c} aria-checked={r.color === c} aria-label={c} style="background:{c}" onclick={() => (r.color = c)}></button>
+        {/each}
+      </div>
 
       <span class="form-label">{m.session_manager_label_conn_type()}</span>
       <select class="form-input" bind:value={r.scheme} aria-label={m.session_manager_label_conn_type()}>
@@ -135,12 +238,6 @@
 
       <span class="form-label">{m.session_manager_label_extra()}</span>
       <input class="form-input mono" bind:value={r.extraOptions} placeholder="readPreference=secondary&appName=x" aria-label={m.session_manager_label_extra()} />
-
-      <span class="form-label">{m.session_manager_label_import_uri()}</span>
-      <div class="import-row">
-        <input class="form-input mono" bind:value={importUri} placeholder="paste a mongodb:// URI" aria-label={m.session_manager_label_import_uri()} />
-        <button type="button" class="import-btn" onclick={doImport}>{m.session_manager_import_btn()}</button>
-      </div>
     </div>
   {:else}
     <div class="form-grid">
@@ -267,6 +364,31 @@
   .form-input.short { width: 6.5rem; }
   .form-input:disabled { background: var(--hover); color: var(--muted); cursor: default; }
 
+  .env-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 0.375rem; }
+  .segmented { display: inline-flex; padding: 0.125rem; gap: 0.125rem; border: 1px solid var(--c-surface1); border-radius: var(--radius); background: var(--bg); }
+  .seg {
+    height: 1.5rem; padding: 0 0.625rem; border: none; border-radius: var(--radius-sm); background: none;
+    color: var(--muted); font-size: 0.75rem; font-weight: 500; cursor: pointer;
+  }
+  .seg:hover { color: var(--fg); }
+  .seg.on { background: var(--menu-hover); color: var(--fg); box-shadow: 0 0 0 1px var(--c-surface1); }
+  .seg.on.ok { background: var(--ok-bg); color: var(--ok-fg); }
+  .seg.on.warn { background: var(--warn-bg); color: var(--warn-fg); }
+  .seg.on.danger { background: var(--error-bg); color: var(--danger); }
+  .hint-btn { border: none; background: none; padding: 0; color: var(--link); font-size: 0.75rem; cursor: pointer; }
+  .hint-btn:hover { text-decoration: underline; }
+  .hint { color: var(--warn-fg); font-size: 0.75rem; }
+  .swatches { display: flex; gap: 0.375rem; align-items: center; }
+  .swatch {
+    width: 1.25rem; height: 1.25rem; padding: 0; border-radius: 50%; border: none; cursor: pointer;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fg) 15%, transparent);
+  }
+  .swatch.auto { background: var(--bg); color: var(--muted); font-size: 0.625rem; font-weight: 600; box-shadow: inset 0 0 0 1px var(--c-surface1); }
+  .swatch.on { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .uri-cell { display: flex; flex-direction: column; align-items: flex-start; gap: 0.3125rem; }
+  .uri-error { color: var(--error); font-size: 0.75rem; }
+  .uri-note { color: var(--muted); font-size: 0.75rem; }
+  .uri-copy { display: flex; gap: 0.875rem; }
   .form-check { display: flex; align-items: center; gap: 0.375rem; font-size: var(--fs); color: var(--fg); }
   .import-row { display: flex; gap: 0.375rem; }
   .import-row .form-input { flex: 1; }

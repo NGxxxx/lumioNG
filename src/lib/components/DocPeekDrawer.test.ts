@@ -148,4 +148,30 @@ describe("DocPeekDrawer", () => {
     const { getByText } = render(DocPeekDrawer, { props: props(peek) });
     expect(getByText(/no longer in this page/)).toBeTruthy();
   });
+
+  it("canDuplicate=false hides Duplicate", async () => {
+    const peek = makePeek();
+    await peek.show(DOC);
+    const { queryByRole } = render(DocPeekDrawer, { props: props(peek, { canDuplicate: false }) });
+    expect(queryByRole("button", { name: "Duplicate" })).toBeNull();
+  });
+
+  it("a load error offers Retry", async () => {
+    let fail = true;
+    const peek = makePeek({ loadFull: async (d) => { if (fail) throw new Error("offline"); return d; } });
+    await peek.show(DOC);
+    const { getByRole, findByText } = render(DocPeekDrawer, { props: props(peek) });
+    fail = false;
+    await fireEvent.click(getByRole("button", { name: "Retry" }));
+    expect(await findByText("status")).toBeTruthy();
+  });
+
+  it("with several rows selected, a dirty draft keeps the editor visible with a note", async () => {
+    const peek = makePeek();
+    await peek.show(DOC, true);
+    peek.setDraft({ ...peek.doc!, status: "x" });
+    const { container, getByText } = render(DocPeekDrawer, { props: props(peek, { selectionCount: 3 }) });
+    expect(getByText(/still editing this document/)).toBeTruthy();
+    expect(container.querySelector(".body")).toBeTruthy();
+  });
 });

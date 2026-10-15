@@ -5,6 +5,7 @@
   import { pushModal } from "#lib/stores/modalStack.js";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
+  import { jobs, exportJobSource } from "../stores/jobs.svelte";
   import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, type ExportWizardInput } from "../domain/exportPlan";
   import type { BsonType } from "../domain/extjson";
   import { saveDialog, openDirDialog } from "../api/files";
@@ -98,6 +99,7 @@
         source: { kind: "query", filter: "{}", sort: null, projection: null },
       }));
       job = createExportJob(sessionManager.active!.id, { targets: exTargets, format, dir: dir!, includeMetadata });
+      jobs.register(exportJobSource(job, exTargets.length === 1 ? `${exTargets[0].db}.${exTargets[0].coll}` : `${exTargets.length} collections`));
       await job.run();
       return;
     }
@@ -120,6 +122,7 @@
       targets: [target], format, filePath: path,
       includeMetadata: input.mode === "scopedCollection" && includeMetadata,
     });
+    jobs.register(exportJobSource(job, path.split(/[\\/]/).pop() ?? path));
     await job.run();
   }
 
@@ -258,6 +261,8 @@
       <footer>
         {#if j.running}
           <button type="button" onclick={j.cancel}>{m.export_wizard_cancel()}</button>
+          <!-- The job is a store: it keeps running after the wizard closes (status bar shows it). -->
+          <button type="button" onclick={onclose}>{m.jobs_background()}</button>
         {:else}
           <button type="button" class="primary" onclick={onclose}>{m.export_wizard_close()}</button>
         {/if}

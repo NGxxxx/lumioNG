@@ -17,6 +17,7 @@
   import { quit } from "#lib/api/window.js";
   import type { Doc } from "#lib/domain/doc.js";
   import type { SshConnectInput } from "#lib/api/connection.js";
+  import type { Environment } from "#lib/domain/environment.js";
   import type { SavedQuery } from "#lib/domain/queryTree.js";
   import type { CollectionView, HostSection, QueryTab as QueryTabType } from "#lib/stores/navigation.svelte.js";
   import { toolbarFor, type ViewKey } from "#lib/domain/toolbarLayout.js";
@@ -47,6 +48,8 @@
   import CommandLog from "#lib/components/CommandLog.svelte";
   import AboutDialog from "#lib/components/AboutDialog.svelte";
   import ToastHost from "#lib/components/ToastHost.svelte";
+  import { undo } from "#lib/stores/undo.svelte.js";
+  import { jobs } from "#lib/stores/jobs.svelte.js";
   import { toast } from "#lib/stores/toast.svelte.js";
   import { SHORTCUTS, type Command, type CommandId } from "#lib/domain/commands.js";
   import { matchesEvent, isDefaultWebviewAccelerator } from "#lib/domain/shortcuts.js";
@@ -95,6 +98,15 @@
 
   const active = $derived(sm.activeZone);
   const sel = $derived(nav?.selection ?? null);
+  // Environment of the session in focus: a work tab's own session, otherwise the active session.
+  const focusEnv = $derived.by((): Environment => {
+    const a = active;
+    if (a?.zone === "work") {
+      const sid = sm.workTabs.find((t) => t.id === a.id)?.sessionId;
+      return sm.sessions.find((s) => s.id === sid)?.environment ?? "";
+    }
+    return sm.active?.environment ?? "";
+  });
   const page = $derived(nav?.page ?? null);
   const collectionView = $derived<CollectionView>(nav?.collectionView ?? "data");
   const onDestination = $derived(active?.zone === "destination");
@@ -130,9 +142,12 @@
   // The activeDataView bridge is also registered by the active Query tab's result grid, so widen the gate to cover both.
   const canUseDataView = $derived(dataViewActive || queryActive);
 
-  async function onConnected(conn: { connId: number | null; label: string; uri: string; readOnly: boolean; ssh: SshConnectInput | null }): Promise<boolean> {
+  async function onConnected(conn: {
+    connId: number | null; label: string; uri: string; readOnly: boolean; ssh: SshConnectInput | null;
+    environment: Environment; color: string;
+  }): Promise<boolean> {
     // focusOrOpen is the sole owner of the backend connect call; passing the real connId lets it dedup saved connections.
-    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh });
+    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh, environment: conn.environment, color: conn.color });
     if (ok) shell.setConnection(conn);
     return ok;
   }
@@ -267,6 +282,7 @@
     "view.toggleSavedQueries": { disabled: false, run: () => shell.toggleSavedQueries() },
     "view.resetToDefault": { disabled: false, run: requestReset },
     "help.about": { disabled: false, run: () => (aboutOpen = true) },
+    "edit.undo": { disabled: undo.entries.length === 0 || undo.busy, run: () => void undo.undoLast() },
     "help.shortcuts": { disabled: false, run: () => (shortcutsOpen = true) },
     "grid.focusFilter": { disabled: !canUseDataView, run: () => activeDataView.handle?.focusSearch?.() },
     "view.commandPalette": { disabled: false, run: () => (paletteOpen = !paletteOpen) },
@@ -363,6 +379,7 @@
     ["goto.nextTab", m.menu_next_tab, "navigate"],
     ["goto.prevTab", m.menu_previous_tab, "navigate"],
     ["view.resetToDefault", m.menu_reset_to_default, "view"],
+    ["edit.undo", m.undo_last, "actions"],
     ["help.shortcuts", m.menu_keyboard_shortcuts, "view"],
     ["help.about", m.menu_about, "view"],
     ["file.quit", m.menu_quit, "view"],
@@ -464,6 +481,11 @@
         const c = commands[id];
         if (!c || c.disabled) continue;
         if (matchesEvent(combo, e, plat)) {
+          // Mod+Z inside a text field / editor is the field's own undo, not the app's.
+          if (id === "edit.undo") {
+            const t = e.target as HTMLElement | null;
+            if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.closest(".cm-editor") !== null)) continue;
+          }
           e.preventDefault();
           c.run();
           return;
@@ -486,6 +508,7 @@
     db={sel?.db ?? null}
     coll={sel?.coll ?? null}
     onquit={requestQuit}
+    env={focusEnv}
     onpalette={() => (paletteOpen = true)}
     paletteHint={shortcutHint("view.commandPalette") ?? ""}
   >
@@ -532,7 +555,7 @@
       onpointerdown={startSidebarDrag}
       onkeydown={() => {}}
     ></div>
-    <section>
+    <section class:prod={focusEnv === "prod"}>
       <TabBar
         {destination}
         workTabs={sm.workTabs}
@@ -703,7 +726,7 @@
   {#if confirmQuit}
     <ConfirmDialog
       title={m.page_quit_title()}
-      message={m.page_quit_message()}
+      message={jobs.running > 0 ? `${m.page_quit_message()} ${m.jobs_running_warning({ count: String(jobs.running) })}` : m.page_quit_message()}
       confirmLabel={m.page_quit_confirm()}
       cancelLabel={m.page_quit_cancel()}
       danger
@@ -739,6 +762,16 @@
     />
   {/if}
   <ToastHost />
+  {#if undo.conflict}
+    <ConfirmDialog
+      title={m.undo_conflict_title()}
+      message={m.undo_conflict_message()}
+      confirmLabel={m.undo_overwrite()}
+      danger
+      onconfirm={() => undo.confirmOverwrite()}
+      oncancel={() => undo.cancelOverwrite()}
+    />
+  {/if}
 </div>
 
 <style>
@@ -758,6 +791,8 @@
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-xl);
     overflow: hidden; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   }
+  /* Production: a 2px red top edge on the main panel, always visible while working there. */
+  section.prod { border-top: 2px solid var(--danger); }
   .panes { flex: 1; min-height: 0; position: relative; }
   .tabpane { height: 100%; }
   .tabpane[hidden] { display: none; }

@@ -3,7 +3,7 @@
   import { queryLibrary } from "../stores/queryLibrary.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
-  type SessionInfo = { id: string; label: string; color: string };
+  type SessionInfo = { id: string; label: string; color: string; environment?: string };
 
   let {
     destination,
@@ -83,6 +83,7 @@
     <div class="work-tabs-inner">
       {#each workTabs as t (t.id)}
         {@const sess = sessionOf(t.sessionId)}
+        {@const dot = sess?.environment === "prod" ? "var(--danger)" : (sess?.color ?? "var(--muted)")}
         <div
           class="tab work"
           class:active={active?.zone === "work" && active.id === t.id}
@@ -90,8 +91,8 @@
         >
           <span
             class="session-dot"
-            style="background:{sess?.color ?? 'var(--muted)'}"
-            data-color={sess?.color ?? 'var(--muted)'}
+            style="background:{dot}"
+            data-color={dot}
             aria-hidden="true"
           ></span>
           <button class="label" onclick={() => onActivateWork(t.id)} title={workTitle(t)}>{workTitle(t)}</button>

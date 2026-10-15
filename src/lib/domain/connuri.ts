@@ -137,3 +137,19 @@ export function normalizeForTunnel(p: ConnectionProfile, sshEnabled: boolean): C
   if (!sshEnabled) return p;
   return { ...p, scheme: "mongodb", replicaSet: "" };
 }
+
+/** Default connection name from a host: first dotted label (so an Atlas SRV cluster name shows as "cluster0"); IPs and localhost stay whole; port and extra seeds dropped. */
+export function suggestLabelFromHost(host: string): string {
+  const first = host.split(",")[0].trim().replace(/:[0-9]+$/, "");
+  if (/^[0-9]+(\.[0-9]+){3}$/.test(first)) return first;
+  return first.split(".")[0];
+}
+
+/** Number of profile fields whose value differs (for "Filled N fields from the URI"). */
+export function changedFieldCount(before: ConnectionProfile, after: ConnectionProfile): number {
+  let n = 0;
+  for (const k of Object.keys(after) as (keyof ConnectionProfile)[]) {
+    if (before[k] !== after[k]) n++;
+  }
+  return n;
+}

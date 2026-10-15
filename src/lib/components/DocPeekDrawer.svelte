@@ -24,6 +24,7 @@
     onduplicate,
     ondelete,
     onbulk,
+    canDuplicate = true,
   }: {
     peek: DocPeek;
     pinned: boolean;
@@ -35,6 +36,8 @@
     onduplicate: (d: Doc) => void;
     ondelete: () => void;
     onbulk: (action: "copy" | "export" | "delete") => void;
+    /** False where a copy can't be inserted (query results with no single source). */
+    canDuplicate?: boolean;
   } = $props();
 
   const copy = createClipboardCopy((msg) => toast.push(msg, "error"));
@@ -106,7 +109,7 @@
     </button>
   </header>
 
-  {#if selectionCount > 1}
+  {#if selectionCount > 1 && !peek.dirty}
     <div class="bulk">
       <p>{m.peek_selected_count({ count: selectionCount })}</p>
       <div class="bulk-actions">
@@ -124,8 +127,14 @@
     {/if}
 
     <div class="body">
+      {#if selectionCount > 1}<div class="note">{m.peek_still_editing()}</div>{/if}
       {#if peek.stale}<div class="note">{m.peek_stale_note()}</div>{/if}
-      {#if peek.error}<div class="error">{peek.error}</div>{/if}
+      {#if peek.error}
+        <div class="error">
+          <span>{peek.error}</span>
+          {#if !peek.doc && !peek.loading}<button class="btn" onclick={() => peek.retry()}>{m.peek_retry()}</button>{/if}
+        </div>
+      {/if}
       {#if peek.loading}
         {#each { length: 8 } as _, i (i)}<div class="skeleton" style="width:{55 + ((i * 17) % 40)}%"></div>{/each}
       {:else if peek.doc && peek.mode === "edit" && peek.draft}
@@ -189,7 +198,7 @@
           <button class="btn" onclick={() => peek.discard()}>{m.peek_discard()}</button>
         {:else}
           {#if peek.canEdit}<button class="btn" onclick={() => peek.startEdit()}>{m.peek_edit()}</button>{/if}
-          <button class="btn" onclick={() => peek.doc && onduplicate(peek.doc)}>{m.peek_duplicate()}</button>
+          {#if canDuplicate}<button class="btn" onclick={() => peek.doc && onduplicate(peek.doc)}>{m.peek_duplicate()}</button>{/if}
           {#if peek.canEdit}<button class="btn danger" aria-label={m.peek_delete()} onclick={ondelete}>{m.peek_delete()}</button>{/if}
         {/if}
       </footer>
@@ -223,7 +232,7 @@
 
   .body { flex: 1; min-height: 0; overflow: auto; padding: 0.375rem 0.875rem 0.875rem; }
   .note { margin: 0.375rem 0; padding: 0.375rem 0.5rem; border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-fg); font-size: 0.75rem; }
-  .error { margin: 0.375rem 0; padding: 0.375rem 0.5rem; border-radius: var(--radius); background: var(--error-bg); color: var(--error); font-size: 0.75rem; }
+  .error { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin: 0.375rem 0; padding: 0.375rem 0.5rem; border-radius: var(--radius); background: var(--error-bg); color: var(--error); font-size: 0.75rem; }
   .skeleton { height: 0.625rem; margin: 0.875rem 0; border-radius: 0.25rem; background: color-mix(in srgb, var(--c-text) 7%, transparent); animation: pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 1; } }
 
@@ -261,6 +270,11 @@
   .btn.danger { flex: none; background: transparent; color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--c-surface1)); }
   .btn.ghost { background: none; border-color: transparent; color: var(--muted); }
 
+  /* Compact tree editor: the "add field" row stays on one line at the drawer's default width. */
+  .body :global(.add) { flex-wrap: nowrap; min-width: 0; }
+  .body :global(.add .name) { flex: 1 1 4rem; min-width: 3rem; width: auto; }
+  .body :global(.add select) { max-width: 5.5rem; }
+  .body :global(.add button) { white-space: nowrap; }
   .bulk { padding: 1rem 0.875rem; }
   .bulk p { margin: 0 0 0.75rem; font-weight: 500; }
   .bulk-actions { display: flex; flex-direction: column; gap: 0.5rem; }

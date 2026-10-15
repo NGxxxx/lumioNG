@@ -23,7 +23,7 @@ function saved(over: Partial<SavedConnection> = {}): SavedConnection {
     tls: false, extraOptions: "", readOnly: false,
     tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "",
     sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
-    sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", ...over,
+    sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", environment: "", color: "", ...over,
   };
 }
 
@@ -78,6 +78,23 @@ describe("createConnectionRegistry", () => {
     expect(r.label).toBe("");
   });
 
+  it("environment and color are edited, saved, and default to empty for old entries", async () => {
+    save.mockResolvedValueOnce([saved()]);
+    const r = createConnectionRegistry();
+    r.edit(saved({ id: 3 }));
+    expect(r.environment).toBe("");
+    expect(r.color).toBe("");
+    r.edit(saved({ id: 4, environment: "staging", color: "#f5a524" }));
+    expect(r.environment).toBe("staging");
+    r.environment = "prod";
+    r.color = "#e5484d";
+    await r.save();
+    const [, input] = save.mock.calls[0];
+    expect(input.environment).toBe("prod");
+    expect(input.color).toBe("#e5484d");
+    expect(r.environment).toBe("");
+  });
+
   it("edit loads fields and deobfuscates the password", async () => {
     const r = createConnectionRegistry();
     r.edit(saved({ id: 7, label: "Old", host: "h", authMethod: "password", user: "u", passwordEnc: obfuscate("pw") }));
@@ -96,6 +113,47 @@ describe("createConnectionRegistry", () => {
     }
     // connectCmd logging happens in sessionManager.focusOrOpen, not here
     expect(commandLog.entries.length).toBe(0);
+  });
+
+  it("fillFromUri fills the form, names it from the host, and can be undone", () => {
+    const r = createConnectionRegistry();
+    r.label = "";
+    const res = r.fillFromUri("mongodb+srv://u:p@cluster0.abc.mongodb.net/?replicaSet=x");
+    expect(res).toMatchObject({ ok: true });
+    expect(r.host).toBe("cluster0.abc.mongodb.net");
+    expect(r.user).toBe("u");
+    expect(r.password).toBe("p");
+    expect(r.replicaSet).toBe("x");
+    expect(r.label).toBe("cluster0");
+    expect(res.ok && res.filled).toBeGreaterThan(3);
+    expect(r.canUndoFill).toBe(true);
+    r.undoFill();
+    expect(r.host).toBe("localhost");
+    expect(r.password).toBe("");
+    expect(r.label).toBe("");
+    expect(r.canUndoFill).toBe(false);
+  });
+
+  it("fillFromUri rejects an invalid URI and leaves the form untouched", () => {
+    const r = createConnectionRegistry();
+    r.host = "keep";
+    expect(r.fillFromUri("http://nope")).toEqual({ ok: false });
+    expect(r.fillFromUri("mongodb://")).toEqual({ ok: false });
+    expect(r.host).toBe("keep");
+  });
+
+  it("the password never ends up in the name", () => {
+    const r = createConnectionRegistry();
+    r.fillFromUri("mongodb://bob:s3cret@db.internal:27017/");
+    expect(r.label).not.toContain("s3cret");
+  });
+
+  it("uriOf builds a URI without the password unless asked", () => {
+    const r = createConnectionRegistry();
+    const c = saved({ host: "h", authMethod: "password", user: "bob", passwordEnc: obfuscate("pw") });
+    expect(r.uriOf(c, false)).not.toContain("pw@");
+    expect(r.uriOf(c, false)).toContain("bob@h");
+    expect(r.uriOf(c, true)).toContain("bob:pw@h");
   });
 
   it("importFromUri fills fields and password", () => {

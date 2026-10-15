@@ -6,6 +6,7 @@ import { idJson } from "../domain/docid";
 import type { Doc } from "../domain/doc";
 import { replaceCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
+import { undo } from "./undo.svelte";
 
 export interface DocPeekDeps {
   sessionId: () => string;
@@ -39,6 +40,7 @@ export function createDocPeek(deps: DocPeekDeps) {
   // The grid row the drawer was opened from (identity tells sync() whether the row changed) and the
   // _id last requested (so following the same document — even after a failed load — never reloads).
   let lastRow: Doc | null = null;
+  let lastEdit = false;
   let targetId: string | null = null;
   let pendingTarget: Doc | null = null;
   let loadSeq = 0;
@@ -57,6 +59,7 @@ export function createDocPeek(deps: DocPeekDeps) {
     mode = "view";
     draft = null;
     lastRow = d;
+    lastEdit = edit;
     targetId = idJson(d);
     source = { db: deps.db(), coll: deps.coll() };
     try {
@@ -75,6 +78,11 @@ export function createDocPeek(deps: DocPeekDeps) {
 
   function show(d: Doc, edit = false): Promise<void> {
     return load(d, edit);
+  }
+
+  /** Re-runs the last load (after a failure). */
+  async function retry(): Promise<void> {
+    if (lastRow) await load(lastRow, lastEdit);
   }
 
   /** Re-targets the drawer at another document. With unsaved edits it asks first (returns "dirty"). */
@@ -172,6 +180,7 @@ export function createDocPeek(deps: DocPeekDeps) {
     error = null;
     try {
       await commandLog.pushTimed(replaceCmd(coll, id, json), sid, () => replaceDocument(sid, db, coll, id, json));
+      undo.record({ kind: "replace", sessionId: sid, db, coll, before: doc, after: next });
       doc = next;
       draft = null;
       mode = "view";
@@ -223,6 +232,7 @@ export function createDocPeek(deps: DocPeekDeps) {
     get confirm() { return confirm; },
     show,
     follow,
+    retry,
     close,
     requestClose,
     confirmSave,

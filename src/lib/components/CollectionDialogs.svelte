@@ -1,11 +1,10 @@
 <script lang="ts">
   import type { createCollectionView } from "../stores/collectionView.svelte";
   import ConfirmDialog from "./ConfirmDialog.svelte";
-  import DropConfirmDialog from "./DropConfirmDialog.svelte";
+  import DestructiveDialog from "./DestructiveDialog.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import BulkDialog from "./BulkDialog.svelte";
   import ExportWizard from "./ExportWizard.svelte";
-  import { idJson } from "../domain/docid";
   import { isEmptyFilter } from "../domain/bulk";
   import * as m from "#lib/paraglide/messages.js";
 
@@ -37,16 +36,6 @@
   />
 {/if}
 
-{#if v.bulkTypeConfirm}
-  <DropConfirmDialog
-    title={v.bulkMode === "delete" ? m.result_table_bulk_delete_title() : m.result_table_bulk_update_title()}
-    message={m.result_table_bulk_confirm_message({ coll })}
-    expectedName={coll}
-    onconfirm={v.confirmBulkAll}
-    oncancel={v.cancelBulkAll}
-  />
-{/if}
-
 {#if v.editBlurPending}
   <ConfirmDialog
     title={m.result_table_unsaved_edit_title()}
@@ -57,28 +46,7 @@
   />
 {/if}
 
-{#if v.confirmDoc}
-  <ConfirmDialog
-    title={m.result_table_delete_doc_title()}
-    message={m.result_table_delete_doc_message()}
-    detail={`_id = ${idJson(v.confirmDoc) ?? "(no _id)"}`}
-    confirmLabel={m.common_delete()}
-    danger
-    onconfirm={v.confirmDelete}
-    oncancel={v.cancelDelete}
-  />
-{/if}
-
-{#if v.confirmSelectionDelete !== null}
-  <ConfirmDialog
-    title={m.result_table_delete_selection_title()}
-    message={m.result_table_delete_selection_message({ count: v.confirmSelectionDelete })}
-    confirmLabel={m.common_delete()}
-    danger
-    onconfirm={v.confirmDeleteSelected}
-    oncancel={v.cancelDeleteSelected}
-  />
-{/if}
+<DestructiveDialog gate={v.destructive} />
 
 {#if v.showAllPending !== null}
   <ConfirmDialog

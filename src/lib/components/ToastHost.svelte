@@ -6,7 +6,10 @@
 
 <div class="toast-host" use:portal>
   {#each toast.toasts as t (t.id)}
-    <div class="toast" class:toast-error={t.kind === "error"} role="status">{t.message}</div>
+    <div class="toast" class:toast-error={t.kind === "error"} role="status">
+      <span>{t.message}</span>
+      {#if t.action}<button class="action" onclick={() => toast.runAction(t.id)}>{t.action.label}</button>{/if}
+    </div>
   {/each}
 </div>
 
@@ -43,6 +46,12 @@
     flex: none;
     background: var(--ok-strong);
   }
+  .action {
+    pointer-events: auto; margin-left: 0.25rem; padding: 0.125rem 0.5rem; border: none;
+    border-radius: var(--radius-sm); background: var(--menu-hover); color: var(--fg);
+    font-size: var(--fs); font-weight: 500; cursor: pointer;
+  }
+  .action:hover { background: var(--c-surface1); }
   .toast-error::before { background: var(--error); }
   @keyframes toast-in {
     from { opacity: 0; transform: translateY(0.5rem); }

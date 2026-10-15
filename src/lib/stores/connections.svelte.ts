@@ -9,9 +9,10 @@ import {
 import { testConnection as apiTestConnection, type SshConnectInput } from "../api/connection";
 import { errorMessage } from "../api/errors";
 import { validateProfile, validateSsh } from "../domain/connections";
-import { buildProfileUri, parseUri, normalizeForTunnel, type ConnectionProfile } from "../domain/connuri";
+import { buildProfileUri, parseUri, normalizeForTunnel, suggestLabelFromHost, changedFieldCount, type ConnectionProfile } from "../domain/connuri";
 import { obfuscate, deobfuscate } from "../domain/secret";
 import { sortByRecency } from "../domain/recency";
+import type { Environment } from "../domain/environment";
 
 
 /** Registry of saved connections + the structured add/edit form + connect. Components only bind. */
@@ -21,6 +22,8 @@ export function createConnectionRegistry() {
   let error = $state<string | null>(null);
   let formError = $state<string | null>(null);
   let editingId = $state<number | null>(null);
+  // Form values before the last paste-to-fill, so it can be undone.
+  let beforeFill = $state.raw<{ label: string; profile: ConnectionProfile; password: string; certKeyPassword: string } | null>(null);
 
   // form fields
   let label = $state("");
@@ -35,6 +38,8 @@ export function createConnectionRegistry() {
   let tls = $state(false);
   let extraOptions = $state("");
   let readOnly = $state(false);
+  let environment = $state<Environment>("");
+  let color = $state("");
   let tlsCertificateKeyFile = $state("");
   let tlsCertificateKeyFilePassword = $state("");
 
@@ -78,6 +83,7 @@ export function createConnectionRegistry() {
       sshPasswordEnc: sshAuthMethod === "password" ? obfuscate(sshPassword) : "",
       sshPrivateKeyPath: sshAuthMethod === "key" ? sshPrivateKeyPath : "",
       sshPassphraseEnc: sshAuthMethod === "key" ? obfuscate(sshPassphrase) : "",
+      environment, color,
     };
   }
 
@@ -110,6 +116,7 @@ export function createConnectionRegistry() {
             tlsCertificateKeyFilePasswordEnc: obfuscate(certKeyPassword),
             sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
             sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
+            environment: "", color: "",
           };
           result = await saveConnection(c.id, input);
         }
@@ -124,11 +131,12 @@ export function createConnectionRegistry() {
     editingId = null;
     label = ""; scheme = "mongodb"; host = "localhost"; port = 27017;
     authMethod = "none"; user = ""; password = ""; authSource = ""; replicaSet = "";
-    tls = false; extraOptions = ""; readOnly = false;
+    tls = false; extraOptions = ""; readOnly = false; environment = ""; color = "";
     tlsCertificateKeyFile = ""; tlsCertificateKeyFilePassword = "";
     sshEnabled = false; sshHost = ""; sshPort = 22; sshUser = "";
     sshAuthMethod = "password"; sshPassword = ""; sshPrivateKeyPath = ""; sshPassphrase = "";
     formError = null;
+    beforeFill = null;
   }
 
   async function save() {
@@ -158,6 +166,7 @@ export function createConnectionRegistry() {
 
   function edit(c: SavedConnection) {
     editingId = c.id;
+    beforeFill = null;
     label = c.label;
     loadProfile({
       scheme: (c.scheme as ConnectionProfile["scheme"]) || "mongodb",
@@ -170,6 +179,8 @@ export function createConnectionRegistry() {
     password = c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
     tlsCertificateKeyFilePassword = c.tlsCertificateKeyFilePasswordEnc ? deobfuscate(c.tlsCertificateKeyFilePasswordEnc) : "";
     readOnly = !!c.readOnly;
+    environment = c.environment ?? "";
+    color = c.color ?? "";
     sshEnabled = !!c.sshEnabled;
     sshHost = c.sshHost ?? "";
     sshPort = c.sshPort ?? 22;
@@ -179,6 +190,53 @@ export function createConnectionRegistry() {
     sshPrivateKeyPath = c.sshPrivateKeyPath ?? "";
     sshPassphrase = c.sshPassphraseEnc ? deobfuscate(c.sshPassphraseEnc) : "";
     formError = null;
+  }
+
+  /** Fills the form from a mongodb:// / mongodb+srv:// URI; an invalid one leaves the form untouched. */
+  function fillFromUri(uri: string): { ok: true; filled: number } | { ok: false } {
+    const text = uri.trim();
+    if (!/^mongodb(\+srv)?:\/\//i.test(text)) return { ok: false };
+    const parsed = parseUri(text);
+    if (!parsed.profile.host) return { ok: false };
+    const before = { label, profile: profile(), password, certKeyPassword: tlsCertificateKeyFilePassword };
+    loadProfile(parsed.profile);
+    password = parsed.password;
+    tlsCertificateKeyFilePassword = parsed.certKeyPassword;
+    let filled = changedFieldCount(before.profile, parsed.profile) + (password !== before.password ? 1 : 0);
+    if (!label.trim()) {
+      label = suggestLabelFromHost(parsed.profile.host);
+      filled++;
+    }
+    beforeFill = before;
+    return { ok: true, filled };
+  }
+
+  function undoFill() {
+    const b = beforeFill;
+    if (!b) return;
+    label = b.label;
+    loadProfile(b.profile);
+    password = b.password;
+    tlsCertificateKeyFilePassword = b.certKeyPassword;
+    beforeFill = null;
+  }
+
+  /** URI of a saved connection; the password only when asked for. */
+  function uriOf(c: SavedConnection, includePassword: boolean): string {
+    const p: ConnectionProfile = {
+      scheme: (c.scheme as ConnectionProfile["scheme"]) || "mongodb",
+      host: c.host, port: c.port,
+      authMethod: (c.authMethod as ConnectionProfile["authMethod"]) || "none",
+      user: c.user, authSource: c.authSource, replicaSet: c.replicaSet,
+      tls: c.tls, extraOptions: c.extraOptions, tlsCertificateKeyFile: c.tlsCertificateKeyFile ?? "",
+    };
+    const pw = includePassword && c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
+    return buildProfileUri(normalizeForTunnel(p, !!c.sshEnabled), pw);
+  }
+
+  /** URI of what the form currently shows; the password only when asked for. */
+  function formUri(includePassword: boolean): string {
+    return buildProfileUri(normalizeForTunnel(profile(), sshEnabled), includePassword ? password : "");
   }
 
   function importFromUri(uri: string) {
@@ -248,6 +306,8 @@ export function createConnectionRegistry() {
     get tls() { return tls; }, set tls(v: boolean) { tls = v; },
     get extraOptions() { return extraOptions; }, set extraOptions(v: string) { extraOptions = v; },
     get readOnly() { return readOnly; }, set readOnly(v: boolean) { readOnly = v; },
+    get environment() { return environment; }, set environment(v: Environment) { environment = v; },
+    get color() { return color; }, set color(v: string) { color = v; },
     get tlsCertificateKeyFile() { return tlsCertificateKeyFile; }, set tlsCertificateKeyFile(v: string) { tlsCertificateKeyFile = v; },
     get tlsCertificateKeyFilePassword() { return tlsCertificateKeyFilePassword; }, set tlsCertificateKeyFilePassword(v: string) { tlsCertificateKeyFilePassword = v; },
     get sshEnabled() { return sshEnabled; }, set sshEnabled(v: boolean) { sshEnabled = v; },
@@ -258,6 +318,8 @@ export function createConnectionRegistry() {
     get sshPassword() { return sshPassword; }, set sshPassword(v: string) { sshPassword = v; },
     get sshPrivateKeyPath() { return sshPrivateKeyPath; }, set sshPrivateKeyPath(v: string) { sshPrivateKeyPath = v; },
     get sshPassphrase() { return sshPassphrase; }, set sshPassphrase(v: string) { sshPassphrase = v; },
+    get canUndoFill() { return beforeFill !== null; },
     load, save, remove, edit, clearForm, connectTo, importFromUri, currentUri, testConnection, toInput,
+    fillFromUri, undoFill, uriOf, formUri,
   };
 }

@@ -4,6 +4,8 @@
   import { minimize, toggleMaximize, isMaximized, onMaximizedChange } from "#lib/api/window.js";
   import { getAppVersion } from "#lib/api/app.js";
   import * as m from "#lib/paraglide/messages.js";
+  import EnvBadge from "./EnvBadge.svelte";
+  import type { Environment } from "#lib/domain/environment.js";
 
   let {
     conn,
@@ -13,6 +15,7 @@
     onpalette,
     paletteHint = "",
     menus,
+    env = "",
   }: {
     conn: string | null;
     db: string | null;
@@ -24,6 +27,8 @@
     paletteHint?: string;
     /** App menus (MenuBar) rendered inline after the logo — one row instead of two. */
     menus?: Snippet;
+    /** Environment of the session in focus; shown as a chip before the breadcrumb. */
+    env?: Environment;
   } = $props();
 
   let appVersion = $state("");
@@ -56,6 +61,7 @@
     </g>
   </svg>
   {#if menus}<div class="menus">{@render menus()}</div>{/if}
+  {#if env}<EnvBadge {env} size="md" />{/if}
   <span class="crumb" data-tauri-drag-region>{crumb}{appVersion ? ` — v${appVersion}` : ""}</span>
   {#if onpalette}
     <button class="search" onclick={onpalette} aria-label={m.palette_open()}>

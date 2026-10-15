@@ -3,6 +3,7 @@
   import * as m from "#lib/paraglide/messages.js";
   import { appLocale } from "../stores/locale.svelte";
   import { relativeParts } from "../domain/recency";
+  import EnvBadge from "./EnvBadge.svelte";
 
   let {
     list,
@@ -80,10 +81,14 @@
           <ellipse cx="12" cy="5.6" rx="7" ry="3.6" fill="none" stroke={selectedId === c.id ? "var(--accent)" : "var(--muted)"} stroke-width="1.8"/>
         </svg>
         <span class="session-name">{c.label}</span>
+        <EnvBadge env={c.environment ?? ""} />
         <span class="session-last" title={absoluteLast(c)}>{formatLast(c)}</span>
       </div>
     {/each}
-    {#if filteredList.length === 0}
+    {#if list.length === 0}
+      <!-- First run: point at the connection-string field (DOM glue only). -->
+      <button type="button" class="session-empty paste-hint" onclick={() => document.getElementById("conn-uri-input")?.focus()}>{m.conn_empty_paste()}</button>
+    {:else if filteredList.length === 0}
       <div class="session-empty">{m.session_manager_empty()}</div>
     {/if}
   </div>
@@ -98,6 +103,9 @@
     flex-direction: column;
     background: var(--bg);
   }
+
+  .paste-hint { border: none; background: none; width: 100%; cursor: pointer; color: var(--link); }
+  .paste-hint:hover { text-decoration: underline; }
 
   /* ── Filter bar ── */
   .filter-bar {

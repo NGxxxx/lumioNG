@@ -28,6 +28,12 @@ pub struct ConnectionInput {
     pub ssh_password_enc: String,
     pub ssh_private_key_path: String,
     pub ssh_passphrase_enc: String,
+    /// "" | "dev" | "staging" | "prod" — drives badges and the PROD confirmation policy.
+    #[serde(default)]
+    pub environment: String,
+    /// Hex session color; "" = assigned automatically.
+    #[serde(default)]
+    pub color: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,6 +83,10 @@ pub struct SavedConnection {
     pub ssh_private_key_path: String,
     #[serde(default)]
     pub ssh_passphrase_enc: String,
+    #[serde(default)]
+    pub environment: String,
+    #[serde(default)]
+    pub color: String,
     /// Legacy pre-Phase-E field; present only in un-migrated files. Cleared on next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
@@ -111,6 +121,8 @@ impl SavedConnection {
             ssh_password_enc: input.ssh_password_enc,
             ssh_private_key_path: input.ssh_private_key_path,
             ssh_passphrase_enc: input.ssh_passphrase_enc,
+            environment: input.environment,
+            color: input.color,
             uri: None,
             last_connected_at: None,
         }
@@ -197,6 +209,8 @@ mod tests {
             ssh_password_enc: String::new(),
             ssh_private_key_path: String::new(),
             ssh_passphrase_enc: String::new(),
+            environment: String::new(),
+            color: String::new(),
         }
     }
 
@@ -367,5 +381,34 @@ mod tests {
         assert_eq!(list[0].ssh_host, "");
         assert_eq!(list[0].tls_certificate_key_file, "");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn legacy_file_without_environment_or_color_defaults_them_empty() {
+        let list: Vec<SavedConnection> = serde_json::from_str(r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
+        assert_eq!(list[0].environment, "");
+        assert_eq!(list[0].color, "");
+    }
+
+    #[test]
+    fn environment_and_color_round_trip_through_upsert_and_json() {
+        let mut i = input("Prod", "prod.example.com");
+        i.environment = "prod".into();
+        i.color = "#e5484d".into();
+        let list = upsert(vec![], None, i);
+        let json = serde_json::to_string(&list).unwrap();
+        assert!(json.contains(r#""environment":"prod""#));
+        let back: Vec<SavedConnection> = serde_json::from_str(&json).unwrap();
+        assert_eq!(back[0].environment, "prod");
+        assert_eq!(back[0].color, "#e5484d");
+    }
+
+    #[test]
+    fn input_without_environment_or_color_deserializes() {
+        let i: ConnectionInput = serde_json::from_str(
+            r#"{"label":"a","scheme":"mongodb","host":"h","port":null,"authMethod":"none","user":"","passwordEnc":"","authSource":"","replicaSet":"","tls":false,"extraOptions":"","readOnly":false,"tlsCertificateKeyFile":"","tlsCertificateKeyFilePasswordEnc":"","sshEnabled":false,"sshHost":"","sshPort":22,"sshUser":"","sshAuthMethod":"","sshPasswordEnc":"","sshPrivateKeyPath":"","sshPassphraseEnc":""}"#,
+        )
+        .unwrap();
+        assert_eq!(i.environment, "");
     }
 }

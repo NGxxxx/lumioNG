@@ -21,4 +21,15 @@ describe("ViewSwitcher", () => {
     await fireEvent.click(getByRole("tab", { name: "Indexes" }));
     expect(onchange).toHaveBeenCalledWith("indexes");
   });
+
+  it("arrow keys move to the next / previous view (roving tabindex)", async () => {
+    const onchange = vi.fn();
+    const { getAllByRole } = render(ViewSwitcher, { props: { items, value: "schema", onchange, label: "Views" } });
+    const tabs = getAllByRole("tab");
+    expect(tabs.map((t) => t.getAttribute("tabindex"))).toEqual(["-1", "0", "-1"]);
+    await fireEvent.keyDown(tabs[1], { key: "ArrowRight" });
+    expect(onchange).toHaveBeenLastCalledWith("indexes");
+    await fireEvent.keyDown(tabs[1], { key: "ArrowLeft" });
+    expect(onchange).toHaveBeenLastCalledWith("data");
+  });
 });

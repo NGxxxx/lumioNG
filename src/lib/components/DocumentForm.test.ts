@@ -8,6 +8,7 @@ import { disposeFieldSuggestions } from "../stores/fieldSuggestions";
 vi.mock("../api/documents", () => ({
   insertDocument: vi.fn(),
   replaceDocument: vi.fn(),
+  fetchFullDoc: vi.fn(async () => null),
   sampleDocuments: vi.fn(async () => []),
 }));
 vi.mock("../domain/docid", () => ({

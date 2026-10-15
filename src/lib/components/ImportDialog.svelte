@@ -8,6 +8,7 @@
   import { describeSqlImportTargets, describeImportTarget, isLargeImportFile, formatFileSize } from "../domain/importPlan";
   import { validateCollectionName } from "../domain/namespaces";
   import { createImportJob } from "../stores/importJob.svelte";
+  import { jobs, importJobSource, phaseJobSource } from "../stores/jobs.svelte";
   import { createSqlImport } from "../stores/sqlImport.svelte";
   import { createCsvImport } from "../stores/csvImport.svelte";
   import type { InsertMode } from "../api/documents";
@@ -171,16 +172,19 @@
       if (sql!.selected.size === 0 || sqlTargetError) return;
       sql!.setInsertMode(insertMode);
       sql!.run();
+      jobs.register(phaseJobSource(sql!, db));
     } else if (isCsv) {
       if (csv!.columns.length === 0 || csv!.phase === "loading") return;
       csv!.setInsertMode(insertMode);
       csv!.run(restoreMetadata ? metadataBundle : null);
+      jobs.register(phaseJobSource(csv!, `${db}.${targetColl.trim()}`));
     } else {
       job = createImportJob({
         sessionId, db, coll: targetColl.trim(), path, insertMode,
         restoreMetadataBundle: restoreMetadata ? metadataBundle : null,
       });
       job.run();
+      jobs.register(importJobSource(job, `${db}.${targetColl.trim()}`));
     }
     stage = "run";
   }
@@ -416,7 +420,12 @@
         {/if}
       {:else if isSql && sql!.phase === "running"}
         <button type="button" onclick={() => sql!.cancel()}>{m.common_cancel()}</button>
+        <button type="button" onclick={onclose}>{m.jobs_background()}</button>
       {:else}
+        {#if !canClose}
+          <!-- Still running: the job store keeps going after the dialog closes (status bar shows it). -->
+          <button type="button" onclick={onclose}>{m.jobs_background()}</button>
+        {/if}
         {#if (isSql && sql!.phase !== "running" && sql!.phase !== "done") || (isCsv && csv!.phase !== "running" && csv!.phase !== "done")}
           <button type="button" onclick={goBackToConfigure}>{m.import_dialog_back()}</button>
         {/if}

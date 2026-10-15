@@ -1,6 +1,6 @@
 <script lang="ts">
   import { untrack } from "svelte";
-  import { insertDocument, replaceDocument } from "../api/documents";
+  import { insertWithUndo, replaceWithUndo } from "../stores/documentWrites";
   import { errorMessage } from "../api/errors";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { activeDocumentForm, type DocumentFormHandle } from "../stores/activeDocumentForm.svelte";
@@ -8,8 +8,6 @@
   import type { Doc } from "../domain/doc";
   import { parseDocumentText } from "../domain/docparse";
   import { createDebouncer } from "../domain/timing";
-  import { commandLog } from "../stores/commandLog.svelte";
-  import { insertCmd, replaceCmd } from "../domain/mongosh";
   import { fieldsFor } from "../stores/fieldSuggestions";
   import { topLevelFieldNames } from "../domain/schema";
   import TreeEditor from "./TreeEditor.svelte";
@@ -182,20 +180,17 @@
       payload = docValue;
     }
 
-    const docJson = JSON.stringify(payload);
     try {
       saving = true;
       const sid = sessionManager.active?.id ?? "";
       if (mode === "insert") {
-        await commandLog.pushTimed(insertCmd(coll, docJson), sid, () =>
-          insertDocument(sid, db, coll, docJson));
+        await insertWithUndo(sid, db, coll, payload);
       } else {
         if (idText === null) {
           error = m.document_form_no_id_error();
           return;
         }
-        await commandLog.pushTimed(replaceCmd(coll, idText, docJson), sid, () =>
-          replaceDocument(sid, db, coll, idText, docJson));
+        await replaceWithUndo(sid, db, coll, idText, payload);
       }
       onsaved();
     } catch (e) {

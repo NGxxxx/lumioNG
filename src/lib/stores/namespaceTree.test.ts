@@ -8,6 +8,10 @@ vi.mock("../api/admin", () => ({
   dropDatabase: vi.fn(),
   truncateCollection: vi.fn(),
 }));
+vi.mock("../api/stats", () => ({
+  collStats: vi.fn().mockResolvedValue('{"ns":"shop.orders","count":42,"size":1024}'),
+  dbStats: vi.fn().mockResolvedValue('{"db":"shop","collections":3,"objects":99}'),
+}));
 vi.mock("../api/connection", () => ({
   listNamespaces: vi.fn(),
 }));
@@ -227,5 +231,27 @@ describe("namespaceTree activity", () => {
     await nt.createCollection("d", "users");
     expect(sawBusy).toBe(true);
     expect(activity.busy).toBe(false);
+  });
+});
+
+describe("namespaceTree — destructive confirmations", () => {
+  it("drop collection: counts first, asks to type the name, drops on confirm", async () => {
+    dropColl.mockResolvedValue(undefined);
+    const t = createNamespaceTree("s1");
+    t.requestDropCollection("shop", "orders");
+    await vi.waitFor(() => expect(t.destructive.pending?.counting).toBe(false));
+    expect(t.destructive.pending).toMatchObject({ op: "dropCollection", count: 42, bytes: 1024, level: "type" });
+    await t.destructive.confirm();
+    expect(dropColl).toHaveBeenCalledWith("s1", "shop", "orders");
+    expect(t.destructive.pending).toBeNull();
+  });
+
+  it("drop database carries the collection count", async () => {
+    const t = createNamespaceTree("s1");
+    t.requestDropDatabase("shop");
+    await vi.waitFor(() => expect(t.destructive.pending?.counting).toBe(false));
+    expect(t.destructive.pending).toMatchObject({ op: "dropDatabase", count: 99, collections: 3 });
+    t.destructive.cancel();
+    expect(dropDb).not.toHaveBeenCalledWith("s1", "shop");
   });
 });

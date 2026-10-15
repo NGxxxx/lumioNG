@@ -7,6 +7,7 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { settings } from "./settings.svelte";
 import { countCmd, updateManyCmd, deleteManyCmd } from "../domain/mongosh";
+import type { DestructiveGate } from "./destructiveGate.svelte";
 
 /** Bulk update/delete flow (dialog state, count, run) for one collection view. */
 export function createCollectionBulk(opts: {
@@ -16,8 +17,9 @@ export function createCollectionBulk(opts: {
   getAppliedFilter: () => string;
   getSelectedIds: () => { ids: string[] } | { missing: true };
   reload: () => Promise<void>;
+  gate: DestructiveGate;
 }) {
-  const { sessionId, db, coll, getAppliedFilter, getSelectedIds, reload } = opts;
+  const { sessionId, db, coll, getAppliedFilter, getSelectedIds, reload, gate } = opts;
 
   let bulkMode = $state<"update" | "delete" | null>(null);
   let bulkUpdateText = $state("");
@@ -27,12 +29,13 @@ export function createCollectionBulk(opts: {
   let bulkRunning = $state(false);
   let bulkScope = $state<"filter" | "selection">("filter");
   let bulkFilter = $state("{}");
-  let bulkTypeConfirm = $state(false);
   let bulkResult = $state<string | null>(null);
   let bulkError = $state<string | null>(null);
+  // The count failed / timed out: running is still allowed, but only with type-to-confirm (spec §2.2).
+  let bulkCountFailed = $state(false);
 
   const canRunBulk = $derived(
-    !bulkRunning && (bulkScope === "selection" || bulkCount !== null),
+    !bulkRunning && (bulkScope === "selection" || bulkCount !== null || bulkCountFailed),
   );
 
   function openBulk(mode: "update" | "delete", scope: "filter" | "selection" = "filter") {
@@ -42,7 +45,7 @@ export function createCollectionBulk(opts: {
     bulkUpdateError = null;
     bulkResult = null;
     bulkError = null;
-    bulkTypeConfirm = false;
+    bulkCountFailed = false;
     if (scope === "selection") {
       const sel = getSelectedIds();
       if ("missing" in sel) {
@@ -61,7 +64,6 @@ export function createCollectionBulk(opts: {
 
   function closeBulk() {
     bulkMode = null;
-    bulkTypeConfirm = false;
   }
 
   async function countBulk() {
@@ -74,6 +76,8 @@ export function createCollectionBulk(opts: {
         countDocuments(sessionId, db, coll, bulkFilter, settings.queryTimeoutMs));
     } catch (e) {
       bulkError = errorMessage(e);
+      bulkCount = null;
+      bulkCountFailed = true;
     } finally {
       bulkCounting = false;
       activity.end();
@@ -122,21 +126,24 @@ export function createCollectionBulk(opts: {
     }
   }
 
+  /** The bulk dialog (with its count) is the plain confirmation; the gate only steps in when typing
+   *  the name is required — PROD, or an empty filter that matches every document. */
   async function runBulk() {
-    if (bulkScope === "filter" && isEmptyFilter(bulkFilter)) {
-      bulkTypeConfirm = true;
-      return;
+    if (!bulkMode) return;
+    // Validate the update before asking anyone to type a name.
+    if (bulkMode === "update") {
+      const r = parseUpdateDoc(bulkUpdateText);
+      if (!r.ok) {
+        bulkUpdateError = r.error;
+        return;
+      }
     }
-    await performBulk(bulkFilter, false);
-  }
-
-  async function confirmBulkAll() {
-    bulkTypeConfirm = false;
-    await performBulk(bulkFilter, true);
-  }
-
-  function cancelBulkAll() {
-    bulkTypeConfirm = false;
+    const all = bulkScope === "filter" && isEmptyFilter(bulkFilter);
+    const filter = bulkFilter;
+    await gate.request(
+      { op: bulkMode === "delete" ? "deleteMany" : "updateMany", target: { db, coll }, count: bulkCount, forceType: all, skipConfirm: true },
+      () => performBulk(filter, all),
+    );
   }
 
   return {
@@ -148,7 +155,6 @@ export function createCollectionBulk(opts: {
     get bulkCounting() { return bulkCounting; },
     get bulkRunning() { return bulkRunning; },
     get bulkScope() { return bulkScope; },
-    get bulkTypeConfirm() { return bulkTypeConfirm; },
     get bulkResult() { return bulkResult; },
     get bulkError() { return bulkError; },
     get canRunBulk() { return canRunBulk; },
@@ -156,7 +162,5 @@ export function createCollectionBulk(opts: {
     closeBulk,
     countBulk,
     runBulk,
-    confirmBulkAll,
-    cancelBulkAll,
   };
 }

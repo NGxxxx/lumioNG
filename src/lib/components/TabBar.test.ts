@@ -141,4 +141,20 @@ describe("TabBar", () => {
     await fireEvent.click(getByText("beta / new"));
     expect(onActivateWork).toHaveBeenCalledWith(11);
   });
+
+  it("a prod session's work tab gets a red dot", () => {
+    const { container } = render(TabBar, {
+      props: {
+        destination: dest,
+        workTabs: [{ id: 1, kind: "query", sessionId: "conn:9", title: "q" } as unknown as WorkTab],
+        sessions: [{ id: "conn:9", label: "Prod", color: "#3b82f6", environment: "prod" }],
+        active: { zone: "destination" },
+        onShowDestination: vi.fn(),
+        onActivateWork: vi.fn(),
+        onCloseWork: vi.fn(),
+        onNewQuery: vi.fn(),
+      },
+    });
+    expect(container.querySelector(".tab.work .session-dot")!.getAttribute("data-color")).toBe("var(--danger)");
+  });
 });

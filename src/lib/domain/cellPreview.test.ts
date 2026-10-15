@@ -71,4 +71,19 @@ describe("previewCell", () => {
     expect(p.kind).toBe("object");
     expect(p.text.length).toBeLessThanOrEqual(120);
   });
+
+  it("truncation never splits a surrogate pair", () => {
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+    for (let pad = 115; pad <= 122; pad++) {
+      const t = previewCell("a".repeat(pad) + "😀".repeat(5)).text;
+      expect(t.length).toBeLessThanOrEqual(120);
+      expect(lone.test(t)).toBe(false);
+    }
+    expect(previewCell("a".repeat(118) + "😀zzz").text).toBe("a".repeat(118) + "…");
+  });
+  it("nested long strings are not split mid-pair either", () => {
+    const lone = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])/;
+    const t = previewCell({ k: "a".repeat(199) + "😀" }, 1000).text;
+    expect(lone.test(t)).toBe(false);
+  });
 });

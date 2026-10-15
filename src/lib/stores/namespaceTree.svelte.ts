@@ -8,6 +8,9 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { settings } from "./settings.svelte";
 import * as m from "#lib/paraglide/messages.js";
+import { createDestructiveGate } from "./destructiveGate.svelte";
+import { countCollection, countDatabase } from "./destructiveCounts";
+import { sessionEnvironment } from "./sessionEnv";
 import {
   createCollectionCmd,
   dropCollectionCmd,
@@ -36,6 +39,8 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
   let error = $state<string | null>(null);
   /** Bumped on every refresh() call so a slower, superseded call can't overwrite fresher state. */
   let generation = 0;
+  // Drop / truncate confirmations: real counts first, level by the session's environment.
+  const destructive = createDestructiveGate(() => sessionEnvironment(sessionId));
 
   async function refresh() {
     const gen = ++generation;
@@ -136,6 +141,27 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
     }
   }
 
+  function requestDropCollection(db: string, coll: string) {
+    void destructive.request(
+      { op: "dropCollection", target: { db, coll }, fetchCount: () => countCollection(sessionId, db, coll) },
+      () => dropCollection(db, coll),
+    );
+  }
+
+  function requestTruncate(db: string, coll: string) {
+    void destructive.request(
+      { op: "truncate", target: { db, coll }, fetchCount: () => countCollection(sessionId, db, coll) },
+      () => truncate(db, coll),
+    );
+  }
+
+  function requestDropDatabase(db: string) {
+    void destructive.request(
+      { op: "dropDatabase", target: { db }, fetchCount: () => countDatabase(sessionId, db) },
+      () => dropDatabase(db),
+    );
+  }
+
   /** Drop all cached namespaces (e.g. on disconnect) so the sidebar shows no stale DBs. */
   function clear() {
     generation++; // an in-flight refresh must not repopulate the sidebar after a disconnect
@@ -150,6 +176,11 @@ export function createNamespaceTree(sessionId: string, nav: NavLike = defaultNav
     get error() {
       return error;
     },
+    /** The drop / truncate waiting for confirmation (rendered by DestructiveDialog). */
+    get destructive() { return destructive; },
+    requestDropCollection,
+    requestTruncate,
+    requestDropDatabase,
     refresh,
     createDatabase,
     createCollection,

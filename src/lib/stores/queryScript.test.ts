@@ -33,6 +33,7 @@ import { settings } from "./settings.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { updateOneCmd, deleteManyCmd } from "../domain/mongosh";
+import { setSessionEnvironment } from "./sessionEnv";
 
 const sampleDocuments = docsApi.sampleDocuments as ReturnType<typeof vi.fn>;
 const updateOne = docsApi.updateOne as ReturnType<typeof vi.fn>;
@@ -88,6 +89,20 @@ describe("destructive confirm", () => {
     await s.run("mydb");
     expect(runScript).toHaveBeenCalledTimes(1);
     expect(s.destructiveConfirm).toBeNull();
+  });
+
+  it("on PROD the confirm shows even with the suppress flag, and can't be suppressed", async () => {
+    settings.setSuppressDestructiveWarning(true);
+    setSessionEnvironment("sess-prod", "prod");
+    const s = createQueryScript("sess-prod", "db.c.deleteMany({status:'old'})");
+    await s.run("mydb");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.destructiveConfirm).toMatchObject({ prod: true });
+    settings.setSuppressDestructiveWarning(false);
+    await s.dontAskAgain();
+    expect(settings.suppressDestructiveWarning).toBe(false);
+    expect(runScript).toHaveBeenCalledTimes(1);
+    setSessionEnvironment("sess-prod", null);
   });
 
   it("non-destructive script runs immediately", async () => {
@@ -635,8 +650,8 @@ describe("selection / delete / menu (editable grid)", () => {
     const fakeEvent = { preventDefault() {}, stopPropagation() {}, clientX: 1, clientY: 1 } as unknown as MouseEvent;
     s.openMenu(fakeEvent, 0, "name");
     s.onMenuSelect("deleteSelected"); // opens confirm
-    expect(s.confirmDelete?.count).toBe(2);
-    await s.confirmDeleteRun();
+    expect(s.destructive.pending?.count).toBe(2);
+    await s.destructive.confirm();
     expect(deleteMany).toHaveBeenCalledWith("sess", "d", "c", `{"_id":{"$in":[1,3]}}`, false);
     expect(s.docs.map((d) => d._id)).toEqual([2]);
     expect([...s.selected]).toEqual([]);
@@ -690,7 +705,7 @@ describe("activeDataView bridge (canEditSelected/canDeleteSelected/getSelectedFo
     s.clickRow(0, { ctrl: false, shift: false });
     s.clickRow(2, { ctrl: true, shift: false });
     s.requestDeleteSelected();
-    expect(s.confirmDelete?.count).toBe(2);
+    expect(s.destructive.pending?.count).toBe(2);
   });
 
   it("requestExportCurrent exports the selection when non-empty", async () => {
@@ -856,7 +871,7 @@ describe("queryScript command log + activity", () => {
     s.openMenu(fakeEvent, 0, "name");
     commandLog.clear();
     s.onMenuSelect("deleteSelected");
-    await s.confirmDeleteRun();
+    await s.destructive.confirm();
     const entry = commandLog.entries.at(-1)!;
     expect(entry.text).toBe(deleteManyCmd("c", `{"_id":{"$in":[1]}}`));
     expect(entry.tookMs).toBeGreaterThanOrEqual(0);

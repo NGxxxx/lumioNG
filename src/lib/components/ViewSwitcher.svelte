@@ -12,11 +12,32 @@
     /** Accessible name of the tablist. */
     label: string;
   } = $props();
+
+  /** Arrow keys move to the previous / next view (roving tabindex: only the active tab is tabbable). */
+  function onkey(e: KeyboardEvent, i: number) {
+    let next: number;
+    if (e.key === "ArrowRight") next = (i + 1) % items.length;
+    else if (e.key === "ArrowLeft") next = (i - 1 + items.length) % items.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = items.length - 1;
+    else return;
+    e.preventDefault();
+    onchange(items[next].key);
+    const tabs = (e.currentTarget as HTMLElement).parentElement?.querySelectorAll<HTMLElement>("[role=tab]");
+    tabs?.[next]?.focus();
+  }
 </script>
 
 <div class="switcher" role="tablist" aria-label={label}>
-  {#each items as it (it.key)}
-    <button role="tab" aria-selected={it.key === value} class:active={it.key === value} onclick={() => onchange(it.key)}>
+  {#each items as it, i (it.key)}
+    <button
+      role="tab"
+      aria-selected={it.key === value}
+      tabindex={it.key === value ? 0 : -1}
+      class:active={it.key === value}
+      onclick={() => onchange(it.key)}
+      onkeydown={(e) => onkey(e, i)}
+    >
       {it.label}
     </button>
   {/each}

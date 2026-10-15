@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { Environment } from "../domain/environment";
 
 export interface ConnectionInput {
   label: string;
@@ -23,6 +24,10 @@ export interface ConnectionInput {
   sshPasswordEnc: string;
   sshPrivateKeyPath: string;
   sshPassphraseEnc: string;
+  /** "" when unset; files saved before this field existed load as "". */
+  environment: Environment;
+  /** Hex session color; "" = assigned automatically. */
+  color: string;
 }
 
 export interface SavedConnection extends ConnectionInput {

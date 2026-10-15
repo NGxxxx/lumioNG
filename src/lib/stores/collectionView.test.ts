@@ -25,6 +25,7 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { findCmd, deleteOneCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { settings } from "./settings.svelte";
+import { setSessionEnvironment } from "./sessionEnv";
 
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
 const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
@@ -232,7 +233,7 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 10, "{}", null, null, 30000);
   });
 
-  it("confirmDelete calls deleteDocument then reloads (count + queryPage)", async () => {
+  it("confirming a single delete calls deleteDocument then reloads (count + queryPage)", async () => {
     cnt.mockResolvedValueOnce(1); // init
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]); // init
     samp.mockResolvedValueOnce([]);
@@ -242,7 +243,7 @@ describe("createCollectionView — paging", () => {
     cnt.mockResolvedValueOnce(0); // reload count
     qp.mockResolvedValueOnce([]); // reload page
     v.requestDelete(v.docs[0]);
-    await v.confirmDelete();
+    await v.destructive.confirm();
     expect(del).toHaveBeenCalledWith("conn:1", "d", "c", '{"$oid":"a"}');
     expect(v.docs.length).toBe(0);
     expect(v.totalCount).toBe(0);
@@ -489,10 +490,10 @@ describe("bulk operations", () => {
     await v.countBulk();
     await v.runBulk();
     expect(deleteMany).not.toHaveBeenCalled();
-    expect(v.bulkTypeConfirm).toBe(true);
+    expect(v.destructive.pending?.level).toBe("type");
   });
 
-  it("confirmBulkAll runs deleteMany with allowAll=true then reloads", async () => {
+  it("confirming the type gate runs deleteMany with allowAll=true then reloads", async () => {
     vi.mocked(deleteMany).mockResolvedValueOnce(3);
     cnt.mockResolvedValue(0);
     qp.mockResolvedValueOnce([]);
@@ -501,21 +502,21 @@ describe("bulk operations", () => {
     cnt.mockResolvedValueOnce(3);
     await v.countBulk();
     await v.runBulk(); // opens gate
-    await v.confirmBulkAll();
+    await v.destructive.confirm();
     expect(deleteMany).toHaveBeenCalledWith("conn:1", "db", "c", "{}", true);
-    expect(v.bulkTypeConfirm).toBe(false);
+    expect(v.destructive.pending).toBeNull();
     expect(v.bulkResult).toContain("3");
     expect(v.bulkCount).toBeNull();
   });
 
-  it("cancelBulkAll closes the gate without running", async () => {
+  it("cancelling the type gate closes the gate without running", async () => {
     const v = createCollectionView("conn:1", "db", "c");
     v.openBulk("delete");
     cnt.mockResolvedValueOnce(3);
     await v.countBulk();
     await v.runBulk();
-    v.cancelBulkAll();
-    expect(v.bulkTypeConfirm).toBe(false);
+    v.destructive.cancel();
+    expect(v.destructive.pending).toBeNull();
     expect(deleteMany).not.toHaveBeenCalled();
   });
 
@@ -584,7 +585,7 @@ describe("bulk operations", () => {
     cnt.mockResolvedValue(0);
     qp.mockResolvedValueOnce([]);
     await v.runBulk();
-    expect(v.bulkTypeConfirm).toBe(false);
+    expect(v.destructive.pending).toBeNull();
     expect(deleteMany).toHaveBeenCalledWith("conn:1", "d", "c", '{"x":1}', false);
   });
 
@@ -711,7 +712,7 @@ describe("command log instrumentation", () => {
     expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
   });
 
-  it("confirmDelete pushes deleteOneCmd to the command log with a measured duration", async () => {
+  it("a confirmed single delete pushes deleteOneCmd to the command log with a measured duration", async () => {
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     samp.mockResolvedValueOnce([]);
@@ -722,7 +723,7 @@ describe("command log instrumentation", () => {
     qp.mockResolvedValueOnce([]);
     commandLog.clear();
     v.requestDelete(v.docs[0]);
-    await v.confirmDelete();
+    await v.destructive.confirm();
     const entry = commandLog.entries.find((e) => e.text === deleteOneCmd("c", '{"$oid":"a"}'));
     expect(entry).toBeDefined();
     expect(entry!.tookMs).toBeGreaterThanOrEqual(0);
@@ -855,19 +856,19 @@ describe("delete selected", () => {
     v.clickRow(0, { ctrl: false, shift: false });
     v.clickRow(2, { ctrl: true, shift: false });
     v.requestDeleteSelected();
-    expect(v.confirmSelectionDelete).toBe(2);
+    expect(v.destructive.pending?.count).toBe(2);
 
     vi.mocked(deleteMany).mockResolvedValueOnce(2);
     cnt.mockResolvedValueOnce(1);
     qp.mockResolvedValueOnce([{ _id: { $oid: "b" } }]);
-    await v.confirmDeleteSelected();
+    await v.destructive.confirm();
 
     expect(deleteMany).toHaveBeenCalledWith("conn:1", "d", "c", '{"_id":{"$in":[{"$oid":"a"},{"$oid":"c"}]}}', false);
-    expect(v.confirmSelectionDelete).toBeNull();
+    expect(v.destructive.pending).toBeNull();
     expect(v.selectedCount).toBe(0);
   });
 
-  it("confirmDeleteSelected blocks when a selected row lacks _id", async () => {
+  it("a confirmed selection delete blocks when a selected row lacks _id", async () => {
     cnt.mockResolvedValueOnce(2);
     qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { x: 1 }]);
     samp.mockResolvedValueOnce([]);
@@ -875,7 +876,7 @@ describe("delete selected", () => {
     await v.init();
     v.selectAll();
     v.requestDeleteSelected();
-    await v.confirmDeleteSelected();
+    await v.destructive.confirm();
     expect(deleteMany).not.toHaveBeenCalled();
     expect(v.error).toBeTruthy();
   });
@@ -883,7 +884,41 @@ describe("delete selected", () => {
   it("requestDeleteSelected does nothing with an empty selection", async () => {
     const v = createCollectionView("conn:1", "d", "c");
     v.requestDeleteSelected();
-    expect(v.confirmSelectionDelete).toBeNull();
+    expect(v.destructive.pending).toBeNull();
+  });
+});
+
+describe("createCollectionView — environment policy", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("on a PROD session a selection delete needs the collection name typed", async () => {
+    setSessionEnvironment("conn:9", "prod");
+    cnt.mockResolvedValueOnce(2);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" } }, { _id: { $oid: "b" } }]);
+    samp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:9", "d", "c");
+    await v.init();
+    v.selectAll();
+    v.requestDeleteSelected();
+    expect(v.destructive.pending).toMatchObject({ op: "deleteMany", count: 2, level: "type", undoable: true });
+    setSessionEnvironment("conn:9", null);
+  });
+
+  it("a non-empty filter bulk delete on DEV runs straight from the bulk dialog", async () => {
+    setSessionEnvironment("conn:8", "dev");
+    const v = createCollectionView("conn:8", "d", "c");
+    v.filterText = '{"x":1}';
+    cnt.mockResolvedValue(2);
+    qp.mockResolvedValue([]);
+    samp.mockResolvedValue([]);
+    await v.applyFilter();
+    v.openBulk("delete");
+    await v.countBulk();
+    vi.mocked(deleteMany).mockResolvedValueOnce(2);
+    await v.runBulk();
+    expect(deleteMany).toHaveBeenCalled();
+    expect(v.destructive.pending).toBeNull();
+    setSessionEnvironment("conn:8", null);
   });
 });
 
@@ -1109,7 +1144,7 @@ describe("selection-aware context menu", () => {
     v.selectAll();
     v.openMenu(ev(), 0, "x");
     v.onMenuSelect("deleteSelected");
-    expect(v.confirmSelectionDelete).toBe(2);
+    expect(v.destructive.pending?.count).toBe(2);
   });
 
   it("onMenuSelect updateSelected opens the bulk dialog in selection scope", async () => {
@@ -1174,7 +1209,7 @@ describe("selection-aware context menu", () => {
     v.clickRow(1, { ctrl: false, shift: false });
     v.requestDeleteDoc(v.docs[0]);
     expect([...v.selected]).toEqual([0]);
-    expect(v.confirmSelectionDelete).not.toBeNull();
+    expect(v.destructive.pending).not.toBeNull();
   });
 
   it("togglePin pins and unpins a column", async () => {
@@ -1210,17 +1245,33 @@ describe("selection-aware context menu", () => {
     cnt.mockResolvedValue(0);
     samp.mockResolvedValue([]);
     v.filterText = '{"x": {"$gt": 0}}';
+    await v.applyFilter();
     await v.filterBy("address.city", "eq", "Hanoi");
     expect(JSON.parse(v.filterText)).toEqual({ x: { $gt: 0 }, "address.city": "Hanoi" });
     expect(JSON.parse(v.appliedFilter)).toEqual({ x: { $gt: 0 }, "address.city": "Hanoi" });
   });
 
-  it("filterBy with an invalid current filter reports the error and leaves the text alone", async () => {
+  it("filterBy merges into the applied filter, not an unapplied draft", async () => {
     const v = await withTwoDocs();
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    samp.mockResolvedValue([]);
+    v.filterText = '{"x": 1}';
+    await v.applyFilter();
+    v.filterText = '{"draft": true}'; // typed but never run
+    await v.filterBy("y", "eq", 2);
+    expect(JSON.parse(v.appliedFilter)).toEqual({ x: 1, y: 2 });
+  });
+
+  it("filterBy ignores a broken unapplied draft and builds on the applied filter", async () => {
+    const v = await withTwoDocs();
+    qp.mockResolvedValue([]);
+    cnt.mockResolvedValue(0);
+    samp.mockResolvedValue([]);
     v.filterText = "{oops";
     await v.filterBy("x", "eq", 1);
-    expect(v.filterText).toBe("{oops");
-    expect(v.filterError).toBe("err_filter_invalid_json");
+    expect(JSON.parse(v.filterText)).toEqual({ x: 1 });
+    expect(v.filterError).toBeNull();
   });
 
   it("cell menu offers Filter by / Exclude this value", async () => {
@@ -1433,5 +1484,35 @@ describe("createCollectionView — grid depth limit", () => {
       expect(byPath["_id"]).toBe("objectId");
       expect(byPath["addr.city"]).toBe("string");
     }
+  });
+
+  it("a failed count still allows the bulk run, but only with type-to-confirm", async () => {
+    setSessionEnvironment("conn:7", "dev");
+    const v = createCollectionView("conn:7", "d", "c");
+    v.filterText = '{"x":1}';
+    cnt.mockResolvedValue(2);
+    qp.mockResolvedValue([]);
+    samp.mockResolvedValue([]);
+    await v.applyFilter();
+    v.openBulk("delete");
+    cnt.mockRejectedValueOnce(new Error("timeout"));
+    await v.countBulk();
+    expect(v.bulkCount).toBeNull();
+    expect(v.canRunBulk).toBe(true);
+    await v.runBulk();
+    expect(deleteMany).not.toHaveBeenCalled();
+    expect(v.destructive.pending).toMatchObject({ count: null, level: "type" });
+    setSessionEnvironment("conn:7", null);
+  });
+
+  it("an invalid update document is reported before any confirmation", async () => {
+    setSessionEnvironment("conn:6", "prod");
+    const v = createCollectionView("conn:6", "d", "c");
+    v.openBulk("update", "filter");
+    v.bulkUpdateText = "{oops";
+    await v.runBulk();
+    expect(v.bulkUpdateError).not.toBeNull();
+    expect(v.destructive.pending).toBeNull();
+    setSessionEnvironment("conn:6", null);
   });
 });

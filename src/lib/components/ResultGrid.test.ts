@@ -440,6 +440,55 @@ describe("ResultGrid cursor navigation", () => {
     expect(queryAllByRole("button", { name: "Quick look" })).toHaveLength(0);
   });
 
+  it("Space closes the drawer when it is already open", async () => {
+    const onpeek = vi.fn();
+    const onpeekclose = vi.fn();
+    const { scroller } = setup({}, { onpeek, peekOpen: true, onpeekclose });
+    await fireEvent.keyDown(scroller, { key: "j" });
+    await fireEvent.keyDown(scroller, { key: " " });
+    expect(onpeekclose).toHaveBeenCalled();
+    expect(onpeek).not.toHaveBeenCalled();
+  });
+
+  it("keys pressed on a focused button inside the grid are left to the button", async () => {
+    const onpeek = vi.fn();
+    const { getAllByRole, setSelected } = setup({}, { onpeek });
+    const eye = getAllByRole("button", { name: "Quick look" })[1];
+    await fireEvent.keyDown(eye, { key: " " });
+    await fireEvent.keyDown(eye, { key: "j" });
+    expect(onpeek).not.toHaveBeenCalled();
+    expect(setSelected).not.toHaveBeenCalled();
+  });
+
+  it("the cursor resets when a different set of rows is shown (page, filter, sort)", async () => {
+    const r = setup();
+    await fireEvent.keyDown(r.scroller, { key: "j" });
+    expect(cursorRow(r.container)).toBe(0);
+    const other = [5, 6].map((i) => ({ _id: { $oid: String(i) }, n: i }));
+    await r.rerender({ v: baseView(other, { setSelected: vi.fn() }) });
+    expect(cursorRow(r.container)).toBe(-1);
+  });
+
+  it("navigation stays fast with a huge filtered selection", async () => {
+    const big = Array.from({ length: 25_000 }, (_, i) => ({ _id: { $oid: String(i) } }));
+    const all = big.map((_, i) => i);
+    const v = baseView(big, { selected: new Set(all), visibleIndices: all, setSelected: vi.fn() });
+    const { container } = render(ResultGrid, { props: { v } });
+    const scroller = container.querySelector(".scroller") as HTMLElement;
+    const t0 = performance.now();
+    await fireEvent.keyDown(scroller, { key: "j", shiftKey: true });
+    expect(performance.now() - t0).toBeLessThan(200);
+  });
+
+  it("a click on empty grid space (not a row) reports onbackground", async () => {
+    const onbackground = vi.fn();
+    const { scroller, container } = setup({}, { onbackground });
+    await fireEvent.click(container.querySelectorAll("tbody tr[data-index]")[0]);
+    expect(onbackground).not.toHaveBeenCalled();
+    await fireEvent.click(scroller);
+    expect(onbackground).toHaveBeenCalled();
+  });
+
   it("clicking a row moves the cursor there", async () => {
     const { container } = setup();
     await fireEvent.click(container.querySelectorAll("tbody tr[data-index]")[2]);

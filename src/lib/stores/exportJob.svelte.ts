@@ -143,6 +143,7 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
     get rows() { return rows; },
     get running() { return running; },
     get done() { return finished; },
+    get cancelled() { return cancelled; },
     get overall() { return overall; },
     get succeeded() { return succeeded; },
     get failed() { return failed; },

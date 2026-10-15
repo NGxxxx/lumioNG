@@ -28,6 +28,7 @@ export type CommandId =
   | "view.toggleWrap"
   | "view.toggleSavedQueries"
   | "help.about"
+  | "edit.undo"
   // Grid (result grid / data view)
   | "grid.newDocument"
   | "grid.duplicateDocument"
@@ -88,6 +89,7 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "view.closeWorkTab": "Mod+F4",
   "view.commandPalette": "Mod+K",
   "help.about": "F1",
+  "edit.undo": "Mod+Z",
   "grid.newDocument": "Insert",
   "grid.duplicateDocument": "Mod+Insert",
   "grid.editDocument": "F2",
@@ -134,7 +136,7 @@ export const COMMAND_GROUPS: { group: "general" | "navigation" | "grid" | "edito
     ids: [
       "view.commandPalette", "help.shortcuts", "help.about", "file.refresh", "file.newQuery", "file.newDocument",
       "file.import", "file.export", "query.run", "query.runSelection", "query.stop", "query.explain",
-      "query.aggregate", "query.save", "view.closeWorkTab",
+      "query.aggregate", "query.save", "view.closeWorkTab", "edit.undo",
     ],
   },
   {

@@ -5,6 +5,8 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import * as m from "#lib/paraglide/messages.js";
 import { createIndexCmd, dropIndexCmd, listIndexesCmd } from "../domain/mongosh";
+import { createDestructiveGate } from "./destructiveGate.svelte";
+import { sessionEnvironment } from "./sessionEnv";
 import { createAsyncGuard } from "./asyncGuard.svelte";
 
 /** State and actions for the Indexes tab of a collection; parse/build/validate logic lives in domain. */
@@ -65,6 +67,13 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
     }
   }
 
+  const destructive = createDestructiveGate(() => sessionEnvironment(sessionId));
+
+  /** Asks (type the index name) before dropping. */
+  function requestDrop(name: string) {
+    void destructive.request({ op: "dropIndex", target: { db, coll, index: name } }, () => drop(name));
+  }
+
   async function drop(name: string) {
     activity.begin(m.common_running());
     try {
@@ -92,5 +101,8 @@ export function createIndexView(sessionId: string, db: string, coll: string) {
     refresh,
     create,
     drop,
+    requestDrop,
+    /** The index drop waiting for confirmation (rendered by DestructiveDialog). */
+    get destructive() { return destructive; },
   };
 }

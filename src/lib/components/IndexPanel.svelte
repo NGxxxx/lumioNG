@@ -3,7 +3,7 @@
   import { createIndexView } from "../stores/indexView.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { describeKeys, type IndexInfo } from "../domain/indexes";
-  import ConfirmDialog from "./ConfirmDialog.svelte";
+  import DestructiveDialog from "./DestructiveDialog.svelte";
   import IndexCreateForm from "./IndexCreateForm.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
@@ -11,7 +11,6 @@
 
   const v = untrack(() => createIndexView(sessionManager.active?.id ?? "", db, coll));
   let creating = $state(false);
-  let confirmDrop = $state<string | null>(null);
 
   function flags(idx: IndexInfo): string {
     const f: string[] = [];
@@ -25,12 +24,6 @@
     v.init();
   });
 
-  /** Dismiss immediately (matches RoleList/UserList); the drop runs in the background and any failure surfaces via `v.error`'s banner. */
-  function confirmDropIndex() {
-    const target = confirmDrop;
-    confirmDrop = null;
-    if (target) v.drop(target);
-  }
 </script>
 
 <div class="indexpanel">
@@ -59,7 +52,7 @@
             <td class="keys">{describeKeys(idx.entries)}</td>
             <td>{flags(idx)}</td>
             <td class="act">
-              <button class="danger" disabled={idx.isId} onclick={() => (confirmDrop = idx.name)}>{m.index_panel_drop()}</button>
+              <button class="danger" disabled={idx.isId} onclick={() => v.requestDrop(idx.name)}>{m.index_panel_drop()}</button>
             </td>
           </tr>
         {/each}
@@ -69,16 +62,7 @@
   </div>
 </div>
 
-{#if confirmDrop}
-  <ConfirmDialog
-    title={m.index_panel_drop_title()}
-    message={`${m.index_panel_drop_body_prefix()} "${confirmDrop}"${m.index_panel_drop_body_suffix()}`}
-    confirmLabel={m.index_panel_drop()}
-    danger
-    onconfirm={confirmDropIndex}
-    oncancel={() => (confirmDrop = null)}
-  />
-{/if}
+<DestructiveDialog gate={v.destructive} />
 
 <style>
   .indexpanel { display: flex; flex-direction: column; height: 100%; }

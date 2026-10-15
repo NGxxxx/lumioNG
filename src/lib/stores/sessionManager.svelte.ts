@@ -4,6 +4,7 @@ import { touchConnection } from "../api/connections";
 import { createNamespaceTree } from "./namespaceTree.svelte";
 import { createHostStatus } from "./hostStatus.svelte";
 import { createSessionNav, type SessionNav, type WorkTab, type Active, type DocumentTabInit } from "./navigation.svelte";
+import type { Environment } from "../domain/environment";
 import { savedSessionId, adhocSessionId, adhocLabel, allocColor } from "../domain/session";
 import { nextQuerySeq } from "../domain/queryseq";
 import { commandLog } from "./commandLog.svelte";
@@ -15,6 +16,7 @@ import { disposeCollectionViews } from "./collectionViews.svelte";
 import { disposeGridfsFiles } from "./gridfsFilesCache.svelte";
 import { disposeGridfsBucketProbes } from "./gridfsBucketProbe.svelte";
 import { disposeFieldSuggestions } from "./fieldSuggestions";
+import { setSessionEnvironment } from "./sessionEnv";
 
 export type SessionStatus = "connecting" | "connected" | "error";
 export type Session = {
@@ -25,6 +27,7 @@ export type Session = {
   connId: number | null;
   uri: string;
   readOnly: boolean;
+  environment: Environment;
   ssh: SshConnectInput | null;
   connectedAt: number | null;
   nav: SessionNav;
@@ -91,15 +94,19 @@ export function createSessionManager() {
     if (affected) nav?.bumpCollection(db, newColl);
   }
 
-  function makeSession(id: string, label: string, connId: number | null, uri: string, readOnly: boolean, ssh: SshConnectInput | null): Session {
-    const color = allocColor(sessions.map((s) => s.color));
+  function makeSession(
+    id: string, label: string, connId: number | null, uri: string, readOnly: boolean, ssh: SshConnectInput | null,
+    environment: Environment, savedColor: string,
+  ): Session {
+    const color = savedColor || allocColor(sessions.map((s) => s.color));
+    setSessionEnvironment(id, environment);
     const nav = createSessionNav();
     const tree = createNamespaceTree(id, {
       closeForCollection: (db, coll) => closeForCollection(id, db, coll),
       closeForDatabase: (db) => closeForDatabase(id, db),
       renameCollectionTabs: (db, oldColl, newColl) => renameCollectionTabs(id, db, oldColl, newColl),
     });
-    return { id, label, color, status: "connecting", connId, uri, readOnly, ssh, connectedAt: null, nav, tree, host: createHostStatus(id) };
+    return { id, label, color, status: "connecting", connId, uri, readOnly, environment, ssh, connectedAt: null, nav, tree, host: createHostStatus(id) };
   }
 
   /** Shared connect flow for both a new session and a reconnect. */
@@ -119,12 +126,24 @@ export function createSessionManager() {
     }
   }
 
-  async function focusOrOpen(p: { connId: number | null; uri: string; label: string; readOnly?: boolean; ssh?: SshConnectInput | null }): Promise<boolean> {
+  async function focusOrOpen(p: {
+    connId: number | null; uri: string; label: string; readOnly?: boolean; ssh?: SshConnectInput | null;
+    environment?: Environment; color?: string;
+  }): Promise<boolean> {
     const id = p.connId != null ? savedSessionId(p.connId) : adhocSessionId(++adhocSeq);
     const existing = sessions.find((s) => s.id === id);
-    if (existing) { activeId = id; return true; }
+    if (existing) {
+      // The saved connection may have been relabeled (environment / color) since it was opened.
+      if (p.environment !== undefined && p.environment !== existing.environment) {
+        patchSession(id, { environment: p.environment });
+        setSessionEnvironment(id, p.environment);
+      }
+      if (p.color && p.color !== existing.color) patchSession(id, { color: p.color });
+      activeId = id;
+      return true;
+    }
     const label = p.connId != null ? p.label : adhocLabel(adhocSeq);
-    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null);
+    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null, p.environment ?? "", p.color ?? "");
     sessions = [...sessions, s];
     activeId = id;
     const ok = await performConnect(s);
@@ -158,6 +177,7 @@ export function createSessionManager() {
 
   async function closeSession(id: string) {
     await disconnect(id).catch(() => {});
+    setSessionEnvironment(id, null);
     for (const t of workTabs.filter((t) => t.sessionId === id)) {
       disposeQueryRun(t.id);
       disposePipelineTree(t.id);

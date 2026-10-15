@@ -14,7 +14,10 @@
     onconnected,
     onclose,
   }: {
-    onconnected: (c: { connId: number | null; label: string; uri: string; readOnly: boolean; ssh: import("../api/connection").SshConnectInput | null }) => Promise<boolean>;
+    onconnected: (c: {
+      connId: number | null; label: string; uri: string; readOnly: boolean; ssh: import("../api/connection").SshConnectInput | null;
+      environment: import("../domain/environment").Environment; color: string;
+    }) => Promise<boolean>;
     onclose: () => void;
   } = $props();
 
@@ -65,7 +68,7 @@
       const connLabel = r.label.trim() || result.uri;
       // Pass the saved connection's numeric id (null for ad-hoc connections with no saved record).
       const connId = selectedId !== null ? selectedId : (r.editingId ?? null);
-      const ok = await onconnected({ connId, label: connLabel, uri: result.uri, readOnly: r.readOnly, ssh: result.ssh });
+      const ok = await onconnected({ connId, label: connLabel, uri: result.uri, readOnly: r.readOnly, ssh: result.ssh, environment: r.environment, color: r.color });
       if (ok) onclose();
       else connectError = "Connection failed. Check your connection settings and try again.";
     } finally {

@@ -2,6 +2,8 @@
 <script lang="ts">
   import { formatUptime } from "../domain/host";
   import * as m from "#lib/paraglide/messages.js";
+  import JobsIndicator from "./JobsIndicator.svelte";
+  import { jobs } from "../stores/jobs.svelte";
 
   let {
     connected,
@@ -77,6 +79,8 @@
   <!-- Right: live activity (current operation) or idle -->
   <div class="seg idle" class:busy={activityLabel !== null}>{activityLabel ?? m.status_bar_idle()}</div>
 
+  <JobsIndicator {jobs} />
+
   {#if ontogglelog}
     <button
       class="log-btn"
@@ -87,7 +91,7 @@
       onclick={ontogglelog}
     >
       <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4h10M3 8h10M3 12h6" /></svg>
-      <span>Log</span>
+      <span>{m.status_bar_log()}</span>
       {#if logUnseen > 0 && !logOpen}<span class="log-dot" aria-hidden="true"></span>{/if}
     </button>
   {/if}

@@ -29,6 +29,7 @@ const LABELS: Record<CommandId, () => string> = {
   "view.toggleWrap": m.wrap_toggle_label,
   "view.toggleSavedQueries": m.toolbar_saved_queries,
   "help.about": m.menu_about,
+  "edit.undo": m.undo_last,
   "help.shortcuts": m.shortcuts_title,
   "grid.newDocument": m.menu_new_document,
   "grid.duplicateDocument": m.cmd_grid_duplicate,

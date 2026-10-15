@@ -227,4 +227,16 @@ describe("docPeek", () => {
     expect(docPeekFor(owner, deps)).toBe(docPeekFor(owner, deps));
     expect(docPeekFor({}, deps)).not.toBe(docPeekFor(owner, deps));
   });
+
+  it("retry re-runs the last load", async () => {
+    let fail = true;
+    const loadFull = vi.fn(async (d: Doc) => { if (fail) throw new Error("x"); return d; });
+    const { peek } = setup({ loadFull });
+    await peek.show(doc());
+    expect(peek.error).not.toBeNull();
+    fail = false;
+    await peek.retry();
+    expect(peek.error).toBeNull();
+    expect(peek.doc).not.toBeNull();
+  });
 });

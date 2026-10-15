@@ -14,6 +14,7 @@
   import DocPeekDrawer from "./DocPeekDrawer.svelte";
   import { docPeekFor } from "../stores/docPeek.svelte";
   import { settings } from "../stores/settings.svelte";
+  import { undo } from "../stores/undo.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let {
@@ -110,6 +111,15 @@
     if (!d || !peek.open) return;
     untrack(() => void peek.follow(d)); // no-op for the document already shown; asks first when dirty
   });
+  // An undo wrote to this collection: reload the page.
+  // (Changes from before this table mounted were already loaded.)
+  let undoSeen = untrack(() => undo.changed?.seq ?? 0);
+  $effect(() => {
+    const change = undo.changed;
+    if (!change || change.seq <= undoSeen) return;
+    undoSeen = change.seq;
+    untrack(() => v.syncAfterUndo(change));
+  });
   // Rows changed (reload, page, inline edit): the drawer refreshes, keeps a dirty draft, or closes.
   $effect(() => {
     const docs = v.docs;
@@ -120,6 +130,10 @@
     if (d) void peek.show(d, edit);
   }
   /** Esc in the grid closes the drawer first (unless it has unsaved edits, which keep it open). */
+  /** A click on empty grid space closes an unpinned drawer with nothing unsaved. */
+  function onGridBackground() {
+    if (peek.open && !settings.peekPinned && !peek.dirty) peek.close();
+  }
   function onGridEscape(): boolean {
     if (!peek.open) return false;
     peek.requestClose();
@@ -186,7 +200,7 @@
   <div class="content" class:with-pinned={peek.open && settings.peekPinned && v.view === "grid"}>
     {#if v.view === "grid"}
       <div class="grid-host">
-        <ResultGrid v={gridView} {onopendocument} onpeek={onPeek} onescape={onGridEscape} />
+        <ResultGrid v={gridView} {onopendocument} onpeek={onPeek} onescape={onGridEscape} peekOpen={peek.open} onpeekclose={() => peek.requestClose()} onbackground={onGridBackground} />
       </div>
       {#if peek.open}
         <DocPeekDrawer

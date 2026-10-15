@@ -16,7 +16,7 @@ vi.mock("../stores/collectionInfo.svelte", () => ({
   createCollectionInfo: () => ({ init() {}, error: null, loading: false, stats: null, options: null }),
 }));
 vi.mock("../stores/indexView.svelte", () => ({
-  createIndexView: () => ({ init() {}, error: null, loading: false, indexes: [], create: vi.fn(), drop: vi.fn() }),
+  createIndexView: () => ({ init() {}, error: null, loading: false, indexes: [], create: vi.fn(), drop: vi.fn(), requestDrop: vi.fn(), destructive: { pending: null } }),
 }));
 vi.mock("../stores/collectionSchema.svelte", () => ({
   createCollectionSchema: () => ({ init: vi.fn(), refresh: vi.fn(), setSampleSize: vi.fn(), fields: [], sampleSize: 100, actualSampled: 0, error: null, loading: false }),

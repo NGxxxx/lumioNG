@@ -24,7 +24,7 @@ function saved(over: Partial<SavedConnection> = {}): SavedConnection {
     tls: false, extraOptions: "", readOnly: false,
     tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "",
     sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
-    sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
+    sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", environment: "", color: "",
     ...over,
   };
 }
@@ -46,13 +46,19 @@ describe("SessionManager", () => {
     expect((getByLabelText("Password:") as HTMLInputElement).disabled).toBe(true);
   });
 
-  it("Import from URI fills host and user", async () => {
-    const { getByLabelText, getByText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
-    const importInput = getByLabelText("Import from URI:") as HTMLInputElement;
-    await fireEvent.input(importInput, { target: { value: "mongodb://bob@dbhost:27017/" } });
-    await fireEvent.click(getByText("Import"));
+  it("the connection string field fills host and user", async () => {
+    const { getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    const uriInput = getByLabelText("Connection string") as HTMLInputElement;
+    await fireEvent.input(uriInput, { target: { value: "mongodb://bob@dbhost:27017/" } });
+    await fireEvent.keyDown(uriInput, { key: "Enter" });
     expect((getByLabelText("Hostname / IP:") as HTMLInputElement).value).toBe("dbhost");
     expect((getByLabelText("User:") as HTMLInputElement).value).toBe("bob");
+  });
+
+  it("an empty list points at the connection string field", async () => {
+    const { findByRole, getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    await fireEvent.click(await findByRole("button", { name: "Paste a connection string to get started" }));
+    expect(document.activeElement).toBe(getByLabelText("Connection string"));
   });
 
   it("shows 'Never connected' for a saved session with no last-connect time", async () => {

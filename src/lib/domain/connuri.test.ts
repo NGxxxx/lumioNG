@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildProfileUri, parseUri, normalizeForTunnel, type ConnectionProfile } from "./connuri";
+import { buildProfileUri, parseUri, normalizeForTunnel, suggestLabelFromHost, changedFieldCount, type ConnectionProfile } from "./connuri";
 
 const base: ConnectionProfile = {
   scheme: "mongodb", host: "localhost", port: 27017, authMethod: "none",
@@ -125,5 +125,32 @@ describe("parseUri round-trip", () => {
     expect(() => parseUri("mongodb://%ZZ@host:27017/")).not.toThrow();
     const { profile } = parseUri("mongodb://%ZZ@host:27017/");
     expect(profile.host).toBe("host");
+  });
+});
+
+describe("suggestLabelFromHost", () => {
+  it.each([
+    ["db1.example.com", "db1"],
+    ["cluster0.ab1cd.mongodb.net", "cluster0"],
+    ["localhost", "localhost"],
+    ["127.0.0.1", "127.0.0.1"],
+    ["db1.example.com:27017", "db1"],
+    ["localhost:27017", "localhost"],
+    ["10.0.0.5:27018", "10.0.0.5"],
+    ["a.example.com:27017,b.example.com:27017", "a"],
+    ["mongo", "mongo"],
+    ["", ""],
+  ])("%s → %s", (host, want) => {
+    expect(suggestLabelFromHost(host)).toBe(want);
+  });
+});
+
+describe("changedFieldCount", () => {
+  it("0 for equal profiles", () => {
+    expect(changedFieldCount(base, { ...base })).toBe(0);
+  });
+  it("counts each differing field", () => {
+    expect(changedFieldCount(base, { ...base, host: "x", port: null, tls: true })).toBe(3);
+    expect(changedFieldCount(base, parseUri("mongodb+srv://u@c.example.net/?replicaSet=rs").profile)).toBeGreaterThan(3);
   });
 });

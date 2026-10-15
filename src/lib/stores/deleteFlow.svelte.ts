@@ -7,32 +7,32 @@ import { type Doc } from "../domain/doc";
 import { deleteOneCmd, deleteManyCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
 
+import type { DestructiveGate } from "./destructiveGate.svelte";
+import { snapshotForUndo, recordDelete, UNDO_DELETE_CAP } from "./documentWrites";
+
+export { UNDO_DELETE_CAP };
+
 /** Single-document and bulk-selection delete flows for collectionView's Data tab: both confirm via
- *  a dialog, then delete by `_id` and reload the current page. */
+ *  the destructive gate (policy by environment), then delete by `_id` and reload the current page. */
 export function createDeleteFlow(args: {
   sessionId: string;
   db: string;
   coll: string;
+  gate: DestructiveGate;
   getSelectedIds: () => { ids: string[] } | { missing: true };
   setError: (msg: string | null) => void;
   setLoading: (v: boolean) => void;
   reload: () => Promise<void>;
 }) {
-  let confirmDoc = $state<Doc | null>(null);
-  let confirmSelectionDelete = $state<number | null>(null);
-
   function requestDelete(doc: Doc) {
-    confirmDoc = doc;
+    const id = idJson(doc);
+    void args.gate.request(
+      { op: "deleteOne", target: { db: args.db, coll: args.coll, detail: `_id = ${id ?? "(no _id)"}` }, count: 1, undoable: true },
+      () => deleteOne(doc),
+    );
   }
 
-  function cancelDelete() {
-    confirmDoc = null;
-  }
-
-  async function confirmDelete() {
-    const d = confirmDoc;
-    confirmDoc = null;
-    if (!d) return;
+  async function deleteOne(d: Doc) {
     const id = idJson(d);
     if (id === null) {
       args.setError(m.collection_view_no_id_delete());
@@ -40,8 +40,10 @@ export function createDeleteFlow(args: {
     }
     args.setLoading(true);
     try {
+      const snapshot = await snapshotForUndo(args.sessionId, args.db, args.coll, [id]);
       await commandLog.pushTimed(deleteOneCmd(args.coll, id), args.sessionId, () =>
         deleteDocument(args.sessionId, args.db, args.coll, id));
+      recordDelete(args.sessionId, args.db, args.coll, snapshot);
       await args.reload(); // owns clearing loading
     } catch (e) {
       args.setError(errorMessage(e));
@@ -51,15 +53,13 @@ export function createDeleteFlow(args: {
 
   function requestDeleteSelected(count: number) {
     if (count === 0) return;
-    confirmSelectionDelete = count;
+    void args.gate.request(
+      { op: "deleteMany", target: { db: args.db, coll: args.coll }, count, undoable: count <= UNDO_DELETE_CAP },
+      deleteSelected,
+    );
   }
 
-  function cancelDeleteSelected() {
-    confirmSelectionDelete = null;
-  }
-
-  async function confirmDeleteSelected() {
-    confirmSelectionDelete = null;
+  async function deleteSelected() {
     const sel = args.getSelectedIds();
     if ("missing" in sel) {
       args.setError(m.collection_view_selection_missing_id_delete());
@@ -68,8 +68,11 @@ export function createDeleteFlow(args: {
     const filter = idInFilter(sel.ids);
     args.setLoading(true);
     try {
+      // Full copies first (the grid may hold projected rows) so the delete can be undone.
+      const snapshot = await snapshotForUndo(args.sessionId, args.db, args.coll, sel.ids);
       await commandLog.pushTimed(deleteManyCmd(args.coll, filter), args.sessionId, () =>
         deleteMany(args.sessionId, args.db, args.coll, filter, false));
+      recordDelete(args.sessionId, args.db, args.coll, snapshot);
       await args.reload(); // reload → loadPage → clearSelection (owns clearing loading)
     } catch (e) {
       args.setError(errorMessage(e));
@@ -77,18 +80,5 @@ export function createDeleteFlow(args: {
     }
   }
 
-  return {
-    get confirmDoc() {
-      return confirmDoc;
-    },
-    get confirmSelectionDelete() {
-      return confirmSelectionDelete;
-    },
-    requestDelete,
-    cancelDelete,
-    confirmDelete,
-    requestDeleteSelected,
-    cancelDeleteSelected,
-    confirmDeleteSelected,
-  };
+  return { requestDelete, requestDeleteSelected };
 }

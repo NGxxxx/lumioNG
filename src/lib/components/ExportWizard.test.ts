@@ -17,6 +17,14 @@ vi.mock("../stores/sessionManager.svelte", () => ({
   sessionManager: { active: { id: "conn:1", tree: activeTree } },
 }));
 
+vi.mock("../stores/exportJob.svelte", () => ({
+  createExportJob: () => ({
+    rows: [{ db: "shop", coll: "users", status: "running", done: 0, total: 0 }],
+    running: true, done: false, overall: { percent: 10 }, succeeded: 0, failed: 0,
+    run: () => new Promise(() => {}), cancel: vi.fn(),
+  }),
+}));
+
 describe("ExportWizard", () => {
   it("pick mode renders the active session's collection tree", () => {
     const { getByText } = render(ExportWizard, {
@@ -153,5 +161,23 @@ describe("ExportWizard — keyboard", () => {
     render(ExportWizard, { props: { input: { mode: "pick", preChecked: [] }, onclose } });
     handleModalKeydown({ key: "Escape", target: null } as unknown as KeyboardEvent);
     expect(onclose).toHaveBeenCalled();
+  });
+
+  it("Run in background closes the wizard and leaves the job in the jobs registry", async () => {
+    const { jobs } = await import("../stores/jobs.svelte");
+    vi.mocked(saveDialog).mockResolvedValueOnce("/tmp/users.json");
+    const onclose = vi.fn();
+    const { findByRole, getByRole } = render(ExportWizard, {
+      props: {
+        input: { mode: "scopedCollection", db: "shop", coll: "users", filter: "{}", sort: null, columns: [{ path: "_id", visible: true }], summary: "All" },
+        onclose,
+      },
+    });
+    const before = jobs.running;
+    await fireEvent.click(getByRole("button", { name: "Export" }));
+    await fireEvent.click(await findByRole("button", { name: "Run in background" }));
+    expect(onclose).toHaveBeenCalled();
+    expect(jobs.running).toBe(before + 1);
+    expect(jobs.list.at(-1)?.source.label).toBe("Exporting users.json");
   });
 });
