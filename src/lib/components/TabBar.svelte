@@ -212,7 +212,7 @@
 
   .newq {
     flex: none; width: 1.625rem; justify-content: center; padding: 0;
-    font-size: 1rem; font-weight: 400; color: var(--muted); cursor: pointer;
+    font-size: 1rem; font-weight: var(--fw); color: var(--muted); cursor: pointer;
   }
   .newq:hover { background: var(--hover); color: var(--fg); }
 

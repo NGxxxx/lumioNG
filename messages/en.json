@@ -36,10 +36,9 @@
   "menu_save_query": "Save query",
   "menu_next_tab": "Next tab",
   "menu_previous_tab": "Previous tab",
-  "about_dialog_tagline": "MongoDB GUI",
+  "about_dialog_tagline": "MongoDB GUI — lightweight, fast, table-first",
   "about_dialog_label_version": "Version",
   "about_dialog_label_author": "Author",
-  "about_dialog_label_built_with": "Built with",
   "drop_dialog_confirm_prefix": "Type",
   "drop_dialog_confirm_suffix": "to confirm:",
   "common_cancel": "Cancel",
@@ -1157,5 +1156,11 @@
   "ref_open_tab": "Open in {coll} tab",
   "ref_looking": "Looking up…",
   "destructive_title_killOp": "Kill operation",
-  "destructive_action_killOp": "Kill operation"
+  "destructive_action_killOp": "Kill operation",
+  "about_dialog_label_build": "Build",
+  "about_dialog_label_platform": "Platform",
+  "about_dialog_copy": "Copy info",
+  "about_dialog_copied": "Copied",
+  "about_dialog_label_source": "Source code",
+  "about_dialog_sponsor": "Support LumioNG:"
 }

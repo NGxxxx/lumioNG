@@ -91,7 +91,7 @@
   .dd p { margin: 0; word-break: break-word; }
   .mono { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
   .count { font-weight: 500; }
-  .count.muted { color: var(--muted); font-weight: 400; }
+  .count.muted { color: var(--muted); font-weight: var(--fw); }
   .count.warn { color: var(--warn-fg); }
   .prod { color: var(--danger); font-weight: 500; }
   .irrev { color: var(--muted); }

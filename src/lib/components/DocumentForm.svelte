@@ -339,7 +339,7 @@
     background: transparent;
     border: none;
     font-size: var(--fs);
-    font-weight: 400;
+    font-weight: var(--fw);
     border-radius: 0.1875rem 0.1875rem 0 0;
     height: 100%;
     display: flex;
@@ -392,7 +392,7 @@
     width: 2.5rem;
     flex: none;
     text-align: right;
-    color: var(--gray-b8);
+    color: var(--gray-99);
     padding: 0.625rem 0.5rem 0 0;
     user-select: none;
     border-right: 1px solid var(--bg);

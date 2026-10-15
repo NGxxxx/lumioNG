@@ -71,7 +71,7 @@
      silently overridden by cascade order — see CLAUDE.md note on selector specificity. */
   label.checkbox-row {
     display: flex; flex-direction: row; align-items: center; gap: 0.375rem;
-    margin-top: 0.0625rem; font-size: 0.6875rem; font-weight: 400; color: var(--fg); cursor: pointer;
+    margin-top: 0.0625rem; font-size: 0.6875rem; font-weight: var(--fw); color: var(--fg); cursor: pointer;
   }
   .checkbox-row input[type="checkbox"] {
     width: 0.8125rem; height: 0.8125rem; margin: 0; accent-color: var(--accent); cursor: pointer;

@@ -294,8 +294,8 @@
   .db, .coll { display: flex; align-items: center; gap: 0.375rem; padding: 0.1875rem 0.5rem; cursor: pointer; }
   .db { font-weight: 600; }
   .db-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .db-count { margin-left: auto; color: var(--gray-99); font-weight: 400; font-size: 0.6875rem; }
-  .coll { padding-left: 1.625rem; font-weight: 400; }
+  .db-count { margin-left: auto; color: var(--gray-99); font-weight: var(--fw); font-size: 0.6875rem; }
+  .coll { padding-left: 1.625rem; font-weight: var(--fw); }
   .coll span, .db-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .scroll label:hover { background: var(--row-hover); }
 

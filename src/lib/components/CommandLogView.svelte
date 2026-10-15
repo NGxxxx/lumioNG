@@ -50,7 +50,7 @@
   .empty { padding: 0.375rem 0.625rem; color: var(--muted); font-size: var(--fs); }
   .line { display: flex; align-items: center; padding: 0 0.5rem; white-space: pre; }
   .line:hover { background: var(--bg); }
-  .n { width: 1.75rem; flex: none; text-align: right; color: var(--gray-b8); margin-right: 0.375rem; user-select: none; }
+  .n { width: 1.75rem; flex: none; text-align: right; color: var(--gray-99); margin-right: 0.375rem; user-select: none; }
   .time { flex: none; color: var(--muted); margin-right: 0.375rem; }
   .session-dot { width: 0.4375rem; height: 0.4375rem; border-radius: 50%; flex: none; margin-right: 0.375rem; }
   code { font-family: var(--mono); }

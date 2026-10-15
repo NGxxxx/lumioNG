@@ -1,3 +1,4 @@
+pub mod app;
 pub mod admin;
 pub mod connection;
 pub mod csv;

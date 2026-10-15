@@ -62,7 +62,7 @@
   .pg-info { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
   .pg-jump { width: 3.25rem; height: 1.25rem; text-align: center; }
   .pg-total { margin-left: auto; color: var(--muted); }
-  .pg-sep { color: var(--gray-c4); }
+  .pg-sep { color: var(--gray-99); }
   .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
   .pg-rows input { width: 3.5rem; height: 1.25rem; text-align: center; }
 </style>

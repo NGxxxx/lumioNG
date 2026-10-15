@@ -27,6 +27,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
             commands::connection::test_connection,
+            commands::app::app_info,
             commands::connection::list_namespaces,
             commands::connection::list_plain_collections,
             commands::connection::list_connections,

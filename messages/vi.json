@@ -36,10 +36,9 @@
   "menu_save_query": "Lưu truy vấn",
   "menu_next_tab": "Tab tiếp theo",
   "menu_previous_tab": "Tab trước đó",
-  "about_dialog_tagline": "Giao diện MongoDB",
+  "about_dialog_tagline": "Giao diện MongoDB — gọn nhẹ, nhanh, lấy bảng làm trung tâm",
   "about_dialog_label_version": "Phiên bản",
   "about_dialog_label_author": "Tác giả",
-  "about_dialog_label_built_with": "Xây dựng với",
   "drop_dialog_confirm_prefix": "Gõ",
   "drop_dialog_confirm_suffix": "để xác nhận:",
   "common_cancel": "Hủy",
@@ -1157,5 +1156,11 @@
   "ref_open_tab": "Mở trong tab {coll}",
   "ref_looking": "Đang tìm…",
   "destructive_title_killOp": "Dừng thao tác",
-  "destructive_action_killOp": "Dừng thao tác"
+  "destructive_action_killOp": "Dừng thao tác",
+  "about_dialog_label_build": "Bản build",
+  "about_dialog_label_platform": "Nền tảng",
+  "about_dialog_copy": "Sao chép thông tin",
+  "about_dialog_copied": "Đã sao chép",
+  "about_dialog_label_source": "Mã nguồn",
+  "about_dialog_sponsor": "Ủng hộ LumioNG:"
 }

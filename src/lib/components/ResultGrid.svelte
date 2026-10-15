@@ -637,7 +637,7 @@
 
   /* ── Column header decorations ── */
   .colname { font-weight: 500; color: var(--c-subtext1); }
-  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: var(--c-overlay2); background: none; border-radius: var(--radius); padding: 0; font-family: var(--mono); font-weight: 400; }
+  .badge { margin-left: 0.375rem; font-size: 0.625rem; color: var(--c-overlay2); background: none; border-radius: var(--radius); padding: 0; font-family: var(--mono); font-weight: var(--fw); }
   .presence { margin-left: 0.25rem; font-size: 0.625rem; color: var(--gray-99); }
   .sortarrow { margin-left: 0.25rem; font-size: 0.625rem; color: var(--link); }
   .sortrank { margin-left: 0.125rem; font-size: 0.5625rem; color: var(--link); vertical-align: super; }

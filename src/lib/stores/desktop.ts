@@ -2,7 +2,7 @@
 // so components never reach into api/ directly.
 import { openDialog, saveDialog, openDirDialog, readTextFileIfExists, importFileSize } from "../api/files";
 import { quit, minimize, toggleMaximize, isMaximized, onMaximizedChange } from "../api/window";
-import { getAppVersion } from "../api/app";
+import { getAppVersion, getAppInfo, openExternalUrl } from "../api/app";
 import { forgetSshHostKey } from "../api/connection";
 import type { DialogFilter } from "../api/files";
 
@@ -15,4 +15,6 @@ export const readOptionalTextFile = (path: string) => readTextFileIfExists(path)
 export const fileSize = (path: string) => importFileSize(path);
 export const forgetHostKey = (host: string, port: number) => forgetSshHostKey(host, port);
 export const appVersion = () => getAppVersion();
+export const appInfo = () => getAppInfo();
+export const openLink = (url: string) => openExternalUrl(url);
 export const windowControls = { quit, minimize, toggleMaximize, isMaximized, onMaximizedChange };

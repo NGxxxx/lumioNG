@@ -256,7 +256,7 @@
   .tree-colon { color: var(--gray-55); }
   .tree-idval { color: var(--j-id); margin-left: 0.3125rem; }
   .tree-val { margin-left: 0.3125rem; overflow: hidden; text-overflow: ellipsis; }
-  .tree-muted { color: var(--gray-b8); margin-left: 0.5rem; }
-  .tree-preview { color: var(--gray-b8); margin-left: 0.5rem; overflow: hidden; text-overflow: ellipsis; }
-  .tree-type { color: var(--gray-b8); font-size: 0.6875rem; margin-left: 0.75rem; flex: none; }
+  .tree-muted { color: var(--gray-77); margin-left: 0.5rem; }
+  .tree-preview { color: var(--gray-77); margin-left: 0.5rem; overflow: hidden; text-overflow: ellipsis; }
+  .tree-type { color: var(--gray-99); font-size: 0.6875rem; margin-left: 0.75rem; flex: none; }
 </style>
