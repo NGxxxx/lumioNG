@@ -6,16 +6,23 @@ export interface LogEntry {
   tookMs: number;
 }
 
+/** Longest command text kept per entry; longer ones (e.g. inserting a large document) keep their head. */
+export const LOG_TEXT_MAX = 4000;
+
+const clip = (text: string) =>
+  text.length > LOG_TEXT_MAX ? `${text.slice(0, LOG_TEXT_MAX)}… (+${(text.length - LOG_TEXT_MAX).toLocaleString("en-US")} chars)` : text;
+
 /** Append-only mongosh command log; retains the N most recent entries. */
 export function createCommandLog(limit = 500) {
-  let entries = $state<LogEntry[]>([]);
+  // Entries are immutable and the array is always replaced, so no deep proxy is needed.
+  let entries = $state.raw<LogEntry[]>([]);
   let counter = 0;
   // Entries pushed since the log was last looked at (drives the status-bar dot).
   let unseen = $state(0);
 
   function push(text: string, sessionId: string, tookMs: number) {
     counter += 1;
-    const next = [...entries, { n: counter, text, sessionId, at: Date.now(), tookMs }];
+    const next = [...entries, { n: counter, text: clip(text), sessionId, at: Date.now(), tookMs }];
     entries = next.length > limit ? next.slice(next.length - limit) : next;
     unseen += 1;
   }

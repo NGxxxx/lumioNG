@@ -87,6 +87,16 @@ describe("settings", () => {
     expect(createSettings().stageCellEdits).toBe(true);
   });
 
+  it("remembers the last export format and metadata choice; ignores junk", () => {
+    const a = createSettings();
+    expect([a.exportFormat, a.exportIncludeMetadata]).toEqual(["json", false]);
+    a.setExportPrefs("csv", true);
+    const b = createSettings();
+    expect([b.exportFormat, b.exportIncludeMetadata]).toEqual(["csv", true]);
+    localStorage.setItem("export-format", "xml");
+    expect(createSettings().exportFormat).toBe("json");
+  });
+
   it("defaults queryEditorHeightPx to null", () => {
     expect(createSettings().queryEditorHeightPx).toBeNull();
   });

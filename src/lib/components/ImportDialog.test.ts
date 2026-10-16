@@ -26,6 +26,8 @@ const csvImportCommit = csvApi.csvImportCommit as ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // clearAllMocks keeps queued *Once results; reset them so one test's unused value can't leak into the next.
+  for (const f of [openDialog, importFileSize, readTextFileIfExists, importDocuments, importBson, sqlImportPreview, sqlImportCommit, csvImportPreview, csvImportCommit]) f.mockReset();
   importFileSize.mockResolvedValue(0);
   readTextFileIfExists.mockResolvedValue(null);
   importDocuments.mockResolvedValue({ inserted: 1, failed: 0, errors: [] });
@@ -34,11 +36,11 @@ beforeEach(() => {
   csvImportPreview.mockResolvedValue([]);
 });
 
-describe("ImportDialog — source stage", () => {
-  it("opens with no file chosen and Next disabled", () => {
+describe("ImportDialog — choosing a file and target", () => {
+  it("opens with no file chosen and Import disabled", () => {
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     expect(screen.getByText("No file chosen")).toBeTruthy();
-    expect((screen.getByText("Next") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("Browse opens the native picker with json/jsonl/bson/sql/csv filters for a collection-scoped import", async () => {
@@ -49,17 +51,16 @@ describe("ImportDialog — source stage", () => {
       { name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] },
     ]);
     expect(screen.getByText("data.json")).toBeTruthy();
-    expect((screen.getByText("Next") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("clicking Next for a .csv file loads the CSV preview on the configure step", async () => {
+  it("choosing a .csv file loads the CSV preview right away", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.csv");
     csvImportPreview.mockResolvedValueOnce([
       { path: "id", inferredType: "int", samples: ["1", "2"] },
     ]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     expect(await screen.findByText("id")).toBeTruthy();
     expect(csvImportPreview).toHaveBeenCalledWith(
       "/tmp/data.csv", "comma", { parseJsonLike: true, inferScalars: true },
@@ -84,7 +85,6 @@ describe("ImportDialog — source stage", () => {
     const input = screen.getByLabelText("Target collection") as HTMLInputElement;
     expect(input.value).toBe("users");
     await fireEvent.input(input, { target: { value: "users_backup" } });
-    await fireEvent.click(screen.getByText("Next"));
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
       expect(importDocuments).toHaveBeenCalledWith("s", "d", "users_backup", "/tmp/data.json", "skipDuplicates", expect.any(Function)),
@@ -110,21 +110,21 @@ describe("ImportDialog — source stage", () => {
     expect(screen.queryByLabelText("Target collection")).toBeNull();
   });
 
-  it("Next stays disabled for a db-scoped non-SQL file until a valid target-collection name is entered", async () => {
+  it("Import stays disabled for a db-scoped non-SQL file until a valid target-collection name is entered", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: null, onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    expect((screen.getByText("Next") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(true);
     await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "orders" } });
-    expect((screen.getByText("Next") as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("an invalid target-collection name blocks Next and shows an inline error", async () => {
+  it("an invalid target-collection name blocks Import and shows an inline error", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: null, onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
     await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "system.foo" } });
-    expect((screen.getByText("Next") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(true);
     expect(await screen.findByText("Collection name cannot start with 'system.'.")).toBeTruthy();
   });
 
@@ -168,7 +168,6 @@ describe("ImportDialog — source stage", () => {
     await fireEvent.click(screen.getByText("Browse…"));
     await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "archive" } });
     expect(await screen.findByText("Will create new collection archive.")).toBeTruthy();
-    await fireEvent.click(screen.getByText("Next"));
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
       expect(importBson).toHaveBeenCalledWith("s", "d", "archive", "/tmp/dump.bson", "skipDuplicates", expect.any(Function)),
@@ -180,7 +179,7 @@ describe("ImportDialog — source stage", () => {
     expect(screen.getByRole("dialog", { name: "Import into shop" })).toBeTruthy();
   });
 
-  it("Cancel in the source stage closes without starting any import", async () => {
+  it("Cancel before choosing a file closes without starting any import", async () => {
     const onclose = vi.fn();
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose } });
     await fireEvent.click(screen.getByText("Cancel"));
@@ -188,32 +187,31 @@ describe("ImportDialog — source stage", () => {
     expect(importDocuments).not.toHaveBeenCalled();
   });
 
-  it("shows the detected format once a file is chosen, not before", async () => {
+  it("shows the detected format and size once a file is chosen, not before", async () => {
     openDialog.mockResolvedValueOnce("/tmp/dump.bson");
+    importFileSize.mockResolvedValueOnce(5 * 1024 * 1024);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
-    expect(screen.queryByText(/Format:/)).toBeNull();
+    expect(document.querySelector(".badge")).toBeNull();
     await fireEvent.click(screen.getByText("Browse…"));
-    expect(screen.getByText("Format: BSON")).toBeTruthy();
+    await vi.waitFor(() => expect(document.querySelector(".badge")!.textContent).toBe("BSON · 5.0 MB"));
   });
 
-  it("shows a step indicator that advances with the wizard", async () => {
+  it("is a single screen: file, target and options are all there, with no Next step", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
-    expect(screen.getByText("Step 1 of 3: Source")).toBeTruthy();
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
-    expect(screen.getByText("Step 2 of 3: Configure")).toBeTruthy();
-    await fireEvent.click(screen.getByText("Import"));
-    expect(screen.getByText("Step 3 of 3: Run")).toBeTruthy();
+    expect(screen.queryByText("Next")).toBeNull();
+    expect(screen.getByLabelText("Target collection")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "On conflict" })).toBeTruthy();
+    expect(screen.getByText("Change…")).toBeTruthy();
   });
 });
 
-describe("ImportDialog — configure stage", () => {
+describe("ImportDialog — running", () => {
   it("clicking Import for a JSON file starts the import job", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
       expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/data.json", "skipDuplicates", expect.any(Function)),
@@ -224,49 +222,47 @@ describe("ImportDialog — configure stage", () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
-    await fireEvent.click(screen.getByText("Upsert by _id"));
+    await fireEvent.change(screen.getByRole("combobox", { name: "On conflict" }), { target: { value: "upsertById" } });
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
       expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/data.json", "upsertById", expect.any(Function)),
     );
   });
 
-  it("clicking Next for a .sql file starts the SQL preview", async () => {
+  it("choosing a .sql file starts the SQL preview", async () => {
     openDialog.mockResolvedValueOnce("/tmp/dump.sql");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
     // Extension flips the flow to SQL even for a collection-scoped invocation — notice appears immediately.
     expect(screen.getByText(/CREATE TABLE and INSERT INTO/)).toBeTruthy();
-    await fireEvent.click(screen.getByText("Next"));
     await vi.waitFor(() => expect(sqlImportPreview).toHaveBeenCalledWith("/tmp/dump.sql"));
   });
 
-  it("Back returns to the source stage without losing the chosen file", async () => {
-    openDialog.mockResolvedValueOnce("/tmp/data.json");
+  it("changing the file swaps the format-specific options without leaving the screen", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json").mockResolvedValueOnce("/tmp/data.csv");
+    csvImportPreview.mockResolvedValueOnce([{ path: "id", inferredType: "int", samples: ["1"] }]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
-    expect(screen.getByText("Skip duplicates")).toBeTruthy();
-    await fireEvent.click(screen.getByText("Back"));
-    expect(screen.getByText("data.json")).toBeTruthy();
-    expect(screen.queryByText("Skip duplicates")).toBeNull();
+    expect(screen.queryByText("Semicolon (;)")).toBeNull();
+    await fireEvent.click(screen.getByText("Change…"));
+    expect(await screen.findByText("data.csv")).toBeTruthy();
+    expect(await screen.findByText("Semicolon (;)")).toBeTruthy();
+    expect((screen.getByLabelText("Target collection") as HTMLInputElement).value).toBe("users");
   });
 
-  it("Cancel in the configure stage closes without starting any import", async () => {
+  it("Cancel after choosing a file closes without starting any import", async () => {
     const onclose = vi.fn();
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await fireEvent.click(screen.getByText("Cancel"));
     expect(onclose).toHaveBeenCalled();
     expect(importDocuments).not.toHaveBeenCalled();
   });
 });
 
-describe("ImportDialog — Back-then-Next preserves configure state (unless the target changed)", () => {
-  it("returning to Configure without changing the file keeps the SQL table selection and does not re-parse", async () => {
+describe("ImportDialog — options stay put while other choices change", () => {
+  it("the SQL table selection survives changing the insert mode, without re-parsing", async () => {
     openDialog.mockResolvedValueOnce("/tmp/dump.sql");
     sqlImportPreview.mockResolvedValueOnce([
       { table: "users", columns: [{ name: "id", inferredType: "int" }], rowCount: 2 },
@@ -274,92 +270,68 @@ describe("ImportDialog — Back-then-Next preserves configure state (unless the 
     ]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("Will create 2 new collection(s): users, orders.");
     // Checkbox order matches the table list: [0] select-all, [1] users, [2] orders.
-    const checkboxes = screen.getAllByRole("checkbox");
-    await fireEvent.click(checkboxes[2]); // deselect "orders"
-    await screen.findByText("Will create 1 new collection(s): users.");
-    await fireEvent.click(screen.getByText("Back"));
-    await fireEvent.click(screen.getByText("Next"));
+    await fireEvent.click(screen.getAllByRole("checkbox")[2]);
+    await fireEvent.change(screen.getByRole("combobox", { name: "On conflict" }), { target: { value: "upsertById" } });
     expect(await screen.findByText("Will create 1 new collection(s): users.")).toBeTruthy();
     expect(sqlImportPreview).toHaveBeenCalledTimes(1);
   });
 
-  it("returning to Configure without changing the CSV target keeps the chosen delimiter and does not re-parse", async () => {
+  it("changing the CSV delimiter reloads the preview once and the choice sticks", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.csv");
     csvImportPreview.mockResolvedValue([{ path: "id", inferredType: "int", samples: ["1", "2"] }]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("id");
     await fireEvent.click(screen.getByText("Semicolon (;)"));
     await vi.waitFor(() => expect(csvImportPreview).toHaveBeenCalledTimes(2));
-    await fireEvent.click(screen.getByText("Back"));
-    await fireEvent.click(screen.getByText("Next"));
-    await screen.findByText("id");
     expect((screen.getByLabelText("Semicolon (;)") as HTMLInputElement).checked).toBe(true);
-    expect(csvImportPreview).toHaveBeenCalledTimes(2); // unchanged — no reload from the Back+Next round trip
   });
 
-  it("changing the target after Back forces a fresh CSV store instead of silently keeping the stale target", async () => {
+  it("a target typed after the CSV preview loaded is the one imported into, with the chosen delimiter kept", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.csv");
     csvImportPreview.mockResolvedValue([{ path: "id", inferredType: "int", samples: ["1", "2"] }]);
     csvImportCommit.mockResolvedValueOnce({ inserted: 1, failed: 0, errors: [] });
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("id");
-    await fireEvent.click(screen.getByText("Back"));
+    await fireEvent.click(screen.getByText("Semicolon (;)"));
+    await vi.waitFor(() => expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(false));
     await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "users_backup" } });
-    await fireEvent.click(screen.getByText("Next"));
-    await screen.findByText("id");
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
       expect(csvImportCommit).toHaveBeenCalledWith(
-        "s", "d", "users_backup", "/tmp/data.csv", "comma",
+        "s", "d", "users_backup", "/tmp/data.csv", "semicolon",
         { parseJsonLike: true, inferScalars: true }, "skipDuplicates", expect.any(Function),
       ),
     );
+    expect(csvImportPreview).toHaveBeenCalledTimes(2);
   });
 });
 
-describe("ImportDialog — large-file confirm gate", () => {
-  it("a large file shows a confirm notice instead of advancing to configure", async () => {
+describe("ImportDialog — large files", () => {
+  it("a large file shows its size in an inline notice", async () => {
     openDialog.mockResolvedValueOnce("/tmp/big.json");
     importFileSize.mockResolvedValueOnce(300 * 1024 * 1024);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
-    expect(await screen.findByText(/300\.0 MB/)).toBeTruthy();
+    expect(await screen.findByText(/This file is 300\.0 MB/)).toBeTruthy();
     expect(importDocuments).not.toHaveBeenCalled();
   });
 
-  it("Continue anyway on the large-file notice advances to configure, then Import starts it", async () => {
+  it("a large file is still one click to import", async () => {
     openDialog.mockResolvedValueOnce("/tmp/big.json");
     importFileSize.mockResolvedValueOnce(300 * 1024 * 1024);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
-    await screen.findByText(/300\.0 MB/);
-    await fireEvent.click(screen.getByText("Continue anyway"));
+    await screen.findByText(/This file is 300\.0 MB/);
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
       expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/big.json", "skipDuplicates", expect.any(Function)),
     );
   });
 
-  it("Cancel on the large-file notice returns to the unmodified source stage", async () => {
-    openDialog.mockResolvedValueOnce("/tmp/big.json");
-    importFileSize.mockResolvedValueOnce(300 * 1024 * 1024);
-    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
-    await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
-    await screen.findByText(/300\.0 MB/);
-    await fireEvent.click(screen.getByText("Cancel"));
-    expect(screen.queryByText(/300\.0 MB/)).toBeNull();
-    expect(importDocuments).not.toHaveBeenCalled();
-  });
 });
 
 describe("ImportDialog — SQL multi-table target notice", () => {
@@ -371,7 +343,6 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     ]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     expect(await screen.findByText("Will create 2 new collection(s): users, orders.")).toBeTruthy();
   });
 
@@ -380,7 +351,6 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     sqlImportPreview.mockResolvedValueOnce([{ table: "movie", columns: [{ name: "id", inferredType: "int" }], rowCount: 5 }]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "films", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     expect(await screen.findByText("Will import into existing collection films.")).toBeTruthy();
   });
 
@@ -392,7 +362,6 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     ]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("Will create 2 new collection(s): users, orders.");
     // Checkbox order matches the table list: [0] select-all, [1] users, [2] orders.
     const checkboxes = screen.getAllByRole("checkbox");
@@ -409,7 +378,6 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("Will create 2 new collection(s): users, orders.");
     await fireEvent.input(screen.getByLabelText("Target collection"), { target: { value: "everything" } });
     expect(await screen.findByText("Will import into existing collection everything.")).toBeTruthy();
@@ -427,7 +395,6 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "films", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     const input = await screen.findByLabelText("Target collection");
     expect((input as HTMLInputElement).value).toBe("films");
     await fireEvent.input(input, { target: { value: "" } });
@@ -454,7 +421,6 @@ describe("ImportDialog — SQL multi-table target notice", () => {
     ]);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     expect(await screen.findByText("id: int, name: string")).toBeTruthy();
   });
 });
@@ -466,9 +432,8 @@ describe("ImportDialog — insert mode forwarded per format (Finding 1)", () => 
     sqlImportCommit.mockResolvedValueOnce({ tables: [], cancelled: false });
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "films", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("Will import into existing collection films.");
-    await fireEvent.click(screen.getByText("Upsert by _id"));
+    await fireEvent.change(screen.getByRole("combobox", { name: "On conflict" }), { target: { value: "upsertById" } });
     await fireEvent.click(screen.getByText("Import 1 table(s)"));
     await vi.waitFor(() =>
       expect(sqlImportCommit).toHaveBeenCalledWith(
@@ -483,9 +448,8 @@ describe("ImportDialog — insert mode forwarded per format (Finding 1)", () => 
     csvImportCommit.mockResolvedValueOnce({ inserted: 1, failed: 0, errors: [] });
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("id");
-    await fireEvent.click(screen.getByText("Upsert by _id"));
+    await fireEvent.change(screen.getByRole("combobox", { name: "On conflict" }), { target: { value: "upsertById" } });
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
       expect(csvImportCommit).toHaveBeenCalledWith(
@@ -505,7 +469,6 @@ describe("ImportDialog — CSV preview-reload guard (Finding 2)", () => {
     csvImportPreview.mockReturnValueOnce(pending);
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("id");
     expect((screen.getByText("Import") as HTMLButtonElement).disabled).toBe(false);
     await fireEvent.click(screen.getByText("Semicolon (;)"));
@@ -523,7 +486,6 @@ describe("ImportDialog — run-stage error surfacing", () => {
     sqlImportCommit.mockRejectedValueOnce(new Error("insert failed"));
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "films", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("Will import into existing collection films.");
     await fireEvent.click(screen.getByText("Import 1 table(s)"));
     expect(await screen.findByText(/insert failed/)).toBeTruthy();
@@ -537,7 +499,6 @@ describe("ImportDialog — run-stage error surfacing", () => {
     csvImportCommit.mockRejectedValueOnce(new Error("duplicate key"));
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("id");
     await fireEvent.click(screen.getByText("Import"));
     expect(await screen.findByText(/duplicate key/)).toBeTruthy();
@@ -546,14 +507,13 @@ describe("ImportDialog — run-stage error surfacing", () => {
   });
 });
 
-describe("ImportDialog — run-stage retry path (Finding 3)", () => {
-  it("Back after a failed SQL commit returns to Configure, keeping the existing table selection instead of resetting to Source", async () => {
+describe("ImportDialog — retry after a failure", () => {
+  it("Back after a failed SQL commit returns to the options, keeping the table selection", async () => {
     openDialog.mockResolvedValueOnce("/tmp/dump.sql");
     sqlImportPreview.mockResolvedValueOnce([{ table: "movie", columns: [{ name: "id", inferredType: "int" }], rowCount: 5 }]);
     sqlImportCommit.mockRejectedValueOnce(new Error("insert failed"));
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "films", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("Will import into existing collection films.");
     await fireEvent.click(screen.getByText("Import 1 table(s)"));
     await screen.findByText(/insert failed/);
@@ -565,13 +525,12 @@ describe("ImportDialog — run-stage retry path (Finding 3)", () => {
     expect(sqlImportPreview).toHaveBeenCalledTimes(1); // did not reconstruct the store / re-parse the file
   });
 
-  it("Back after a failed CSV commit returns to Configure, keeping the existing column preview instead of resetting to Source", async () => {
+  it("Back after a failed CSV commit returns to the options, keeping the column preview", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.csv");
     csvImportPreview.mockResolvedValueOnce([{ path: "id", inferredType: "int", samples: ["1", "2"] }]);
     csvImportCommit.mockRejectedValueOnce(new Error("duplicate key"));
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     await screen.findByText("id");
     await fireEvent.click(screen.getByText("Import"));
     await screen.findByText(/duplicate key/);
@@ -587,7 +546,6 @@ describe("ImportDialog — metadata sidecar restore", () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     expect(screen.queryByText(/Restore indexes/)).toBeNull();
   });
 
@@ -597,7 +555,6 @@ describe("ImportDialog — metadata sidecar restore", () => {
     const { restoreCollectionMetadata } = await import("../stores/metadataRestore");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     expect(await screen.findByText(/Restore indexes & metadata from data\.metadata\.json/)).toBeTruthy();
     await fireEvent.click(screen.getByText("Import"));
     await vi.waitFor(() =>
@@ -611,7 +568,6 @@ describe("ImportDialog — metadata sidecar restore", () => {
     const { restoreCollectionMetadata } = await import("../stores/metadataRestore");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    await fireEvent.click(screen.getByText("Next"));
     const checkbox = await screen.findByText(/Restore indexes/);
     await fireEvent.click(checkbox.closest("label")!.querySelector("input")!);
     await fireEvent.click(screen.getByText("Import"));
@@ -628,12 +584,10 @@ describe("ImportDialog — metadata sidecar restore", () => {
 });
 
 describe("ImportDialog — keyboard", () => {
-  it("Enter advances from source to configure, then starts the import", async () => {
+  it("Enter starts the import once a file is chosen", async () => {
     openDialog.mockResolvedValueOnce("/tmp/data.json");
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
     await fireEvent.click(screen.getByText("Browse…"));
-    handleModalKeydown({ key: "Enter", target: null } as unknown as KeyboardEvent);
-    await screen.findByText("Skip duplicates");
     handleModalKeydown({ key: "Enter", target: null } as unknown as KeyboardEvent);
     await vi.waitFor(() =>
       expect(importDocuments).toHaveBeenCalledWith("s", "d", "users", "/tmp/data.json", "skipDuplicates", expect.any(Function)),
@@ -646,10 +600,25 @@ describe("ImportDialog — keyboard", () => {
     expect(importDocuments).not.toHaveBeenCalled();
   });
 
-  it("Escape closes the dialog in the source stage", () => {
+  it("Escape closes the dialog before an import starts", () => {
     const onclose = vi.fn();
     render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose } });
     handleModalKeydown({ key: "Escape", target: null } as unknown as KeyboardEvent);
     expect(onclose).toHaveBeenCalled();
+  });
+});
+
+describe("ImportDialog — after a successful import", () => {
+  it("shows the result, and Import another file starts over keeping the target", async () => {
+    openDialog.mockResolvedValueOnce("/tmp/data.json");
+    render(ImportDialog, { props: { sessionId: "s", db: "d", coll: "users", onclose: vi.fn() } });
+    await fireEvent.click(screen.getByText("Browse…"));
+    await fireEvent.click(screen.getByText("Import"));
+    await fireEvent.click(await screen.findByText("Import another file"));
+    expect(screen.getByText("No file chosen")).toBeTruthy();
+    expect(screen.queryByLabelText("Target collection")).toBeNull();
+    openDialog.mockResolvedValueOnce("/tmp/more.json");
+    await fireEvent.click(screen.getByText("Browse…"));
+    expect((screen.getByLabelText("Target collection") as HTMLInputElement).value).toBe("users");
   });
 });

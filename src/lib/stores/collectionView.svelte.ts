@@ -769,6 +769,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     getEffectiveIds: selection.effectiveIds,
     getEffectiveSelectionCount: selection.effectiveSelectionCount,
     getAppliedFilter: () => appliedFilter,
+    getTotalCount: () => totalCount,
     getSortKeys: () => sortKeys,
     getRawColumnFields: () => rawColumnFields,
     getHidden: () => hidden,

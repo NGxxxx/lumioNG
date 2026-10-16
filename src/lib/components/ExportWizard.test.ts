@@ -1,9 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import ExportWizard from "./ExportWizard.svelte";
 import { buildTargets, targetKey } from "../domain/exportPlan";
 import { handleModalKeydown } from "#lib/stores/modalStack.js";
 import { saveDialog } from "../api/files";
+import { settings } from "../stores/settings.svelte";
 
 vi.mock("../api/files", () => ({
   saveDialog: vi.fn().mockResolvedValue(null), // resolving null short-circuits start() before any real export runs
@@ -24,6 +25,9 @@ vi.mock("../stores/exportJob.svelte", () => ({
     run: () => new Promise(() => {}), cancel: vi.fn(),
   }),
 }));
+
+// The dialog starts from the last export's choices; every test starts from the defaults.
+beforeEach(() => settings.setExportPrefs("json", false));
 
 describe("ExportWizard", () => {
   it("pick mode renders the active session's collection tree", () => {
@@ -179,5 +183,28 @@ describe("ExportWizard — keyboard", () => {
     expect(onclose).toHaveBeenCalled();
     expect(jobs.running).toBe(before + 1);
     expect(jobs.list.at(-1)?.source.label).toBe("Exporting users.json");
+  });
+});
+
+describe("ExportWizard — remembered choices", () => {
+  const scoped = {
+    mode: "scopedCollection" as const, db: "d", coll: "c", filter: "{}", sort: null,
+    columns: [{ path: "_id", visible: true }], summary: "All",
+  };
+
+  it("starts from the last format and metadata choice, and explains the format", () => {
+    settings.setExportPrefs("csv", true);
+    const { getByLabelText, getByText } = render(ExportWizard, { props: { input: scoped, onclose: vi.fn() } });
+    expect((getByLabelText("CSV") as HTMLInputElement).checked).toBe(true);
+    expect((getByLabelText(/Include indexes/) as HTMLInputElement).checked).toBe(true);
+    expect(getByText(/flat table for spreadsheets/)).toBeTruthy();
+  });
+
+  it("BSON from last time falls back to JSON for rows held in memory", () => {
+    settings.setExportPrefs("bson", false);
+    const { getByLabelText } = render(ExportWizard, {
+      props: { input: { mode: "scopedMemory", coll: "c", docs: [], columns: [{ path: "_id", visible: true }], summary: "Rows" }, onclose: vi.fn() },
+    });
+    expect((getByLabelText("JSON") as HTMLInputElement).checked).toBe(true);
   });
 });

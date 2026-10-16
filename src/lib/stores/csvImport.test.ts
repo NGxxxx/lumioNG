@@ -147,3 +147,17 @@ describe("createCsvImport", () => {
     expect(restoreMetadata).not.toHaveBeenCalled();
   });
 });
+
+describe("createCsvImport — setColl", () => {
+  it("imports into the target set after the preview loaded, keeping the chosen options", async () => {
+    vi.clearAllMocks();
+    csvImportPreview.mockResolvedValue(preview);
+    csvImportCommit.mockResolvedValueOnce({ inserted: 2, failed: 0, errors: [] });
+    const v = createCsvImport("conn:1", "d", "", "/tmp/data.csv", "skipDuplicates");
+    await v.loadPreview();
+    await v.setDelimiter("semicolon");
+    v.setColl("people");
+    await v.run();
+    expect(csvImportCommit.mock.calls[0].slice(0, 5)).toEqual(["conn:1", "d", "people", "/tmp/data.csv", "semicolon"]);
+  });
+});

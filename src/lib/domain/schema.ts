@@ -40,14 +40,18 @@ export interface ColumnField {
 
 /** True for a non-empty plain object (not an ExtJSON wrapper like `{$oid:...}`) — recurse into children. */
 function isContainer(v: unknown): v is Record<string, unknown> {
-  return containerKind(v) === "object" && Object.keys(v as Record<string, unknown>).length > 0;
+  if (containerKind(v) !== "object") return false;
+  for (const _ in v as Record<string, unknown>) return true; // non-empty, without allocating a key array
+  return false;
 }
 
-/** Call cb(path, value) for every leaf dot-path in a document (depth-first). */
+/** Call cb(path, value) for every leaf dot-path in a document (depth-first). Documents are plain
+ *  parsed JSON, so `for…in` sees exactly their own keys, in order, without Object.entries' arrays. */
 function walkLeaves(doc: Doc, cb: (path: string, value: unknown) => void): void {
   const recurse = (obj: Record<string, unknown>, prefix: string) => {
-    for (const [k, v] of Object.entries(obj)) {
-      const path = prefix ? `${prefix}.${k}` : k;
+    for (const k in obj) {
+      const v = obj[k];
+      const path = prefix ? prefix + "." + k : k;
       if (isContainer(v)) recurse(v, path);
       else cb(path, v);
     }

@@ -1,4 +1,7 @@
 import * as m from "#lib/paraglide/messages.js";
+import { msgCount } from "#lib/msgkey.js";
+
+const clipFilter = (f: string) => (f.length > 120 ? `${f.slice(0, 120)}…` : f);
 import { idInFilter } from "../domain/selection";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import { buildSort, type SortKey } from "../domain/grid";
@@ -13,6 +16,8 @@ export function createExportRequest(args: {
   getEffectiveIds: () => { ids: string[] } | { missing: true };
   getEffectiveSelectionCount: () => number;
   getAppliedFilter: () => string;
+  /** Documents matching the applied filter (for the summary). */
+  getTotalCount: () => number;
   getSortKeys: () => SortKey[];
   getRawColumnFields: () => ColumnField[];
   getHidden: () => Set<string>;
@@ -57,7 +62,9 @@ export function createExportRequest(args: {
         ? req.count === 1
           ? m.export_dialog_summary_selection_one({ count: req.count })
           : m.export_dialog_summary_selection_many({ count: req.count })
-        : m.export_dialog_summary_filter();
+        : filter === "{}"
+          ? msgCount("export_dialog_summary_all", args.getTotalCount(), { ns: `${args.db}.${args.coll}` })
+          : msgCount("export_dialog_summary_filtered", args.getTotalCount(), { filter: clipFilter(filter) });
     return { mode: "scopedCollection", db: args.db, coll: args.coll, filter, sort, columns, summary };
   }
 

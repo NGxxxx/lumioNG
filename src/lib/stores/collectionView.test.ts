@@ -1451,6 +1451,21 @@ describe("effective selection + export request", () => {
       expect(input.coll).toBe("c");
     }
   });
+
+  it("the export summary says how many documents and which filter", async () => {
+    const v = await withTwoDocs();
+    v.requestExport("filter");
+    const all = v.exportInput();
+    expect(all?.mode === "scopedCollection" && all.summary).toBe("All 2 documents in d.c");
+    cnt.mockResolvedValueOnce(1);
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
+    samp.mockResolvedValueOnce([]);
+    v.filterText = "{x: 1}";
+    await v.applyFilter();
+    v.requestExport("filter");
+    const one = v.exportInput();
+    expect(one?.mode === "scopedCollection" && one.summary).toBe('1 document matching {"x":1}');
+  });
 });
 
 describe("createCollectionView — grid depth limit", () => {

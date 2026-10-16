@@ -13,7 +13,7 @@ export type CsvImportPhase = "loading" | "config" | "running" | "done";
 export function createCsvImport(
   sessionId: string,
   db: string,
-  coll: string,
+  initialColl: string,
   path: string,
   initialInsertMode: InsertMode,
 ) {
@@ -27,6 +27,8 @@ export function createCsvImport(
   let result = $state<ImportResult | null>(null);
   let metadataError = $state<string | null>(null);
   let insertMode = $state(initialInsertMode);
+  // The target can change after the preview loaded (single-screen import dialog) without losing options.
+  let coll = initialColl;
 
   async function loadPreview() {
     phase = "loading";
@@ -58,6 +60,10 @@ export function createCsvImport(
 
   function setInsertMode(m: InsertMode) {
     insertMode = m;
+  }
+
+  function setColl(c: string) {
+    coll = c;
   }
 
   async function run(restoreMetadataBundle?: string | null) {
@@ -97,6 +103,7 @@ export function createCsvImport(
     toggleParseJsonLike,
     toggleInferScalars,
     setInsertMode,
+    setColl,
     run,
   };
 }

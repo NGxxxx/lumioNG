@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { createCommandLog } from "./commandLog.svelte";
+import { createCommandLog, LOG_TEXT_MAX } from "./commandLog.svelte";
 
 describe("createCommandLog", () => {
   it("push appends entries with incrementing counter, timestamp, and duration", () => {
@@ -38,15 +38,22 @@ describe("createCommandLog", () => {
 
   describe("pushTimed", () => {
     it("measures elapsed time and pushes an entry with that duration", async () => {
-      const log = createCommandLog();
-      const result = await log.pushTimed("db.x.find()", "conn:1", async () => {
-        await new Promise((r) => setTimeout(r, 5));
-        return 42;
-      });
-      expect(result).toBe(42);
-      expect(log.entries).toHaveLength(1);
-      expect(log.entries[0]).toMatchObject({ text: "db.x.find()", sessionId: "conn:1" });
-      expect(log.entries[0].tookMs).toBeGreaterThanOrEqual(5);
+      // Fake timers mock Date.now too, so the duration is exact (a real 5 ms timer can fire when
+      // Date.now has only advanced 4 ms).
+      vi.useFakeTimers();
+      try {
+        const log = createCommandLog();
+        const pending = log.pushTimed("db.x.find()", "conn:1", async () => {
+          await new Promise((r) => setTimeout(r, 5));
+          return 42;
+        });
+        await vi.advanceTimersByTimeAsync(5);
+        expect(await pending).toBe(42);
+        expect(log.entries).toHaveLength(1);
+        expect(log.entries[0]).toMatchObject({ text: "db.x.find()", sessionId: "conn:1", tookMs: 5 });
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("does not push an entry when fn rejects, and rethrows", async () => {
@@ -75,5 +82,15 @@ describe("createCommandLog", () => {
       log.clear();
       expect(log.unseen).toBe(0);
     });
+  });
+
+  it("keeps only the head of a very long command (a multi-MB insert must not stay in memory 500 times)", () => {
+    const log = createCommandLog();
+    log.push("x".repeat(LOG_TEXT_MAX + 1234), "conn:1", 1);
+    const t = log.entries[0].text;
+    expect(t.startsWith("x".repeat(LOG_TEXT_MAX))).toBe(true);
+    expect(t.endsWith("… (+1,234 chars)")).toBe(true);
+    log.push("short", "conn:1", 1);
+    expect(log.entries[1].text).toBe("short");
   });
 });

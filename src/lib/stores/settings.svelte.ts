@@ -6,6 +6,10 @@ const CAP_KEY = "query-result-cap";
 const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
 const WRAP_KEY = "wrap-long-lines";
 const STAGE_EDITS_KEY = "stage-cell-edits";
+const EXPORT_FORMAT_KEY = "export-format";
+const EXPORT_METADATA_KEY = "export-include-metadata";
+const EXPORT_FORMATS = ["json", "csv", "bson", "sql"] as const;
+export type ExportFormatPref = (typeof EXPORT_FORMATS)[number];
 const EDITOR_H_KEY = "query-editor-height-px";
 const GRID_DEPTH_KEY = "grid-max-depth";
 const SHOW_SYSTEM_DBS_KEY = "show-system-databases";
@@ -99,6 +103,10 @@ export function createSettings() {
   let capUnlimited = $state<boolean>(hasStorage ? untrack(() => readBool(CAP_UNLIMITED_KEY)) : false);
   let wrapLongLines = $state<boolean>(hasStorage ? untrack(() => readBool(WRAP_KEY)) : false);
   let stageCellEdits = $state<boolean>(hasStorage ? untrack(() => readBool(STAGE_EDITS_KEY)) : false);
+  let exportFormat = $state<ExportFormatPref>(
+    hasStorage ? untrack(() => (EXPORT_FORMATS as readonly string[]).includes(localStorage.getItem(EXPORT_FORMAT_KEY) ?? "") ? (localStorage.getItem(EXPORT_FORMAT_KEY) as ExportFormatPref) : "json") : "json",
+  );
+  let exportIncludeMetadata = $state<boolean>(hasStorage ? untrack(() => readBool(EXPORT_METADATA_KEY)) : false);
   let queryEditorHeightPx = $state<number | null>(
     hasStorage ? untrack(() => readPosIntOrNull(EDITOR_H_KEY)) : null,
   );
@@ -168,6 +176,19 @@ export function createSettings() {
     setStageCellEdits(v: boolean) {
       stageCellEdits = v;
       writeKey(STAGE_EDITS_KEY, v ? "true" : "false");
+    },
+    /** The export dialog starts from the format and metadata choice used last time. */
+    get exportFormat(): ExportFormatPref {
+      return exportFormat;
+    },
+    get exportIncludeMetadata(): boolean {
+      return exportIncludeMetadata;
+    },
+    setExportPrefs(format: ExportFormatPref, includeMetadata: boolean) {
+      exportFormat = format;
+      exportIncludeMetadata = includeMetadata;
+      writeKey(EXPORT_FORMAT_KEY, format);
+      writeKey(EXPORT_METADATA_KEY, includeMetadata ? "true" : "false");
     },
     /** Query tab editor height override (px); null = use the CSS default (34%). */
     get queryEditorHeightPx(): number | null {

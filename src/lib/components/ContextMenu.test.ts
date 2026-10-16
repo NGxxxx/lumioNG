@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
+import { tick } from "svelte";
 import ContextMenu from "./ContextMenu.svelte";
 
 describe("ContextMenu", () => {
@@ -68,6 +69,16 @@ describe("ContextMenu", () => {
     expect(document.activeElement).toBe(getByRole("menuitem", { name: /Copy/ }));
   });
 
+  it("with a real mouse (hover first, then click) the submenu stays open", async () => {
+    const onselect = vi.fn();
+    const { getByRole, getByText } = render(ContextMenu, { props: { x: 0, y: 0, items: nested(), onselect, onclose: vi.fn() } });
+    const parent = getByRole("menuitem", { name: /Copy/ });
+    await fireEvent.mouseEnter(parent);
+    await fireEvent.click(parent);
+    await fireEvent.click(getByText("Value"));
+    expect(onselect).toHaveBeenCalledWith("copyValue");
+  });
+
   it("keyboard: ArrowRight opens a submenu on its first item, ArrowLeft goes back, Enter chooses", async () => {
     const onselect = vi.fn();
     const { getByRole } = render(ContextMenu, { props: { x: 0, y: 0, items: nested(), onselect, onclose: vi.fn() } });
@@ -94,5 +105,23 @@ describe("ContextMenu", () => {
     unmount();
     expect(document.activeElement).toBe(before);
     before.remove();
+  });
+
+  it("opened near the bottom of the window it flips up so every item stays visible", async () => {
+    const rect = HTMLElement.prototype.getBoundingClientRect;
+    HTMLElement.prototype.getBoundingClientRect = function () {
+      return { x: 0, y: 0, top: 0, left: 0, right: 200, bottom: 300, width: 200, height: 300, toJSON() {} } as DOMRect;
+    };
+    try {
+      const y = window.innerHeight - 20;
+      render(ContextMenu, { props: { x: 10, y, items: nested(), onselect: vi.fn(), onclose: vi.fn() } });
+      await tick();
+      const menu = document.querySelector(".menu") as HTMLElement;
+      expect(menu.style.top).toBe(`${y - 300}px`);
+      expect(menu.style.visibility).toBe("");
+      expect(menu.parentElement).toBe(document.body);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = rect;
+    }
   });
 });

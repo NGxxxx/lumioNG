@@ -2,6 +2,8 @@
   import { onMount, onDestroy, tick } from "svelte";
   import { registerContextMenu } from "./contextMenuController";
   import type { MenuItem } from "../domain/gridView";
+  import { placeMenu, placeSubmenu } from "../domain/menuPlacement";
+  import { portal } from "../actions/portal";
 
   let { x, y, items, onselect, onclose }: {
     x: number; y: number; items: MenuItem[];
@@ -10,6 +12,27 @@
 
   let openIdx = $state<number | null>(null);
   let rootEl = $state<HTMLDivElement | null>(null);
+
+  // Opened near an edge (e.g. a low grid row), the menu flips up/left to stay on screen; it is hidden
+  // for the first frame while it is measured, so it never flashes in the wrong place.
+  const EDGE = 8;
+  let pos = $state<{ left: number; top: number; maxHeight: number | null } | null>(null);
+  $effect(() => {
+    void items;
+    const el = rootEl;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    pos = placeMenu({ x, y, width: r.width, height: r.height, vw: window.innerWidth, vh: window.innerHeight, margin: EDGE });
+  });
+  let sub = $state<{ side: "left" | "right"; shiftY: number }>({ side: "right", shiftY: 0 });
+  $effect(() => {
+    if (openIdx === null || !rootEl) return;
+    const subEl = rootEl.querySelector<HTMLElement>(".submenu");
+    const parentEl = subEl?.parentElement?.querySelector<HTMLElement>("button.parent");
+    if (!subEl || !parentEl) return;
+    const r = subEl.getBoundingClientRect();
+    sub = placeSubmenu({ parent: parentEl.getBoundingClientRect(), width: r.width, height: r.height, vw: window.innerWidth, vh: window.innerHeight, margin: EDGE });
+  });
   // Opening never moves focus (that would blur an inline cell edit); the first arrow key does, and
   // closing hands focus back only if the menu had it.
   const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -65,7 +88,11 @@
 
 <svelte:window onclick={onclose} oncontextmenu={onclose} onkeydown={onKey} onkeydowncapture={onKeyCapture} />
 
-<div class="menu" style="left:{x}px; top:{y}px" role="menu" bind:this={rootEl}
+<div class="menu" role="menu" bind:this={rootEl} use:portal
+  style:left="{pos?.left ?? x}px" style:top="{pos?.top ?? y}px"
+  style:max-height={pos?.maxHeight ? `${pos.maxHeight}px` : undefined}
+  style:overflow-y={pos?.maxHeight ? "auto" : undefined}
+  style:visibility={pos ? undefined : "hidden"}
   onfocusin={() => (hasFocus = true)}
   onfocusout={(e) => { if (!rootEl?.contains(e.relatedTarget as Node | null)) hasFocus = false; }}>
   {#each items as it, i}
@@ -73,12 +100,12 @@
       <div class="sub" role="none">
         <button class="item parent" role="menuitem" aria-haspopup="true" aria-expanded={openIdx === i} disabled={it.disabled}
           data-idx={i}
-          onclick={(e) => { e.stopPropagation(); if (openIdx === i) openIdx = null; else void openSub(i); }}
+          onclick={(e) => { e.stopPropagation(); void openSub(i); }}
           onmouseenter={() => (openIdx = i)} onmouseleave={() => (openIdx = null)}>
           <span>{it.label}</span><span class="caret">▸</span>
         </button>
         {#if openIdx === i}
-          <div class="menu submenu" role="menu" tabindex="-1" onmouseenter={() => (openIdx = i)} onmouseleave={() => (openIdx = null)}>
+          <div class="menu submenu" class:flip={sub.side === "left"} style:margin-top="{sub.shiftY}px" role="menu" tabindex="-1" onmouseenter={() => (openIdx = i)} onmouseleave={() => (openIdx = null)}>
             {#each it.children as ch}
               <button class="item" role="menuitem" disabled={ch.disabled}
                 onclick={(e) => { e.stopPropagation(); choose(ch); }}>{ch.label}</button>
@@ -102,4 +129,5 @@
   .item.parent { display: flex; justify-content: space-between; align-items: center; }
   .caret { color: var(--gray-99); margin-left: 0.75rem; }
   .submenu { position: absolute; left: calc(100% + 0.25rem); top: -0.3125rem; }
+  .submenu.flip { left: auto; right: calc(100% + 0.25rem); }
 </style>

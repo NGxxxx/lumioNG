@@ -9,12 +9,20 @@
   import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, type ExportWizardInput } from "../domain/exportPlan";
   import type { BsonType } from "../domain/extjson";
   import { pickSavePath, pickDirectory } from "../stores/desktop";
+  import { settings } from "../stores/settings.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let { input, onclose }: { input: ExportWizardInput; onclose: () => void } = $props();
 
-  let format = $state<ExportFormat>("json");
-  let includeMetadata = $state(false);
+  // Start from last time's choices (BSON isn't offered for rows already in memory).
+  let format = $state<ExportFormat>(untrack(() => (input.mode === "scopedMemory" && settings.exportFormat === "bson" ? "json" : settings.exportFormat)));
+  let includeMetadata = $state(untrack(() => settings.exportIncludeMetadata));
+  const FORMAT_HINT: Record<ExportFormat, () => string> = {
+    json: m.export_format_hint_json,
+    csv: m.export_format_hint_csv,
+    bson: m.export_format_hint_bson,
+    sql: m.export_format_hint_sql,
+  };
   let dir = $state<string | null>(null);
   let error = $state<string | null>(null);
   let job = $state<ReturnType<typeof createExportJob> | null>(null);
@@ -86,6 +94,7 @@
 
   async function start() {
     error = null;
+    settings.setExportPrefs(format, includeMetadata);
     const ext = format;
     const selectedPaths = cols.filter((c) => c.sel).map((c) => c.path);
     const allPaths = cols.map((c) => c.path);
@@ -210,6 +219,7 @@
               <label><input type="radio" name="fmt" value="csv" bind:group={format} /> CSV</label>
               <label><input type="radio" name="fmt" value="bson" bind:group={format} disabled={isMemory} /> BSON</label>
               <label><input type="radio" name="fmt" value="sql" bind:group={format} /> SQL</label>
+              <p class="format-hint">{FORMAT_HINT[format]()}</p>
             </fieldset>
 
             {#if input.mode === "pick"}
@@ -272,6 +282,7 @@
 </div>
 
 <style>
+  .format-hint { margin: 0.375rem 0 0; font-size: 0.71875rem; line-height: 1.35; color: var(--muted); max-width: 14rem; }
   .backdrop { position: fixed; inset: 0; background: var(--backdrop); display: flex; align-items: center; justify-content: center; z-index: 1000; overflow-y: auto; }
   .modal { background: var(--popover); border: 1px solid var(--c-surface1); width: 40rem; max-width: 94vw; border-radius: 0.75rem; overflow: hidden; box-shadow: var(--shadow-lg); }
   .modal.running { width: 35rem; }
