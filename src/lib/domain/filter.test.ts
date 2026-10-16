@@ -78,3 +78,34 @@ describe("addCondition", () => {
     expect(text(addCondition('{"z":1,"z":2,"a":3}', "b", "eq", 1))).toBe('{"z":1,"z":2,"a":3, "b": 1}');
   });
 });
+
+describe("parseFilter — mongosh syntax", () => {
+  it("accepts unquoted keys, single quotes and operators, normalized to JSON", () => {
+    expect(parseFilter("{age: {$gt: 30}, name: 'Ann'}")).toEqual({ ok: true, json: '{"age":{"$gt":30},"name":"Ann"}' });
+  });
+
+  it("turns BSON constructors into canonical Extended JSON", () => {
+    expect(parseFilter('{_id: ObjectId("507f1f77bcf86cd799439011")}')).toEqual({
+      ok: true,
+      json: '{"_id":{"$oid":"507f1f77bcf86cd799439011"}}',
+    });
+    expect(parseFilter('{n: NumberLong("9007199254740993")}')).toEqual({ ok: true, json: '{"n":{"$numberLong":"9007199254740993"}}' });
+  });
+
+  it("keeps strict JSON text verbatim (big integers and key order survive)", () => {
+    expect(parseFilter('{"n": 9007199254740993, "a": 1.0}')).toEqual({ ok: true, json: '{"n": 9007199254740993, "a": 1.0}' });
+  });
+
+  it("still rejects non-objects and anything outside the literal subset", () => {
+    expect(parseFilter("[1, 2]")).toEqual({ ok: false, error: "err_filter_not_object" });
+    expect(parseFilter("{a: someVariable}")).toEqual({ ok: false, error: "err_filter_invalid_json" });
+    expect(parseFilter("{a: 1} trailing")).toEqual({ ok: false, error: "err_filter_invalid_json" });
+  });
+
+  it("addCondition works on a mongosh-syntax filter", () => {
+    expect(addCondition("{age: {$gt: 30}}", "name", "eq", "Ann")).toEqual({
+      ok: true,
+      text: '{"age":{"$gt":30}, "name": "Ann"}',
+    });
+  });
+});

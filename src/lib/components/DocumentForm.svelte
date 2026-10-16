@@ -8,6 +8,7 @@
   import { idJson } from "../domain/docid";
   import type { Doc } from "../domain/doc";
   import { parseDocumentText } from "../domain/docparse";
+  import { diffDocs, formatChange } from "../domain/docDiff";
   import { createDebouncer } from "../domain/timing";
   import { fieldsFor } from "../stores/fieldSuggestions";
   import { topLevelFieldNames } from "../domain/schema";
@@ -60,6 +61,11 @@
   });
 
   const fieldCount = $derived(Object.keys(docValue).length);
+
+  // Edit mode: what Save would change, against the document as it was opened (tree view only — raw
+  // text is parsed on Save/switch, not per keystroke).
+  const baseline = untrack(() => (mode === "edit" && initial ? structuredClone($state.snapshot(initial)) : null));
+  const changes = $derived(baseline && view === "tree" ? diffDocs(baseline, docValue) : []);
   // db/coll are immutable for this component's instance lifetime (a new DocumentForm is mounted
   // rather than reused across a different document/collection), so this fetch runs once at
   // creation, no $effect needed.
@@ -276,6 +282,14 @@
     {/if}
   </div>
 
+  {#if changes.length > 0}
+    <details class="changes">
+      <summary>{changes.length === 1 ? m.peek_changes_one() : m.peek_changes_other({ count: changes.length })}</summary>
+      <ul>
+        {#each changes as c (c.path)}<li class={c.kind}>{formatChange(c)}</li>{/each}
+      </ul>
+    </details>
+  {/if}
   {#if changedByUndo}<div class="note">{m.document_form_changed_note()}</div>{/if}
   {#if error}<div class="error">{error}</div>{/if}
   {#if view === "tree" && !treeValid}<div class="error">{m.document_form_invalid_fields_error()}</div>{/if}
@@ -298,6 +312,12 @@
 </div>
 
 <style>
+  .changes { flex: none; padding: 0.25rem 0.75rem; border-top: 1px solid var(--border); font-size: var(--fs); color: var(--muted); }
+  .changes summary { cursor: pointer; }
+  .changes ul { list-style: none; margin: 0.25rem 0 0; padding: 0; max-height: 8rem; overflow: auto; font-family: var(--mono); font-size: 0.71875rem; }
+  .changes li { padding: 0.0625rem 0; color: var(--c-subtext1); }
+  .changes li.added { color: var(--ok-fg); }
+  .changes li.removed { color: var(--danger); }
   .form {
     display: flex;
     flex-direction: column;

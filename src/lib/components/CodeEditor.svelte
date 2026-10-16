@@ -1,5 +1,6 @@
 <!-- src/lib/components/CodeEditor.svelte -->
 <script lang="ts">
+  import { templateInsertion } from "../domain/queryTemplates";
   import { onMount } from "svelte";
   import { EditorView, keymap, lineNumbers } from "@codemirror/view";
   import { EditorState } from "@codemirror/state";
@@ -112,6 +113,17 @@
     } catch {
       // Clipboard permission denied — silently no-op.
     }
+  }
+
+  /** Replaces the selection with a statement, or appends it when nothing is selected, then focuses after it. */
+  export function insertStatement(text: string) {
+    if (!view) return;
+    const sel = view.state.selection.main;
+    const end = view.state.doc.length;
+    const [from, to] = sel.empty ? [end, end] : [sel.from, sel.to];
+    const { insert, cursor } = templateInsertion(view.state.doc.toString(), from, to, text);
+    view.dispatch({ changes: { from, to, insert }, selection: { anchor: cursor } });
+    view.focus();
   }
 
   export function clear() {

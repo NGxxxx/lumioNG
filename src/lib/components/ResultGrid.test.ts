@@ -736,3 +736,36 @@ describe("ResultGrid column virtualization", () => {
     expect(container.querySelector(".col-spacer")).toBeNull();
   });
 });
+
+describe("ResultGrid pending cells", () => {
+  it("highlights exactly the cells with a staged edit", () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }, { _id: { $oid: "b" }, name: "y" }];
+    const v = baseView(docs, { pendingCells: new Set([`{"$oid":"b"}\u0000name`]) });
+    const { container } = render(ResultGrid, { props: { v } });
+    const pending = [...container.querySelectorAll("td.cell-pending")];
+    expect(pending).toHaveLength(1);
+    expect(pending[0].textContent).toContain("y");
+  });
+});
+
+describe("ResultGrid accessibility", () => {
+  it("exposes a single grid with explicit rows, headers and cells", () => {
+    const docs = [{ _id: { $oid: "a" }, name: "x" }, { _id: { $oid: "b" }, name: "y" }];
+    const v = baseView(docs, { selected: new Set([1]), sortKeys: [{ path: "name", dir: -1 }], toggleSort: vi.fn() });
+    const { getByRole, getAllByRole, container } = render(ResultGrid, { props: { v } });
+    const grid = getByRole("grid");
+    expect(container.querySelector("table")!.getAttribute("role")).toBe("presentation");
+    expect(grid.getAttribute("aria-rowcount")).toBe("3");
+    expect(grid.getAttribute("aria-colcount")).toBe("3");
+    const headers = getAllByRole("columnheader");
+    expect(headers.map((h) => h.getAttribute("aria-colindex"))).toEqual(["1", "2", "3"]);
+    expect(headers[2].getAttribute("aria-sort")).toBe("descending");
+    expect(headers[1].hasAttribute("aria-sort")).toBe(false);
+    const rows = getAllByRole("row");
+    expect(rows.map((r) => r.getAttribute("aria-rowindex"))).toEqual(["1", "2", "3"]);
+    expect(rows[2].getAttribute("aria-selected")).toBe("true");
+    expect(rows[1].getAttribute("aria-selected")).toBe("false");
+    expect(getAllByRole("gridcell").map((c) => c.getAttribute("aria-colindex"))).toEqual(["2", "3", "2", "3"]);
+    expect(getAllByRole("rowheader")).toHaveLength(2);
+  });
+});

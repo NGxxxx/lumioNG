@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::script::engine;
 use crate::script::outcome::ScriptOutcome;
-use crate::state::AppState;
+use crate::state::{AppState, CancelScope};
 use tauri::State;
 
 #[tauri::command]
@@ -14,7 +14,7 @@ pub async fn run_script(
     state: State<'_, AppState>,
 ) -> Result<ScriptOutcome, AppError> {
     let client = state.client(&session_id).await?;
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Interactive).await;
     let read_only = state.read_only(&session_id).await?;
     let handle = tokio::runtime::Handle::current();
     let timeout = timeout_ms.unwrap_or(30_000);
@@ -31,6 +31,6 @@ pub async fn run_script(
 
 #[tauri::command]
 pub async fn cancel_script(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    state.request_cancel(&session_id).await;
+    state.request_cancel(&session_id, CancelScope::Interactive).await;
     Ok(())
 }

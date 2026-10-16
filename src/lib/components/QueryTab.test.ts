@@ -140,6 +140,20 @@ describe("QueryTab", () => {
     }
   });
 
+  it("right-click → Insert template appends a statement for the editor's collection", async () => {
+    const setText = vi.fn();
+    activeStub = { ...stub, get statementText() { return 'db.getCollection("x").aggregate([])'; }, set statementText(t: string) { setText(t); } } as unknown as typeof stub;
+    try {
+      const { container, getByText } = render(QueryTab, { props });
+      await fireEvent.contextMenu(container.querySelector(".editor")!);
+      await fireEvent.click(getByText("Insert template"));
+      await fireEvent.click(getByText("Distinct values of a field"));
+      expect(setText).toHaveBeenLastCalledWith('db.getCollection("x").aggregate([])\n\ndb.getCollection("x").distinct("field")');
+    } finally {
+      activeStub = stub;
+    }
+  });
+
   it("shows idle hint when displayMode is none", () => {
     const { getByText } = render(QueryTab, { props });
     expect(getByText(/Edit the statement/)).toBeTruthy();

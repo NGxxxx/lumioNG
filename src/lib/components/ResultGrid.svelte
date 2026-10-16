@@ -11,6 +11,8 @@
   import { createClipboardCopy } from "../stores/clipboardCopy";
   import { moveCursor, extendTo, toggleAt, jumpTo, type NavState } from "../domain/gridNav";
   import { isTypingTarget } from "../domain/shortcuts";
+  import { idJson } from "../domain/docid";
+  import { pendingKey } from "../domain/pendingEdits";
   import { columnWindow, pinnedFirst, pinnedOffsets } from "../domain/colwidth";
   import ContextMenu from "./ContextMenu.svelte";
   import { toast } from "../stores/toast.svelte";
@@ -103,6 +105,8 @@
   const renderCols = $derived(colWindow ? [...pinnedCols, ...freeCols.slice(colWindow.start, colWindow.end)] : cols);
   const spacerBefore = $derived(colWindow?.before ?? 0);
   const spacerAfter = $derived(colWindow?.after ?? 0);
+  // ARIA positions are against the full column list, so they stay right when columns are virtualized.
+  const colIndex = $derived(new Map(cols.map((c, i) => [c.path, i + 2])));
   const gridColCount = $derived(renderCols.length + 1 + (spacerBefore > 0 ? 1 : 0) + (spacerAfter > 0 ? 1 : 0));
   const gridTotalWidth = $derived(
     ROWNUM_W + v.columnFields.reduce((sum, c) => sum + (v.colWidths[c.path] ?? FALLBACK_COL_W), 0),
@@ -322,14 +326,15 @@
 
 <div class="grid-region">
   {#if v.loading && v.docs.length > 0}<div class="progress-bar" role="progressbar" aria-label={m.common_loading()}></div>{/if}
-  <div class="scroller" role="grid" tabindex="0" aria-label={m.result_table_aria_grid()} onkeydown={onGridKey} bind:this={scrollerEl}
+  <div class="scroller" role="grid" tabindex="0" aria-label={m.result_table_aria_grid()}
+    aria-rowcount={rowCount + 1} aria-colcount={cols.length + 1} aria-multiselectable="true" onkeydown={onGridKey} bind:this={scrollerEl}
     bind:clientWidth={viewportW} onscroll={(e) => { scrollLeft = e.currentTarget.scrollLeft; }}
     onclick={(e) => { if (!(e.target as Element).closest("tr[data-index], thead, button, input, .modal-editor")) onbackground?.(); }}
     style="--grid-row-h: {gridRowH()}px">
     {#if v.columnFields.length === 0}
       <div class="empty">{m.query_result_grid_empty()}</div>
     {:else}
-    <table style="width:{gridTotalWidth}px">
+    <table role="presentation" style="width:{gridTotalWidth}px">
       <colgroup>
         <col class="col-rownum" />
         {#each renderCols as c, i (c.path)}
@@ -339,12 +344,17 @@
         {#if spacerAfter > 0}<col style="width:{spacerAfter}px" />{/if}
       </colgroup>
       <thead>
-        <tr>
-          <th class="th-rownum">#</th>
+        <!-- The table is role="presentation" (the scroller is the grid), so rows need their role spelled out. -->
+        <!-- svelte-ignore a11y_no_redundant_roles -->
+        <tr role="row" aria-rowindex="1">
+          <th class="th-rownum" role="columnheader" aria-colindex="1">#</th>
           {#each renderCols as c, i (c.path)}
             {#if i === pinnedCols.length && spacerBefore > 0}<th class="col-spacer" aria-hidden="true"></th>{/if}
             <th
               class="th-data"
+              role="columnheader"
+              aria-colindex={colIndex.get(c.path)}
+              aria-sort={sortDirOf(c.path) === 1 ? "ascending" : sortDirOf(c.path) === -1 ? "descending" : undefined}
               class:pinned={c.path in pinLeft}
               style:left={c.path in pinLeft ? `${pinLeft[c.path]}px` : undefined}
               oncontextmenu={v.headerMenuItems ? (e) => openHeaderMenu(e, c.path) : undefined}
@@ -380,7 +390,12 @@
         {#each virtualItems as vi (vi.index)}
           {@const row = rowAt(vi.index)}
           {@const d = v.docs[row]}
+          {@const pendingId = v.pendingCells?.size ? idJson(d) : null}
+          <!-- svelte-ignore a11y_no_redundant_roles -->
           <tr
+            role="row"
+            aria-rowindex={vi.index + 2}
+            aria-selected={v.selected.has(row)}
             data-index={vi.index}
             class:row-selected={v.selected.has(row)}
             class:row-cursor={cursor === vi.index}
@@ -389,7 +404,7 @@
           >
             <!-- Intentionally the doc's position in the unfiltered page, not a 1..N renumbering
                  of search matches — row numbers stay stable references as the filter changes. -->
-            <td class="td-rownum">
+            <td class="td-rownum" role="rowheader" aria-colindex="1">
               <span class="rownum-n">{v.allShown ? row + 1 : (v.currentPage - 1) * v.pageSize + row + 1}</span>
               {#if onpeek}
                 <button class="peek-btn" aria-label={m.peek_quick_look()} title={m.peek_quick_look()}
@@ -402,8 +417,9 @@
               {@const k = c.path}
               {@const val = getByPath(d, k)}
               {@const p = previewCell(val)}
-              {#if i === pinnedCols.length && spacerBefore > 0}<td class="col-spacer"></td>{/if}
-              <td class="data-cell" class:num={p.align === "right"} class:pinned={k in pinLeft}
+              {#if i === pinnedCols.length && spacerBefore > 0}<td class="col-spacer" aria-hidden="true"></td>{/if}
+              <td class="data-cell" role="gridcell" aria-colindex={colIndex.get(k)} class:num={p.align === "right"} class:pinned={k in pinLeft}
+                class:cell-pending={pendingId !== null && v.pendingCells!.has(pendingKey(pendingId, k))}
                 style:left={k in pinLeft ? `${pinLeft[k]}px` : undefined}
                 class:cell-editing-modal={v.editing?.kind === "modal" && v.editing.row === row && v.editing.key === k}
                 onclick={() => (lastCell = { row, key: k })}
@@ -441,7 +457,7 @@
                 {/if}
               </td>
             {/each}
-            {#if spacerAfter > 0}<td class="col-spacer"></td>{/if}
+            {#if spacerAfter > 0}<td class="col-spacer" aria-hidden="true"></td>{/if}
           </tr>
         {/each}
         {#if padBottom > 0}
@@ -451,7 +467,7 @@
           {#each { length: SKELETON_ROWS } as _, i (i)}
             <tr class="skeleton-row" aria-hidden="true">
               <td class="td-rownum"></td>
-              {#each renderCols as c, j (c.path)}{#if j === pinnedCols.length && spacerBefore > 0}<td class="col-spacer"></td>{/if}<td><span class="skeleton-bar" style="width:{40 + ((i * 7 + c.path.length * 13) % 45)}%"></span></td>{/each}{#if spacerAfter > 0}<td class="col-spacer"></td>{/if}
+              {#each renderCols as c, j (c.path)}{#if j === pinnedCols.length && spacerBefore > 0}<td class="col-spacer" aria-hidden="true"></td>{/if}<td><span class="skeleton-bar" style="width:{40 + ((i * 7 + c.path.length * 13) % 45)}%"></span></td>{/each}{#if spacerAfter > 0}<td class="col-spacer" aria-hidden="true"></td>{/if}
             </tr>
           {/each}
         {/if}
@@ -537,6 +553,7 @@
     text-overflow: ellipsis;
     will-change: transform;
   }
+  .data-cell.cell-pending { box-shadow: inset 2px 0 0 var(--c-yellow); background: var(--warn-bg2); }
   .col-spacer {
     padding: 0;
     border: 0;

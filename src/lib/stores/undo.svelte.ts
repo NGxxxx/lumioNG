@@ -2,7 +2,7 @@
 // (spec §3). Each write records an entry and offers "Undo" in a toast; undo re-reads the document
 // first and never overwrites someone else's change without asking.
 import { fetchFullDoc, replaceDocument, updateOne, insertDocument, deleteDocument } from "../api/documents";
-import { errorMessage } from "../api/errors";
+import { errorMessage, rawErrorText } from "../api/errors";
 import { hasConflict, inverseUpdate, describeUndo, type UndoEntry } from "../domain/undo";
 import { replaceCmd, updateOneCmd, insertCmd, deleteOneCmd } from "../domain/mongosh";
 import { commandLog } from "./commandLog.svelte";
@@ -37,11 +37,12 @@ export function createUndo() {
   let nextId = 1;
   let seq = 0;
 
-  /** Adds an entry (newest first, capped) and shows "<what happened> · Undo" for 10 s. */
-  function record(e: NewEntry): number {
+  /** Adds an entry (newest first, capped) and shows "<what happened> · Undo" for 10 s; `toast: false`
+   *  for callers that record a batch and announce it once themselves. */
+  function record(e: NewEntry, opts: { toast?: boolean } = {}): number {
     const entry = { ...e, id: nextId++, at: Date.now() } as UndoEntry;
     entries = [entry, ...entries].slice(0, UNDO_CAP);
-    toast.push(label(entry), "success", TOAST_MS, { label: m.undo_action(), run: () => void undo(entry.id) });
+    if (opts.toast !== false) toast.push(label(entry), "success", TOAST_MS, { label: m.undo_action(), run: () => void undo(entry.id) });
     return entry.id;
   }
 
@@ -89,7 +90,7 @@ export function createUndo() {
             restored++;
           } catch (err) {
             // A re-created _id can never be restored; anything else (offline, read-only…) can be retried.
-            if (/E11000|duplicate key/i.test(errorMessage(err))) duplicates++;
+            if (/E11000|duplicate key/i.test(rawErrorText(err))) duplicates++;
             else retry.push(d);
           }
         }

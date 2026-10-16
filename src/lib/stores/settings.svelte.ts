@@ -5,6 +5,7 @@ const TIMEOUT_KEY = "query-timeout-ms";
 const CAP_KEY = "query-result-cap";
 const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
 const WRAP_KEY = "wrap-long-lines";
+const STAGE_EDITS_KEY = "stage-cell-edits";
 const EDITOR_H_KEY = "query-editor-height-px";
 const GRID_DEPTH_KEY = "grid-max-depth";
 const SHOW_SYSTEM_DBS_KEY = "show-system-databases";
@@ -97,6 +98,7 @@ export function createSettings() {
   let cap = $state<number>(hasStorage ? untrack(() => readPosInt(CAP_KEY, DEFAULT_CAP)) : DEFAULT_CAP);
   let capUnlimited = $state<boolean>(hasStorage ? untrack(() => readBool(CAP_UNLIMITED_KEY)) : false);
   let wrapLongLines = $state<boolean>(hasStorage ? untrack(() => readBool(WRAP_KEY)) : false);
+  let stageCellEdits = $state<boolean>(hasStorage ? untrack(() => readBool(STAGE_EDITS_KEY)) : false);
   let queryEditorHeightPx = $state<number | null>(
     hasStorage ? untrack(() => readPosIntOrNull(EDITOR_H_KEY)) : null,
   );
@@ -158,6 +160,14 @@ export function createSettings() {
     setWrapLongLines(v: boolean) {
       wrapLongLines = v;
       writeKey(WRAP_KEY, v ? "true" : "false");
+    },
+    /** When true, collection grid cell edits wait for an explicit Commit instead of saving at once. */
+    get stageCellEdits(): boolean {
+      return stageCellEdits;
+    },
+    setStageCellEdits(v: boolean) {
+      stageCellEdits = v;
+      writeKey(STAGE_EDITS_KEY, v ? "true" : "false");
     },
     /** Query tab editor height override (px); null = use the CSS default (34%). */
     get queryEditorHeightPx(): number | null {

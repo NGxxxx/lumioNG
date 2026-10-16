@@ -20,7 +20,14 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   let filterMode = $state<"chips" | "json">("chips");
   const parseableAsChips = $derived(chipsFromFilter(v.filterText.trim() || "{}") !== null);
 
-  let openDropdown = $state<"sort" | "fields" | null>(null);
+  let openDropdown = $state<"sort" | "fields" | "views" | null>(null);
+  let presetName = $state("");
+
+  function savePreset() {
+    if (!presetName.trim()) return;
+    v.saveViewPreset(presetName);
+    presetName = "";
+  }
   let searchInputEl = $state<HTMLInputElement | null>(null);
 
   // Imperative command for the global toolbar's "Find" button (bind:this); search box only renders in Grid view, so switch there first.
@@ -44,7 +51,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     };
   }
 
-  function toggleDropdown(which: "sort" | "fields") {
+  function toggleDropdown(which: "sort" | "fields" | "views") {
     if (which === "fields" && openDropdown !== "fields") v.resetProjectionDraft();
     openDropdown = openDropdown === which ? null : which;
   }
@@ -99,7 +106,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   <input
     class="filter-input"
     bind:value={v.filterText}
-    placeholder={'{ "field": value }'}
+    placeholder={'{ age: { $gt: 30 }, _id: ObjectId("…") }'}
     onkeydown={(e) => {
       if (e.key === "Enter") {
         e.preventDefault();
@@ -117,6 +124,27 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   {/if}
   <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
   <div class="dropwrap" use:clickOutside={closeDropdown} onkeydown={(e) => { if (e.key === "Escape") closeDropdown(); }} role="group" tabindex="-1">
+    <button class="drop-btn" onclick={() => toggleDropdown("views")} title={m.views_title()}>
+      {m.views_title()}{v.presets.length ? ` (${v.presets.length})` : ""} ▾
+    </button>
+    {#if openDropdown === "views"}
+      <div class="dropdown views-dd">
+        {#if v.presets.length === 0}
+          <div class="dd-empty">{m.views_empty()}</div>
+        {:else}
+          {#each v.presets as p (p.name)}
+            <div class="dd-row">
+              <button class="dd-preset" title={m.views_apply_title()} onclick={() => { closeDropdown(); void v.applyViewPreset(p); }}>{p.name}</button>
+              <button class="dd-ic dd-x" title={m.views_delete()} aria-label={m.views_delete()} onclick={() => v.removeViewPreset(p.name)}>×</button>
+            </div>
+          {/each}
+        {/if}
+        <form class="dd-save" onsubmit={(e) => { e.preventDefault(); savePreset(); }}>
+          <input bind:value={presetName} placeholder={m.views_save_placeholder()} aria-label={m.views_save_placeholder()} />
+          <button type="submit" disabled={!presetName.trim()}>{m.views_save()}</button>
+        </form>
+      </div>
+    {/if}
     <button class="drop-btn" onclick={() => toggleDropdown("sort")} title={m.result_table_sort_title()}>
       {m.result_table_sort_title()}{sortSummary} ▾
     </button>
@@ -366,6 +394,22 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   .fields-list { flex: 1; min-height: 0; overflow: auto; border-bottom: 1px solid var(--bg); }
   .fields-dd .chooser-apply { flex: none; margin-top: 0.375rem; }
 
+  .views-dd { min-width: 15rem; }
+  .dd-preset {
+    flex: 1; min-width: 0; text-align: left; padding: 0.1875rem 0.375rem; border: 0; border-radius: var(--radius-sm);
+    background: none; color: var(--fg); font-size: var(--fs); cursor: pointer; overflow: hidden; text-overflow: ellipsis;
+  }
+  .dd-preset:hover { background: var(--menu-hover); }
+  .dd-save { display: flex; gap: 0.25rem; margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px solid var(--bg); }
+  .dd-save input {
+    flex: 1; min-width: 0; height: 1.625rem; padding: 0 0.375rem; font-size: var(--fs);
+    border: 1px solid var(--c-surface1); border-radius: var(--radius); background: var(--bg); color: var(--fg);
+  }
+  .dd-save button {
+    height: 1.625rem; padding: 0 0.625rem; border: 0; border-radius: var(--radius); font-size: var(--fs);
+    background: var(--run); color: var(--on-accent); cursor: pointer;
+  }
+  .dd-save button:disabled { opacity: 0.5; cursor: default; }
   .dd-empty { color: var(--gray-99); font-size: var(--fs); padding: 0.125rem 0.125rem 0.375rem; }
   .dd-row { display: flex; align-items: center; gap: 0.25rem; font-size: var(--fs); padding: 0.125rem 0; white-space: nowrap; }
   .dd-rank { color: var(--gray-99); width: 1rem; }

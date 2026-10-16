@@ -80,6 +80,13 @@ describe("settings", () => {
     expect(b.wrapLongLines).toBe(true);
   });
 
+  it("defaults stageCellEdits to false (edits save at once) and persists it", () => {
+    const a = createSettings();
+    expect(a.stageCellEdits).toBe(false);
+    a.setStageCellEdits(true);
+    expect(createSettings().stageCellEdits).toBe(true);
+  });
+
   it("defaults queryEditorHeightPx to null", () => {
     expect(createSettings().queryEditorHeightPx).toBeNull();
   });

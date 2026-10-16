@@ -39,6 +39,8 @@
   import { createPaneResize } from "./paneResize.svelte";
   import { contextAt, needsFields, completeAt } from "../domain/queryComplete";
   import { methodHeadAt } from "../domain/queryStatement";
+  import { queryTemplates } from "../domain/queryTemplates";
+  import { msgKey } from "#lib/msgkey.js";
   import { nextResultView, type ResultViewMode } from "../domain/scriptOutcome";
   import { snippetCompletion, type CompletionSource } from "@codemirror/autocomplete";
   import type { Doc } from "../domain/doc";
@@ -209,6 +211,9 @@
     await v.explainAfterRun(currentDb, sessionId);
   }
 
+  // Templates follow the collection of the last statement in the editor, else a placeholder name.
+  const templates = $derived(queryTemplates(methodHeadAt(v.statementText, v.statementText.length)?.coll ?? "collection"));
+
   function onMenu(action: string) {
     if (action === "run") runQuery();
     else if (action === "runSelection") runSelectionQuery();
@@ -218,6 +223,10 @@
     else if (action === "paste") editorRef?.paste();
     else if (action === "clear") editorRef?.clear();
     else if (action === "format") editorRef?.format();
+    else if (action.startsWith("tpl:")) {
+      const t = templates.find((x) => `tpl:${x.id}` === action);
+      if (t) editorRef?.insertStatement(t.text);
+    }
     menu = null;
   }
 
@@ -504,6 +513,12 @@
       { label: m.query_tab_menu_paste(), action: "paste" },
       { label: m.query_tab_menu_clear(), action: "clear" },
       { label: m.query_tab_menu_format(), action: "format" },
+      {
+        label: m.query_tab_menu_templates(),
+        action: "templates",
+        disabled: editorMode !== "script",
+        children: templates.map((t) => ({ label: msgKey(`query_template_${t.id}`), action: `tpl:${t.id}` })),
+      },
     ]}
     onselect={onMenu} onclose={() => (menu = null)} />
 {/if}

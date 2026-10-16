@@ -16,6 +16,17 @@ import type { Environment } from "../domain/environment";
 
 
 /** Registry of saved connections + the structured add/edit form + connect. Components only bind. */
+export interface ConnectRequest {
+  /** Saved connection id; null for an ad-hoc connection. */
+  connId: number | null;
+  label: string;
+  uri: string;
+  readOnly: boolean;
+  ssh: SshConnectInput | null;
+  environment: Environment;
+  color: string;
+}
+
 export function createConnectionRegistry() {
   let list = $state<SavedConnection[]>([]);
   const sortedList = $derived(sortByRecency(list));
@@ -270,6 +281,13 @@ export function createConnectionRegistry() {
     return { ok: true, uri: currentUri(), ssh: sshConnectInput() };
   }
 
+  /** Everything opening a session needs for the profile in the form; null (with `error` set) when it fails validation. */
+  function connectRequest(): ConnectRequest | null {
+    const res = connectTo();
+    if (!res.ok) return null;
+    return { connId: editingId, label: label.trim() || res.uri, uri: res.uri, readOnly, ssh: res.ssh, environment, color };
+  }
+
   /** Validates the current form's connection (SSH tunnel + Mongo) without opening a session. */
   async function testConnection(): Promise<
     { ok: true } | { ok: false; kind: "ssh" | "mongo" | "validation"; message: string }
@@ -319,7 +337,7 @@ export function createConnectionRegistry() {
     get sshPrivateKeyPath() { return sshPrivateKeyPath; }, set sshPrivateKeyPath(v: string) { sshPrivateKeyPath = v; },
     get sshPassphrase() { return sshPassphrase; }, set sshPassphrase(v: string) { sshPassphrase = v; },
     get canUndoFill() { return beforeFill !== null; },
-    load, save, remove, edit, clearForm, connectTo, importFromUri, currentUri, testConnection, toInput,
+    load, save, remove, edit, clearForm, connectTo, connectRequest, importFromUri, currentUri, testConnection, toInput,
     fillFromUri, undoFill, uriOf, formUri,
   };
 }

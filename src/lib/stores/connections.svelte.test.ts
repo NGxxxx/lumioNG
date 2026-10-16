@@ -140,3 +140,34 @@ describe("connections store — SSH fields", () => {
     expect(result).toEqual({ ok: true });
   });
 });
+
+describe("connections store — connectRequest", () => {
+  it("builds the full connect request for a saved connection (id, label, env, read-only)", () => {
+    const r = createConnectionRegistry();
+    r.edit({
+      id: 7, label: "Prod", scheme: "mongodb", host: "db.example", port: 27017, authMethod: "none", user: "",
+      passwordEnc: "", authSource: "", replicaSet: "", tls: false, extraOptions: "", readOnly: true,
+      tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "", sshEnabled: false, sshHost: "", sshPort: 22,
+      sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
+      environment: "prod", color: "#ff0000",
+    });
+    expect(r.connectRequest()).toEqual({
+      connId: 7, label: "Prod", uri: "mongodb://db.example:27017/", readOnly: true, ssh: null, environment: "prod", color: "#ff0000",
+    });
+  });
+
+  it("an ad-hoc connection has no id and is labelled by its URI", () => {
+    const r = createConnectionRegistry();
+    r.host = "localhost";
+    const req = r.connectRequest();
+    expect(req?.connId).toBeNull();
+    expect(req?.label).toBe(req?.uri);
+  });
+
+  it("is null (with the validation error set) when the form is invalid", () => {
+    const r = createConnectionRegistry();
+    r.host = "";
+    expect(r.connectRequest()).toBeNull();
+    expect(r.error).not.toBeNull();
+  });
+});

@@ -28,6 +28,9 @@ import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
 import { findCmd, deleteOneCmd, sampleCmd, findOneByIdCmd } from "../domain/mongosh";
 import { settings } from "./settings.svelte";
+import { pendingEdits } from "./pendingEdits.svelte";
+import { viewPresets } from "./viewPresets.svelte";
+import { pendingKey } from "../domain/pendingEdits";
 import { setSessionEnvironment } from "./sessionEnv";
 
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
@@ -59,6 +62,29 @@ describe("createCollectionView — paging", () => {
     expect(v.currentPage).toBe(1);
     expect(v.columnFields.map((c) => c.path)).toEqual(["_id", "x"]);
     expect(qp).toHaveBeenCalledWith("conn:1", "d", "c", 0, 50, "{}", null, null, 30000);
+  });
+
+  it("init: page 1 rows arrive without waiting for a slow count", async () => {
+    let resolveCount!: (n: number) => void;
+    cnt.mockReturnValueOnce(new Promise<number>((res) => { resolveCount = res; }));
+    samp.mockResolvedValueOnce([]);
+    qp.mockResolvedValueOnce([{ _id: 1 }]);
+    const v = createCollectionView("conn:1", "d", "c");
+    const initP = v.init();
+    await vi.waitFor(() => expect(v.docs).toEqual([{ _id: 1 }]));
+    expect(v.totalCount).toBe(0);
+    resolveCount(1);
+    await initP;
+    expect(v.totalCount).toBe(1);
+  });
+
+  it("records how long the last page query took", async () => {
+    samp.mockResolvedValueOnce([]);
+    qp.mockResolvedValueOnce([]);
+    const v = createCollectionView("conn:1", "d", "c");
+    expect(v.lastQueryMs).toBeNull();
+    await v.init();
+    expect(v.lastQueryMs).toBeGreaterThanOrEqual(0);
   });
 
   it("init: loading is true immediately, before the count/schema calls resolve", async () => {
@@ -1654,5 +1680,135 @@ describe("createCollectionView — presetFilter", () => {
     expect(qp).toHaveBeenCalledTimes(1);
     expect(qp.mock.calls[0]).toContain('{"_id": {"$oid": "652f1a9e0000000000000c41"}}');
     expect(v.chips).toEqual([{ field: "_id", op: "eq", values: ['{"$oid": "652f1a9e0000000000000c41"}'] }]);
+  });
+});
+
+describe("createCollectionView — staged edits (settings.stageCellEdits)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    pendingEdits.dropSession("conn:1");
+    cnt.mockResolvedValue(2);
+    samp.mockResolvedValue([]);
+    settings.setStageCellEdits(true);
+  });
+  afterEach(() => settings.setStageCellEdits(false));
+
+  const page = () => [{ _id: { $oid: "a" }, x: "old" }, { _id: { $oid: "b" }, x: "keep" }];
+
+  async function stagedView() {
+    qp.mockResolvedValueOnce(page());
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    await v.startEdit(0, "x");
+    v.editText = "new";
+    await v.commitEdit();
+    return v;
+  }
+
+  it("an edit is shown and marked pending, but nothing is written", async () => {
+    const v = await stagedView();
+    expect(upd).not.toHaveBeenCalled();
+    expect(v.docs[0].x).toBe("new");
+    expect(v.editing).toBeNull();
+    expect(v.pendingCount).toBe(1);
+    expect(v.pendingCells.has(pendingKey('{"$oid":"a"}', "x"))).toBe(true);
+  });
+
+  it("staged values survive a reload of the page", async () => {
+    const v = await stagedView();
+    qp.mockResolvedValueOnce(page());
+    await v.goToPage(1);
+    expect(v.docs[0].x).toBe("new");
+    expect(v.docs[1].x).toBe("keep");
+  });
+
+  it("Commit writes the same minimal $set an immediate edit would", async () => {
+    const v = await stagedView();
+    upd.mockResolvedValueOnce({ matched: 1, modified: 1 });
+    await v.commitPending();
+    expect(upd).toHaveBeenCalledWith("conn:1", "d", "c", '{"_id": {"$oid":"a"}}', '{"$set":{"x":"new"}}', false);
+    expect(v.pendingCount).toBe(0);
+    expect(v.docs[0].x).toBe("new");
+  });
+
+  it("a failed Commit keeps the edit pending and shows the error", async () => {
+    const v = await stagedView();
+    upd.mockRejectedValueOnce({ kind: "Query", message: "boom" });
+    await v.commitPending();
+    expect(v.pendingCount).toBe(1);
+    expect(v.error).toBe("Query: boom");
+  });
+
+  it("Discard drops the edit and reloads the stored values", async () => {
+    const v = await stagedView();
+    qp.mockResolvedValueOnce(page());
+    await v.discardPending();
+    expect(v.pendingCount).toBe(0);
+    expect(v.docs[0].x).toBe("old");
+    expect(upd).not.toHaveBeenCalled();
+  });
+
+  it("with the setting off, edits save immediately as before", async () => {
+    settings.setStageCellEdits(false);
+    upd.mockResolvedValueOnce({ matched: 1, modified: 1 });
+    const v = await stagedView();
+    expect(upd).toHaveBeenCalledTimes(1);
+    expect(v.pendingCount).toBe(0);
+  });
+});
+
+describe("createCollectionView — view presets", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    cnt.mockResolvedValue(1);
+    samp.mockResolvedValue([]);
+    qp.mockResolvedValue([{ _id: 1, a: 1, b: 2, status: "x" }]);
+    for (const p of viewPresets.list("conn:1/d/c")) viewPresets.remove("conn:1/d/c", p.name);
+  });
+
+  it("saves the applied filter and layout, then restores both", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    v.filterText = "{status: 'x'}";
+    await v.applyFilter();
+    await v.addSort("a");
+    await v.toggleSortDirAt("a");
+    v.togglePin("b");
+    v.saveViewPreset("Mine");
+    expect(v.presets.map((p) => p.name)).toEqual(["Mine"]);
+
+    v.filterText = "{}";
+    await v.applyFilter();
+    await v.clearSort();
+    v.togglePin("b");
+    qp.mockClear();
+
+    await v.applyViewPreset(v.presets[0]);
+    expect(v.appliedFilter).toBe('{"status":"x"}');
+    expect(v.sortKeys).toEqual([{ path: "a", dir: -1 }]);
+    expect([...v.pinned]).toEqual(["b"]);
+    expect(v.currentPage).toBe(1);
+    expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 0, 50, '{"status":"x"}', '{"a":-1,"_id":1}', null, 30000);
+  });
+
+  it("presets are shared by every view of the same namespace", async () => {
+    const a = createCollectionView("conn:1", "d", "c");
+    await a.init();
+    a.saveViewPreset("Shared");
+    const b = createCollectionView("conn:1", "d", "c");
+    expect(b.presets.map((p) => p.name)).toEqual(["Shared"]);
+    b.removeViewPreset("Shared");
+    expect(a.presets).toEqual([]);
+  });
+
+  it("a preset with an unparseable filter changes nothing", async () => {
+    const v = createCollectionView("conn:1", "d", "c");
+    await v.init();
+    qp.mockClear();
+    await v.applyViewPreset({ name: "Bad", filter: "{oops", sort: [{ path: "a", dir: 1 }], hidden: [], pinned: ["a"], mode: "tree" });
+    expect(v.filterError).toBe("err_filter_invalid_json");
+    expect(v.sortKeys).toEqual([]);
+    expect(v.view).toBe("grid");
+    expect(qp).not.toHaveBeenCalled();
   });
 });

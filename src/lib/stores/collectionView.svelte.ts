@@ -1,5 +1,9 @@
 import * as m from "#lib/paraglide/messages.js";
 import { queryPage, sampleDocuments, fetchFullDoc, countDocuments, exportQueryProgress } from "../api/documents";
+import { overlayPending, pendingKeys } from "../domain/pendingEdits";
+import { pendingEdits } from "./pendingEdits.svelte";
+import { viewPresets } from "./viewPresets.svelte";
+import type { ViewPreset } from "../domain/viewPresets";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import { errorMessage } from "../api/errors";
 import { idJson } from "../domain/docid";
@@ -104,6 +108,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   const pgCount = $derived(pageCount(totalCount, pageSize));
 
   let allShown = $state(false);
+  let lastQueryMs = $state<number | null>(null);
 
   // Inline/modal cell edit (same factory as the Query tab's result grid).
   const edit = createCellEditEntry();
@@ -243,6 +248,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         settings.queryTimeoutMs,
       );
       if (gen !== generation) return;
+      lastQueryMs = Date.now() - startedAt;
       commandLog.push(
         findCmd({
           coll,
@@ -253,9 +259,9 @@ export function createCollectionView(sessionId: string, db: string, coll: string
           limit: pageSize,
         }),
         sessionId,
-        Date.now() - startedAt,
+        lastQueryMs,
       );
-      docs = batch;
+      docs = overlayPending(batch, pending());
       ensureColumns();
       ensureColWidths();
       selection.clearSelection();
@@ -325,12 +331,13 @@ export function createCollectionView(sessionId: string, db: string, coll: string
         () => {},
       );
       if (stale()) return;
+      lastQueryMs = Date.now() - startedAt;
       commandLog.push(
         findCmd({ coll, filter: appliedFilter, projection: buildProjection(hidden), sort: buildSort(sortKeys) }),
         sessionId,
-        Date.now() - startedAt,
+        lastQueryMs,
       );
-      docs = all;
+      docs = overlayPending(all, pending());
       ensureColumns();
       ensureColWidths();
       selection.clearSelection();
@@ -371,7 +378,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     if (id === null) return d;
     const full = await commandLog.pushTimed(findOneByIdCmd(coll, id), sessionId, () =>
       fetchFullDoc(sessionId, db, coll, id));
-    return full ?? d;
+    return full ? overlayPending([full], pending())[0] : d;
   }
 
   /** Full document for opening an edit tab (component handles the actual open). */
@@ -488,6 +495,36 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     await loadFirstPage();
   }
 
+  // ── Named view presets: filter + layout, saved per namespace ──
+  const presets = $derived(viewPresets.list(layoutKey));
+
+  function saveViewPreset(name: string) {
+    if (!name.trim()) return;
+    viewPresets.save(layoutKey, { name, filter: appliedFilter, sort: sortKeys, hidden: [...hidden], pinned: [...pinned], mode: view });
+  }
+
+  function removeViewPreset(name: string) {
+    viewPresets.remove(layoutKey, name);
+  }
+
+  /** Switches to the preset's layout and filter, back on page 1. A preset whose filter no longer
+   *  parses changes nothing and reports the filter error. */
+  async function applyViewPreset(p: ViewPreset) {
+    const r = parseFilter(p.filter);
+    if (!r.ok) {
+      filterError = r.error;
+      return;
+    }
+    hidden = new Set(p.hidden);
+    hiddenDraft = new Set(p.hidden);
+    pinned = new Set(p.pinned);
+    sortKeys = p.sort;
+    view = p.mode;
+    writeLayout();
+    filterText = r.json;
+    await applyFilter();
+  }
+
   async function startEdit(row: number, key: string) {
     if (hidden.size > 0) {
       // Same guard as every other awaiting flow here: a page/filter/sort change during the re-fetch
@@ -527,7 +564,26 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     getTarget: () => ({ db, coll }),
     noIdMessage: () => m.collection_view_no_id_update(),
     currentGeneration: () => generation,
+    stage: {
+      enabled: () => settings.stageCellEdits,
+      put: (e) => pendingEdits.stage(sessionId, db, coll, e),
+    },
   });
+
+  // ── Staged edits (settings.stageCellEdits): kept by namespace, overlaid on every page load ──
+  const pending = () => pendingEdits.list(sessionId, db, coll);
+  const pendingCells = $derived(pendingKeys(pending()));
+
+  async function commitPending() {
+    const r = await pendingEdits.commit(sessionId, db, coll);
+    if (r.error) error = r.error;
+  }
+
+  /** Drops the staged edits and reloads the page so the grid shows the stored values again. */
+  async function discardPending() {
+    pendingEdits.discard(sessionId, db, coll);
+    await reloadDocs();
+  }
 
   function menuItems(): MenuItem[] {
     const menu = selection.menu;
@@ -595,7 +651,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     if (id === null) return;
     const i = docs.findIndex((d) => idJson(d) === id);
     if (i === -1) return;
-    docs[i] = saved;
+    docs[i] = overlayPending([saved], pending())[0];
     docs = [...docs];
   }
 
@@ -767,6 +823,16 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get pageCount() { return pgCount; },
     get totalCount() { return totalCount; },
     get allShown() { return allShown; },
+    get lastQueryMs() { return lastQueryMs; },
+    get presets() { return presets; },
+    saveViewPreset,
+    removeViewPreset,
+    applyViewPreset,
+    get pendingCount() { return pending().length; },
+    get pendingCells() { return pendingCells; },
+    get committingPending() { return pendingEdits.isCommitting(sessionId, db, coll); },
+    commitPending,
+    discardPending,
     get showAllPending() { return showAll.showAllPending; },
     requestShowAll: showAll.requestShowAll,
     confirmShowAll: showAll.confirmShowAll,

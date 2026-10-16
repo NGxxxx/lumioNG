@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { pushModal } from "#lib/stores/modalStack.js";
   import { backdropClose } from "../actions/backdropClose";
-  import { createConnectionRegistry } from "../stores/connections.svelte";
+  import { createConnectionRegistry, type ConnectRequest } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import TestConnectionDialog from "./TestConnectionDialog.svelte";
@@ -14,10 +14,7 @@
     onconnected,
     onclose,
   }: {
-    onconnected: (c: {
-      connId: number | null; label: string; uri: string; readOnly: boolean; ssh: import("../api/connection").SshConnectInput | null;
-      environment: import("../domain/environment").Environment; color: string;
-    }) => Promise<boolean>;
+    onconnected: (c: ConnectRequest) => Promise<boolean>;
     onclose: () => void;
   } = $props();
 
@@ -60,15 +57,12 @@
 
   async function openSession() {
     if (!r.host.trim()) return;
-    const result = r.connectTo();
-    if (!result.ok) return; // validation error shown via r.error
+    const req = r.connectRequest();
+    if (!req) return; // validation error shown via r.error
     connectError = null;
     connecting = true;
     try {
-      const connLabel = r.label.trim() || result.uri;
-      // Pass the saved connection's numeric id (null for ad-hoc connections with no saved record).
-      const connId = selectedId !== null ? selectedId : (r.editingId ?? null);
-      const ok = await onconnected({ connId, label: connLabel, uri: result.uri, readOnly: r.readOnly, ssh: result.ssh, environment: r.environment, color: r.color });
+      const ok = await onconnected(req);
       if (ok) onclose();
       else connectError = m.session_manager_connect_failed();
     } finally {

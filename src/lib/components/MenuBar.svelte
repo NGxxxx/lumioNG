@@ -133,6 +133,11 @@
             },
           ],
         },
+        {
+          label: m.menu_stage_edits(),
+          checked: settings.stageCellEdits,
+          run: () => settings.setStageCellEdits(!settings.stageCellEdits),
+        },
         cmdItem("view.resetToDefault", m.menu_reset_to_default()),
       ],
     },

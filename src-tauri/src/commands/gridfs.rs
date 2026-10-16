@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::json_bson::canonical_string_to_bson;
-use crate::state::AppState;
+use crate::state::{AppState, CancelScope};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use futures::io::AsyncReadExt;
 use mongodb::options::GridFsBucketOptions;
@@ -102,9 +102,8 @@ pub async fn gridfs_preview_bytes(
 }
 
 /// Streams a GridFS file straight to `dest_path` on disk -- bytes never round-trip through the
-/// frontend. Checks the session's cooperative cancel flag every read iteration (same mechanism
-/// `cancel_export`/`cancel_script`/`cancel_import` already share); the frontend cancels this by
-/// invoking the existing `cancel_export` command, no new cancel endpoint needed. `total_bytes` is
+/// frontend. Checks the session's job cancel flag every read iteration, so `cancel_export` stops it.
+/// `total_bytes` is
 /// supplied by the caller (already known from the file's list row) rather than re-queried here.
 #[tauri::command]
 pub async fn gridfs_download(
@@ -117,7 +116,7 @@ pub async fn gridfs_download(
     on_progress: Channel<GridfsDownloadProgress>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
     let client = state.client(&session_id).await?;
     let id = canonical_string_to_bson(&file_id)?;
     let gridfs_bucket = bucket_for(&client, &db, &bucket);

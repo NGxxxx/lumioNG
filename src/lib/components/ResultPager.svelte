@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { GridPageView } from "../domain/gridView";
   import * as m from "#lib/paraglide/messages.js";
+  import { formatDuration } from "../domain/timing";
 
   let { v }: { v: GridPageView } = $props();
 </script>
@@ -13,6 +14,7 @@
         onchange={(e) => v.setPageSize(Math.max(1, +e.currentTarget.value || 50))} />
     </label>
     <span class="pg-total">{m.result_table_pager_all_docs({ count: v.totalCount })}</span>
+    {#if v.lastQueryMs != null}<span class="pg-time" title={m.pager_query_time_title()}>{formatDuration(v.lastQueryMs)}</span>{/if}
   </div>
 {:else}
   <div class="pager">
@@ -32,12 +34,11 @@
     </label>
     <button class="pg-btn" onclick={v.requestShowAll}>{m.result_table_pager_show_all()}</button>
     <span class="pg-total">{m.result_table_pager_docs({ count: v.totalCount })}</span>
+    {#if v.lastQueryMs != null}<span class="pg-time" title={m.pager_query_time_title()}>{formatDuration(v.lastQueryMs)}</span>{/if}
   </div>
 {/if}
 
 <style>
-  /* Copied verbatim from ResultTable.svelte's pre-refactor style block: the pager, pg-btn,
-     pg-info, pg-jump, pg-total, pg-sep and pg-rows rules only. */
   .pager {
     display: flex;
     align-items: center;
@@ -62,6 +63,7 @@
   .pg-info { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
   .pg-jump { width: 3.25rem; height: 1.25rem; text-align: center; }
   .pg-total { margin-left: auto; color: var(--muted); }
+  .pg-time { color: var(--muted); font-variant-numeric: tabular-nums; }
   .pg-sep { color: var(--gray-99); }
   .pg-rows { display: flex; align-items: center; gap: 0.25rem; color: var(--gray-55); }
   .pg-rows input { width: 3.5rem; height: 1.25rem; text-align: center; }

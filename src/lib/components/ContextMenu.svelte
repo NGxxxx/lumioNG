@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, tick } from "svelte";
   import { registerContextMenu } from "./contextMenuController";
   import type { MenuItem } from "../domain/gridView";
 
@@ -9,26 +9,71 @@
   } = $props();
 
   let openIdx = $state<number | null>(null);
+  let rootEl = $state<HTMLDivElement | null>(null);
+  // Opening never moves focus (that would blur an inline cell edit); the first arrow key does, and
+  // closing hands focus back only if the menu had it.
+  const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 
   // Single-menu coordinator: mounting this menu closes any other open menu, preventing two menus being open at once.
   let unregister: (() => void) | null = null;
   onMount(() => { unregister = registerContextMenu(onclose); });
-  onDestroy(() => unregister?.());
+  let hasFocus = false;
+  onDestroy(() => {
+    unregister?.();
+    if (hasFocus) returnFocus?.focus();
+  });
 
   function choose(it: MenuItem) {
     if (it.disabled || it.children) return;
     onselect(it.action);
   }
   function onKey(e: KeyboardEvent) { if (e.key === "Escape") onclose(); }
+
+  const enabledItems = (menu: Element | null) =>
+    menu ? [...menu.querySelectorAll<HTMLButtonElement>(":scope > button.item, :scope > .sub > button.item")].filter((b) => !b.disabled) : [];
+
+  async function openSub(i: number) {
+    openIdx = i;
+    await tick();
+    enabledItems(rootEl?.querySelector(".submenu") ?? null)[0]?.focus();
+  }
+
+  // Capture phase: while the menu is open, arrow keys belong to it, not to the grid or editor behind it.
+  function onKeyCapture(e: KeyboardEvent) {
+    if (!rootEl || !["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft"].includes(e.key)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const active = document.activeElement as HTMLElement | null;
+    const inSub = !!active?.closest(".submenu");
+    const menu = inSub ? active!.closest(".submenu") : rootEl;
+    const list = enabledItems(menu);
+    if (!active || !rootEl.contains(active)) {
+      enabledItems(rootEl)[e.key === "ArrowUp" ? enabledItems(rootEl).length - 1 : 0]?.focus();
+      return;
+    }
+    const at = list.indexOf(active as HTMLButtonElement);
+    if (e.key === "ArrowDown") list[(at + 1) % list.length]?.focus();
+    else if (e.key === "ArrowUp") list[(at - 1 + list.length) % list.length]?.focus();
+    else if (e.key === "ArrowRight" && !inSub && active.classList.contains("parent")) void openSub(Number(active.dataset.idx));
+    else if (e.key === "ArrowLeft" && inSub) {
+      const parent = active.closest(".sub")?.querySelector<HTMLButtonElement>("button.parent");
+      openIdx = null;
+      parent?.focus();
+    }
+  }
 </script>
 
-<svelte:window onclick={onclose} oncontextmenu={onclose} onkeydown={onKey} />
+<svelte:window onclick={onclose} oncontextmenu={onclose} onkeydown={onKey} onkeydowncapture={onKeyCapture} />
 
-<div class="menu" style="left:{x}px; top:{y}px" role="menu">
+<div class="menu" style="left:{x}px; top:{y}px" role="menu" bind:this={rootEl}
+  onfocusin={() => (hasFocus = true)}
+  onfocusout={(e) => { if (!rootEl?.contains(e.relatedTarget as Node | null)) hasFocus = false; }}>
   {#each items as it, i}
     {#if it.children}
       <div class="sub" role="none">
-        <button class="item parent" role="menuitem" aria-haspopup="true" disabled={it.disabled}
+        <button class="item parent" role="menuitem" aria-haspopup="true" aria-expanded={openIdx === i} disabled={it.disabled}
+          data-idx={i}
+          onclick={(e) => { e.stopPropagation(); if (openIdx === i) openIdx = null; else void openSub(i); }}
           onmouseenter={() => (openIdx = i)} onmouseleave={() => (openIdx = null)}>
           <span>{it.label}</span><span class="caret">▸</span>
         </button>

@@ -21,6 +21,7 @@ const DOM_TESTS = [
   "src/lib/stores/shell.test.ts",
   "src/lib/stores/theme.test.ts",
   "src/lib/stores/uiSize.test.ts",
+  "src/lib/stores/viewPresets.test.ts",
 ];
 const NODE_TESTS = ["src/lib/domain/**/*.test.ts", "src/lib/api/**/*.test.ts", "src/lib/stores/**/*.test.ts"];
 

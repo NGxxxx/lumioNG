@@ -1,6 +1,7 @@
 import { connect, disconnect } from "../api/connection";
 import type { SshConnectInput } from "../api/connection";
 import { touchConnection } from "../api/connections";
+import { pendingEdits } from "./pendingEdits.svelte";
 import { createNamespaceTree } from "./namespaceTree.svelte";
 import { createHostStatus } from "./hostStatus.svelte";
 import { createSessionNav, type SessionNav, type WorkTab, type Active, type DocumentTabInit } from "./navigation.svelte";
@@ -185,6 +186,7 @@ export function createSessionManager() {
       disposePipelineTree(t.id);
     }
     disposeCollectionViews(id);
+    pendingEdits.dropSession(id);
     disposeGridfsFiles(id);
     disposeGridfsBucketProbes(id);
     disposeFieldSuggestions(id);

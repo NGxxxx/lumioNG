@@ -237,3 +237,25 @@ describe("DocumentForm — Tree view", () => {
     expect((getByText("Save") as HTMLButtonElement).disabled).toBe(false);
   });
 });
+
+describe("DocumentForm — change summary", () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it("edit mode lists what Save would change, and nothing before an edit", async () => {
+    const { container, getByText } = render(DocumentForm, {
+      props: { mode: "edit", db: "d", coll: "c", initial: proxiedDoc({ _id: { $oid: "abc" }, a: "x" }), onsaved: () => {}, oncancel: () => {} },
+    });
+    expect(container.querySelector("details.changes")).toBeNull();
+    await fireEvent.input(container.querySelector("input.leaf")!, { target: { value: "y" } });
+    await waitFor(() => expect(getByText("1 change")).toBeTruthy());
+    expect(container.querySelector("details.changes li.changed")!.textContent).toContain("a");
+  });
+
+  it("insert mode shows no summary", async () => {
+    const { container } = render(DocumentForm, {
+      props: { mode: "insert", db: "d", coll: "c", initial: { a: "x" }, onsaved: () => {}, oncancel: () => {} },
+    });
+    await fireEvent.input(container.querySelector("input.leaf")!, { target: { value: "y" } });
+    expect(container.querySelector("details.changes")).toBeNull();
+  });
+});

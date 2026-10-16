@@ -2,7 +2,7 @@ use crate::bson_json::{bson_to_raw, doc_to_canonical_string, doc_to_raw, RawDoc}
 use crate::error::AppError;
 use crate::json_bson::{canonical_string_to_doc, canonical_string_to_doc_array};
 use crate::script::host::with_interrupt;
-use crate::state::AppState;
+use crate::state::{AppState, CancelScope};
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Document};
 use mongodb::Client;
@@ -25,7 +25,7 @@ async fn begin_query_op(
     timeout_ms: Option<u64>,
 ) -> Result<(Client, Arc<AtomicBool>, Instant), AppError> {
     let client = state.client(session_id).await?;
-    let cancel = state.begin_cancel(session_id).await;
+    let cancel = state.begin_cancel(session_id, CancelScope::Interactive).await;
     Ok((client, cancel, deadline_from(timeout_ms)))
 }
 

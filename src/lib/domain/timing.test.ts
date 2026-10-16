@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { createDebouncer } from "./timing";
+import { createDebouncer, formatDuration } from "./timing";
 
 describe("createDebouncer", () => {
   beforeEach(() => vi.useFakeTimers());
@@ -39,5 +39,15 @@ describe("createDebouncer", () => {
   it("cancel() is a no-op when nothing is pending", () => {
     const debouncer = createDebouncer(100);
     expect(() => debouncer.cancel()).not.toThrow();
+  });
+});
+
+describe("formatDuration", () => {
+  it("uses ms below a second, one decimal below a minute, then minutes + seconds", () => {
+    expect(formatDuration(0)).toBe("0 ms");
+    expect(formatDuration(87.6)).toBe("88 ms");
+    expect(formatDuration(1234)).toBe("1.2 s");
+    expect(formatDuration(59_940)).toBe("59.9 s");
+    expect(formatDuration(65_000)).toBe("1 min 5 s");
   });
 });

@@ -15,11 +15,21 @@ pub struct Session {
     pub tunnel: Option<SshTunnelHandle>,
 }
 
+/// The family of operations a cancel flag covers. Kept apart so Stop in a query tab never aborts a
+/// background export, and starting a grid query never resets an export's pending cancel.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CancelScope {
+    /// Grid/query commands and scripts — cancelled by the query tab's Stop.
+    Interactive,
+    /// Exports, imports and GridFS downloads — cancelled from the job's own Cancel.
+    Job,
+}
+
 #[derive(Default)]
 pub struct AppState {
     pub sessions: Mutex<HashMap<String, Session>>,
-    /// Per-session cooperative cancel flag, shared by every cancellable op on that session.
-    pub cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
+    /// Cooperative cancel flags, one per session and scope.
+    pub cancels: Mutex<HashMap<(String, CancelScope), Arc<AtomicBool>>>,
 }
 
 impl AppState {
@@ -44,7 +54,7 @@ impl AppState {
     /// Drops the session (closing its SSH tunnel, if any) and its cancel flag together.
     pub async fn remove_session(&self, session_id: &str) {
         self.sessions.lock().await.remove(session_id);
-        self.cancels.lock().await.remove(session_id);
+        self.cancels.lock().await.retain(|(id, _), _| id != session_id);
     }
 
     /// Reject a write command when the session's connection is read-only.
@@ -60,18 +70,18 @@ impl AppState {
     }
 
     /// Returns the session's cancel flag, creating a fresh (false) one on first access.
-    pub async fn cancel_flag(&self, session_id: &str) -> Arc<AtomicBool> {
+    pub async fn cancel_flag(&self, session_id: &str, scope: CancelScope) -> Arc<AtomicBool> {
         let mut g = self.cancels.lock().await;
-        g.entry(session_id.to_string()).or_insert_with(|| Arc::new(AtomicBool::new(false))).clone()
+        g.entry((session_id.to_string(), scope)).or_default().clone()
     }
 
-    pub async fn request_cancel(&self, session_id: &str) {
-        self.cancel_flag(session_id).await.store(true, std::sync::atomic::Ordering::Relaxed);
+    pub async fn request_cancel(&self, session_id: &str, scope: CancelScope) {
+        self.cancel_flag(session_id, scope).await.store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Fetches the session's cancel flag and resets it to `false`, ready for a new cancellable op.
-    pub async fn begin_cancel(&self, session_id: &str) -> Arc<AtomicBool> {
-        let flag = self.cancel_flag(session_id).await;
+    pub async fn begin_cancel(&self, session_id: &str, scope: CancelScope) -> Arc<AtomicBool> {
+        let flag = self.cancel_flag(session_id, scope).await;
         flag.store(false, std::sync::atomic::Ordering::Relaxed);
         flag
     }
@@ -92,10 +102,12 @@ mod tests {
     async fn remove_session_clears_its_cancel_flag_too() {
         let state = AppState::default();
         state.insert_session("s1".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), false, None).await;
-        state.cancel_flag("s1").await;
+        state.cancel_flag("s1", CancelScope::Job).await;
+        state.cancel_flag("s2", CancelScope::Job).await;
         state.remove_session("s1").await;
         assert!(state.sessions.lock().await.get("s1").is_none());
-        assert!(state.cancels.lock().await.get("s1").is_none());
+        assert!(state.cancels.lock().await.keys().all(|(id, _)| id != "s1"));
+        assert_eq!(state.cancels.lock().await.len(), 1);
     }
 
     #[tokio::test]
@@ -110,19 +122,32 @@ mod tests {
     #[tokio::test]
     async fn cancel_flag_is_stable_and_settable() {
         let state = AppState::default();
-        let f = state.cancel_flag("s1").await;
+        let f = state.cancel_flag("s1", CancelScope::Interactive).await;
         assert!(!f.load(std::sync::atomic::Ordering::Relaxed));
-        state.request_cancel("s1").await;
-        assert!(state.cancel_flag("s1").await.load(std::sync::atomic::Ordering::Relaxed));
-        state.begin_cancel("s1").await;
-        assert!(!state.cancel_flag("s1").await.load(std::sync::atomic::Ordering::Relaxed));
+        state.request_cancel("s1", CancelScope::Interactive).await;
+        assert!(state.cancel_flag("s1", CancelScope::Interactive).await.load(std::sync::atomic::Ordering::Relaxed));
+        state.begin_cancel("s1", CancelScope::Interactive).await;
+        assert!(!state.cancel_flag("s1", CancelScope::Interactive).await.load(std::sync::atomic::Ordering::Relaxed));
     }
 
     #[tokio::test]
     async fn begin_cancel_resets_a_previously_set_flag() {
         let state = AppState::default();
-        state.request_cancel("s1").await;
-        let flag = state.begin_cancel("s1").await;
+        state.request_cancel("s1", CancelScope::Interactive).await;
+        let flag = state.begin_cancel("s1", CancelScope::Interactive).await;
         assert!(!flag.load(std::sync::atomic::Ordering::Relaxed));
+    }
+
+    #[tokio::test]
+    async fn scopes_are_independent() {
+        let state = AppState::default();
+        let job = state.begin_cancel("s1", CancelScope::Job).await;
+        // Stop in a query tab must not abort the export…
+        state.request_cancel("s1", CancelScope::Interactive).await;
+        assert!(!job.load(std::sync::atomic::Ordering::Relaxed));
+        // …and a new grid query must not swallow the export's pending cancel.
+        state.request_cancel("s1", CancelScope::Job).await;
+        state.begin_cancel("s1", CancelScope::Interactive).await;
+        assert!(job.load(std::sync::atomic::Ordering::Relaxed));
     }
 }

@@ -25,3 +25,11 @@ export function createDebouncer(ms: number) {
 
   return { schedule, cancel };
 }
+
+/** Short human duration for timings shown in the UI: "88 ms", "1.2 s", "1 min 5 s". */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${(Math.floor(ms / 100) / 10).toFixed(1)} s`;
+  const s = Math.round(ms / 1000);
+  return `${Math.floor(s / 60)} min ${s % 60} s`;
+}

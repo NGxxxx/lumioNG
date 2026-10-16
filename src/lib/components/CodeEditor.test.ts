@@ -57,6 +57,15 @@ describe("CodeEditor", () => {
   });
 });
 
+describe("CodeEditor insertStatement", () => {
+  it("adds the statement after existing code, separated by a blank line, and reports the change", () => {
+    const onChange = vi.fn();
+    const { component } = render(CodeEditor, { props: { value: "db.a.find()", onChange } });
+    component.insertStatement("db.b.find()");
+    expect(onChange).toHaveBeenLastCalledWith("db.a.find()\n\ndb.b.find()");
+  });
+});
+
 describe("CodeEditor keyboard shortcuts", () => {
   function pressKey(container: HTMLElement, key: string, mods: Partial<{ ctrlKey: boolean; shiftKey: boolean }> = {}) {
     const content = container.querySelector(".cm-content") as HTMLElement;

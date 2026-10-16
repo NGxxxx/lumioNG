@@ -2,7 +2,7 @@
 // Polls only between start() and stop() (the component ties those to "Overview shown and window
 // visible"), never has two ticks in flight, and stretches the interval when the server is slow.
 import { serverMetrics, slowOps as fetchSlowOps, profilerStatus, recentSlowQueries, killOp } from "../api/mongoServer";
-import { errorMessage } from "../api/errors";
+import { rawErrorText } from "../api/errors";
 import { createDestructiveGate } from "./destructiveGate.svelte";
 import { sessionEnvironment } from "./sessionEnv";
 import { numFromExt } from "../domain/extjson";
@@ -48,7 +48,7 @@ function saveInterval(connId: number | null, ms: number | null) {
   }
 }
 
-const isPermissionError = (e: unknown) => /unauthori[sz]ed|not authorized|requires authentication/i.test(errorMessage(e));
+const isPermissionError = (e: unknown) => /unauthori[sz]ed|not authorized|requires authentication/i.test(rawErrorText(e));
 
 export function createOverviewPoller(sessionId: string, opts: { prod: boolean; connId: number | null }) {
   const remembered = rememberedInterval(opts.connId);

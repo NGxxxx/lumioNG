@@ -2,7 +2,7 @@ use crate::bson_import::count_bson_docs_streaming;
 use crate::bson_json::{doc_to_canonical_string, doc_to_raw, RawDoc};
 use crate::error::AppError;
 use crate::json_import::{count_jsonl_lines, detect_json_array, parse_array_element, parse_jsonl_line};
-use crate::state::AppState;
+use crate::state::{AppState, CancelScope};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use mongodb::bson::Document;
 use mongodb::error::ErrorKind;
@@ -530,7 +530,7 @@ pub async fn export_json_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -573,7 +573,7 @@ pub async fn export_bson_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -615,7 +615,7 @@ pub async fn export_csv_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
     let (mut scan_cursor, total) = open_export_cursor(
         state.clone(), &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -678,7 +678,7 @@ pub async fn export_sql_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
     let (mut scan_cursor, total) = open_export_cursor(
         state.clone(), &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -742,7 +742,7 @@ pub async fn export_query_progress(
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
 ) -> Result<Vec<RawDoc>, AppError> {
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
@@ -774,11 +774,10 @@ pub async fn export_query_progress(
     Ok(docs)
 }
 
-/// Requests cancellation of any in-flight cancellable op (export progress commands, scripts) on
-/// this session -- shares the same per-session cooperative flag as `cancel_script`.
+/// Cancels the session's in-flight background job (export, Show ALL fetch, GridFS download).
 #[tauri::command]
 pub async fn cancel_export(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    state.request_cancel(&session_id).await;
+    state.request_cancel(&session_id, CancelScope::Job).await;
     Ok(())
 }
 

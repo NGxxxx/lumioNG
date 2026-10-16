@@ -12,9 +12,7 @@ export async function gridfsPreviewBytes(sessionId: string, db: string, bucket: 
   return await invoke<string>("gridfs_preview_bytes", { sessionId, db, bucket, fileId });
 }
 
-/** Streams a GridFS file straight to `destPath` on disk. Cancel via the existing
- *  `cancelExportProgress` (`./documents`) -- `gridfs_download` shares the same per-session cancel
- *  flag as every other cancellable command, no separate cancel endpoint. */
+/** Streams a GridFS file straight to `destPath` on disk; cancel it with `cancelExportProgress`. */
 export async function gridfsDownload(
   sessionId: string,
   db: string,

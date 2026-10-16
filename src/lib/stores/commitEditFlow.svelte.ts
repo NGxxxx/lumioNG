@@ -8,6 +8,7 @@ import { commandLog } from "./commandLog.svelte";
 import { undo } from "./undo.svelte";
 import type { Doc } from "../domain/doc";
 import type { CellEdit } from "./cellEditEntry.svelte";
+import type { PendingEdit } from "../domain/pendingEdits";
 
 /** Shared inline/modal cell-edit commit flow for the collection grid and the Query tab's result
  *  grid: validates the draft, `$set`s only the touched path (never a full replaceDocument), patches
@@ -29,6 +30,8 @@ export function createCommitEditFlow(args: {
   getTarget: () => { db: string; coll: string } | null;
   noIdMessage: () => string;
   currentGeneration: () => number;
+  /** When `enabled()`, a valid edit is handed to `put` (and shown in the grid) instead of written now. */
+  stage?: { enabled: () => boolean; put: (edit: PendingEdit) => void };
   /** Called after the docs-page patch lands, still gated on the same generation check -- lets a caller keep a second, denormalized copy of the data (e.g. queryScript's `fullDocs`) in sync. */
   onCommitted?: (row: number, key: string, value: unknown) => void;
 }) {
@@ -55,6 +58,13 @@ export function createCommitEditFlow(args: {
     const id = idJson(doc);
     if (id === null) {
       args.edit.editError = args.noIdMessage();
+      return;
+    }
+    if (args.stage?.enabled()) {
+      args.stage.put({ idJson: id, path: key, before: original, after: r.value });
+      docs[row] = setByPath(doc, key, r.value);
+      args.setDocs([...docs]);
+      args.edit.clear();
       return;
     }
     // $set only the touched path — a full replaceDocument would re-send every other field too, including any huge untouched sibling.

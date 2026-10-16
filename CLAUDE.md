@@ -1,7 +1,7 @@
 # monglumio — Structure & Conventions
 
 MongoDB GUI: **Tauri + Rust** (backend) · **SvelteKit + Svelte 5 runes** (frontend) ·
-**TanStack Table/Virtual** (data grid). Positioning: lightweight, fast, table-first.
+**TanStack Virtual** (data grid virtualization). Positioning: lightweight, fast, table-first.
 
 **Core principle:** keep Rust as thin as possible (connect + query + serialize → return string);
 all display logic lives in Svelte. **The contract between the two layers is a Canonical Extended

@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { msgCount } from "#lib/msgkey.js";
+  import { pendingEdits } from "../stores/pendingEdits.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import NamespaceTree, { type TreeMenuTarget } from "./NamespaceTree.svelte";
   import EnvBadge from "./EnvBadge.svelte";
@@ -94,7 +96,7 @@
   let exportWizard = $state<ExportWizardInput | null>(null);
   let importDialog = $state<{ sessionId: string; db: string; coll: string | null } | null>(null);
   // Confirmation gate shared by the session X button and the right-click Disconnect action.
-  let confirmDisconnect = $state<{ label: string; run: () => void } | null>(null);
+  let confirmDisconnect = $state<{ sessionId: string; label: string; run: () => void } | null>(null);
 
   function sessionById(id: string): Session | undefined {
     return sessionManager.sessions.find((s) => s.id === id);
@@ -117,7 +119,7 @@
       else if (action === "refresh") tree?.refresh();
       else if (action === "manageSessions") onmanagesessions?.();
       else if (action === "disconnect") {
-        confirmDisconnect = { label: sess?.label ?? target.sessionId, run: () => ondisconnect?.(target.sessionId) };
+        confirmDisconnect = { sessionId: target.sessionId, label: sess?.label ?? target.sessionId, run: () => ondisconnect?.(target.sessionId) };
       }
     } else if (target.kind === "db") {
       if (action === "newColl") dialog = { type: "newColl", db: target.db, sessionId: target.sessionId };
@@ -253,7 +255,7 @@
         class="session-close"
         aria-label={m.namespace_panel_close_session()}
         title={m.namespace_panel_close_session()}
-        onclick={(e) => { e.stopPropagation(); confirmDisconnect = { label: sess.label, run: () => sessionManager.closeSession(sess.id) }; }}
+        onclick={(e) => { e.stopPropagation(); confirmDisconnect = { sessionId: sess.id, label: sess.label, run: () => sessionManager.closeSession(sess.id) }; }}
       >✕</button>
     </div>
 
@@ -356,9 +358,11 @@
   {@const cd = confirmDisconnect}
   <ConfirmDialog
     title={m.namespace_panel_disconnect_confirm_title()}
-    message={jobs.running > 0
-      ? `${m.namespace_panel_disconnect_confirm_message({ label: cd.label })} ${m.jobs_running_warning({ count: String(jobs.running) })}`
-      : m.namespace_panel_disconnect_confirm_message({ label: cd.label })}
+    message={[
+      m.namespace_panel_disconnect_confirm_message({ label: cd.label }),
+      jobs.running > 0 ? m.jobs_running_warning({ count: String(jobs.running) }) : "",
+      pendingEdits.count(cd.sessionId) > 0 ? msgCount("pending_quit_warning", pendingEdits.count(cd.sessionId)) : "",
+    ].filter(Boolean).join(" ")}
     confirmLabel={m.namespace_panel_menu_disconnect()}
     danger
     onconfirm={() => { cd.run(); confirmDisconnect = null; }}

@@ -17,13 +17,14 @@
   import { windowControls } from "#lib/stores/desktop.js";
   const { quit } = windowControls;
   import type { Doc } from "#lib/domain/doc.js";
-  import type { SshConnectInput } from "#lib/api/connection.js";
+  import type { ConnectRequest } from "#lib/stores/connections.svelte.js";
   import type { Environment } from "#lib/domain/environment.js";
   import type { SavedQuery } from "#lib/domain/queryTree.js";
   import type { CollectionView, HostSection, QueryTab as QueryTabType } from "#lib/stores/navigation.svelte.js";
   import { toolbarFor, type ViewKey } from "#lib/domain/toolbarLayout.js";
   import ViewSwitcher from "#lib/components/ViewSwitcher.svelte";
   import SessionManager from "#lib/components/SessionManager.svelte";
+  import WelcomePane from "#lib/components/WelcomePane.svelte";
   import ConfirmDialog from "#lib/components/ConfirmDialog.svelte";
   import * as m from "#lib/paraglide/messages.js";
   import NamespacePanel from "#lib/components/NamespacePanel.svelte";
@@ -54,6 +55,8 @@
   import ToastHost from "#lib/components/ToastHost.svelte";
   import { undo } from "#lib/stores/undo.svelte.js";
   import { jobs } from "#lib/stores/jobs.svelte.js";
+  import { pendingEdits } from "#lib/stores/pendingEdits.svelte.js";
+  import { msgCount } from "#lib/msgkey.js";
   import { toast } from "#lib/stores/toast.svelte.js";
   import { SHORTCUTS, type Command, type CommandId } from "#lib/domain/commands.js";
   import { matchesEvent, isDefaultWebviewAccelerator, isTypingTarget } from "#lib/domain/shortcuts.js";
@@ -146,10 +149,7 @@
   // The activeDataView bridge is also registered by the active Query tab's result grid, so widen the gate to cover both.
   const canUseDataView = $derived(dataViewActive || queryActive);
 
-  async function onConnected(conn: {
-    connId: number | null; label: string; uri: string; readOnly: boolean; ssh: SshConnectInput | null;
-    environment: Environment; color: string;
-  }): Promise<boolean> {
+  async function onConnected(conn: ConnectRequest): Promise<boolean> {
     // focusOrOpen is the sole owner of the backend connect call; passing the real connId lets it dedup saved connections.
     const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh, environment: conn.environment, color: conn.color });
     if (ok) shell.setConnection(conn);
@@ -398,6 +398,7 @@
     "toggle:wrap": { label: m.palette_toggle_wrap, run: () => commands["view.toggleWrap"]?.run() },
     "toggle:log": { label: m.palette_toggle_log, run: () => commands["view.toggleLog"]?.run() },
     "toggle:saved": { label: m.palette_toggle_saved, run: () => commands["view.toggleSavedQueries"]?.run() },
+    "toggle:stageEdits": { label: m.menu_stage_edits, run: () => settings.setStageCellEdits(!settings.stageCellEdits) },
     "density:compact": { label: () => `${m.menu_density()}: ${m.density_compact()}`, run: () => settings.setDensity("compact") },
     "density:comfortable": { label: () => `${m.menu_density()}: ${m.density_comfortable()}`, run: () => settings.setDensity("comfortable") },
     "density:spacious": { label: () => `${m.menu_density()}: ${m.density_spacious()}`, run: () => settings.setDensity("spacious") },
@@ -710,7 +711,9 @@
             {/if}
           </div>
         {/each}
-        {#if active === null}
+        {#if active === null && sm.sessions.length === 0}
+          <WelcomePane onconnected={onConnected} onnewconnection={() => shell.openSession()} />
+        {:else if active === null}
           <div class="empty-state">
             <svg aria-hidden="true" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--c-overlay1)" stroke-width="1.2">
               <ellipse cx="12" cy="5.6" rx="7" ry="3.6" />
@@ -760,7 +763,11 @@
   {#if confirmQuit}
     <ConfirmDialog
       title={m.page_quit_title()}
-      message={jobs.running > 0 ? `${m.page_quit_message()} ${m.jobs_running_warning({ count: String(jobs.running) })}` : m.page_quit_message()}
+      message={[
+        m.page_quit_message(),
+        jobs.running > 0 ? m.jobs_running_warning({ count: String(jobs.running) }) : "",
+        pendingEdits.count() > 0 ? msgCount("pending_quit_warning", pendingEdits.count()) : "",
+      ].filter(Boolean).join(" ")}
       confirmLabel={m.page_quit_confirm()}
       cancelLabel={m.page_quit_cancel()}
       danger

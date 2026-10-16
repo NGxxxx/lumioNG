@@ -6,7 +6,7 @@ use crate::sql_import::{
     resolve_target_collection, row_to_document, SqlSchemaAccumulator,
 };
 use crate::sql_stream::SqlStatementReader;
-use crate::state::AppState;
+use crate::state::{AppState, CancelScope};
 use crate::value_infer::InferOptions;
 use mongodb::bson::Document;
 use sqlparser::ast::Statement;
@@ -183,7 +183,7 @@ fn spawn_sql_producer(
 /// Requests cancellation of an in-flight `sql_import_commit` on this session.
 #[tauri::command]
 pub async fn cancel_import(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
-    state.request_cancel(&session_id).await;
+    state.request_cancel(&session_id, CancelScope::Job).await;
     Ok(())
 }
 
@@ -199,7 +199,7 @@ pub async fn sql_import_commit(
     state: State<'_, AppState>,
 ) -> Result<SqlImportCommitResult, AppError> {
     state.ensure_writable(&session_id).await?;
-    let cancel = state.begin_cancel(&session_id).await;
+    let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
 
     let schema_path = path.clone();
     let (schemas, columns_by_table) = tokio::task::spawn_blocking(move || -> Result<_, AppError> {

@@ -21,6 +21,10 @@ export interface GridPageView {
   readonly totalCount: number;
   readonly pageSize: number;
   readonly allShown: boolean;
+  /** Duration of the query behind the current rows, shown beside the pager; absent when not tracked. */
+  readonly lastQueryMs?: number | null;
+  /** `pendingKey(idJson, path)` of cells with an uncommitted staged edit, highlighted in the grid. */
+  readonly pendingCells?: ReadonlySet<string>;
   readonly loading: boolean;
   goToPage(n: number): void | Promise<void>;
   nextPage(): void | Promise<void>;

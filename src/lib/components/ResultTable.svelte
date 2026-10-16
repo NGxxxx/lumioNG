@@ -10,6 +10,7 @@
   import ResultGrid from "./ResultGrid.svelte";
   import ResultPager from "./ResultPager.svelte";
   import CollectionToolbar from "./CollectionToolbar.svelte";
+  import PendingEditsBar from "./PendingEditsBar.svelte";
   import CollectionDialogs from "./CollectionDialogs.svelte";
   import DocPeekDrawer from "./DocPeekDrawer.svelte";
   import RefMenu from "./RefMenu.svelte";
@@ -88,6 +89,8 @@
     commitEdit: v.commitEdit,
     cancelEdit: v.cancelEdit,
     onEditBlur: v.onEditBlur,
+
+    get pendingCells() { return v.pendingCells; },
 
     get sortKeys() { return v.sortKeys; },
     toggleSort: v.toggleSort,
@@ -249,6 +252,10 @@
   <CollectionToolbar {v} bind:view={v.view} bind:this={toolbarRef}
     treeAllExpanded={treeRef?.isAllExpanded() ?? false}
     ontoggleexpand={() => treeRef?.toggleExpandAll()} />
+  {#if v.pendingCount > 0}
+    <PendingEditsBar count={v.pendingCount} committing={v.committingPending}
+      oncommit={() => void v.commitPending()} ondiscard={() => void v.discardPending()} />
+  {/if}
 
   <div class="content" class:with-pinned={peek.open && settings.peekPinned && v.view === "grid"}>
     {#if v.view === "grid"}
