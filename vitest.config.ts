@@ -1,31 +1,54 @@
 import { defineConfig, configDefaults } from "vitest/config";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 
+// Non-component tests that touch browser globals (localStorage, navigator, document) need jsdom.
+const DOM_TESTS = [
+  "src/lib/domain/shortcuts.test.ts",
+  "src/lib/stores/collectionView.test.ts",
+  "src/lib/stores/collectionViews.test.ts",
+  "src/lib/stores/docPeek.test.ts",
+  "src/lib/stores/filterHistory.test.ts",
+  "src/lib/stores/gridLayout.test.ts",
+  "src/lib/stores/gridfsFilesCache.test.ts",
+  "src/lib/stores/jobs.svelte.test.ts",
+  "src/lib/stores/overviewPoller.test.ts",
+  "src/lib/stores/platform.test.ts",
+  "src/lib/stores/queryHistory.test.ts",
+  "src/lib/stores/queryScript.test.ts",
+  "src/lib/stores/refJump.test.ts",
+  "src/lib/stores/refMemory.test.ts",
+  "src/lib/stores/settings.test.ts",
+  "src/lib/stores/shell.test.ts",
+  "src/lib/stores/theme.test.ts",
+  "src/lib/stores/uiSize.test.ts",
+];
+const NODE_TESTS = ["src/lib/domain/**/*.test.ts", "src/lib/api/**/*.test.ts", "src/lib/stores/**/*.test.ts"];
+
 export default defineConfig({
   plugins: [svelte()],
-  // @testing-library/svelte 5 + Svelte 5: resolve the client (browser) build so
-  // `mount` is available under jsdom; otherwise Svelte resolves its SSR export.
+  // Resolve Svelte's client build so `mount` works under jsdom (otherwise the SSR export is picked).
   resolve: {
     conditions: ["browser"],
   },
   test: {
-    environment: "jsdom",
-    // jsdom setup is the biggest cost in this suite; only tests that touch browser globals need it, everything else runs under "node".
-    environmentMatchGlobs: [
-      ["src/lib/stores/collectionView.test.ts", "jsdom"], // Object.defineProperty(navigator, "clipboard", ...)
-      ["src/lib/stores/queryScript.test.ts", "jsdom"], // Object.defineProperty(navigator, "clipboard", ...)
-      ["src/lib/stores/settings.test.ts", "jsdom"], // localStorage
-      ["src/lib/stores/theme.test.ts", "jsdom"], // document.documentElement
-      ["src/lib/stores/uiSize.test.ts", "jsdom"], // document.documentElement
-      ["src/lib/stores/platform.test.ts", "jsdom"], // Object.defineProperty(navigator, "platform", ...)
-      ["src/lib/stores/**", "node"],
-      ["src/lib/domain/**", "node"], // pure logic per CLAUDE.md — no Tauri, no Svelte, no DOM
-      ["src/lib/api/**", "node"], // thin invoke() wrappers — no DOM
-    ],
     globals: true,
-    // Vitest 5 defaults to clearing mock history before each test; several suites assert on calls made at import time.
+    // Several suites assert on calls made at import time, so keep mock history between tests.
     clearMocks: false,
     setupFiles: ["src/test-setup.ts"],
-    exclude: [...configDefaults.exclude, "**/.claude/**"],
+    // jsdom setup dominates the suite's runtime, so only tests that need a DOM get one.
+    projects: [
+      {
+        extends: true,
+        test: { name: "node", environment: "node", include: NODE_TESTS, exclude: [...configDefaults.exclude, ...DOM_TESTS] },
+      },
+      {
+        extends: true,
+        test: {
+          name: "dom",
+          environment: "jsdom",
+          include: ["src/lib/*.test.ts", "src/lib/actions/**/*.test.ts", "src/lib/components/**/*.test.ts", ...DOM_TESTS],
+        },
+      },
+    ],
   },
 });

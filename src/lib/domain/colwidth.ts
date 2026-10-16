@@ -59,3 +59,46 @@ export function pinnedFirst<T extends { path: string }>(cols: T[], pinned: Reado
   if (pinned.size === 0) return cols;
   return [...cols.filter((c) => pinned.has(c.path)), ...cols.filter((c) => !pinned.has(c.path))];
 }
+
+export interface ColumnWindow {
+  /** First rendered column (inclusive) and last (exclusive). */
+  start: number;
+  end: number;
+  /** Total width of the skipped columns on each side, rendered as spacers. */
+  before: number;
+  after: number;
+}
+
+/** Horizontal virtualization: which columns of `widths` overlap `[offset, offset + viewport)` widened by
+ *  `overscan` px each side. `mustInclude` (e.g. the column being edited) is always kept in the window. */
+export function columnWindow(
+  widths: readonly number[],
+  offset: number,
+  viewport: number,
+  overscan: number,
+  mustInclude?: number,
+): ColumnWindow {
+  const lo = Math.max(0, offset - overscan);
+  const hi = offset + viewport + overscan;
+  let start = widths.length;
+  let end = 0;
+  let x = 0;
+  for (let i = 0; i < widths.length; i++) {
+    const next = x + widths[i];
+    if (next > lo && x < hi) {
+      if (i < start) start = i;
+      end = i + 1;
+    }
+    x = next;
+  }
+  if (start > end) start = end = 0;
+  if (mustInclude !== undefined && mustInclude >= 0 && mustInclude < widths.length) {
+    start = Math.min(start, mustInclude);
+    end = Math.max(end, mustInclude + 1);
+  }
+  let before = 0;
+  for (let i = 0; i < start; i++) before += widths[i];
+  let span = 0;
+  for (let i = start; i < end; i++) span += widths[i];
+  return { start, end, before, after: x - before - span };
+}

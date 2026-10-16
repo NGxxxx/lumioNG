@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { clampWidth, computeColumnWidths, pinnedOffsets, COLWIDTH_SAMPLE, MIN_COL_W, MAX_COL_W, pinnedFirst } from "./colwidth";
+import { clampWidth, columnWindow, computeColumnWidths, pinnedOffsets, COLWIDTH_SAMPLE, MIN_COL_W, MAX_COL_W, pinnedFirst } from "./colwidth";
 import type { ColumnField } from "./schema";
 import type { Doc } from "./doc";
 
@@ -77,5 +77,36 @@ describe("pinnedFirst", () => {
   it("returns the same order when nothing is pinned", () => {
     const cols = [{ path: "a" }, { path: "b" }];
     expect(pinnedFirst(cols, new Set()).map((c) => c.path)).toEqual(["a", "b"]);
+  });
+});
+
+describe("columnWindow", () => {
+  const w = Array(100).fill(100); // 100 columns, 100px each → 10,000px
+
+  it("returns the columns overlapping the viewport plus overscan, with spacer widths for the rest", () => {
+    // viewport [1000, 1500) → columns 10..14; overscan 200px adds 2 each side → 8..16
+    expect(columnWindow(w, 1000, 500, 200)).toEqual({ start: 8, end: 17, before: 800, after: 8300 });
+  });
+
+  it("clamps at both edges", () => {
+    expect(columnWindow(w, 0, 300, 100)).toEqual({ start: 0, end: 4, before: 0, after: 9600 });
+    expect(columnWindow(w, 9800, 300, 100)).toEqual({ start: 97, end: 100, before: 9700, after: 0 });
+  });
+
+  it("treats a negative scroll offset (content still left of the free area) as 0", () => {
+    expect(columnWindow(w, -250, 300, 0)).toEqual({ start: 0, end: 1, before: 0, after: 9900 });
+  });
+
+  it("widens the window to keep a must-render column (e.g. the one being edited)", () => {
+    expect(columnWindow(w, 1000, 500, 0, 2)).toEqual({ start: 2, end: 15, before: 200, after: 8500 });
+    expect(columnWindow(w, 1000, 500, 0, 50)).toEqual({ start: 10, end: 51, before: 1000, after: 4900 });
+  });
+
+  it("handles uneven widths", () => {
+    expect(columnWindow([50, 300, 50, 50], 60, 100, 0)).toEqual({ start: 1, end: 2, before: 50, after: 100 });
+  });
+
+  it("an empty column list is an empty window", () => {
+    expect(columnWindow([], 0, 500, 100)).toEqual({ start: 0, end: 0, before: 0, after: 0 });
   });
 });

@@ -1,4 +1,4 @@
-use crate::bson_json::{bson_to_canonical_string, doc_to_canonical_string};
+use crate::bson_json::{bson_to_raw, doc_to_canonical_string, doc_to_raw, RawDoc};
 use crate::error::AppError;
 use crate::json_bson::{canonical_string_to_doc, canonical_string_to_doc_array};
 use crate::script::host::with_interrupt;
@@ -138,7 +138,7 @@ pub async fn aggregate(
     limit: Option<i64>,
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<RawDoc>, AppError> {
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
@@ -152,7 +152,7 @@ pub async fn aggregate(
         let mut cursor = agg.await?;
         let mut docs = Vec::new();
         while let Some(d) = cursor.try_next().await? {
-            docs.push(doc_to_canonical_string(d)?);
+            docs.push(doc_to_raw(d)?);
         }
         Ok(docs)
     })
@@ -187,7 +187,6 @@ pub async fn aggregate_count(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn query_page(
     session_id: String,
     db: String,
@@ -199,7 +198,7 @@ pub async fn query_page(
     projection: Option<String>, // ExtJSON exclusion doc, e.g. {"big":0}
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<RawDoc>, AppError> {
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let (filter_doc, sort_doc, proj_doc) =
@@ -222,7 +221,7 @@ pub async fn query_page(
 
         let mut docs = Vec::new();
         while let Some(d) = cursor.try_next().await? {
-            docs.push(doc_to_canonical_string(d)?);
+            docs.push(doc_to_raw(d)?);
         }
         Ok(docs)
     })
@@ -238,7 +237,7 @@ pub async fn sample_documents(
     size: i64,
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<RawDoc>, AppError> {
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let user_filter = parse_user_filter(filter.as_deref())?;
@@ -253,7 +252,7 @@ pub async fn sample_documents(
         let mut cursor = agg.await?;
         let mut docs = Vec::new();
         while let Some(d) = cursor.try_next().await? {
-            docs.push(doc_to_canonical_string(d)?);
+            docs.push(doc_to_raw(d)?);
         }
         Ok(docs)
     })
@@ -275,8 +274,17 @@ pub async fn count_documents(
 
     with_interrupt(cancel, deadline, async move {
         let collection = client.database(&db).collection::<Document>(&coll);
+        let max_time = remaining_until(deadline);
+        // No filter → read the count from collection metadata instead of scanning every document.
+        if f.is_empty() {
+            let mut c = collection.estimated_document_count();
+            if let Some(mt) = max_time {
+                c = c.max_time(mt);
+            }
+            return Ok(c.await?);
+        }
         let mut c = collection.count_documents(f);
-        if let Some(mt) = remaining_until(deadline) {
+        if let Some(mt) = max_time {
             c = c.max_time(mt);
         }
         Ok(c.await?)
@@ -293,7 +301,7 @@ pub async fn distinct(
     filter: Option<String>,
     timeout_ms: Option<u64>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<RawDoc>, AppError> {
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let f = parse_user_filter(filter.as_deref())?;
@@ -305,13 +313,12 @@ pub async fn distinct(
             d = d.max_time(mt);
         }
         let values = d.await?;
-        values.iter().map(bson_to_canonical_string).collect()
+        values.iter().map(bson_to_raw).collect()
     })
     .await
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn explain_find(
     session_id: String,
     db: String,

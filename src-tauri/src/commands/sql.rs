@@ -188,7 +188,6 @@ pub async fn cancel_import(session_id: String, state: State<'_, AppState>) -> Re
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn sql_import_commit(
     session_id: String,
     db: String,
@@ -242,7 +241,7 @@ pub async fn sql_import_commit(
         let total = *totals.get(&table).unwrap_or(&0);
 
         let inserted_entry = inserted_by_table.entry(table.clone()).or_insert(0);
-        let errors_entry = errors_by_table.entry(table.clone()).or_insert_with(Vec::new);
+        let errors_entry = errors_by_table.entry(table.clone()).or_default();
         let start = (*inserted_entry + errors_entry.len() as u64) as usize;
         let raw_idx: Vec<usize> = (start..start + batch.len()).collect();
         let stop = insert_batch(&collection, batch, &raw_idx, insert_mode, inserted_entry, errors_entry).await;

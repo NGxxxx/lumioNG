@@ -59,7 +59,7 @@ pub async fn create_index(
         .as_deref()
         .map(canonical_string_to_doc)
         .transpose()?
-        .map(|d| mongodb::bson::from_document::<Collation>(d))
+        .map(mongodb::bson::from_document::<Collation>)
         .transpose()
         .map_err(|e| AppError::Parse(format!("invalid collation: {e}")))?;
     // name = None ⇒ driver auto-generates a default name (field_dir_...).

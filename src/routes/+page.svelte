@@ -41,7 +41,7 @@
   import Toolbar from "#lib/components/Toolbar.svelte";
   import CommandPalette from "#lib/components/CommandPalette.svelte";
   import ShortcutsDialog from "#lib/components/ShortcutsDialog.svelte";
-  import { namespacePaletteItems, parseNamespaceId, recentPaletteItems, type PaletteItem } from "#lib/domain/palette.js";
+  import { namespacePaletteItems, parseNamespaceId, parseRecentCollectionId, recentPaletteItems, type PaletteItem } from "#lib/domain/palette.js";
   import { queryHistory } from "#lib/stores/queryHistory.svelte.js";
   import { recentCollections } from "#lib/stores/recentCollections.svelte.js";
   import type { HistoryEntry } from "#lib/domain/queryHistory.js";
@@ -56,7 +56,7 @@
   import { jobs } from "#lib/stores/jobs.svelte.js";
   import { toast } from "#lib/stores/toast.svelte.js";
   import { SHORTCUTS, type Command, type CommandId } from "#lib/domain/commands.js";
-  import { matchesEvent, isDefaultWebviewAccelerator } from "#lib/domain/shortcuts.js";
+  import { matchesEvent, isDefaultWebviewAccelerator, isTypingTarget } from "#lib/domain/shortcuts.js";
   import { detectPlatform } from "#lib/stores/platform.js";
   import { isModalOpen } from "#lib/stores/modalStack.js";
 
@@ -473,13 +473,10 @@
       if (e) openHistoryEntry(e);
       return;
     }
-    if (id.startsWith("recent:c:")) {
-      const [, , rest] = id.split(":");
-      const [, db, coll] = rest.split("/");
-      if (db && coll) {
-        nav?.selectCollection(db, coll);
-        sm.showDestination();
-      }
+    const recentColl = parseRecentCollectionId(id);
+    if (recentColl) {
+      nav?.selectCollection(recentColl.db, recentColl.coll);
+      sm.showDestination();
       return;
     }
     const target = parseNamespaceId(id);
@@ -506,9 +503,7 @@
   onkeydown={(e) => {
     // "?" needs Shift on most layouts, so it can't go through the combo matcher; never while typing.
     if (e.key === "?" && !isModalOpen() && !e.defaultPrevented && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      const t = e.target as HTMLElement | null;
-      const typing = !!t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.closest(".cm-editor") !== null);
-      if (!typing) {
+      if (!isTypingTarget(e.target)) {
         e.preventDefault();
         shortcutsOpen = true;
         return;
@@ -522,10 +517,7 @@
         if (!c || c.disabled) continue;
         if (matchesEvent(combo, e, plat)) {
           // Mod+Z inside a text field / editor is the field's own undo, not the app's.
-          if (id === "edit.undo") {
-            const t = e.target as HTMLElement | null;
-            if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.closest(".cm-editor") !== null)) continue;
-          }
+          if (id === "edit.undo" && isTypingTarget(e.target)) continue;
           e.preventDefault();
           c.run();
           return;

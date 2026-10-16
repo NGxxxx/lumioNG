@@ -119,3 +119,10 @@ export function blocksNativeSelectAll(e: KeyboardEvent): boolean {
   return !(tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable === true);
 }
 
+
+/** The event target is somewhere the user types (a form field, contenteditable, or a CodeMirror editor),
+ *  so single-key and text-editing shortcuts must leave the key to it. */
+export function isTypingTarget(t: EventTarget | null): boolean {
+  if (!(t instanceof HTMLElement)) return false;
+  return t.isContentEditable === true || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.closest(".cm-editor") !== null;
+}

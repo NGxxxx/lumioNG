@@ -430,7 +430,7 @@ globalThis.__DBNAME = "testdb";
         assert_eq!(opens, 1);
     }
 
-    // A handful of huge documents must stop toArray() on byte size, not just row count (previously only row count was checked).
+    // A handful of huge documents must stop toArray() on byte size, not just row count.
     const BYTE_CAP_STUBS: &str = r#"
 globalThis.__fetchCount = 0;
 globalThis.__find = function(db, coll, q, o){

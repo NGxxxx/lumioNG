@@ -3,6 +3,7 @@
   import type { DocPeek } from "../stores/docPeek.svelte";
   import type { Doc } from "../domain/doc";
   import { flattenDocs } from "../domain/treeFlatten";
+  import { isTypingTarget } from "../domain/shortcuts";
   import { describeValue, truncateForDisplay } from "../domain/extjson";
   import { previewCell } from "../domain/cellPreview";
   import { formatChange } from "../domain/docDiff";
@@ -53,8 +54,7 @@
 
   function onDrawerKey(e: KeyboardEvent) {
     if (!peek.canBack || peek.mode === "edit") return;
-    const t = e.target as HTMLElement | null;
-    if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+    if (isTypingTarget(e.target)) return;
     if (e.key === "Backspace" || (e.altKey && e.key === "ArrowLeft")) {
       e.preventDefault();
       peek.back();

@@ -8,13 +8,13 @@ vi.mock("@tauri-apps/api/core", () => ({
 }));
 
 import { invoke } from "@tauri-apps/api/core";
-import { aggregate, aggregateCount, explainQuery } from "./documents";
+import { aggregate, aggregateCount, explainQuery, fetchFullDoc } from "./documents";
 
 const inv = invoke as ReturnType<typeof vi.fn>;
 
 describe("aggregate / aggregateCount wrappers", () => {
   it("aggregate passes skip and limit through to the aggregate command", async () => {
-    inv.mockResolvedValueOnce(['{"a":1}']);
+    inv.mockResolvedValueOnce([{ a: 1 }]);
     const docs = await aggregate("conn:1", "d", "c", "[]", 10, 5);
     expect(inv).toHaveBeenCalledWith("aggregate", {
       sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]", skip: 10, limit: 5, timeoutMs: null,
@@ -50,5 +50,21 @@ describe("explainQuery wrapper", () => {
       sessionId: "conn:1", db: "d", coll: "c", pipeline: "[]", skip: 0, limit: 5, timeoutMs: null,
     });
     expect(s).toBe('{"stages":[]}');
+  });
+});
+
+describe("fetchFullDoc", () => {
+  it("looks the document up by _id via find_by_id and parses it", async () => {
+    inv.mockResolvedValueOnce('{"_id":{"$oid":"0123456789abcdef01234567"},"a":1}');
+    const doc = await fetchFullDoc("conn:1", "d", "c", '{"$oid":"0123456789abcdef01234567"}');
+    expect(inv).toHaveBeenCalledWith("find_by_id", {
+      sessionId: "conn:1", db: "d", coll: "c", id: '{"$oid":"0123456789abcdef01234567"}',
+    });
+    expect(doc).toEqual({ _id: { $oid: "0123456789abcdef01234567" }, a: 1 });
+  });
+
+  it("returns null when no document has that _id", async () => {
+    inv.mockResolvedValueOnce(null);
+    expect(await fetchFullDoc("conn:1", "d", "c", "1")).toBeNull();
   });
 });

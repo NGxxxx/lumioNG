@@ -8,6 +8,7 @@ import {
   namespacePaletteItems,
   parseNamespaceId,
   recentPaletteItems,
+  parseRecentCollectionId,
   RECENT_BOOST,
   type PaletteItem,
 } from "./palette";
@@ -187,5 +188,25 @@ describe("RECENT_BOOST", () => {
   it("does not lift a recent subsequence match above a plain substring match", () => {
     const r = filterPalette([recent("r", "o_r_d"), item("n", "a/orders")], "ord");
     expect(r[0].item.id).toBe("n");
+  });
+});
+
+describe("parseRecentCollectionId", () => {
+  it("round-trips the ids recentPaletteItems makes, including names with ':' and '/'", () => {
+    const colls = [
+      { connId: 3, db: "shop", coll: "orders" },
+      { connId: null, db: "app", coll: "events:2024/q1" },
+    ];
+    const ids = recentPaletteItems([], colls).map((it) => it.id);
+    expect(ids.map(parseRecentCollectionId)).toEqual([
+      { db: "shop", coll: "orders" },
+      { db: "app", coll: "events:2024/q1" },
+    ]);
+  });
+
+  it("is null for any other id", () => {
+    expect(parseRecentCollectionId("recent:q:7")).toBeNull();
+    expect(parseRecentCollectionId("recent:c:3/onlydb")).toBeNull();
+    expect(parseRecentCollectionId("file.refresh")).toBeNull();
   });
 });

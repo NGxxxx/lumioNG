@@ -84,13 +84,7 @@ pub fn preview_columns<R: Read>(
     let (headers, mut reader) = open_reader(rdr, delimiter)?;
     let mut samples: Vec<Vec<String>> = vec![Vec::new(); headers.len()];
     let mut types: Vec<HashSet<&'static str>> = vec![HashSet::new(); headers.len()];
-    let mut attempted = 0usize;
-
-    for result in reader.records() {
-        if attempted >= max_rows {
-            break;
-        }
-        attempted += 1;
+    for result in reader.records().take(max_rows) {
         let record = match result {
             Ok(r) => r,
             Err(_) => continue,

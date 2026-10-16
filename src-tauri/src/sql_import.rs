@@ -188,7 +188,7 @@ fn value_to_bson(v: &SqlValue, opts: &InferOptions) -> Bson {
 fn expr_to_bson(expr: &Expr, opts: &InferOptions) -> Bson {
     match expr {
         Expr::Value(v) => value_to_bson(v, opts),
-        Expr::UnaryOp { op, expr } if matches!(op, UnaryOperator::Minus) => match expr_to_bson(expr, opts) {
+        Expr::UnaryOp { op: UnaryOperator::Minus, expr } => match expr_to_bson(expr, opts) {
             Bson::Int64(n) => Bson::Int64(-n),
             Bson::Double(n) => Bson::Double(-n),
             other => other,
@@ -373,10 +373,10 @@ mod tests {
         let Statement::Insert(insert) = &statements[0] else { panic!("expected Insert") };
         let rows = insert_values_rows(insert).unwrap();
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let doc = row_to_document(&["id".into(), "name".into(), "active".into()], &rows[0], &opts);
+        let doc = row_to_document(&["id".into(), "name".into(), "active".into()], rows[0], &opts);
         assert_eq!(doc.get_i64("id").unwrap(), 1);
         assert_eq!(doc.get_str("name").unwrap(), "Ada");
-        assert_eq!(doc.get_bool("active").unwrap(), true);
+        assert!(doc.get_bool("active").unwrap());
     }
 
     #[test]
@@ -385,7 +385,7 @@ mod tests {
         let Statement::Insert(insert) = &statements[0] else { panic!("expected Insert") };
         let rows = insert_values_rows(insert).unwrap();
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let doc = row_to_document(&["a".into(), "b".into(), "c".into()], &rows[0], &opts);
+        let doc = row_to_document(&["a".into(), "b".into(), "c".into()], rows[0], &opts);
         assert_eq!(doc.get_i64("a").unwrap(), -5);
         assert_eq!(doc.get_f64("b").unwrap(), 3.14);
         assert_eq!(doc.get("c").unwrap(), &Bson::Null);
@@ -400,7 +400,7 @@ mod tests {
         let Statement::Insert(insert) = &statements[0] else { panic!("expected Insert") };
         let rows = insert_values_rows(insert).unwrap();
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let doc = row_to_document(&["address".into()], &rows[0], &opts);
+        let doc = row_to_document(&["address".into()], rows[0], &opts);
         let nested = doc.get_document("address").unwrap();
         assert_eq!(nested.get_str("city").unwrap(), "Hanoi");
         assert_eq!(nested.get_i32("zip").unwrap(), 100000);
@@ -414,7 +414,7 @@ mod tests {
         let Statement::Insert(insert) = &statements[0] else { panic!("expected Insert") };
         let rows = insert_values_rows(insert).unwrap();
         let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let doc = row_to_document(&["n".into()], &rows[0], &opts);
+        let doc = row_to_document(&["n".into()], rows[0], &opts);
         assert_eq!(doc.get_i64("n").unwrap(), 42);
     }
 
@@ -424,7 +424,7 @@ mod tests {
         let Statement::Insert(insert) = &statements[0] else { panic!("expected Insert") };
         let rows = insert_values_rows(insert).unwrap();
         let opts = InferOptions { parse_json_like: false, infer_scalars: false };
-        let doc = row_to_document(&["n".into()], &rows[0], &opts);
+        let doc = row_to_document(&["n".into()], rows[0], &opts);
         assert_eq!(doc.get_str("n").unwrap(), "42");
     }
 

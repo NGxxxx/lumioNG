@@ -1,5 +1,20 @@
 use crate::error::AppError;
 use mongodb::bson::{Bson, Document};
+use serde_json::value::RawValue;
+
+/// A document already serialized to Canonical ExtJSON; a `Vec<RawDoc>` reaches the frontend as a plain
+/// JSON array of objects, so bulk results are neither string-escaped nor parsed twice.
+pub type RawDoc = Box<RawValue>;
+
+pub fn doc_to_raw(doc: Document) -> Result<RawDoc, AppError> {
+    serde_json::value::to_raw_value(&Bson::Document(doc).into_canonical_extjson())
+        .map_err(|e| AppError::Serialize(e.to_string()))
+}
+
+pub fn bson_to_raw(value: &Bson) -> Result<RawDoc, AppError> {
+    serde_json::value::to_raw_value(&value.clone().into_canonical_extjson())
+        .map_err(|e| AppError::Serialize(e.to_string()))
+}
 
 /// Serialize a Document to a Canonical Extended JSON string (lossless); takes it by value so cursor-loop callers can move each doc in instead of deep-cloning it.
 pub fn doc_to_canonical_string(doc: Document) -> Result<String, AppError> {
@@ -262,5 +277,19 @@ mod tests {
         // 3 raw bytes encode to exactly 4 base64 characters (3 % 3 == 0, no padding needed).
         let b = Bson::Binary(Binary { subtype: mongodb::bson::spec::BinarySubtype::Generic, bytes: vec![1, 2, 3] });
         assert_eq!(describe_bson(&b), ("binary", "Binary(4 b64 chars)".to_string()));
+    }
+
+    #[test]
+    fn raw_docs_serialize_as_a_plain_json_array_matching_the_string_form() {
+        let a = doc! { "_id": ObjectId::new(), "n": 1_i64, "s": "q\"uote" };
+        let b = doc! { "d": DateTime::from_millis(0), "x": 1.5 };
+        let raw = vec![doc_to_raw(a.clone()).unwrap(), doc_to_raw(b.clone()).unwrap()];
+        let out = serde_json::to_string(&raw).unwrap();
+        let expected = format!("[{},{}]", doc_to_canonical_string(a).unwrap(), doc_to_canonical_string(b).unwrap());
+        assert_eq!(out, expected);
+        assert_eq!(
+            serde_json::to_string(&bson_to_raw(&Bson::Int32(7)).unwrap()).unwrap(),
+            bson_to_canonical_string(&Bson::Int32(7)).unwrap()
+        );
     }
 }

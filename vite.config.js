@@ -10,11 +10,8 @@ import { paraglideVitePlugin } from "@inlang/paraglide-js";
 
 const host = process.env.TAURI_DEV_HOST;
 
-// Svelte 5's runes codegen sometimes places a `/* @__PURE__ */` annotation where Rollup can't parse
-// it (e.g. `$.get(x /* @__PURE__ */).size`). Cosmetic only — the build still succeeds, Rollup just
-// strips the malformed comment — so drop this one noisy warning rather than the build's whole output.
-// (build.rollupOptions.onwarn doesn't reliably see it — SvelteKit's own Vite build pipeline logs this
-// particular warning straight through the logger rather than Rollup's onwarn hook.)
+// Drop the harmless "cannot interpret @__PURE__" warning from Svelte 5 codegen. It goes straight to the
+// logger (not rollupOptions.onwarn), so it has to be filtered here.
 const logger = createLogger();
 const rawWarn = logger.warn.bind(logger);
 /**

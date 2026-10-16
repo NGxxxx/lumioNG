@@ -18,7 +18,7 @@ pub struct Session {
 #[derive(Default)]
 pub struct AppState {
     pub sessions: Mutex<HashMap<String, Session>>,
-    /// Per-session cooperative cancel flag, shared by every cancellable op on that session — see git history for the single-flag tradeoff rationale if this surprises you.
+    /// Per-session cooperative cancel flag, shared by every cancellable op on that session.
     pub cancels: Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 

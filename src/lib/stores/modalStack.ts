@@ -19,7 +19,7 @@ export function pushModal(handlers: ModalHandlers): () => void {
   };
 }
 
-/** True while at least one dialog is registered — the global shortcut dispatcher (Slice 3) checks this. */
+/** True while at least one dialog is registered — gates the global shortcut dispatcher. */
 export function isModalOpen(): boolean {
   return stack.length > 0;
 }

@@ -191,9 +191,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     sortKeys = [];
     clearLayout(layoutKey);
     bumpGeneration();
-    currentPage = 1;
-    await refreshCount();
-    await loadPage();
+    await loadFirstPage();
   }
 
   async function loadSchema() {
@@ -216,8 +214,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
   async function init() {
     void loadIndexedFields();
     const schemaP = loadSchema();
-    await refreshCount();
-    await loadPage();
+    await loadFirstPage();
     await schemaP;
     // loadSchema() can resolve after loadPage() already recomputed columns, so recompute once more in case schema metadata arrived late.
     ensureColumns();
@@ -269,6 +266,12 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       if (gen === generation) loading = false;
       activity.end();
     }
+  }
+
+  /** Page 1 needs no clamping, so the count (slow on big collections) runs alongside the page fetch instead of gating it. */
+  async function loadFirstPage() {
+    currentPage = 1;
+    await Promise.all([refreshCount(), loadPage()]);
   }
 
   /** Recount documents under the active filter and clamp currentPage; every caller follows this with loadPage(), which owns clearing `loading`. */
@@ -381,9 +384,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     sortKeys = next;
     saveLayoutSoon();
     bumpGeneration();
-    currentPage = 1;
-    await refreshCount();
-    await loadPage();
+    await loadFirstPage();
   }
 
   const toggleSort = (path: string, shift: boolean) =>
@@ -483,10 +484,8 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     filterHistoryStore.record(historyKey, r.json);
     schema = null;
     bumpGeneration();
-    currentPage = 1;
     await loadSchema();
-    await refreshCount();
-    await loadPage();
+    await loadFirstPage();
   }
 
   async function startEdit(row: number, key: string) {

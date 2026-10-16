@@ -52,11 +52,10 @@ fn spawn_csv_producer(
         let mut batch: Vec<CsvRow> = Vec::with_capacity(CSV_IMPORT_BATCH);
         for (i, result) in reader.records().enumerate() {
             batch.push(convert_record(i, result, &headers, &infer_opts));
-            if batch.len() >= CSV_IMPORT_BATCH {
-                if tx.blocking_send(Ok(std::mem::take(&mut batch))).is_err() {
+            if batch.len() >= CSV_IMPORT_BATCH
+                && tx.blocking_send(Ok(std::mem::take(&mut batch))).is_err() {
                     return; // consumer dropped rx (StopOnFirstError-style early exit in slice 4)
                 }
-            }
         }
         if !batch.is_empty() {
             let _ = tx.blocking_send(Ok(batch));
@@ -66,7 +65,6 @@ fn spawn_csv_producer(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn csv_import_commit(
     session_id: String,
     db: String,

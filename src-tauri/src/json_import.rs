@@ -1,4 +1,5 @@
-//! Pure JSON/JSONL import helpers: parsing one line/array-element, and counting/detecting the file shape without materializing documents. Mirrors `csv_import.rs`'s role for the CSV import path; the streaming glue (spawn_blocking + progress channel) stays in `commands/import_export.rs`.
+//! Pure JSON/JSONL import helpers: parse one line/element, count and detect the file shape without
+//! materializing documents. Streaming glue lives in `commands/import_export.rs`.
 use crate::error::AppError;
 use crate::json_bson::canonical_string_to_doc;
 use mongodb::bson::Document;

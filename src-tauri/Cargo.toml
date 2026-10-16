@@ -24,7 +24,7 @@ tauri-plugin-dialog = "2"
 mongodb = "~3.8"
 russh = "0.64"
 serde = { version = "1", features = ["derive"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["raw_value"] }
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "net", "io-util"] }
 futures = "0.3"
 rquickjs = { version = "0.14", features = ["loader"] }
@@ -36,13 +36,11 @@ base64 = "0.23"
 # `macros` enables `#[tokio::test]` for the ssh_tunnel in-process server/client tests.
 tokio = { version = "1", features = ["macros"] }
 
-# Release profile tuned for a small, self-contained binary (HeidiSQL-like footprint).
-# opt-level "s" + LTO + single codegen unit shrink code size; strip drops symbols;
-# panic="abort" removes unwinding tables. Tests run on the dev profile (still unwinds).
+# Release profile tuned for a small binary. Keep the default panic="unwind": the script engine
+# relies on catch_unwind to survive a QuickJS host panic instead of taking the whole app down.
 [profile.release]
 opt-level = "s"
 lto = true
 codegen-units = 1
 strip = true
-panic = "abort"
 

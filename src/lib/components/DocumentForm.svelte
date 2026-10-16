@@ -38,7 +38,7 @@
   let docValue = $state.raw<Doc>(
     untrack(() => structuredClone($state.snapshot(initial) ?? ({} as Doc))),
   );
-  // Raw JSON text is derived from docValue lazily — never needed if the user stays on the Tree tab; previously recomputed on every tab switch.
+  // Raw JSON text is derived lazily — never computed if the user stays on the Tree tab.
   let text = $state("");
   let textDirty = $state(true); // text hasn't been derived from docValue yet
   let treeDirty = $state(false); // docValue hasn't been derived from (edited) text yet

@@ -1,4 +1,7 @@
-// Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
+// Tauri commands take every IPC argument as its own parameter.
+#![allow(clippy::too_many_arguments)]
+// Tests use literals like 3.14 as ordinary sample values, not as approximations of PI.
+#![cfg_attr(test, allow(clippy::approx_constant))]
 mod bson_import;
 mod bson_json;
 mod commands;

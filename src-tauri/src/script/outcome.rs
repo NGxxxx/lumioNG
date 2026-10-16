@@ -26,7 +26,7 @@ pub enum ResultDisplay {
     },
     /// A single non-doc value (scalar/object), Canonical ExtJSON.
     Value { json: String },
-    /// A write acknowledgement (matched/modified/insertedId…), Canonical ExtJSON. (Slice 2.)
+    /// A write acknowledgement (matched/modified/insertedId…), Canonical ExtJSON.
     Ack { json: String },
     /// Nothing to show in the result area.
     None,

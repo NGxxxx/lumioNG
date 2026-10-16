@@ -10,7 +10,7 @@
     "check": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
     "tauri": "tauri",
-    "pretest": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide",
+    "pretest": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide && svelte-kit sync",
     "test": "vitest run --passWithNoTests"
   },
   "license": "MIT",
@@ -32,6 +32,7 @@
   },
   "devDependencies": {
     "@inlang/paraglide-js": "^2.27.0",
+    "@inlang/plugin-message-format": "^4.4.0",
     "@sveltejs/adapter-static": "^4.0.0",
     "@sveltejs/kit": "^3.0.1",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",

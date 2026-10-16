@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { matchesEvent, formatCombo, isDefaultWebviewAccelerator, blocksNativeSelectAll } from "./shortcuts";
+import { matchesEvent, formatCombo, isDefaultWebviewAccelerator, blocksNativeSelectAll, isTypingTarget } from "./shortcuts";
 
 function evt(partial: {
   key: string;
@@ -165,3 +165,23 @@ describe("blocksNativeSelectAll", () => {
   });
 });
 
+
+describe("isTypingTarget", () => {
+  it("is true for form fields, contenteditable and anything inside a CodeMirror editor", () => {
+    for (const tag of ["input", "textarea", "select"]) expect(isTypingTarget(document.createElement(tag))).toBe(true);
+    const editable = document.createElement("div");
+    Object.defineProperty(editable, "isContentEditable", { value: true }); // jsdom doesn't compute it
+    expect(isTypingTarget(editable)).toBe(true);
+    const cm = document.createElement("div");
+    cm.className = "cm-editor";
+    const line = document.createElement("span");
+    cm.append(line);
+    expect(isTypingTarget(line)).toBe(true);
+  });
+
+  it("is false for other elements and non-elements", () => {
+    expect(isTypingTarget(document.createElement("button"))).toBe(false);
+    expect(isTypingTarget(null)).toBe(false);
+    expect(isTypingTarget(window)).toBe(false);
+  });
+});

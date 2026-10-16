@@ -63,7 +63,7 @@ export interface GridPageView {
   readonly loadGen?: string;
   toggleSort?(path: string, shift: boolean): void;
 
-  // Grid-scoped keyboard shortcuts (Slice 4) — all optional since the two backing stores
+  // Grid-scoped keyboard shortcuts — all optional since the two backing stores
   // (collectionView vs. queryScript) aren't symmetric in what they support.
   /** Ctrl+Delete: delete the current selection (both stores support this). */
   requestDeleteSelected?(): void;

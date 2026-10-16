@@ -1,4 +1,5 @@
-//! Pure BSON-stream counting helpers for the concatenated-BSON import path (`import_bson`): count documents by reading length prefixes without materializing bodies. Gives BSON import the same top-level pure-logic module CSV/SQL already have; the streaming glue (spawn_blocking + progress channel) stays in `commands/import_export.rs`.
+//! Pure helpers for concatenated-BSON import: count documents from length prefixes without
+//! materializing bodies. Streaming glue lives in `commands/import_export.rs`.
 use crate::error::AppError;
 use std::io::Read;
 
@@ -22,10 +23,7 @@ pub(crate) fn read_len_prefix<R: std::io::Read>(reader: &mut R) -> Result<Option
 /// Counts concatenated BSON documents by reading each length prefix and discarding the body, never buffering a whole document.
 pub(crate) fn count_bson_docs_streaming<R: std::io::Read>(mut reader: R) -> Result<u64, AppError> {
     let mut n = 0u64;
-    loop {
-        let Some(len_buf) = read_len_prefix(&mut reader)? else {
-            break;
-        };
+    while let Some(len_buf) = read_len_prefix(&mut reader)? {
         let len = i32::from_le_bytes(len_buf);
         if len < 5 {
             return Err(AppError::Parse("invalid BSON document length".into()));

@@ -1,7 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import type { Doc } from "../domain/doc";
 
-/** Returns documents parsed from Canonical Extended JSON strings; paginated via skip/limit, empty `sort` defaults to {_id:1}. */
+/** Returns Canonical Extended JSON documents; paginated via skip/limit, empty `sort` defaults to {_id:1}. */
 export async function queryPage(
   sessionId: string,
   db: string,
@@ -13,7 +13,7 @@ export async function queryPage(
   projection: string | null = null,
   timeoutMs: number | null = null,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("query_page", {
+  return await invoke<Doc[]>("query_page", {
     sessionId,
     db,
     coll,
@@ -24,7 +24,6 @@ export async function queryPage(
     projection,
     timeoutMs,
   });
-  return rows.map((s) => JSON.parse(s) as Doc);
 }
 
 export async function insertDocument(sessionId: string, db: string, coll: string, docJson: string): Promise<string> {
@@ -47,17 +46,8 @@ export async function deleteDocument(sessionId: string, db: string, coll: string
 
 /** Fetches the full document by _id (no projection) — safe for edit/replace. */
 export async function fetchFullDoc(sessionId: string, db: string, coll: string, idJson: string): Promise<Doc | null> {
-  const rows = await invoke<string[]>("query_page", {
-    sessionId,
-    db,
-    coll,
-    skip: 0,
-    limit: 1,
-    filter: `{"_id": ${idJson}}`,
-    sort: null,
-    projection: null,
-  });
-  return rows.length ? (JSON.parse(rows[0]) as Doc) : null;
+  const text = await findById(sessionId, db, coll, idJson);
+  return text === null ? null : (JSON.parse(text) as Doc);
 }
 
 /** Returns `size` random documents for schema sampling (filter applied if provided). */
@@ -69,8 +59,7 @@ export async function sampleDocuments(
   size = 100,
   timeoutMs: number | null = null,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("sample_documents", { sessionId, db, coll, filter, size, timeoutMs });
-  return rows.map((s) => JSON.parse(s) as Doc);
+  return await invoke<Doc[]>("sample_documents", { sessionId, db, coll, filter, size, timeoutMs });
 }
 
 /** Counts documents matching the filter (Canonical ExtJSON). */
@@ -93,8 +82,7 @@ export async function distinct(
   filter = "{}",
   timeoutMs: number | null = null,
 ): Promise<unknown[]> {
-  const rows = await invoke<string[]>("distinct", { sessionId, db, coll, field, filter, timeoutMs });
-  return rows.map((s) => JSON.parse(s) as unknown);
+  return await invoke<unknown[]>("distinct", { sessionId, db, coll, field, filter, timeoutMs });
 }
 
 /** Updates many documents by filter; `allowAll=true` required to allow an empty filter. Returns matched/modified counts. */
@@ -274,10 +262,9 @@ export async function exportQueryProgress(
   projection: string | null,
   onProgress: ProgressCb,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("export_query_progress", {
+  return await invoke<Doc[]>("export_query_progress", {
     sessionId, db, coll, filter, sort, projection, onProgress: progressChannel(onProgress),
   });
-  return rows.map((s) => JSON.parse(s) as Doc);
 }
 
 /** Requests cancellation of the export currently in flight on this session (cooperative -- the
@@ -333,8 +320,7 @@ export async function aggregate(
   limit: number | null,
   timeoutMs: number | null = null,
 ): Promise<Doc[]> {
-  const rows = await invoke<string[]>("aggregate", { sessionId, db, coll, pipeline, skip, limit, timeoutMs });
-  return rows.map((s) => JSON.parse(s) as Doc);
+  return await invoke<Doc[]>("aggregate", { sessionId, db, coll, pipeline, skip, limit, timeoutMs });
 }
 
 /** Counts documents an aggregate pipeline would produce (appends a $count stage). */

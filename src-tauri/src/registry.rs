@@ -362,7 +362,7 @@ mod tests {
         let list = upsert(vec![], None, i);
         save(&path, &list).unwrap();
         let loaded = load(&path).unwrap();
-        assert_eq!(loaded[0].ssh_enabled, true);
+        assert!(loaded[0].ssh_enabled);
         assert_eq!(loaded[0].ssh_host, "bastion.example.com");
         assert_eq!(loaded[0].ssh_private_key_path, "/home/me/.ssh/id_ed25519");
         assert_eq!(loaded[0].tls_certificate_key_file, "/certs/client.pem");
@@ -377,7 +377,7 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(&path, r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
         let list = load(&path).unwrap();
-        assert_eq!(list[0].ssh_enabled, false);
+        assert!(!list[0].ssh_enabled);
         assert_eq!(list[0].ssh_host, "");
         assert_eq!(list[0].tls_certificate_key_file, "");
         let _ = std::fs::remove_dir_all(&dir);

@@ -1,5 +1,5 @@
 use crate::bson_import::count_bson_docs_streaming;
-use crate::bson_json::doc_to_canonical_string;
+use crate::bson_json::{doc_to_canonical_string, doc_to_raw, RawDoc};
 use crate::error::AppError;
 use crate::json_import::{count_jsonl_lines, detect_json_array, parse_array_element, parse_jsonl_line};
 use crate::state::AppState;
@@ -481,7 +481,6 @@ pub fn read_text_file_if_exists(path: String) -> Result<Option<String>, AppError
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn import_documents(
     session_id: String,
     db: String,
@@ -520,7 +519,6 @@ pub async fn import_documents(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn export_json_progress(
     session_id: String,
     db: String,
@@ -549,7 +547,7 @@ pub async fn export_json_progress(
             let s = doc_to_canonical_string(d)?;
             write_json_array_element(&mut w, &s, count == 0).map_err(|e| AppError::Io(e.to_string()))?;
             count += 1;
-            if count % PROGRESS_BATCH == 0 {
+            if count.is_multiple_of(PROGRESS_BATCH) {
                 let _ = on_progress.send(ExportProgress { done: count, total });
             }
         }
@@ -564,7 +562,6 @@ pub async fn export_json_progress(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn export_bson_progress(
     session_id: String,
     db: String,
@@ -593,7 +590,7 @@ pub async fn export_bson_progress(
             let bytes = mongodb::bson::to_vec(&d).map_err(|e| AppError::Parse(e.to_string()))?;
             w.write_all(&bytes).map_err(|e| AppError::Io(e.to_string()))?;
             count += 1;
-            if count % PROGRESS_BATCH == 0 {
+            if count.is_multiple_of(PROGRESS_BATCH) {
                 let _ = on_progress.send(ExportProgress { done: count, total });
             }
         }
@@ -607,7 +604,6 @@ pub async fn export_bson_progress(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn export_csv_progress(
     session_id: String,
     db: String,
@@ -633,7 +629,7 @@ pub async fn export_csv_progress(
         check_cancelled(&cancel)?;
         columns_acc.observe(&d);
         scanned += 1;
-        if scanned % PROGRESS_BATCH == 0 {
+        if scanned.is_multiple_of(PROGRESS_BATCH) {
             let _ = on_progress.send(ExportProgress { done: scanned, total: report_total });
         }
     }
@@ -656,7 +652,7 @@ pub async fn export_csv_progress(
                 check_cancelled(&cancel)?;
                 crate::csv_export::write_row(&mut w, &columns, &d).map_err(|e| AppError::Io(e.to_string()))?;
                 count += 1;
-                if count % PROGRESS_BATCH == 0 {
+                if count.is_multiple_of(PROGRESS_BATCH) {
                     let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
                 }
             }
@@ -671,7 +667,6 @@ pub async fn export_csv_progress(
 }
 
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn export_sql_progress(
     session_id: String,
     db: String,
@@ -697,7 +692,7 @@ pub async fn export_sql_progress(
         check_cancelled(&cancel)?;
         schema.observe(&d);
         scanned += 1;
-        if scanned % PROGRESS_BATCH == 0 {
+        if scanned.is_multiple_of(PROGRESS_BATCH) {
             let _ = on_progress.send(ExportProgress { done: scanned, total: report_total });
         }
     }
@@ -722,7 +717,7 @@ pub async fn export_sql_progress(
                 crate::sql_export::write_insert(&mut w, &coll, &columns, &d, count == 0)
                     .map_err(|e| AppError::Io(e.to_string()))?;
                 count += 1;
-                if count % PROGRESS_BATCH == 0 {
+                if count.is_multiple_of(PROGRESS_BATCH) {
                     let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
                 }
             }
@@ -746,7 +741,7 @@ pub async fn export_query_progress(
     projection: Option<String>,
     on_progress: Channel<ExportProgress>,
     state: State<'_, AppState>,
-) -> Result<Vec<String>, AppError> {
+) -> Result<Vec<RawDoc>, AppError> {
     let cancel = state.begin_cancel(&session_id).await;
     let (mut cursor, total) = open_export_cursor(
         state, &session_id, &db, &coll,
@@ -765,13 +760,13 @@ pub async fn export_query_progress(
         if docs.len() as u64 >= MAX_SHOW_ALL_DOCS {
             return Err(show_all_cap_error(None)); // never truncate silently -- a partial set read as complete is worse
         }
-        let s = doc_to_canonical_string(d)?;
-        bytes += s.len();
+        let s = doc_to_raw(d)?;
+        bytes += s.get().len();
         if bytes > MAX_SHOW_ALL_BYTES {
             return Err(show_all_byte_cap_error()); // ditto: a handful of oversized docs can blow memory well under the doc-count cap
         }
         docs.push(s);
-        if docs.len() as u64 % PROGRESS_BATCH == 0 {
+        if (docs.len() as u64).is_multiple_of(PROGRESS_BATCH) {
             let _ = on_progress.send(ExportProgress { done: docs.len() as u64, total });
         }
     }

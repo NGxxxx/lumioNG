@@ -10,7 +10,8 @@
   import { previewCell } from "../domain/cellPreview";
   import { createClipboardCopy } from "../stores/clipboardCopy";
   import { moveCursor, extendTo, toggleAt, jumpTo, type NavState } from "../domain/gridNav";
-  import { pinnedFirst, pinnedOffsets } from "../domain/colwidth";
+  import { isTypingTarget } from "../domain/shortcuts";
+  import { columnWindow, pinnedFirst, pinnedOffsets } from "../domain/colwidth";
   import ContextMenu from "./ContextMenu.svelte";
   import { toast } from "../stores/toast.svelte";
   import type { GridPageView } from "../domain/gridView";
@@ -81,7 +82,28 @@
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
     headerMenu = { x: e.type === "contextmenu" ? e.clientX : r.left, y: e.type === "contextmenu" ? e.clientY : r.bottom + 4, path };
   }
-  const gridColCount = $derived(v.columnFields.length + 1);
+  // Wide documents: once there are enough columns to matter, render only those in view (pinned ones always).
+  const COL_VIRTUALIZE_MIN = 40;
+  const COL_OVERSCAN_PX = 400;
+  let scrollLeft = $state(0);
+  let viewportW = $state(0);
+  const widthOf = (path: string) => v.colWidths[path] ?? FALLBACK_COL_W;
+  const pinnedCols = $derived(pins.size ? cols.filter((c) => c.path in pinLeft) : []);
+  const freeCols = $derived(pins.size ? cols.filter((c) => !(c.path in pinLeft)) : cols);
+  const liveWindow = $derived.by(() => {
+    if (cols.length < COL_VIRTUALIZE_MIN || viewportW === 0) return null;
+    const pinnedW = pinnedCols.reduce((sum, c) => sum + widthOf(c.path), 0);
+    const editKey = v.editing?.key;
+    const editIdx = editKey === undefined ? undefined : freeCols.findIndex((c) => c.path === editKey);
+    return columnWindow(freeCols.map((c) => widthOf(c.path)), scrollLeft - ROWNUM_W - pinnedW, viewportW, COL_OVERSCAN_PX, editIdx);
+  });
+  // Scrolling changes liveWindow on every event; the rows only re-render when the window itself moves.
+  const windowKey = $derived(liveWindow ? `${liveWindow.start}:${liveWindow.end}:${liveWindow.before}:${liveWindow.after}` : "");
+  const colWindow = $derived.by(() => (void windowKey, untrack(() => liveWindow)));
+  const renderCols = $derived(colWindow ? [...pinnedCols, ...freeCols.slice(colWindow.start, colWindow.end)] : cols);
+  const spacerBefore = $derived(colWindow?.before ?? 0);
+  const spacerAfter = $derived(colWindow?.after ?? 0);
+  const gridColCount = $derived(renderCols.length + 1 + (spacerBefore > 0 ? 1 : 0) + (spacerAfter > 0 ? 1 : 0));
   const gridTotalWidth = $derived(
     ROWNUM_W + v.columnFields.reduce((sum, c) => sum + (v.colWidths[c.path] ?? FALLBACK_COL_W), 0),
   );
@@ -162,8 +184,6 @@
   }
   /** Rows that fit in the viewport, for PageUp / PageDown. */
   const pageRows = () => Math.max(1, Math.floor((scrollerEl?.clientHeight ?? 0) / gridRowH()) - 1);
-  const isEditable = (t: EventTarget | null) =>
-    t instanceof HTMLElement && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || t.closest(".cm-editor") !== null);
 
   function onRowClick(row: number, pos: number, e: MouseEvent) {
     cursor = pos;
@@ -251,7 +271,7 @@
   }
   function onGridKey(e: KeyboardEvent) {
     if (v.editing?.kind === "inline") return; // let the input's native copy/paste through
-    if (isEditable(e.target)) return; // typing in a field inside the grid is never a shortcut
+    if (isTypingTarget(e.target)) return; // typing in a field inside the grid is never a shortcut
     // A focused button inside the grid (eye, column ▾, copy) handles its own keys.
     if (e.target instanceof HTMLElement && e.target !== scrollerEl && e.target.closest("button")) return;
     const mod = e.ctrlKey || e.metaKey;
@@ -303,6 +323,7 @@
 <div class="grid-region">
   {#if v.loading && v.docs.length > 0}<div class="progress-bar" role="progressbar" aria-label={m.common_loading()}></div>{/if}
   <div class="scroller" role="grid" tabindex="0" aria-label={m.result_table_aria_grid()} onkeydown={onGridKey} bind:this={scrollerEl}
+    bind:clientWidth={viewportW} onscroll={(e) => { scrollLeft = e.currentTarget.scrollLeft; }}
     onclick={(e) => { if (!(e.target as Element).closest("tr[data-index], thead, button, input, .modal-editor")) onbackground?.(); }}
     style="--grid-row-h: {gridRowH()}px">
     {#if v.columnFields.length === 0}
@@ -311,14 +332,17 @@
     <table style="width:{gridTotalWidth}px">
       <colgroup>
         <col class="col-rownum" />
-        {#each cols as c (c.path)}
+        {#each renderCols as c, i (c.path)}
+          {#if i === pinnedCols.length && spacerBefore > 0}<col style="width:{spacerBefore}px" />{/if}
           <col style="width:{v.colWidths[c.path] ?? FALLBACK_COL_W}px" />
         {/each}
+        {#if spacerAfter > 0}<col style="width:{spacerAfter}px" />{/if}
       </colgroup>
       <thead>
         <tr>
           <th class="th-rownum">#</th>
-          {#each cols as c (c.path)}
+          {#each renderCols as c, i (c.path)}
+            {#if i === pinnedCols.length && spacerBefore > 0}<th class="col-spacer" aria-hidden="true"></th>{/if}
             <th
               class="th-data"
               class:pinned={c.path in pinLeft}
@@ -346,6 +370,7 @@
                 ondblclick={(e) => { e.stopPropagation(); v.resetColWidth(c.path); }}
               ></span></th>
           {/each}
+          {#if spacerAfter > 0}<th class="col-spacer" aria-hidden="true"></th>{/if}
         </tr>
       </thead>
       <tbody>
@@ -373,10 +398,11 @@
                 </button>
               {/if}
             </td>
-            {#each cols as c}
+            {#each renderCols as c, i (c.path)}
               {@const k = c.path}
               {@const val = getByPath(d, k)}
               {@const p = previewCell(val)}
+              {#if i === pinnedCols.length && spacerBefore > 0}<td class="col-spacer"></td>{/if}
               <td class="data-cell" class:num={p.align === "right"} class:pinned={k in pinLeft}
                 style:left={k in pinLeft ? `${pinLeft[k]}px` : undefined}
                 class:cell-editing-modal={v.editing?.kind === "modal" && v.editing.row === row && v.editing.key === k}
@@ -415,6 +441,7 @@
                 {/if}
               </td>
             {/each}
+            {#if spacerAfter > 0}<td class="col-spacer"></td>{/if}
           </tr>
         {/each}
         {#if padBottom > 0}
@@ -424,7 +451,7 @@
           {#each { length: SKELETON_ROWS } as _, i (i)}
             <tr class="skeleton-row" aria-hidden="true">
               <td class="td-rownum"></td>
-              {#each cols as c (c.path)}<td><span class="skeleton-bar" style="width:{40 + ((i * 7 + c.path.length * 13) % 45)}%"></span></td>{/each}
+              {#each renderCols as c, j (c.path)}{#if j === pinnedCols.length && spacerBefore > 0}<td class="col-spacer"></td>{/if}<td><span class="skeleton-bar" style="width:{40 + ((i * 7 + c.path.length * 13) % 45)}%"></span></td>{/each}{#if spacerAfter > 0}<td class="col-spacer"></td>{/if}
             </tr>
           {/each}
         {/if}
@@ -465,7 +492,6 @@
 {/if}
 
 <style>
-  /* Copied verbatim from ResultTable.svelte's pre-refactor style block; pager/error/io-ok/status/tree-wrap rules stay there. */
   .grid-region { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   /* Isolates paint context to avoid a WebView2 compositing glitch on the sticky header seam. */
   .scroller { overflow: auto; flex: 1; position: relative; contain: paint; isolation: isolate; }
@@ -510,6 +536,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     will-change: transform;
+  }
+  .col-spacer {
+    padding: 0;
+    border: 0;
   }
   .th-rownum {
     width: 2.625rem;

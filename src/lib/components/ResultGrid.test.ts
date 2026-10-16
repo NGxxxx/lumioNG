@@ -670,3 +670,69 @@ describe("ResultGrid reference jump", () => {
     expect(onref).toHaveBeenLastCalledWith("tagIds", oid("03"), null);
   });
 });
+
+describe("ResultGrid column virtualization", () => {
+  // 100 fields f0..f99, 100px each; the scroller reports an 800px viewport.
+  const fields = Array.from({ length: 100 }, (_, i) => `f${String(i).padStart(2, "0")}`);
+  const doc: Doc = Object.fromEntries(fields.map((f) => [f, 1]));
+  const widths = Object.fromEntries(fields.map((f) => [f, 100]));
+  let restoreClientWidth: (() => void) | undefined;
+  beforeAll(() => {
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", {
+      configurable: true,
+      get(this: HTMLElement) { return this.classList.contains("scroller") ? 800 : 0; },
+    });
+    restoreClientWidth = () => {
+      if (descriptor) Object.defineProperty(HTMLElement.prototype, "clientWidth", descriptor);
+    };
+  });
+  afterAll(() => restoreClientWidth?.());
+
+  const headers = (c: HTMLElement) => [...c.querySelectorAll("th.th-data .colname")].map((e) => e.textContent);
+
+  it("renders only the columns in view (plus overscan) with spacers standing in for the rest", () => {
+    const v = baseView([doc], { colWidths: widths });
+    const { container } = render(ResultGrid, { props: { v } });
+    const shown = headers(container);
+    expect(shown.length).toBeLessThan(20);
+    expect(shown[0]).toBe("f00");
+    expect(container.querySelector("table")!.style.width).toBe(`${42 + 100 * 100}px`);
+    // One trailing spacer cell per row keeps the table at its full width.
+    expect(container.querySelectorAll("tbody tr[data-index] td.col-spacer")).toHaveLength(1);
+  });
+
+  it("scrolling right swaps in the columns now in view", async () => {
+    const v = baseView([doc], { colWidths: widths });
+    const { container } = render(ResultGrid, { props: { v } });
+    const scroller = container.querySelector(".scroller") as HTMLDivElement;
+    scroller.scrollLeft = 5000;
+    await fireEvent.scroll(scroller);
+    const shown = headers(container);
+    expect(shown).toContain("f50");
+    expect(shown).not.toContain("f00");
+    expect(container.querySelectorAll("tbody tr[data-index] td.col-spacer")).toHaveLength(2);
+  });
+
+  it("pinned columns and the cell being edited always stay rendered", () => {
+    const v = baseView([doc], {
+      colWidths: widths,
+      pinned: new Set(["f99"]),
+      editing: { row: 0, key: "f60", kind: "inline" },
+      editText: "1",
+    });
+    const { container } = render(ResultGrid, { props: { v } });
+    const shown = headers(container);
+    expect(shown[0]).toBe("f99");
+    expect(shown).toContain("f60");
+    expect(container.querySelector("input.celledit")).toBeTruthy();
+  });
+
+  it("small grids render every column", () => {
+    const few = Object.fromEntries(fields.slice(0, 10).map((f) => [f, 1]));
+    const v = baseView([few], { colWidths: widths });
+    const { container } = render(ResultGrid, { props: { v } });
+    expect(headers(container)).toHaveLength(10);
+    expect(container.querySelector(".col-spacer")).toBeNull();
+  });
+});

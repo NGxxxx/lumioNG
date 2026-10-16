@@ -46,8 +46,7 @@ fn opt_bool(d: &Document, k: &str) -> bool {
 }
 
 fn req_doc(d: &Document, k: &str) -> Result<Document, crate::error::AppError> {
-    d.get_document(k)
-        .map(|x| x.clone())
+    d.get_document(k).cloned()
         .map_err(|_| crate::error::AppError::Query(format!("write op missing '{k}' document")))
 }
 
@@ -369,12 +368,14 @@ mod write_ops_tests {
 
     #[test]
     fn build_ack_serializes_counts_and_both_id_arrays() {
-        let mut a = WriteAccum::default();
-        a.inserted_count = 2;
-        a.matched_count = 1;
-        a.modified_count = 1;
-        a.deleted_count = 3;
-        a.upserted_count = 1;
+        let mut a = WriteAccum {
+            inserted_count: 2,
+            matched_count: 1,
+            modified_count: 1,
+            deleted_count: 3,
+            upserted_count: 1,
+            ..Default::default()
+        };
         a.inserted_ids.push(r#"{"$oid":"507f1f77bcf86cd799439011"}"#.into());
         a.upserted_ids.push(r#"{"$oid":"aabbccddeeff001122334455"}"#.into());
         let json = a.build_ack();

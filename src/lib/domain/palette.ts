@@ -183,6 +183,20 @@ export function parseNamespaceId(id: string): NamespaceTarget | null {
 }
 
 const RECENT_LIMIT = 5;
+const RECENT_COLL_PREFIX = "recent:c:";
+
+/** Decodes a "recent collection" id (`recent:c:<connId>/<db>/<coll>`); db names never contain "/",
+ *  collection names may contain both "/" and ":". */
+export function parseRecentCollectionId(id: string): { db: string; coll: string } | null {
+  if (!id.startsWith(RECENT_COLL_PREFIX)) return null;
+  const rest = id.slice(RECENT_COLL_PREFIX.length);
+  const a = rest.indexOf("/");
+  const b = a === -1 ? -1 : rest.indexOf("/", a + 1);
+  if (b === -1) return null;
+  const db = rest.slice(a + 1, b);
+  const coll = rest.slice(b + 1);
+  return db && coll ? { db, coll } : null;
+}
 
 /** "Recent" palette rows: the last few distinct queries, then the last few opened collections. */
 export function recentPaletteItems(
@@ -209,7 +223,7 @@ export function recentPaletteItems(
   let n = 0;
   for (const c of colls) {
     if (n >= RECENT_LIMIT) break;
-    const id = `recent:c:${c.connId ?? ""}/${c.db}/${c.coll}`;
+    const id = `${RECENT_COLL_PREFIX}${c.connId ?? ""}/${c.db}/${c.coll}`;
     if (seenC.has(id)) continue;
     seenC.add(id);
     n++;

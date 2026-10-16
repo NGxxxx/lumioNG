@@ -107,7 +107,6 @@ pub async fn gridfs_preview_bytes(
 /// invoking the existing `cancel_export` command, no new cancel endpoint needed. `total_bytes` is
 /// supplied by the caller (already known from the file's list row) rather than re-queried here.
 #[tauri::command]
-#[allow(clippy::too_many_arguments)]
 pub async fn gridfs_download(
     session_id: String,
     db: String,

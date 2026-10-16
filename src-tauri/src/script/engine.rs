@@ -55,7 +55,9 @@ fn input_location(stack: &str) -> Option<String> {
 }
 
 /// Shared `{kind, db, coll, q, o}` shape used by both the `cursorRef` result tag and the `explainHint` sibling field.
-fn cursor_query_fields(v: &serde_json::Value) -> (String, String, String, String, Option<String>, Option<String>, i64, Option<i64>) {
+type CursorQueryFields = (String, String, String, String, Option<String>, Option<String>, i64, Option<i64>);
+
+fn cursor_query_fields(v: &serde_json::Value) -> CursorQueryFields {
     let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("find").to_string();
     let db = v.get("db").and_then(|x| x.as_str()).unwrap_or("").to_string();
     let coll = v.get("coll").and_then(|x| x.as_str()).unwrap_or("").to_string();
@@ -172,8 +174,7 @@ pub fn run(
     use std::cell::RefCell;
     use std::rc::Rc;
 
-    // Runs inline on the caller's blocking thread; `catch_unwind` keeps a QuickJS panic from
-    // taking down that thread, the way the previous `thread::spawn(..).join()` did.
+    // `catch_unwind` turns a host/QuickJS panic into a script error instead of killing the thread.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let rt = Runtime::new().map_err(|e| e.to_string())?;
 
