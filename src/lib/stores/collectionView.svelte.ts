@@ -596,6 +596,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     if (n === 1) items.push({ label: m.cell_filter_eq(), action: "filterEq" }, { label: m.cell_filter_ne(), action: "filterNe" });
     if (n === 1) items.push({ label: m.cell_filter_exists(), action: "filterExists" }, { label: m.cell_filter_empty(), action: "filterEmpty" });
     if (n === 1) items.push({ label: m.context_menu_open_document(), action: "open" });
+    if (n === 1 && hasId) items.push({ label: m.menu_watch_document(), action: "watchDoc" });
     if (menu.source === "tree") items.push({ label: m.context_menu_expand_full_depth(), action: "expandFullDepth" });
     items.push({ label: m.context_menu_refresh(), action: "refresh" });
     items.push({
@@ -670,7 +671,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
 
   /** Returns the doc to open for "open", `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate,
    *  or `{ expandFullDepth }` (a tree doc index) for the Tree view's "Expand full depth". */
-  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { expandFullDepth: number } | { peek: Doc } | null {
+  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { expandFullDepth: number } | { peek: Doc } | { watch: string } | null {
     const menu = selection.menu;
     if (!menu) return null;
     const row = menu.row;
@@ -699,6 +700,11 @@ export function createCollectionView(sessionId: string, db: string, coll: string
       case "open":
         selection.closeMenu();
         return { open: doc };
+      case "watchDoc": {
+        selection.closeMenu();
+        const id = idJson(doc);
+        return id === null ? null : { watch: id };
+      }
       case "expandFullDepth":
         selection.closeMenu();
         return { expandFullDepth: row };

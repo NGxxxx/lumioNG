@@ -4,7 +4,7 @@ import { touchConnection } from "../api/connections";
 import { pendingEdits } from "./pendingEdits.svelte";
 import { createNamespaceTree } from "./namespaceTree.svelte";
 import { createHostStatus } from "./hostStatus.svelte";
-import { createSessionNav, type SessionNav, type WorkTab, type Active, type DocumentTabInit } from "./navigation.svelte";
+import { createSessionNav, type SessionNav, type WorkTab, type Active, type DocumentTabInit, type WatchTab, type WatchTabInit } from "./navigation.svelte";
 import type { Environment } from "../domain/environment";
 import { savedSessionId, adhocSessionId, adhocLabel, allocColor } from "../domain/session";
 import { nextQuerySeq } from "../domain/queryseq";
@@ -12,6 +12,7 @@ import { commandLog } from "./commandLog.svelte";
 import { connectCmd } from "../domain/mongosh";
 import { maskUri } from "../domain/uri";
 import { disposeQueryRun } from "./queryRuns.svelte";
+import { getWatch, disposeWatch, type WatchMode } from "./watchTabs.svelte";
 import { disposePipelineTree } from "./pipelineTreeRuns.svelte";
 import { disposeCollectionViews } from "./collectionViews.svelte";
 import { disposeGridfsFiles } from "./gridfsFilesCache.svelte";
@@ -184,6 +185,7 @@ export function createSessionManager() {
     for (const t of workTabs.filter((t) => t.sessionId === id)) {
       disposeQueryRun(t.id);
       disposePipelineTree(t.id);
+      disposeWatch(t.id);
     }
     disposeCollectionViews(id);
     pendingEdits.dropSession(id);
@@ -227,6 +229,25 @@ export function createSessionManager() {
     zone = { zone: "work", id: workTabs.at(-1)!.id };
   }
 
+  /** Opens a Watch tab, or focuses the one already watching the same target on that session. */
+  function openWatch(init: WatchTabInit, sessionId?: string, mode: WatchMode = "changes") {
+    const sid = sessionId ?? activeId;
+    if (!sid || !sessions.some((s) => s.id === sid)) return;
+    const dup = workTabs.find(
+      (t): t is WatchTab => t.kind === "watch" && t.sessionId === sid && t.db === init.db && t.coll === init.coll && t.idText === init.idText,
+    );
+    activeId = sid;
+    if (dup) {
+      zone = { zone: "work", id: dup.id };
+      getWatch(dup).mode = mode;
+      return;
+    }
+    const tab = { id: nextTabId++, kind: "watch" as const, sessionId: sid, ...init };
+    workTabs = [...workTabs, tab];
+    zone = { zone: "work", id: tab.id };
+    getWatch(tab, mode); // the change stream records right away, whether or not the tab is ever looked at
+  }
+
   function activateWork(tabId: number) {
     const t = workTabs.find((w) => w.id === tabId);
     if (!t) return;
@@ -243,6 +264,7 @@ export function createSessionManager() {
     // close path can forget it and leak a query tab's run/console/tree state in the cache.
     disposeQueryRun(tabId);
     disposePipelineTree(tabId);
+    disposeWatch(tabId);
     if (wasActive) {
       const neighbor = workTabs[idx - 1] ?? workTabs[idx] ?? null;
       if (neighbor) { activeId = neighbor.sessionId; zone = { zone: "work", id: neighbor.id }; }
@@ -268,6 +290,7 @@ export function createSessionManager() {
     openQuery,
     associateQueryTab,
     openDocument,
+    openWatch,
     activateWork,
     closeWork,
     showDestination,

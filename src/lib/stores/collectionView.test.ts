@@ -1171,6 +1171,13 @@ describe("selection-aware context menu", () => {
     expect(updSel.label).toContain("2");
   });
 
+  it("a single row offers watching its document; selecting it returns the _id", async () => {
+    const v = await withTwoDocs();
+    v.openMenu(ev(), 1, "x");
+    expect(v.menuItems().map((i) => i.action)).toContain("watchDoc");
+    expect(v.onMenuSelect("watchDoc")).toEqual({ watch: JSON.stringify(v.docs[1]._id) });
+  });
+
   it("onMenuSelect deleteSelected opens the delete-confirm", async () => {
     const v = await withTwoDocs();
     v.selectAll();

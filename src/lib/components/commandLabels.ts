@@ -15,6 +15,7 @@ const LABELS: Record<CommandId, () => string> = {
   "query.stop": m.menu_stop,
   "query.explain": m.menu_explain,
   "query.aggregate": m.menu_aggregate,
+  "query.watch": m.menu_watch_changes,
   "query.save": m.menu_save_query,
   "goto.nextTab": m.menu_next_tab,
   "goto.prevTab": m.menu_previous_tab,

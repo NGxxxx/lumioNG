@@ -10,7 +10,8 @@ export type ViewKey =
   | "database"
   | "host"
   | "query"
-  | "document";
+  | "document"
+  | "watch";
 
 /** One header action: an icon button, the single filled primary button, or an item in the ⋯ menu. */
 export type ToolbarEntry = { id: CommandId; style: "icon" | "primary"; overflow?: boolean };
@@ -23,6 +24,7 @@ const LAYOUT: Record<ViewKey, ToolbarEntry[]> = {
     icon("file.refresh"),
     icon("file.import"),
     icon("file.export"),
+    icon("query.watch"),
     more("query.aggregate"),
     more("grid.focusFilter"),
     more("view.toggleWrap"),
@@ -33,12 +35,14 @@ const LAYOUT: Record<ViewKey, ToolbarEntry[]> = {
   "collection.schema": [icon("file.refresh")],
   "collection.indexes": [icon("file.refresh")],
   "collection.info": [icon("file.refresh")],
-  database: [icon("file.refresh"), icon("file.import"), more("file.newQuery")],
-  host: [icon("file.refresh")],
+  database: [icon("file.refresh"), icon("file.import"), icon("query.watch"), more("file.newQuery")],
+  host: [icon("file.refresh"), icon("query.watch")],
   // Run / Stop / Explain / Save live in the query tab's own title row.
   query: [],
   // The document form keeps its own Cancel button; Save is mirrored here as the primary action.
   document: [{ id: "query.save", style: "primary" }],
+  // Record / Pause / Clear / Export live in the watch tab's own bar.
+  watch: [],
 };
 
 /** Header actions for `view`, in display order (overflow entries render inside the ⋯ menu). */

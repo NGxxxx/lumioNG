@@ -24,6 +24,7 @@
   import { msgKey } from "#lib/msgkey.js";
   import { activeDataView } from "../stores/activeDataView.svelte";
   import { pushModal } from "#lib/stores/modalStack.js";
+  import LoadingState from "./LoadingState.svelte";
 
   let {
     v,
@@ -331,7 +332,9 @@
     bind:clientWidth={viewportW} onscroll={(e) => { scrollLeft = e.currentTarget.scrollLeft; }}
     onclick={(e) => { if (!(e.target as Element).closest("tr[data-index], thead, button, input, .modal-editor")) onbackground?.(); }}
     style="--grid-row-h: {gridRowH()}px">
-    {#if v.columnFields.length === 0}
+    {#if v.columnFields.length === 0 && v.loading}
+      <LoadingState />
+    {:else if v.columnFields.length === 0}
       <div class="empty">{m.query_result_grid_empty()}</div>
     {:else}
     <table role="presentation" style="width:{gridTotalWidth}px">

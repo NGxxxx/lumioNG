@@ -4,6 +4,7 @@
 #![cfg_attr(test, allow(clippy::approx_constant))]
 mod bson_import;
 mod bson_json;
+mod command_log_file;
 mod commands;
 mod csv_export;
 mod csv_import;
@@ -26,6 +27,7 @@ mod value_infer;
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::default())
+        .manage(commands::command_log::CommandLogFile::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
@@ -117,6 +119,13 @@ pub fn run() {
             commands::users::drop_role,
             commands::query_library::load_query_library,
             commands::query_library::save_query_library,
+            commands::command_log::command_log_append,
+            commands::command_log::command_log_read,
+            commands::command_log::command_log_dir,
+            commands::command_log::command_log_clear,
+            commands::watch::watch_start,
+            commands::watch::watch_stop,
+            commands::profiler::profile_watch_start,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

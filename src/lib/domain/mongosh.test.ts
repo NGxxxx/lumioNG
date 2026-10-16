@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { updateOneCmd, listIndexesCmd, createIndexesCmd, listDatabasesCmd, findOneByIdCmd, setValidatorCmd, sqlImportCmd } from "./mongosh";
+import { updateOneCmd, listIndexesCmd, createIndexesCmd, listDatabasesCmd, findOneByIdCmd, setValidatorCmd, sqlImportCmd, watchCmd, setProfilingLevelCmd } from "./mongosh";
 
 describe("write command-log helpers", () => {
   it("updateOneCmd", () => {
@@ -103,5 +103,19 @@ describe("users/roles mongosh commands", () => {
     expect(dropRoleCmd("admin", "reportViewer")).toBe(
       'db.getSiblingDB("admin").dropRole("reportViewer")',
     );
+  });
+});
+
+describe("watchCmd", () => {
+  it("targets a collection, a database or the deployment", () => {
+    expect(watchCmd({ db: true, coll: "orders" })).toBe('db.getCollection("orders").watch([], { "fullDocument": "updateLookup" })');
+    expect(watchCmd({ db: true, coll: null, pipeline: "[{}]" })).toBe('db.watch([{}], { "fullDocument": "updateLookup" })');
+    expect(watchCmd({ db: false, coll: null })).toBe('db.getMongo().watch([], { "fullDocument": "updateLookup" })');
+  });
+});
+
+describe("setProfilingLevelCmd", () => {
+  it("renders the shell helper", () => {
+    expect(setProfilingLevelCmd(2, 100)).toBe('db.setProfilingLevel(2, { "slowms": 100 })');
   });
 });

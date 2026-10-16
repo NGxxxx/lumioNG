@@ -63,6 +63,7 @@
   const connItems = $derived([
     { label: m.namespace_panel_menu_new_db(), action: "newDb" },
     { label: m.menu_refresh(), action: "refresh" },
+    { label: m.menu_watch_changes(), action: "watch" },
     { label: m.namespace_panel_menu_manage_sessions(), action: "manageSessions" },
     { label: m.namespace_panel_menu_disconnect(), action: "disconnect" },
   ]);
@@ -70,6 +71,8 @@
     { label: m.namespace_panel_menu_new_coll(), action: "newColl" },
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
     { label: m.menu_refresh(), action: "refresh" },
+    { label: m.menu_watch_changes(), action: "watch" },
+    { label: m.menu_watch_queries(), action: "watchQueries" },
     { label: m.export_wizard_menu_export_db(), action: "exportDb" },
     { label: m.namespace_panel_menu_import(), action: "import" },
     { label: m.namespace_panel_menu_drop_db(), action: "dropDb" },
@@ -77,6 +80,8 @@
   const collItems = $derived([
     { label: m.namespace_panel_menu_new_aggregate(), action: "newQuery" },
     { label: m.menu_refresh(), action: "refresh" },
+    { label: m.menu_watch_changes(), action: "watch" },
+    { label: m.menu_watch_queries(), action: "watchQueries" },
     { label: m.namespace_panel_menu_export(), action: "export" },
     { label: m.namespace_panel_menu_import(), action: "import" },
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
@@ -118,6 +123,7 @@
       if (action === "newDb") dialog = { type: "newDb", sessionId: target.sessionId };
       else if (action === "refresh") tree?.refresh();
       else if (action === "manageSessions") onmanagesessions?.();
+      else if (action === "watch") sessionManager.openWatch({ db: null, coll: null, idText: null }, target.sessionId);
       else if (action === "disconnect") {
         confirmDisconnect = { sessionId: target.sessionId, label: sess?.label ?? target.sessionId, run: () => ondisconnect?.(target.sessionId) };
       }
@@ -125,6 +131,8 @@
       if (action === "newColl") dialog = { type: "newColl", db: target.db, sessionId: target.sessionId };
       else if (action === "copyName") copyName(target.db);
       else if (action === "refresh") tree?.refresh();
+      else if (action === "watch") sessionManager.openWatch({ db: target.db, coll: null, idText: null }, target.sessionId);
+      else if (action === "watchQueries") sessionManager.openWatch({ db: target.db, coll: null, idText: null }, target.sessionId, "queries");
       else if (action === "exportDb") {
         // The wizard exports the ACTIVE session, so focus the target's session first.
         sessionManager.focusSession(target.sessionId);
@@ -136,6 +144,8 @@
     } else {
       if (action === "newQuery") onnewquery?.({ sessionId: target.sessionId, db: target.db, coll: target.coll });
       else if (action === "refresh") tree?.refresh();
+      else if (action === "watch") sessionManager.openWatch({ db: target.db, coll: target.coll, idText: null }, target.sessionId);
+      else if (action === "watchQueries") sessionManager.openWatch({ db: target.db, coll: target.coll, idText: null }, target.sessionId, "queries");
       else if (action === "export") {
         // The wizard exports the ACTIVE session, so focus the target's session first.
         sessionManager.focusSession(target.sessionId);

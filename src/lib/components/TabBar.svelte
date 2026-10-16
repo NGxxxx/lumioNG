@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { Active, Page, WorkTab } from "../stores/navigation.svelte";
   import { queryLibrary } from "../stores/queryLibrary.svelte";
+  import { peekWatch } from "../stores/watchTabs.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   type SessionInfo = { id: string; label: string; color: string; environment?: string };
@@ -38,6 +39,10 @@
       // Deleted/never-saved falls back to the seq title (association is kept; Save re-prompts).
       const name = t.savedQueryId != null ? queryLibrary.queryName(t.savedQueryId) : null;
       return name ?? m.tab_bar_query_title({ seq: t.seq });
+    }
+    if (t.kind === "watch") {
+      const target = t.idText ? `${t.coll} / ${shorten(t.idText)}` : (t.coll ?? t.db ?? m.watch_scope_deployment());
+      return m.tab_bar_watch_title({ target });
     }
     if (t.mode === "insert") return m.tab_bar_doc_new({ coll: t.coll });
     return `${t.coll} / ${t.idText ? shorten(t.idText) : "?"}`;
@@ -95,6 +100,9 @@
             data-color={dot}
             aria-hidden="true"
           ></span>
+          {#if t.kind === "watch"}
+            <span class="rec" class:live={peekWatch(t.id)?.recording ?? false} aria-hidden="true"></span>
+          {/if}
           <button class="label" onclick={() => onActivateWork(t.id)} title={workTitle(t)}>{workTitle(t)}</button>
           <button class="x" onclick={() => onCloseWork(t.id)} aria-label={m.tab_bar_close()}>×</button>
         </div>
@@ -118,6 +126,10 @@
     background: var(--panel);
   }
   .destination { flex: none; }
+  /* Watch tabs: a hollow ring when paused, a blinking red dot while recording. */
+  .rec { flex: none; width: 0.4375rem; height: 0.4375rem; border-radius: 50%; border: 1.5px solid var(--c-overlay0); box-sizing: border-box; }
+  .rec.live { border-color: var(--danger); background: var(--danger); animation: rec-blink 1.4s ease-in-out infinite; }
+  @keyframes rec-blink { 50% { opacity: 0.3; } }
   .dest-label { overflow: hidden; text-overflow: ellipsis; }
   /* Horizontal scrollbars render at an element's bottom edge — flip the scroller so the scrollbar
      lands on top, then flip the inner row back. flex-grow:0 keeps "+" right after the last tab;

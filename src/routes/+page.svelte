@@ -33,6 +33,7 @@
   import ResultTable from "#lib/components/ResultTable.svelte";
   import GridFsFilesPanel from "#lib/components/GridFsFilesPanel.svelte";
   import DocumentForm from "#lib/components/DocumentForm.svelte";
+  import WatchTab from "#lib/components/WatchTab.svelte";
   import TabBar from "#lib/components/TabBar.svelte";
   import DatabaseCollectionsPanel from "#lib/components/DatabaseCollectionsPanel.svelte";
   import { createAxisDrag } from "#lib/components/axisDrag.js";
@@ -267,6 +268,11 @@
     "query.stop": { disabled: !(activeQueryRun?.running ?? false), run: () => { if (sm.activeId) cancelScript(sm.activeId); } },
     "query.explain": { disabled: activeQueryRun == null, run: () => activeQueryRun?.explainAfterRun(sel?.db ?? null, activeQueryTab?.sessionId) },
     "query.aggregate": { disabled: !(sel?.coll != null), run: () => { if (sel?.coll) sm.openQuery(aggregateTemplate(sel.coll)); } },
+    // Watches what the destination tab shows: the collection, the database, or the whole deployment.
+    "query.watch": {
+      disabled: shell.connection === null,
+      run: () => sm.openWatch({ db: page === "host" ? null : (sel?.db ?? null), coll: page === "collection" ? (sel?.coll ?? null) : null, idText: null }),
+    },
     "query.save": {
       disabled: !(activeQueryTab ? !queryLibrary.blocked : (activeDocumentForm.handle?.canSave ?? false)),
       run: () => (activeQueryTab ? saveActiveQuery() : activeDocumentForm.handle?.save()),
@@ -301,7 +307,10 @@
 
   // ── Panel header: which view is showing, its switcher and its actions ──
   const viewKey = $derived.by((): ViewKey | null => {
-    if (active?.zone === "work") return sm.workTabs.find((w) => w.id === active.id)?.kind === "query" ? "query" : "document";
+    if (active?.zone === "work") {
+      const kind = sm.workTabs.find((w) => w.id === active.id)?.kind;
+      return kind === "query" ? "query" : kind === "watch" ? "watch" : "document";
+    }
     if (!onDestination || page === null) return null;
     return page === "collection" ? (`collection.${collectionView}` as ViewKey) : page;
   });
@@ -321,6 +330,7 @@
     "file.newDocument": m.toolbar_new_document(),
     "file.newQuery": m.tab_bar_new_query(),
     "query.aggregate": m.toolbar_aggregate(),
+    "query.watch": m.menu_watch_changes(),
     "query.save": m.toolbar_save(),
     "grid.focusFilter": m.toolbar_find_title(),
     "view.toggleWrap": m.wrap_toggle_label(),
@@ -378,6 +388,7 @@
     ["query.stop", m.menu_stop, "query"],
     ["query.explain", m.menu_explain, "query"],
     ["query.aggregate", m.menu_aggregate, "query"],
+    ["query.watch", m.menu_watch_changes, "query"],
     ["query.save", m.menu_save_query, "query"],
     ["goto.host", m.nav_overview, "navigate"],
     ["goto.database", m.palette_group_databases, "navigate"],
@@ -440,7 +451,7 @@
   const toolbarCrumb = $derived.by((): string[] => {
     if (active?.zone === "work") {
       const t = sm.workTabs.find((w) => w.id === active.id);
-      if (!t || t.kind === "query") return [];
+      if (!t || t.kind !== "document") return [];
       return [t.db, t.coll];
     }
     if (page === "host") return [session?.label ?? ""];
@@ -599,7 +610,7 @@
         onCloseWork={(id) => sm.closeWork(id)}
         onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
       />
-      {#if viewKey && viewKey !== "query"}
+      {#if viewKey && viewKey !== "query" && viewKey !== "watch"}
       <Toolbar
         {commands}
         entries={headerEntries}
@@ -695,6 +706,9 @@
               {:else}
                 <div class="empty">{m.status_bar_loading()}</div>
               {/if}
+            {:else if tab.kind === "watch"}
+              <WatchTab {tab} onopendocument={(db, coll, doc) => openDocument(db, coll, doc, "edit")}
+                onopenquery={(statement) => sm.openQuery(statement, null, tab.sessionId)} />
             {:else}
               <DocumentForm
                 mode={tab.mode}

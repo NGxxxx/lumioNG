@@ -9,7 +9,14 @@ vi.mock("../api/mongoServer", () => ({
   buildInfo: vi.fn().mockResolvedValue("{}"),
   hostInfo: vi.fn().mockResolvedValue("{}"),
 }));
+vi.mock("../api/watch", () => ({
+  startWatch: vi.fn().mockResolvedValue({ status: "started", preImages: false }),
+  stopWatch: vi.fn().mockResolvedValue(undefined),
+  startProfileWatch: vi.fn().mockResolvedValue({ status: "started", previousLevel: 0 }),
+}));
 import { createSessionManager } from "./sessionManager.svelte";
+import { startWatch, stopWatch } from "../api/watch";
+import { peekWatch } from "./watchTabs.svelte";
 import { SESSION_COLORS } from "../domain/session";
 import { connect } from "../api/connection";
 import { commandLog } from "./commandLog.svelte";
@@ -101,6 +108,29 @@ describe("sessionManager", () => {
     sm.focusSession("conn:2");
 
     expect((sm.workTabs.find((t) => t.id === tab.id))!.sessionId).toBe("conn:1"); // document tabs stay put
+  });
+
+  it("openWatch starts recording, focuses an existing watch of the same target, and closing stops it", async () => {
+    await sm.focusOrOpen({ connId: 1, uri: "u1", label: "a" });
+    sm.openWatch({ db: "app", coll: "orders", idText: null });
+    const tab = sm.workTabs.at(-1)!;
+    expect(tab).toMatchObject({ kind: "watch", sessionId: "conn:1", db: "app", coll: "orders" });
+    await vi.waitFor(() => expect(startWatch).toHaveBeenCalled());
+    expect(peekWatch(tab.id)).toBeDefined();
+
+    sm.openQuery("");
+    sm.openWatch({ db: "app", coll: "orders", idText: null }, undefined, "queries");
+    expect(sm.workTabs.filter((t) => t.kind === "watch")).toHaveLength(1);
+    // Re-opening in Query mode switches the existing tab, and never starts the profiler by itself.
+    expect(peekWatch(tab.id)?.mode).toBe("queries");
+    expect(peekWatch(tab.id)?.queries.status).toBe("idle");
+    peekWatch(tab.id)!.mode = "changes";
+    expect(sm.activeZone).toEqual({ zone: "work", id: tab.id });
+
+    await vi.waitFor(() => expect(peekWatch(tab.id)?.changes.status).toBe("recording"));
+    sm.closeWork(tab.id);
+    expect(peekWatch(tab.id)).toBeUndefined();
+    expect(stopWatch).toHaveBeenCalledWith("conn:1", expect.any(String));
   });
 
   it("closing a session drops its tabs", async () => {

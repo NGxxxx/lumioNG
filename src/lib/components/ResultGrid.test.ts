@@ -90,6 +90,20 @@ describe("ResultGrid", () => {
     expect(getByText("No results")).toBeTruthy();
   });
 
+  it("says it is loading, not 'No results', while the first page is on its way", async () => {
+    vi.useFakeTimers();
+    try {
+      const v = baseView([], { loading: true });
+      const { getByText, queryByText } = render(ResultGrid, { props: { v } });
+      expect(getByText("Loading documents…")).toBeTruthy();
+      expect(queryByText("No results")).toBeNull();
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(getByText(/Still loading after 3s/)).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("renders far fewer DOM rows than docs for a large result set (virtualized)", () => {
     const docs = Array.from({ length: 1000 }, (_, i) => ({ _id: { $oid: String(i) }, name: `n${i}` }));
     const v = baseView(docs);

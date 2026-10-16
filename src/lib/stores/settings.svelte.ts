@@ -7,6 +7,7 @@ const CAP_UNLIMITED_KEY = "query-result-cap-unlimited";
 const WRAP_KEY = "wrap-long-lines";
 const STAGE_EDITS_KEY = "stage-cell-edits";
 const EXPORT_FORMAT_KEY = "export-format";
+const COMMAND_LOG_FILE_KEY = "command-log-to-file";
 const EXPORT_METADATA_KEY = "export-include-metadata";
 const EXPORT_FORMATS = ["json", "csv", "bson", "sql"] as const;
 export type ExportFormatPref = (typeof EXPORT_FORMATS)[number];
@@ -107,6 +108,7 @@ export function createSettings() {
     hasStorage ? untrack(() => (EXPORT_FORMATS as readonly string[]).includes(localStorage.getItem(EXPORT_FORMAT_KEY) ?? "") ? (localStorage.getItem(EXPORT_FORMAT_KEY) as ExportFormatPref) : "json") : "json",
   );
   let exportIncludeMetadata = $state<boolean>(hasStorage ? untrack(() => readBool(EXPORT_METADATA_KEY)) : false);
+  let commandLogToFile = $state<boolean>(hasStorage ? untrack(() => readBool(COMMAND_LOG_FILE_KEY)) : false);
   let queryEditorHeightPx = $state<number | null>(
     hasStorage ? untrack(() => readPosIntOrNull(EDITOR_H_KEY)) : null,
   );
@@ -189,6 +191,14 @@ export function createSettings() {
       exportIncludeMetadata = includeMetadata;
       writeKey(EXPORT_FORMAT_KEY, format);
       writeKey(EXPORT_METADATA_KEY, includeMetadata ? "true" : "false");
+    },
+    /** When true, every command's full text is also appended to a daily file on disk. */
+    get commandLogToFile(): boolean {
+      return commandLogToFile;
+    },
+    setCommandLogToFile(v: boolean) {
+      commandLogToFile = v;
+      writeKey(COMMAND_LOG_FILE_KEY, v ? "true" : "false");
     },
     /** Query tab editor height override (px); null = use the CSS default (34%). */
     get queryEditorHeightPx(): number | null {

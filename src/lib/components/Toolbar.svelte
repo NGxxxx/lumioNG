@@ -94,6 +94,8 @@
       <path d="M3 2.5h8l2.5 2.5v8.5h-10.5zM5.5 2.5v3h4.5v-3M5 13.5V9.5h6v4" />
     {:else if id === "query.aggregate"}
       <path d="M3 2.5h10l-4 5.5 4 5.5H3l4-5.5z" />
+    {:else if id === "query.watch"}
+      <path d="M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8 12.1 12.5 8 12.5 1.5 8 1.5 8z" /><circle cx="8" cy="8" r="2" />
     {:else if id === "grid.focusFilter"}
       <circle cx="7" cy="7" r="4.5" /><path d="M10.5 10.5L14 14" />
     {:else if id === "view.toggleWrap"}

@@ -9,11 +9,14 @@
   import { jsonValueColor, bsonValueKind } from "../domain/theme";
   import { settings } from "../stores/settings.svelte";
   import * as m from "#lib/paraglide/messages.js";
+  import LoadingState from "./LoadingState.svelte";
 
   /** Shared, virtualized nested tree (collection grid + query results). Rows come pre-flattened
    *  from domain/treeFlatten so every visible row costs the same and 25k+ docs stay smooth. */
-  let { docs, startIndex = 0, onRowMenu, onref }: {
+  let { docs, loading = false, startIndex = 0, onRowMenu, onref }: {
     docs: Doc[];
+    /** A first page is on its way: show that instead of "No results". */
+    loading?: boolean;
     startIndex?: number;
     onRowMenu?: (e: MouseEvent, docIndex: number, key: string) => void;
     /** Follow an ObjectId / DBRef value (→ button). Absent: no reference affordance. */
@@ -129,7 +132,9 @@
   }
 </script>
 
-{#if docs.length === 0}
+{#if docs.length === 0 && loading}
+  <LoadingState />
+{:else if docs.length === 0}
   <div class="empty">{m.result_tree_empty()}</div>
 {:else}
   <div class="tree-scroller" bind:this={scrollerEl} role="tree">

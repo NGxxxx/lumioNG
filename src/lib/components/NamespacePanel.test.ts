@@ -20,6 +20,7 @@ vi.mock("../api/files", () => ({
 
 vi.mock("../api/documents", () => ({
   exportQuery: vi.fn(),
+  fetchFullDoc: vi.fn(),
   exportBson: vi.fn(),
   importDocuments: vi.fn(),
   importBson: vi.fn(),

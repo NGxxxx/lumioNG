@@ -19,6 +19,12 @@ describe("ResultTree", () => {
     expect(container.querySelector(".tree-scroller")).toBeNull();
   });
 
+  it("says it is loading instead of 'No results' while docs are on their way", () => {
+    const { getByText, queryByText } = render(ResultTree, { props: { docs: [], loading: true } });
+    expect(getByText("Loading documents…")).toBeTruthy();
+    expect(queryByText("No results")).toBeNull();
+  });
+
   it("defaults to depth-1 expanded, and collapseAll/expandAll change the virtual row count", async () => {
     // 2 docs × 2 non-_id fields → collapsed 2 rows, depth-1-expanded (the default) 6 rows.
     // Sizer height = rows × ROW_EST.

@@ -149,6 +149,7 @@
         cmdItem("query.stop", m.menu_stop()),
         cmdItem("query.explain", m.menu_explain()),
         cmdItem("query.aggregate", m.menu_aggregate()),
+        cmdItem("query.watch", m.menu_watch_changes()),
         cmdItem("query.save", m.menu_save_query()),
       ],
     },

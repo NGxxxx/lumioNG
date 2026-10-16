@@ -25,7 +25,19 @@ export type QueryTab = {
   /** Saved-query library id this tab writes to on Save; null until first saved or when opened ad hoc. */
   savedQueryId: number | null;
 };
-export type WorkTab = DocumentTab | QueryTab;
+/** Live change-stream recording of a collection, a database (`coll` null), the whole deployment
+ *  (both null) or one document (`idText`). */
+export type WatchTab = {
+  id: number;
+  kind: "watch";
+  sessionId: string;
+  db: string | null;
+  coll: string | null;
+  idText: string | null;
+};
+export type WorkTab = DocumentTab | QueryTab | WatchTab;
+/** Watch tab fields supplied by callers. */
+export type WatchTabInit = Omit<WatchTab, "id" | "kind" | "sessionId">;
 /** Document tab fields supplied by callers; `id` and `sessionId` are assigned by the manager. */
 export type DocumentTabInit = Omit<DocumentTab, "id" | "sessionId">;
 

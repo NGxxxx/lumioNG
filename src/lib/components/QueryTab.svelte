@@ -452,7 +452,7 @@
           </div>
         {/if}
         {#if showDocs && resultView === "tree"}
-          <ResultTree bind:this={treeRef} docs={v.docs} onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
+          <ResultTree bind:this={treeRef} docs={v.docs} loading={v.loading} onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} />
         {:else if showDocs}
           <div class="grid-host" class:with-pinned={peek.open && settings.peekPinned}>
             <div class="grid-main"><ResultGrid {v} onpeek={onPeek} onescape={onGridEscape} peekOpen={peek.open} onpeekclose={() => peek.requestClose()} onbackground={onGridBackground} onref={onGridRef} /></div>

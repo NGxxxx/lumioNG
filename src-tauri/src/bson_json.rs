@@ -69,7 +69,7 @@ fn binary_display(b: &Bson) -> String {
 }
 
 /// Formats a Unix millisecond timestamp as `Date.prototype.toISOString()` would (hand-rolled since `DateTime::try_to_rfc3339_string()` omits sub-second zeros).
-fn millis_to_iso8601(ms: i64) -> String {
+pub(crate) fn millis_to_iso8601(ms: i64) -> String {
     let days = ms.div_euclid(86_400_000);
     let ms_of_day = ms.rem_euclid(86_400_000);
     let (year, month, day) = civil_from_days(days);

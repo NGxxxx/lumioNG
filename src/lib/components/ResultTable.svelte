@@ -200,6 +200,7 @@
     else if (r && "open" in r) onopendocument(await v.openDoc(r.open), "edit");
     else if (r && "insert" in r) onopendocument(r.insert, "insert");
     else if (r && "expandFullDepth" in r) treeRef?.expandFullDepth(r.expandFullDepth);
+    else if (r && "watch" in r) sessionManager.openWatch({ db, coll, idText: r.watch });
   }
 
   // Bridge for the global toolbar (Edit document / Export); getters keep it reactive to selection.
@@ -264,7 +265,7 @@
       </div>
     {:else}
       <div class="tree-wrap">
-        <ResultTree bind:this={treeRef} docs={v.docs} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
+        <ResultTree bind:this={treeRef} docs={v.docs} loading={v.loading} startIndex={v.allShown ? 0 : (v.currentPage - 1) * v.pageSize}
           onRowMenu={(e, i, key) => v.openMenu(e, i, key, "tree")} onref={onGridRef} />
         {#if v.loading}<div class="status">{m.common_loading()}</div>{/if}
       </div>

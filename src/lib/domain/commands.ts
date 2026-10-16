@@ -14,6 +14,7 @@ export type CommandId =
   | "query.stop"
   | "query.explain"
   | "query.aggregate"
+  | "query.watch"
   | "query.save"
   | "query.history"
   | "goto.nextTab"
@@ -82,6 +83,7 @@ export const SHORTCUTS: Partial<Record<CommandId, string>> = {
   "query.stop": "Escape",
   "query.explain": "Mod+Shift+F9",
   "query.aggregate": "Mod+Alt+A",
+  "query.watch": "Mod+Alt+W",
   "query.save": "Mod+S",
   "query.history": "Mod+Shift+H",
   "goto.nextTab": "Mod+Tab",
@@ -141,7 +143,7 @@ export const COMMAND_GROUPS: { group: "general" | "navigation" | "grid" | "edito
     ids: [
       "view.commandPalette", "help.shortcuts", "help.about", "file.refresh", "file.newQuery", "file.newDocument",
       "file.import", "file.export", "query.run", "query.runSelection", "query.stop", "query.explain",
-      "query.aggregate", "query.save", "query.history", "view.closeWorkTab", "edit.undo",
+      "query.aggregate", "query.watch", "query.save", "query.history", "view.closeWorkTab", "edit.undo",
     ],
   },
   {

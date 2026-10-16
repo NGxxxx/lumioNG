@@ -137,3 +137,12 @@ export const updateRoleCmd = (
 
 export const dropRoleCmd = (db: string, roleName: string) =>
   `${sib(db)}.dropRole("${roleName}")`;
+
+/** `coll` null watches the database; `db` false (with `coll` null) the whole deployment. */
+export function watchCmd(p: { db: boolean; coll: string | null; pipeline?: string | null }): string {
+  const target = p.coll ? c(p.coll) : p.db ? "db" : "db.getMongo()";
+  return `${target}.watch(${p.pipeline ?? "[]"}, { "fullDocument": "updateLookup" })`;
+}
+
+export const setProfilingLevelCmd = (level: number, slowms: number) =>
+  `db.setProfilingLevel(${level}, { "slowms": ${slowms} })`;

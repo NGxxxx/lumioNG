@@ -30,6 +30,10 @@ pub struct AppState {
     pub sessions: Mutex<HashMap<String, Session>>,
     /// Cooperative cancel flags, one per session and scope.
     pub cancels: Mutex<HashMap<(String, CancelScope), Arc<AtomicBool>>>,
+    /// Running change streams, keyed by (session, watch id); dropping the sender stops the stream.
+    pub watches: Mutex<HashMap<(String, String), tokio::sync::oneshot::Sender<()>>>,
+    /// Profiler levels the app raised, so they can be put back (see `commands::profiler`).
+    pub profiler_holds: crate::commands::profiler::ProfilerHolds,
 }
 
 impl AppState {
@@ -55,6 +59,7 @@ impl AppState {
     pub async fn remove_session(&self, session_id: &str) {
         self.sessions.lock().await.remove(session_id);
         self.cancels.lock().await.retain(|(id, _), _| id != session_id);
+        self.watches.lock().await.retain(|(id, _), _| id != session_id);
     }
 
     /// Reject a write command when the session's connection is read-only.
