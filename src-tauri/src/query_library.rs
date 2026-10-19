@@ -194,7 +194,7 @@ mod tests {
 
     #[test]
     fn save_then_load_round_trips() {
-        let dir = temp_dir("monglumio_test_qlib_roundtrip");
+        let dir = temp_dir("lumiong_test_qlib_roundtrip");
         let nodes = vec![folder(1, None, "Reports"), query(2, Some(1), "Active users")];
         save(&dir, &nodes).unwrap();
         assert_eq!(load(&dir).unwrap(), nodes);
@@ -203,7 +203,7 @@ mod tests {
 
     #[test]
     fn save_writes_manifest_and_one_file_per_query() {
-        let dir = temp_dir("monglumio_test_qlib_files");
+        let dir = temp_dir("lumiong_test_qlib_files");
         let nodes = vec![folder(1, None, "Reports"), query(2, Some(1), "Active users"), query(3, Some(1), "Inactive")];
         save(&dir, &nodes).unwrap();
         assert!(dir.join("manifest.json").exists());
@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn manifest_never_stores_the_statement_text() {
-        let dir = temp_dir("monglumio_test_qlib_manifest_shape");
+        let dir = temp_dir("lumiong_test_qlib_manifest_shape");
         save(&dir, &[query(2, None, "q")]).unwrap();
         let manifest = std::fs::read_to_string(dir.join("manifest.json")).unwrap();
         assert!(!manifest.contains("db.users.find()"));
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn deleting_a_query_removes_its_orphaned_file() {
-        let dir = temp_dir("monglumio_test_qlib_orphan");
+        let dir = temp_dir("lumiong_test_qlib_orphan");
         save(&dir, &[query(2, None, "a"), query(3, None, "b")]).unwrap();
         assert!(dir.join("3.json").exists());
         save(&dir, &[query(2, None, "a")]).unwrap();
@@ -238,13 +238,13 @@ mod tests {
 
     #[test]
     fn load_missing_manifest_is_empty() {
-        let dir = temp_dir("monglumio_test_qlib_missing");
+        let dir = temp_dir("lumiong_test_qlib_missing");
         assert_eq!(load(&dir).unwrap(), Vec::<QueryNode>::new());
     }
 
     #[test]
     fn load_malformed_manifest_is_parse_error() {
-        let dir = temp_dir("monglumio_test_qlib_malformed");
+        let dir = temp_dir("lumiong_test_qlib_malformed");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(manifest_path(&dir), "{not json").unwrap();
         assert!(matches!(load(&dir), Err(AppError::Parse(_))));
@@ -253,7 +253,7 @@ mod tests {
 
     #[test]
     fn load_with_a_missing_query_content_file_is_an_error() {
-        let dir = temp_dir("monglumio_test_qlib_missing_content");
+        let dir = temp_dir("lumiong_test_qlib_missing_content");
         save(&dir, &[query(2, None, "a")]).unwrap();
         std::fs::remove_file(dir.join("2.json")).unwrap();
         assert!(load(&dir).is_err());
@@ -262,7 +262,7 @@ mod tests {
 
     #[test]
     fn migrate_legacy_splits_the_old_single_file_and_backs_it_up() {
-        let dir = temp_dir("monglumio_test_qlib_migrate");
+        let dir = temp_dir("lumiong_test_qlib_migrate");
         std::fs::create_dir_all(&dir).unwrap();
         let legacy_path = dir.join("query_library.json");
         let legacy_nodes = vec![folder(1, None, "Reports"), query(2, Some(1), "Active users")];
@@ -279,7 +279,7 @@ mod tests {
 
     #[test]
     fn migrate_legacy_is_a_noop_once_the_manifest_already_exists() {
-        let dir = temp_dir("monglumio_test_qlib_migrate_noop");
+        let dir = temp_dir("lumiong_test_qlib_migrate_noop");
         std::fs::create_dir_all(&dir).unwrap();
         let legacy_path = dir.join("query_library.json");
         std::fs::write(&legacy_path, serde_json::to_string(&vec![folder(9, None, "stale")]).unwrap()).unwrap();
@@ -296,7 +296,7 @@ mod tests {
 
     #[test]
     fn migrate_legacy_is_a_noop_when_there_is_no_legacy_file() {
-        let dir = temp_dir("monglumio_test_qlib_migrate_nothing");
+        let dir = temp_dir("lumiong_test_qlib_migrate_nothing");
         let legacy_path = dir.join("query_library.json");
         let new_dir = dir.join("saved_queries");
         migrate_legacy(&legacy_path, &new_dir).unwrap();

@@ -4,7 +4,7 @@ type Args = Record<string, string | number>;
 /** Expands a template (answers to its 1-2 questions) into concrete stages. `topN`'s optional `by` is
  *  accepted but unused: ranking is always by the group count. */
 export function expandTemplate(
-  id: "countBy" | "topN" | "sumPerMonth" | "join" | "duplicates",
+  id: "countBy" | "topN" | "sumPerMonth" | "join" | "duplicates" | "latest" | "distinct" | "countPerDay",
   a: Args,
 ): Stage[] {
   const s = (k: string) => String(a[k] ?? "");
@@ -52,6 +52,24 @@ export function expandTemplate(
         },
         { name: "$match", body: { count: { $gt: 1 } } },
         { name: "$sort", body: { count: -1 } },
+      ];
+    case "latest":
+      return [
+        { name: "$sort", body: { [s("dateField")]: -1 } },
+        { name: "$limit", body: Number(a.n) },
+      ];
+    case "distinct":
+      return [
+        { name: "$group", body: { _id: "$" + s("field") } },
+        { name: "$sort", body: { _id: 1 } },
+      ];
+    case "countPerDay":
+      return [
+        {
+          name: "$group",
+          body: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$" + s("dateField") } }, count: { $sum: 1 } },
+        },
+        { name: "$sort", body: { _id: 1 } },
       ];
   }
 }

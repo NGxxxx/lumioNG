@@ -363,7 +363,7 @@ mod tests {
     /// Fresh, non-colliding `known_hosts.json` path for a test — cleared up front so a leftover
     /// file from a previous run can't leak a stale trust entry into this one.
     fn temp_known_hosts_path(name: &str) -> std::path::PathBuf {
-        let path = std::env::temp_dir().join(format!("monglumio_test_known_hosts_{name}.json"));
+        let path = std::env::temp_dir().join(format!("lumiong_test_known_hosts_{name}.json"));
         let _ = std::fs::remove_file(&path);
         path
     }
@@ -404,7 +404,7 @@ mod tests {
         let key = ed25519_key(10);
         let mut pem = Vec::new();
         russh::keys::encode_pkcs8_pem(&key, &mut pem).unwrap();
-        let key_path = std::env::temp_dir().join("monglumio_test_ssh_key_ok.pem");
+        let key_path = std::env::temp_dir().join("lumiong_test_ssh_key_ok.pem");
         std::fs::write(&key_path, &pem).unwrap();
         let known_hosts_path = temp_known_hosts_path("correct_private_key");
 
@@ -440,7 +440,7 @@ mod tests {
         let key = ed25519_key(11);
         let mut pem = Vec::new();
         russh::keys::encode_pkcs8_pem_encrypted(&key, b"correct-passphrase", 4, &mut pem).unwrap();
-        let key_path = std::env::temp_dir().join("monglumio_test_ssh_key_encrypted.pem");
+        let key_path = std::env::temp_dir().join("lumiong_test_ssh_key_encrypted.pem");
         std::fs::write(&key_path, &pem).unwrap();
         let known_hosts_path = temp_known_hosts_path("wrong_passphrase");
 

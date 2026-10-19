@@ -10,6 +10,7 @@ function key(k: string): KeyboardEvent {
 }
 
 vi.mock("../api/connections", () => ({
+  getSecretStorage: vi.fn(async () => "keychain"),
   listConnections: vi.fn().mockResolvedValue([]),
   saveConnection: vi.fn().mockResolvedValue([]),
   deleteConnection: vi.fn().mockResolvedValue([]),

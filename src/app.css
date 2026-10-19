@@ -2,6 +2,9 @@
 /* Neutral grays + a single indigo accent. Both themes override only the primitives, so every app
    token below re-themes automatically. Dark ("mocha") is the default theme. */
 :root {
+  /* Native controls (select popups, scrollbars, date pickers) follow the theme — WebKitGTK on
+     Linux otherwise draws them with the light GTK look even in the dark theme. */
+  color-scheme: light;
   /* primitives (light) */
   --c-rosewater: #d4776b;
   --c-flamingo: #d86a6a;
@@ -135,6 +138,7 @@
 /* Dark — overriding only the primitives re-themes every var(--c-*) above.
    (Theme key stays "mocha" so saved preferences keep working.) */
 :root[data-theme="mocha"] {
+  color-scheme: dark;
   --c-rosewater: #f0a99d;
   --c-flamingo: #ec9a9a;
   --c-pink: #f09ac8;

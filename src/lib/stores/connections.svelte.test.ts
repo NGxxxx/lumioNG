@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../api/connections", () => ({
+  getSecretStorage: vi.fn(async () => "keychain"),
   listConnections: vi.fn().mockResolvedValue([]),
   saveConnection: vi.fn().mockResolvedValue([]),
   deleteConnection: vi.fn().mockResolvedValue([]),

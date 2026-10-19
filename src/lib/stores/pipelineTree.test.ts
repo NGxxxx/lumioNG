@@ -325,6 +325,18 @@ describe("pipelineTree — builder (selection, counts, preview)", () => {
     expect([a, b, c]).toEqual([20, 30, "error"]);
   });
 
+  it("reads counts the way the backend sends them (Canonical Extended JSON numbers)", async () => {
+    aggregateMock.mockImplementation(async (...a: unknown[]) => {
+      const p = JSON.parse(a[3] as string) as object[];
+      return p.length === 2 ? [{ n: { $numberInt: "13924" } }] : [{ n: { $numberLong: "5000000000" } }];
+    });
+    const { tree } = setup();
+    tree.refreshCounts();
+    await vi.advanceTimersByTimeAsync(460);
+    const [a, b] = tree.stages.map((s) => tree.counts[s.id]);
+    expect([a, b]).toEqual([13924, 5000000000]);
+  });
+
   it("a disabled stage leaves the script and comes back where it was", () => {
     const { tree, text } = setup();
     tree.setEnabled(1, false);

@@ -1,6 +1,8 @@
 /** Reversible obfuscation (XOR against a fixed key, base64-wrapped). HeidiSQL-style:
- *  defeats casual disk reading, not a determined local attacker. Pure; no network. */
-const KEY = new TextEncoder().encode("monglumio-v1-obfuscation-key");
+ *  defeats casual disk reading, not a determined local attacker. Pure; no network.
+ *  Saved passwords normally live in the OS keychain (src-tauri/src/secrets.rs); this layer only
+ *  matters where no keychain is available. */
+const KEY = new TextEncoder().encode("lumiong-v1-obfuscation-key");
 
 function xor(bytes: Uint8Array): Uint8Array {
   const out = new Uint8Array(bytes.length);

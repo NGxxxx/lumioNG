@@ -272,7 +272,7 @@ mod tests {
     /// Each message received is one DB round trip, so same-table rows must coalesce, not stream 1:1.
     #[tokio::test]
     async fn many_single_row_inserts_for_the_same_table_are_coalesced_into_one_batch() {
-        let dir = std::env::temp_dir().join("monglumio_test_sql_producer_coalesce");
+        let dir = std::env::temp_dir().join("lumiong_test_sql_producer_coalesce");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("dump.sql");
         let mut sql = String::from("CREATE TABLE t (a INT);\n");
@@ -313,7 +313,7 @@ mod tests {
         const ROUNDS: usize = 6;
         const ROWS_PER_STATEMENT: usize = 100;
 
-        let dir = std::env::temp_dir().join("monglumio_test_sql_producer_total_cap");
+        let dir = std::env::temp_dir().join("lumiong_test_sql_producer_total_cap");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("dump.sql");
 

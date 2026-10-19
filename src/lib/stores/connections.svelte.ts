@@ -3,7 +3,9 @@ import {
   listConnections,
   saveConnection,
   deleteConnection,
+  getSecretStorage,
   type SavedConnection,
+  type SecretStorage,
   type ConnectionInput,
 } from "../api/connections";
 import { testConnection as apiTestConnection, type SshConnectInput } from "../api/connection";
@@ -31,6 +33,7 @@ export function createConnectionRegistry() {
   let list = $state<SavedConnection[]>([]);
   const sortedList = $derived(sortByRecency(list));
   let error = $state<string | null>(null);
+  let secretStorage = $state<SecretStorage | null>(null);
   let formError = $state<string | null>(null);
   let editingId = $state<number | null>(null);
   // Form values before the last paste-to-fill, so it can be undone.
@@ -110,6 +113,7 @@ export function createConnectionRegistry() {
 
   async function load() {
     error = null;
+    getSecretStorage().then((s) => (secretStorage = s), () => (secretStorage = null));
     try {
       const fetched = await listConnections();
       // Lazy migration: legacy entries carry a raw `uri` and no structured host.
@@ -309,6 +313,8 @@ export function createConnectionRegistry() {
   return {
     get list() { return sortedList; },
     get error() { return error; },
+    /** Where saved passwords are kept; null until known. */
+    get secretStorage() { return secretStorage; },
     get formError() { return formError; },
     get editingId() { return editingId; },
     get label() { return label; }, set label(v: string) { label = v; },

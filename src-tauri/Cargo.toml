@@ -31,6 +31,8 @@ rquickjs = { version = "0.14", features = ["loader"] }
 sqlparser = "0.63"
 csv = "1"
 base64 = "0.23"
+# OS credential store: macOS Keychain, Windows Credential Manager, Secret Service (pure-Rust zbus) on Linux.
+keyring = "4.2"
 
 # Release profile tuned for a small binary. Keep the default panic="unwind": the script engine
 # relies on catch_unwind to survive a QuickJS host panic instead of taking the whole app down.

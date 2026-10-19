@@ -4,7 +4,6 @@
   import { STAGE_CODECS } from "../../domain/stageForms";
   import type { FieldInfo } from "../../domain/fieldInfo";
   import type { Chip } from "../../domain/filterChips";
-  import { PIPELINE_STAGES } from "../../domain/mongoOps";
   import { msgCount, msgKey } from "#lib/msgkey.js";
   import FilterChips from "../FilterChips.svelte";
   import CodeEditor from "../CodeEditor.svelte";
@@ -12,6 +11,7 @@
   import SortForm from "./SortForm.svelte";
   import ProjectForm from "./ProjectForm.svelte";
   import SimpleForms from "./SimpleForms.svelte";
+  import StagePicker from "./StagePicker.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let { tree, index, collections = [] }: { tree: PipelineTree; index: number; collections?: string[] } = $props();
@@ -95,9 +95,7 @@
   {#if selected}
     <div class="body">
       <div class="body-top">
-        <select class="b-input" aria-label={m.pipeline_tree_stage_picker_label()} value={stage.name} onchange={(e) => tree.renameStage(index, e.currentTarget.value)}>
-          {#each PIPELINE_STAGES as s (s.label)}<option value={s.label} title={s.detail}>{s.label}</option>{/each}
-        </select>
+        <StagePicker value={stage.name} onchange={(name) => tree.renameStage(index, name)} />
         {#if codec && model !== null}
           <button class="b-link" onclick={() => { jsonError = false; jsonMode = !jsonMode; }}>{jsonMode ? m.builder_edit_form() : m.builder_edit_json()}</button>
         {/if}

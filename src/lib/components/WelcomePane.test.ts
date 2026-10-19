@@ -10,6 +10,7 @@ const saved = (id: number, label: string, lastConnectedAt: number | null) => ({
 });
 
 vi.mock("../api/connections", () => ({
+  getSecretStorage: vi.fn(async () => "keychain"),
   listConnections: vi.fn(async () => [saved(1, "Old", 100), saved(2, "Fresh", 200), saved(3, "Never", null)]),
   saveConnection: vi.fn(), deleteConnection: vi.fn(), touchConnection: vi.fn(),
 }));

@@ -894,7 +894,7 @@ mod tests {
 
     #[test]
     fn write_text_file_creates_dirs_and_writes() {
-        let dir = std::env::temp_dir().join("monglumio_test_export_write");
+        let dir = std::env::temp_dir().join("lumiong_test_export_write");
         let path = dir.join("nested").join("out.json");
         let _ = std::fs::remove_dir_all(&dir);
         write_text_file(path.to_string_lossy().to_string(), "hello world".into()).unwrap();
@@ -904,7 +904,7 @@ mod tests {
 
     #[test]
     fn import_file_size_returns_the_files_byte_length() {
-        let dir = std::env::temp_dir().join("monglumio_test_import_file_size");
+        let dir = std::env::temp_dir().join("lumiong_test_import_file_size");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("data.json");
@@ -916,7 +916,7 @@ mod tests {
 
     #[test]
     fn import_file_size_reports_io_error_for_a_missing_path() {
-        let dir = std::env::temp_dir().join("monglumio_test_import_file_size_missing");
+        let dir = std::env::temp_dir().join("lumiong_test_import_file_size_missing");
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("nope.json");
         assert!(matches!(
@@ -927,7 +927,7 @@ mod tests {
 
     #[test]
     fn read_text_file_if_exists_returns_none_for_a_missing_path() {
-        let dir = std::env::temp_dir().join("monglumio_test_read_if_exists_missing");
+        let dir = std::env::temp_dir().join("lumiong_test_read_if_exists_missing");
         let _ = std::fs::remove_dir_all(&dir);
         let path = dir.join("nope.metadata.json");
         assert_eq!(
@@ -938,7 +938,7 @@ mod tests {
 
     #[test]
     fn read_text_file_if_exists_returns_contents_when_present() {
-        let dir = std::env::temp_dir().join("monglumio_test_read_if_exists_present");
+        let dir = std::env::temp_dir().join("lumiong_test_read_if_exists_present");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.metadata.json");

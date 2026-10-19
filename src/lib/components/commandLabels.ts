@@ -25,6 +25,7 @@ const LABELS: Record<CommandId, () => string> = {
   "goto.schema": m.view_schema,
   "view.closeWorkTab": m.cmd_close_tab,
   "view.resetToDefault": m.menu_reset_to_default,
+  "tools.mcpSettings": m.menu_mcp_settings,
   "view.resetLayout": m.cmd_reset_layout,
   "view.commandPalette": m.palette_title,
   "view.toggleLog": m.toolbar_command_log,

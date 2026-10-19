@@ -67,4 +67,38 @@ describe("BuilderPanel", () => {
     await fireEvent.click(getAllByRole("button", { name: "Delete stage" })[1]);
     expect(tree.stages.map((s) => s.name)).toEqual(["$limit"]);
   });
+
+  it("Add stage inserts after the open card, and says so", async () => {
+    const { getByRole, getByText, tree, container } = setup('db.getCollection("orders").aggregate([{ "$limit": 5 }, { "$skip": 1 }])');
+    await fireEvent.click(getByText("5"));
+    const add = getByRole("button", { name: "+ Add after stage 1" });
+    const picker = container.querySelector(".bar select") as HTMLSelectElement;
+    await fireEvent.change(picker, { target: { value: "$sample" } });
+    await fireEvent.click(add);
+    expect(tree.stages.map((s) => s.name)).toEqual(["$limit", "$sample", "$skip"]);
+    expect(tree.selectedId).toBe(tree.stages[1].id);
+  });
+
+  it("the stage picker groups stages by purpose", () => {
+    const { container } = setup('db.getCollection("orders").aggregate([])');
+    const groups = [...container.querySelectorAll(".bar optgroup")].map((g) => g.getAttribute("label"));
+    expect(groups).toEqual(["Filter & order", "Reshape", "Group & count", "Join", "Write output"]);
+  });
+
+  it("$sample and $unset open as forms", async () => {
+    const { getByText, getByLabelText, queryByText } = setup('db.getCollection("orders").aggregate([{ "$sample": { "size": 7 } }, { "$unset": ["a", "b"] }])');
+    expect(getByText("7 random")).toBeTruthy();
+    expect(getByText("a, b")).toBeTruthy();
+    expect(queryByText("Advanced")).toBeNull();
+    await fireEvent.click(getByText("7 random"));
+    expect((getByLabelText("Random documents") as HTMLInputElement).value).toBe("7");
+  });
+
+  it("Copy pipeline puts the enabled stages on the clipboard", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const { getByRole } = setup('db.getCollection("orders").aggregate([{ "$match": { "a": 1 } }, { "$limit": 3 }])');
+    await fireEvent.click(getByRole("button", { name: "Copy pipeline" }));
+    expect(JSON.parse((writeText.mock.calls[0] as unknown as [string])[0])).toEqual([{ $match: { a: 1 } }, { $limit: 3 }]);
+  });
 });

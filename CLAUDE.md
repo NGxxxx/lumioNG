@@ -1,4 +1,4 @@
-# monglumio — Structure & Conventions
+# LumioNG — Structure & Conventions
 
 MongoDB GUI: **Tauri + Rust** (backend) · **SvelteKit + Svelte 5 runes** (frontend) ·
 **TanStack Virtual** (data grid virtualization). Positioning: lightweight, fast, table-first.
@@ -76,10 +76,14 @@ src-tauri/src/
   error.rs        # AppError (serializes { kind, message } to the frontend). No unwrap in command layer.
   bson_json.rs    # BSON → Canonical ExtJSON (to frontend)
   json_bson.rs    # Canonical ExtJSON → BSON (from frontend)
+  registry.rs     # saved connection profiles (connections.json)
+  secrets.rs      # connection secrets in the OS keychain (fill on load / sync on save; file fallback)
   commands/
     mod.rs        # `pub mod <group>;` (do NOT re-export functions — see macro note below)
     connection.rs # connect, list_namespaces, DbInfo…
     documents.rs  # query_page, insert/replace/delete…
+    mcp.rs        # MCP server on/off + exposed session list
+  mcp/            # built-in MCP server: http.rs (minimal HTTP/1.1), mod.rs (JSON-RPC), tools.rs
 ```
 
 ### Backend conventions

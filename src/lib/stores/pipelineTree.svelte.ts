@@ -4,6 +4,7 @@ import {
   parsePipelineFromScript, stagesToScript, defaultStageBody, newStageId, type StageEntry,
 } from "../domain/pipelineStages";
 import type { Doc } from "../domain/doc";
+import { numFromExt } from "../domain/extjson";
 import { createAsyncGuard } from "./asyncGuard.svelte";
 import { settings } from "./settings.svelte";
 import { listIndexes } from "../api/indexes";
@@ -145,8 +146,8 @@ export function createPipelineTree(sessionId: string, script: ScriptBinding) {
       let value: StageCount;
       try {
         const rows = await aggregate(sessionId, db, coll, JSON.stringify([...prefix.map((p) => ({ [p.name]: p.body })), { $count: "n" }]), 0, 1, timeout);
-        const n = (rows[0] as { n?: unknown } | undefined)?.n;
-        value = typeof n === "number" ? n : 0;
+        // `$count` omits its document when nothing matched; numbers arrive as ExtJSON wrappers.
+        value = numFromExt((rows[0] as { n?: unknown } | undefined)?.n) ?? 0;
       } catch {
         value = "error";
       }

@@ -13,9 +13,11 @@ mod json_bson;
 mod json_import;
 mod json_stream;
 mod known_hosts;
+mod mcp;
 mod query_library;
 mod registry;
 mod script;
+mod secrets;
 mod sql_export;
 mod sql_import;
 mod sql_stream;
@@ -28,6 +30,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::default())
         .manage(commands::command_log::CommandLogFile::default())
+        .manage(commands::mcp::McpServer::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
@@ -39,6 +42,7 @@ pub fn run() {
             commands::connection::save_connection,
             commands::connection::delete_connection,
             commands::connection::touch_connection,
+            commands::connection::secret_storage,
             commands::connection::disconnect,
             commands::connection::forget_ssh_host_key,
             commands::query::query_page,
@@ -126,6 +130,10 @@ pub fn run() {
             commands::watch::watch_start,
             commands::watch::watch_stop,
             commands::profiler::profile_watch_start,
+            commands::mcp::mcp_start,
+            commands::mcp::mcp_stop,
+            commands::mcp::mcp_status,
+            commands::mcp::mcp_set_sessions,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

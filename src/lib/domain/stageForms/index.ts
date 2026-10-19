@@ -6,6 +6,8 @@ import { lookupCodec } from "./lookup";
 import { sortCodec } from "./sort";
 import { unwindCodec } from "./unwind";
 import { matchCodec } from "./match";
+import { sampleCodec } from "./sample";
+import { replaceRootCodec, sortByCountCodec, unsetCodec } from "./fieldRef";
 import type { StageCodec } from "./types";
 
 export type { StageCodec } from "./types";
@@ -18,6 +20,7 @@ export { nextSteps } from "./nextSteps";
 export { expandTemplate } from "./templates";
 export { stageWarnings } from "./warnings";
 export { deepEqualOrdered } from "./deepEqualOrdered";
+export { STAGE_CATEGORIES, type StageCategory } from "./catalog";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const STAGE_CODECS: Record<string, StageCodec<any>> = {
@@ -32,4 +35,8 @@ export const STAGE_CODECS: Record<string, StageCodec<any>> = {
   $unwind: unwindCodec,
   $lookup: lookupCodec,
   $count: countCodec,
+  $sample: sampleCodec,
+  $sortByCount: sortByCountCodec,
+  $replaceRoot: replaceRootCodec,
+  $unset: unsetCodec,
 };

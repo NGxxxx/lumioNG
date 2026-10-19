@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 
 vi.mock("../api/connections", () => ({
+  getSecretStorage: vi.fn(async () => "keychain"),
   listConnections: vi.fn().mockResolvedValue([]),
   saveConnection: vi.fn().mockResolvedValue([]),
   deleteConnection: vi.fn().mockResolvedValue([]),
@@ -97,5 +98,23 @@ describe("ConnectionForm — connection string", () => {
     await fireEvent.click(getByRole("button", { name: "Copy URI with password" }));
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
     expect(writeText.mock.calls[1][0]).toContain("bob:pw@");
+  });
+});
+
+describe("ConnectionForm — where passwords are stored", () => {
+  it("says passwords go to the system keychain when one is available", async () => {
+    const { r, getByLabelText, findByText } = setup();
+    await r.load();
+    await fireEvent.change(getByLabelText("Authentication:"), { target: { value: "password" } });
+    expect(await findByText(/kept in the system keychain/)).toBeTruthy();
+  });
+
+  it("warns when it falls back to the settings file", async () => {
+    const { getSecretStorage } = await import("../api/connections");
+    vi.mocked(getSecretStorage).mockResolvedValueOnce("file");
+    const { r, getByLabelText, findByText } = setup();
+    await r.load();
+    await fireEvent.change(getByLabelText("Authentication:"), { target: { value: "password" } });
+    expect((await findByText(/System keychain unavailable/)).classList.contains("warn")).toBe(true);
   });
 });

@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn save_then_load_round_trips() {
-        let dir = std::env::temp_dir().join("monglumio_test_known_hosts_roundtrip");
+        let dir = std::env::temp_dir().join("lumiong_test_known_hosts_roundtrip");
         let path = dir.join("known_hosts.json");
         let _ = std::fs::remove_dir_all(&dir);
         let list = vec![host("h", 22, "ssh-ed25519", "AAA")];
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn load_missing_file_is_empty() {
-        let path = std::env::temp_dir().join("monglumio_test_known_hosts_missing/nope.json");
+        let path = std::env::temp_dir().join("lumiong_test_known_hosts_missing/nope.json");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
         assert_eq!(load(&path).unwrap(), Vec::<KnownHost>::new());
     }

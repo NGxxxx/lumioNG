@@ -84,6 +84,16 @@
   }
 </script>
 
+<!-- Where a saved password goes; sits in the second grid column under the field. -->
+{#snippet secretNote()}
+  {#if r.secretStorage}
+    <span></span>
+    <span class="secret-note" class:warn={r.secretStorage === "file"}>
+      {r.secretStorage === "keychain" ? m.conn_secret_keychain() : m.conn_secret_file()}
+    </span>
+  {/if}
+{/snippet}
+
 <div class="right-col">
   <div class="view-toggle">
     <button type="button" class="toggle-btn" class:toggle-active={activeTab === "general"} onclick={() => (activeTab = "general")}>
@@ -193,6 +203,7 @@
 
         <span class="form-label">{m.session_manager_label_password()}</span>
         <input class="form-input" type="password" bind:value={r.password} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_password()} />
+        {#if r.authMethod !== "none"}{@render secretNote()}{/if}
       {:else}
         <span class="form-label">{m.session_manager_label_cert_file()}</span>
         <div class="import-row">
@@ -276,6 +287,7 @@
         {#if r.sshAuthMethod === "password"}
           <span class="form-label">{m.session_manager_label_ssh_password()}</span>
           <input class="form-input" type="password" bind:value={r.sshPassword} aria-label={m.session_manager_label_ssh_password()} />
+          {@render secretNote()}
         {:else}
           <span class="form-label">{m.session_manager_label_ssh_key_file()}</span>
           <div class="import-row">
@@ -377,6 +389,8 @@
   .hint-btn { border: none; background: none; padding: 0; color: var(--link); font-size: 0.75rem; cursor: pointer; }
   .hint-btn:hover { text-decoration: underline; }
   .hint { color: var(--warn-fg); font-size: 0.75rem; }
+  .secret-note { margin-top: -0.25rem; color: var(--muted); font-size: 0.71875rem; }
+  .secret-note.warn { color: var(--warn-fg); }
   .swatches { display: flex; gap: 0.375rem; align-items: center; }
   .swatch {
     width: 1.25rem; height: 1.25rem; padding: 0; border-radius: 50%; border: none; cursor: pointer;

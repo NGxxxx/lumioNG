@@ -22,6 +22,9 @@
       { key: "foreignField", label: m.builder_lookup_foreign, kind: "text" }, { key: "as", label: m.builder_lookup_as, kind: "text" },
     ] },
     { id: "duplicates", label: m.builder_tpl_duplicates, qs: [{ key: "field", label: m.builder_tpl_field, kind: "field" }] },
+    { id: "distinct", label: m.builder_tpl_distinct, qs: [{ key: "field", label: m.builder_tpl_field, kind: "field" }] },
+    { id: "latest", label: m.builder_tpl_latest, qs: [{ key: "dateField", label: m.builder_tpl_date, kind: "field" }, { key: "n", label: m.builder_tpl_n, kind: "number" }] },
+    { id: "countPerDay", label: m.builder_tpl_countPerDay, qs: [{ key: "dateField", label: m.builder_tpl_date, kind: "field" }] },
   ];
 
   let picked = $state<(typeof TEMPLATES)[number] | null>(null);
@@ -41,7 +44,7 @@
 <div class="tpl" role="dialog" tabindex="-1" aria-label={m.builder_templates()} onkeydown={(e) => { if (e.key === "Escape") onclose(); if (e.key === "Enter") apply(); }}>
   {#if !picked}
     {#each TEMPLATES as t (t.id)}
-      <button class="item" onclick={() => { picked = t; args = t.id === "topN" ? { n: "10" } : {}; }}>{t.label()}</button>
+      <button class="item" onclick={() => { picked = t; args = t.id === "topN" || t.id === "latest" ? { n: "10" } : {}; }}>{t.label()}</button>
     {/each}
   {:else}
     <div class="title">{picked.label()}</div>

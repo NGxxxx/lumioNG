@@ -93,6 +93,9 @@ pub struct SavedConnection {
     /// Epoch millis of the last successful connect; `None` if never connected.
     #[serde(default)]
     pub last_connected_at: Option<i64>,
+    /// The `*_enc` fields live in the OS credential store (see `secrets.rs`) and are blank in the file.
+    #[serde(default)]
+    pub secrets_in_keychain: bool,
 }
 
 impl SavedConnection {
@@ -125,6 +128,7 @@ impl SavedConnection {
             color: input.color,
             uri: None,
             last_connected_at: None,
+            secrets_in_keychain: false,
         }
     }
 }
@@ -138,9 +142,10 @@ pub fn upsert(
     match id {
         Some(id) => {
             if let Some(c) = list.iter_mut().find(|c| c.id == id) {
-                let last_connected_at = c.last_connected_at;
+                let (last_connected_at, in_keychain) = (c.last_connected_at, c.secrets_in_keychain);
                 *c = SavedConnection::from_input(id, input);
                 c.last_connected_at = last_connected_at;
+                c.secrets_in_keychain = in_keychain;
             }
             list
         }
@@ -182,8 +187,13 @@ pub fn save(path: &Path, list: &[SavedConnection]) -> Result<(), AppError> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// A saved connection with no secrets, for other modules' tests.
+    pub(crate) fn conn(id: u32) -> SavedConnection {
+        SavedConnection::from_input(id, input("c", "h"))
+    }
 
     fn input(label: &str, host: &str) -> ConnectionInput {
         ConnectionInput {
@@ -261,7 +271,7 @@ mod tests {
 
     #[test]
     fn save_then_load_round_trips() {
-        let dir = std::env::temp_dir().join("monglumio_test_registry_roundtrip");
+        let dir = std::env::temp_dir().join("lumiong_test_registry_roundtrip");
         let path = dir.join("connections.json");
         let _ = std::fs::remove_dir_all(&dir);
         let list = upsert(vec![], None, input("Local", "localhost"));
@@ -272,14 +282,14 @@ mod tests {
 
     #[test]
     fn load_missing_file_is_empty() {
-        let path = std::env::temp_dir().join("monglumio_test_registry_missing/nope.json");
+        let path = std::env::temp_dir().join("lumiong_test_registry_missing/nope.json");
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
         assert_eq!(load(&path).unwrap(), Vec::<SavedConnection>::new());
     }
 
     #[test]
     fn legacy_file_deserializes_with_uri_and_empty_fields() {
-        let dir = std::env::temp_dir().join("monglumio_test_registry_legacy");
+        let dir = std::env::temp_dir().join("lumiong_test_registry_legacy");
         let path = dir.join("connections.json");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -301,7 +311,7 @@ mod tests {
 
     #[test]
     fn legacy_file_defaults_read_only_false() {
-        let dir = std::env::temp_dir().join("monglumio_test_registry_ro_default");
+        let dir = std::env::temp_dir().join("lumiong_test_registry_ro_default");
         let path = dir.join("connections.json");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -334,7 +344,7 @@ mod tests {
 
     #[test]
     fn legacy_file_defaults_last_connected_at_none() {
-        let dir = std::env::temp_dir().join("monglumio_test_registry_last_connected_default");
+        let dir = std::env::temp_dir().join("lumiong_test_registry_last_connected_default");
         let path = dir.join("connections.json");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -346,7 +356,7 @@ mod tests {
 
     #[test]
     fn ssh_and_x509_fields_round_trip_through_save_and_load() {
-        let dir = std::env::temp_dir().join("monglumio_test_registry_ssh_fields");
+        let dir = std::env::temp_dir().join("lumiong_test_registry_ssh_fields");
         let path = dir.join("connections.json");
         let _ = std::fs::remove_dir_all(&dir);
         let mut i = input("SSH", "internal-host");
@@ -371,7 +381,7 @@ mod tests {
 
     #[test]
     fn legacy_file_without_ssh_fields_defaults_them_empty() {
-        let dir = std::env::temp_dir().join("monglumio_test_registry_ssh_legacy_default");
+        let dir = std::env::temp_dir().join("lumiong_test_registry_ssh_legacy_default");
         let path = dir.join("connections.json");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();

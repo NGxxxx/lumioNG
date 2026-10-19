@@ -53,6 +53,9 @@
   import StatusBar from "#lib/components/StatusBar.svelte";
   import CommandLog from "#lib/components/CommandLog.svelte";
   import AboutDialog from "#lib/components/AboutDialog.svelte";
+  import McpDialog from "#lib/components/McpDialog.svelte";
+  import { mcp } from "#lib/stores/mcp.svelte.js";
+  import { exposedSessions } from "#lib/domain/mcp.js";
   import ToastHost from "#lib/components/ToastHost.svelte";
   import { undo } from "#lib/stores/undo.svelte.js";
   import { jobs } from "#lib/stores/jobs.svelte.js";
@@ -77,6 +80,7 @@
   let confirmQuit = $state(false);
   const requestQuit = () => (confirmQuit = true);
   let aboutOpen = $state(false);
+  let mcpOpen = $state(false);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let saveQueryDialog = $state<{ tabId: number } | null>(null);
@@ -93,7 +97,11 @@
 
   onMount(() => {
     queryLibrary.load(); // once at app start; failure shows in the panel and never blocks the app
+    mcp.init(); // brings the MCP server back if it was on last time
   });
+
+  // MCP clients see exactly the connections that are open here, labelled the same way.
+  $effect(() => mcp.syncSessions(exposedSessions(sessionManager.sessions)));
 
   const sm = sessionManager;
   // The whole UI is driven by the active session; sidebar still renders a single tree (multi-root rendering arrives later).
@@ -293,6 +301,7 @@
     "view.resetToDefault": { disabled: false, run: requestReset },
     "view.resetLayout": { disabled: !dataViewActive, run: () => activeDataView.handle?.resetLayout?.() },
     "help.about": { disabled: false, run: () => (aboutOpen = true) },
+    "tools.mcpSettings": { disabled: false, run: () => (mcpOpen = true) },
     "query.history": { disabled: !activeQueryRun, run: () => activeQueryRun?.toggleHistory() },
     "edit.undo": { disabled: undo.entries.length === 0 || undo.busy, run: () => void undo.undoLast() },
     "help.shortcuts": { disabled: false, run: () => (shortcutsOpen = true) },
@@ -401,6 +410,7 @@
     ["query.history", m.cmd_query_history, "query"],
     ["help.shortcuts", m.menu_keyboard_shortcuts, "view"],
     ["help.about", m.menu_about, "view"],
+    ["tools.mcpSettings", m.menu_mcp_settings, "actions"],
     ["file.quit", m.menu_quit, "view"],
   ];
 
@@ -410,6 +420,7 @@
     "toggle:log": { label: m.palette_toggle_log, run: () => commands["view.toggleLog"]?.run() },
     "toggle:saved": { label: m.palette_toggle_saved, run: () => commands["view.toggleSavedQueries"]?.run() },
     "toggle:stageEdits": { label: m.menu_stage_edits, run: () => settings.setStageCellEdits(!settings.stageCellEdits) },
+    "toggle:mcp": { label: m.palette_toggle_mcp, run: () => mcp.toggle() },
     "density:compact": { label: () => `${m.menu_density()}: ${m.density_compact()}`, run: () => settings.setDensity("compact") },
     "density:comfortable": { label: () => `${m.menu_density()}: ${m.density_comfortable()}`, run: () => settings.setDensity("comfortable") },
     "density:spacious": { label: () => `${m.menu_density()}: ${m.density_spacious()}`, run: () => settings.setDensity("spacious") },
@@ -770,6 +781,9 @@
     logOpen={logIsOpen}
     logUnseen={commandLog.unseen}
     ontogglelog={() => commands["view.toggleLog"]?.run()}
+    mcpPort={mcp.status === "running" ? mcp.port : null}
+    mcpCalls={mcp.calls}
+    onmcp={() => (mcpOpen = true)}
   />
   {#if shell.sessionOpen}
     <SessionManager onconnected={onConnected} onclose={() => shell.toggleSession()} />
@@ -804,6 +818,9 @@
   {/if}
   {#if aboutOpen}
     <AboutDialog onclose={() => (aboutOpen = false)} />
+  {/if}
+  {#if mcpOpen}
+    <McpDialog onclose={() => (mcpOpen = false)} />
   {/if}
   {#if shortcutsOpen}
     <ShortcutsDialog platform={plat} onclose={() => (shortcutsOpen = false)} />

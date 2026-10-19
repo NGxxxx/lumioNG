@@ -36,7 +36,12 @@ export interface SavedConnection extends ConnectionInput {
   uri?: string | null;
   /** Epoch millis of the last successful connect; null/undefined if never connected. */
   lastConnectedAt?: number | null;
+  /** Its secrets live in the OS credential store rather than connections.json. */
+  secretsInKeychain?: boolean;
 }
+
+/** Where saved passwords go: the OS credential store, or (none available) the connections file. */
+export type SecretStorage = "keychain" | "file";
 
 export async function listConnections(): Promise<SavedConnection[]> {
   return await invoke<SavedConnection[]>("list_connections");
@@ -55,4 +60,8 @@ export async function deleteConnection(id: number): Promise<SavedConnection[]> {
 
 export async function touchConnection(id: number): Promise<SavedConnection[]> {
   return await invoke<SavedConnection[]>("touch_connection", { id });
+}
+
+export async function getSecretStorage(): Promise<SecretStorage> {
+  return await invoke<SecretStorage>("secret_storage");
 }

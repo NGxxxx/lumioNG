@@ -86,7 +86,7 @@ mod tests {
 
     #[test]
     fn detect_json_array_is_true_for_a_leading_bracket_with_whitespace() {
-        let dir = std::env::temp_dir().join("monglumio_test_detect_array");
+        let dir = std::env::temp_dir().join("lumiong_test_detect_array");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.json");
         std::fs::write(&path, "  \n[{\"a\":1}]").unwrap();
@@ -96,7 +96,7 @@ mod tests {
 
     #[test]
     fn detect_json_array_is_false_for_jsonl() {
-        let dir = std::env::temp_dir().join("monglumio_test_detect_jsonl");
+        let dir = std::env::temp_dir().join("lumiong_test_detect_jsonl");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.jsonl");
         std::fs::write(&path, "{\"a\":1}\n{\"b\":2}\n").unwrap();
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn detect_json_array_is_false_for_an_empty_file() {
-        let dir = std::env::temp_dir().join("monglumio_test_detect_empty");
+        let dir = std::env::temp_dir().join("lumiong_test_detect_empty");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("a.json");
         std::fs::write(&path, "").unwrap();

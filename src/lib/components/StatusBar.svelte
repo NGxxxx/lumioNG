@@ -20,6 +20,9 @@
     logOpen = false,
     logUnseen = 0,
     ontogglelog,
+    mcpPort = null,
+    mcpCalls = 0,
+    onmcp,
   }: {
     connected: boolean;
     connectionLabel: string | null;
@@ -36,6 +39,10 @@
     /** Commands logged since the log was last open. */
     logUnseen?: number;
     ontogglelog?: () => void;
+    /** Port of the running MCP server; null hides the indicator. */
+    mcpPort?: number | null;
+    mcpCalls?: number;
+    onmcp?: () => void;
   } = $props();
 
   const label = $derived(selDb ?? connectionLabel ?? "—");
@@ -81,6 +88,12 @@
   <div class="seg idle" class:busy={activityLabel !== null}>{activityLabel ?? m.status_bar_idle()}</div>
 
   <JobsIndicator {jobs} />
+
+  {#if mcpPort !== null}
+    <button class="log-btn mcp-btn" title={m.statusbar_mcp_title({ port: String(mcpPort), count: String(mcpCalls) })} onclick={onmcp}>
+      <span class="dot on" aria-hidden="true"></span><span>MCP</span>
+    </button>
+  {/if}
 
   {#if ontogglelog}
     <button

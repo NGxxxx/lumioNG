@@ -9,8 +9,13 @@ export function stageWarnings(
 ): { index: number; key: string }[] {
   const out: { index: number; key: string }[] = [];
   let reshaped = false;
+  let limited = false;
   stages.forEach((s, index) => {
     if (!s.enabled) return;
+    // A $sort after a $limit only orders the documents that survived the cut — rarely what's meant.
+    if (s.name === "$sort" && limited) out.push({ index, key: "sort_after_limit" });
+    if (s.name === "$limit") limited = true;
+    if (s.name === "$group" || s.name === "$sortByCount" || s.name === "$count") limited = false;
     if (s.name === "$match" && reshaped) out.push({ index, key: "match_after_reshape" });
     if (s.name === "$lookup" && isPlainObject(s.body)) {
       const { from, foreignField } = s.body;

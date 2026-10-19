@@ -2,12 +2,13 @@
 <script lang="ts">
   import type { PipelineTree } from "../../stores/pipelineTree.svelte";
   import type { FieldInfo } from "../../domain/fieldInfo";
-  import { PIPELINE_STAGES } from "../../domain/mongoOps";
-  import { defaultStageBody } from "../../domain/pipelineStages";
+  import { pipelineToJson } from "../../domain/pipelineStages";
+  import { copyToClipboard } from "../../clipboard";
   import { msgKey } from "#lib/msgkey.js";
   import { clickOutside } from "../../actions/clickOutside";
   import StageCard from "./StageCard.svelte";
   import TemplatePicker from "./TemplatePicker.svelte";
+  import StagePicker from "./StagePicker.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let { tree, collections = [], onexplain }: { tree: PipelineTree; collections?: string[]; onexplain?: () => void } = $props();
@@ -21,10 +22,21 @@
     void tree.fieldsAt(tree.stages.length).then((f) => (sourceFields = f));
   });
 
+  // New stages go right after the open card, so a stage can be slotted in mid-pipeline.
+  const selectedIndex = $derived(tree.stages.findIndex((s) => s.id === tree.selectedId));
   function add(name: string) {
-    tree.addStep({ name, body: defaultStageBody(name) });
-    const last = tree.stages[tree.stages.length - 1];
-    if (last) tree.select(last.id);
+    const at = selectedIndex === -1 ? tree.stages.length : selectedIndex + 1;
+    tree.addStage(name, at);
+    const added = tree.stages[at];
+    if (added) tree.select(added.id);
+  }
+
+  let copied = $state(false);
+  async function copyPipeline() {
+    if (await copyToClipboard(pipelineToJson(tree.stages))) {
+      copied = true;
+      setTimeout(() => (copied = false), 1500);
+    }
   }
 </script>
 
@@ -35,10 +47,8 @@
     <div class="bar">
       <span class="coll"><span class="b-muted">{m.builder_collection()}</span> <b class="mono">{tree.coll}</b></span>
       <span class="spacer"></span>
-      <select class="b-input" bind:value={addPicker} aria-label={m.pipeline_tree_stage_picker_label()}>
-        {#each PIPELINE_STAGES as s (s.label)}<option value={s.label} title={s.detail}>{s.label}</option>{/each}
-      </select>
-      <button class="btn" onclick={() => add(addPicker)}>{m.builder_add_stage()}</button>
+      <StagePicker value={addPicker} onchange={(v) => (addPicker = v)} />
+      <button class="btn" onclick={() => add(addPicker)}>{selectedIndex === -1 ? m.builder_add_stage() : m.builder_add_after({ n: String(selectedIndex + 1) })}</button>
       <span class="tplwrap" use:clickOutside={() => (templatesOpen = false)}>
         <button class="btn" aria-expanded={templatesOpen} onclick={() => (templatesOpen = !templatesOpen)}>{m.builder_templates()} ▾</button>
         {#if templatesOpen}
@@ -46,6 +56,7 @@
         {/if}
       </span>
       {#if onexplain}<button class="btn" onclick={onexplain}>{m.builder_explain()}</button>{/if}
+      <button class="btn" disabled={tree.stages.length === 0} onclick={copyPipeline}>{copied ? m.builder_copied() : m.builder_copy_pipeline()}</button>
     </div>
 
     {#if tree.discardedNotice > 0}
@@ -58,7 +69,10 @@
     <div class="list">
       {#if tree.stages.length === 0}<div class="empty">{m.builder_empty()}</div>{/if}
       {#each tree.stages as stage, i (stage.id)}
-        <StageCard {tree} index={i} {collections} />
+        <div class="step">
+          <span class="num" aria-hidden="true">{i + 1}</span>
+          <div class="step-card"><StageCard {tree} index={i} {collections} /></div>
+        </div>
       {/each}
       {#if tree.nextSteps.length}
         <div class="next">
@@ -80,9 +94,13 @@
   .spacer { flex: 1; }
   .tplwrap { position: relative; }
   .btn { height: 1.75rem; padding: 0 0.625rem; border: 1px solid var(--c-surface1); border-radius: var(--radius); background: var(--panel); color: var(--fg); font-size: 0.75rem; cursor: pointer; }
-  .btn:hover { background: var(--menu-hover); }
+  .btn:hover:not(:disabled) { background: var(--menu-hover); }
+  .btn:disabled { opacity: 0.5; cursor: default; }
   .notice { display: flex; align-items: center; gap: 0.75rem; padding: 0.375rem 0.625rem; border-radius: var(--radius); background: var(--warn-bg); color: var(--warn-fg); font-size: 0.75rem; }
   .list { flex: 1; min-height: 0; overflow: auto; }
+  .step { display: flex; align-items: flex-start; gap: 0.375rem; }
+  .step-card { flex: 1; min-width: 0; }
+  .num { flex: none; width: 1.25rem; margin-top: 0.4375rem; text-align: right; font-size: 0.6875rem; font-variant-numeric: tabular-nums; color: var(--muted); }
   .empty { padding: 1rem; color: var(--muted); font-size: var(--fs); text-align: center; }
   .next { display: flex; align-items: center; flex-wrap: wrap; gap: 0.375rem; padding: 0.25rem 0.125rem; font-size: 0.75rem; }
   .chip { height: 1.5rem; padding: 0 0.625rem; border: 1px dashed var(--c-surface1); border-radius: 999px; background: none; color: var(--fg); cursor: pointer; font-size: 0.75rem; }

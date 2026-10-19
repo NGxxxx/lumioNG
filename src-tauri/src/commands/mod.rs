@@ -16,3 +16,4 @@ pub mod users;
 pub mod command_log;
 pub mod watch;
 pub mod profiler;
+pub mod mcp;

@@ -62,7 +62,7 @@ describe("CurrentOpsPanel", () => {
     mockReadOnly = false;
   });
 
-  it("marks monglumio's own ops with a \"you\" badge but not other clients' ops", () => {
+  it("marks LumioNG's own ops with a \"you\" badge but not other clients' ops", () => {
     mockOps = [
       { opid: 7, secsRunning: 12, op: "query", ns: "d.c", client: "1.2.3.4:5", desc: null, appName: "LumioNG" },
       { opid: 8, secsRunning: 3, op: "update", ns: "d.c2", client: "1.2.3.4:6", desc: null, appName: "mongosh 2.1.1" },

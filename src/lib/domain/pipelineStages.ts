@@ -107,9 +107,17 @@ export function defaultStageBody(name: string): unknown {
       return "REPLACE_WITH_COLLECTION_NAME";
     case "$replaceRoot":
       return { newRoot: "$field" };
+    case "$unset":
+      return "field";
     default:
       return {};
   }
+}
+
+/** The enabled stages as a plain pipeline array, pretty-printed — what "Copy pipeline" puts on the
+ *  clipboard (for a driver, Compass, or an MCP client). */
+export function pipelineToJson(stages: readonly Pick<StageEntry, "name" | "body" | "enabled">[]): string {
+  return JSON.stringify(stages.filter((s) => s.enabled !== false).map((s) => ({ [s.name]: s.body })), null, 2);
 }
 
 /** Whether `body` is still exactly the freshly-added default for stage `name` — true right after

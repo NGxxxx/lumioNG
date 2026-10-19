@@ -11,6 +11,7 @@ const DOM_TESTS = [
   "src/lib/stores/gridLayout.test.ts",
   "src/lib/stores/gridfsFilesCache.test.ts",
   "src/lib/stores/jobs.svelte.test.ts",
+  "src/lib/stores/mcp.test.ts",
   "src/lib/stores/overviewPoller.test.ts",
   "src/lib/stores/platform.test.ts",
   "src/lib/stores/queryHistory.test.ts",

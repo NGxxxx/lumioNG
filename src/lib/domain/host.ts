@@ -67,7 +67,7 @@ export function parseHostInfo(
   };
 }
 
-/** Must match the driver's default `app_name` in `src-tauri/src/commands/connection.rs::open_client` — used to tell monglumio's own ops apart from other clients (mongosh, Compass…) in the Current Operations panel. */
+/** Must match the driver's default `app_name` in `src-tauri/src/commands/connection.rs::open_client` — used to tell LumioNG's own ops apart from other clients (mongosh, Compass…) in the Current Operations panel. */
 export const OWN_APP_NAME = "LumioNG";
 
 export interface OpInfo {
