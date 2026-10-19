@@ -29,6 +29,9 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "appimage"],
+    "copyright": "Copyright (C) 2025-2026 NG and LumioNG contributors",
+    "license": "AGPL-3.0-only",
+    "licenseFile": "../LICENSE",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

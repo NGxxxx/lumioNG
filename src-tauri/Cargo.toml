@@ -2,7 +2,8 @@
 name = "lumio-ng-app"
 version = "0.6.0"
 description = "LumioNG — a fast, table-first MongoDB GUI"
-authors = ["you"]
+authors = ["NG", "LumioNG contributors"]
+license = "AGPL-3.0-only"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
