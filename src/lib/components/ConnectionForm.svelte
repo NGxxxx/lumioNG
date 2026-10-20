@@ -160,6 +160,16 @@
         {/if}
       </div>
 
+      <span class="form-label">{m.conn_mcp_access()}:</span>
+      <div class="env-cell">
+        <select class="form-input" bind:value={r.mcpAccess} aria-label={m.conn_mcp_access()}>
+          <option value="off">{m.conn_mcp_access_off()}</option>
+          <option value="read">{m.conn_mcp_access_read()}</option>
+          <option value="write" disabled={r.environment === "prod"}>{m.conn_mcp_access_write()}</option>
+        </select>
+        {#if r.environment === "prod"}<span class="hint">{m.conn_mcp_access_prod_hint()}</span>{/if}
+      </div>
+
       <span class="form-label">{m.color_label()}:</span>
       <div class="swatches" role="radiogroup" aria-label={m.color_label()}>
         <button type="button" role="radio" class="swatch auto" class:on={r.color === ""} aria-checked={r.color === ""} aria-label={m.color_auto()} title={m.color_auto()} onclick={() => (r.color = "")}>A</button>
@@ -307,6 +317,9 @@
   {/if}
   {#if r.error}
     <div class="form-error">{r.error}</div>
+  {/if}
+  {#if r.offerSaveWithoutPassword}
+    <div class="form-error"><button type="button" class="hint-btn" onclick={r.saveWithoutPassword}>{m.vault_save_without_password()}</button></div>
   {/if}
   {#if connectError}
     <div class="form-error">{connectError}</div>

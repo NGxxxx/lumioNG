@@ -60,4 +60,17 @@ describe("McpDialog", () => {
     await fireEvent.click(box);
     expect(mcp.allowWrites).toBe(true);
   });
+
+  it("the hidden-fields list is edited as text and the audit-reads box toggles the store", async () => {
+    render(McpDialog, { props: { onclose: vi.fn() } });
+    const box = screen.getByLabelText("Hidden fields") as HTMLInputElement;
+    expect(box.value).toContain("password");
+    await fireEvent.input(box, { target: { value: "iban, *secret*, iban" } });
+    await fireEvent.blur(box);
+    expect(mcp.redactFields).toEqual(["iban", "*secret*"]);
+    const reads = screen.getByLabelText(/Also audit MCP read calls/) as HTMLInputElement;
+    expect(reads.checked).toBe(false);
+    await fireEvent.click(reads);
+    expect(mcp.auditReads).toBe(true);
+  });
 });

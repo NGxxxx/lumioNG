@@ -33,6 +33,7 @@ export type CommandId =
   | "help.about"
   | "help.exportDiagnostics"
   | "tools.mcpSettings"
+  | "tools.auditLog"
   | "tools.exportSettings"
   | "tools.importSettings"
   | "edit.undo"

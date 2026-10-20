@@ -78,46 +78,50 @@ pub async fn csv_import_commit(
 ) -> Result<ImportResult, AppError> {
     state.ensure_writable(&session_id).await?;
 
-    let count_path = path.clone();
-    let total = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
-        let reader = open_file(&count_path)?;
-        count_csv_rows(reader, delimiter).map_err(AppError::Parse)
-    })
-    .await
-    .map_err(|e| AppError::Io(e.to_string()))??;
+    state
+        .audited(&session_id, crate::audit::SOURCE_IMPORT, "csv_import", &format!("{db}.{coll}"), None, |r: &ImportResult| Some(r.inserted), async {
+        let count_path = path.clone();
+        let total = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
+            let reader = open_file(&count_path)?;
+            count_csv_rows(reader, delimiter).map_err(AppError::Parse)
+        })
+        .await
+        .map_err(|e| AppError::Io(e.to_string()))??;
 
-    let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+        let client = state.client(&session_id).await?;
+        let collection = client.database(&db).collection::<Document>(&coll);
 
-    let mut rx = spawn_csv_producer(path, delimiter, infer_opts);
-    let mut inserted: u64 = 0;
-    let mut errors: Vec<String> = Vec::new();
-    let mut done: u64 = 0;
+        let mut rx = spawn_csv_producer(path, delimiter, infer_opts);
+        let mut inserted: u64 = 0;
+        let mut errors: Vec<String> = Vec::new();
+        let mut done: u64 = 0;
 
-    while let Some(chunk) = rx.recv().await {
-        let batch_rows = chunk?;
-        let batch_len = batch_rows.len();
-        let mut docs = Vec::with_capacity(batch_len);
-        let mut raw_idx = Vec::with_capacity(batch_len);
-        for row in batch_rows {
-            match row {
-                CsvRow::Doc(idx, doc) => {
-                    docs.push(doc);
-                    raw_idx.push(idx);
+        while let Some(chunk) = rx.recv().await {
+            let batch_rows = chunk?;
+            let batch_len = batch_rows.len();
+            let mut docs = Vec::with_capacity(batch_len);
+            let mut raw_idx = Vec::with_capacity(batch_len);
+            for row in batch_rows {
+                match row {
+                    CsvRow::Doc(idx, doc) => {
+                        docs.push(doc);
+                        raw_idx.push(idx);
+                    }
+                    CsvRow::ParseError(idx, msg) => errors.push(format!("doc#{idx}: {msg}")),
                 }
-                CsvRow::ParseError(idx, msg) => errors.push(format!("doc#{idx}: {msg}")),
+            }
+            let mut stop = false;
+            if !docs.is_empty() {
+                stop = insert_batch(&collection, docs, &raw_idx, insert_mode, &mut inserted, &mut errors).await;
+            }
+            done += batch_len as u64;
+            let _ = on_progress.send(ExportProgress { done: done.min(total), total });
+            if stop {
+                break; // dropping rx here signals the producer thread to stop (see spawn_csv_producer)
             }
         }
-        let mut stop = false;
-        if !docs.is_empty() {
-            stop = insert_batch(&collection, docs, &raw_idx, insert_mode, &mut inserted, &mut errors).await;
-        }
-        done += batch_len as u64;
-        let _ = on_progress.send(ExportProgress { done: done.min(total), total });
-        if stop {
-            break; // dropping rx here signals the producer thread to stop (see spawn_csv_producer)
-        }
-    }
 
-    Ok(summarize_import(inserted, errors))
+        Ok(summarize_import(inserted, errors))
+        })
+        .await
 }

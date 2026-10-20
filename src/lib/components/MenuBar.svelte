@@ -161,6 +161,7 @@
       items: [
         { ...toggleItem(m.menu_mcp_server(), mcp.enabled, (v) => mcp.setEnabled(v)), value: mcpValue },
         cmdItem("tools.mcpSettings", m.menu_mcp_settings()),
+        cmdItem("tools.auditLog", m.menu_audit_log()),
         cmdItem("tools.exportSettings", m.menu_export_settings()),
         cmdItem("tools.importSettings", m.menu_import_settings()),
       ],

@@ -10,12 +10,14 @@ pub type Prefs = HashMap<String, String>;
 const FILE: &str = "prefs.json";
 /// An imported file larger than this is not a settings file.
 const MAX_IMPORT_BYTES: u64 = 32 * 1024 * 1024;
-/// Keys that never travel through export/import: every `mcp-*` key (bearer token, enabled, port, write flag).
-/// A settings file must neither leak the token nor be able to turn the MCP server or its write access on.
-const EXCLUDED_PREFIX: &str = "mcp-";
+/// Keys that never travel through export/import: every `mcp-*` key (bearer token, enabled, port, write flag)
+/// and every `audit-*` key (which environments are audited).
+/// A settings file must neither leak the token nor be able to turn the MCP server or its write access on,
+/// and must not be able to switch auditing off for production.
+const EXCLUDED_PREFIXES: [&str; 2] = ["mcp-", "audit-"];
 
 fn is_excluded(key: &str) -> bool {
-    key.starts_with(EXCLUDED_PREFIX)
+    EXCLUDED_PREFIXES.iter().any(|p| key.starts_with(p))
 }
 
 fn io(e: impl std::fmt::Display) -> AppError {
@@ -180,6 +182,20 @@ mod tests {
         let merged = import(&dir, &file).unwrap();
         assert_eq!(merged, map(&[("mcp-token", "mine"), ("mcp-enabled", "false"), ("theme", "latte")]));
         assert!(!merged.contains_key("mcp-allow-writes"));
+    }
+
+    #[test]
+    fn audit_keys_are_excluded_from_export_and_import_keeps_current_value() {
+        let dir = temp_dir("lumiong_test_prefs_audit_scope");
+        save(&dir, &map(&[("audit-scope", "all"), ("theme", "mocha")])).unwrap();
+        let out = dir.join("out.json");
+        export(&dir, &out).unwrap();
+        assert_eq!(read_import(&out).unwrap(), map(&[("theme", "mocha")]));
+        // a file that tries to narrow auditing back to nothing/prod cannot change the current choice
+        let file = dir.join("in.json");
+        std::fs::write(&file, r#"{"audit-scope":"prod","audit-other":"x","theme":"latte"}"#).unwrap();
+        assert_eq!(read_import(&file).unwrap(), map(&[("theme", "latte")]));
+        assert_eq!(import(&dir, &file).unwrap(), map(&[("audit-scope", "all"), ("theme", "latte")]));
     }
 
     #[test]

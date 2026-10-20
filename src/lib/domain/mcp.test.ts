@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
-  clientSnippets, endpointUrl, exposedSessions, generateToken, isValidPort, isValidToken, pushActivity, MAX_ACTIVITY,
+  clampMcpAccess, clientSnippets, DEFAULT_REDACT_FIELDS, endpointUrl, exposedSessions, fieldMatchesPattern, fieldsFromText, generateToken,
+  isValidPort, isValidToken, parseRedactFields, pushActivity, MAX_ACTIVITY,
   type McpActivity,
 } from "./mcp";
 
@@ -43,7 +44,45 @@ describe("mcp domain", () => {
       { id: "a", label: "Local", status: "connected", environment: "dev", readOnly: false },
       { id: "b", label: "Down", status: "error", environment: "", readOnly: false },
     ]);
-    expect(out).toEqual([{ id: "a", label: "Local", environment: "dev", readOnly: false }]);
+    expect(out).toEqual([{ id: "a", label: "Local", environment: "dev", readOnly: false, access: "read" }]);
+  });
+
+  it("off_connections_are_not_listed", () => {
+    const out = exposedSessions([
+      { id: "a", label: "Hidden", status: "connected", environment: "dev", readOnly: false, mcpAccess: "off" },
+      { id: "b", label: "Shared", status: "connected", environment: "dev", readOnly: false, mcpAccess: "write" },
+    ]);
+    expect(out.map((s) => s.id)).toEqual(["b"]);
+    expect(out[0].access).toBe("write");
+  });
+
+  it("prod_cannot_be_set_to_write", () => {
+    expect(clampMcpAccess("prod", "write")).toBe("read");
+    expect(clampMcpAccess("staging", "write")).toBe("write");
+    expect(clampMcpAccess("prod", "off")).toBe("off");
+    expect(clampMcpAccess("dev", undefined)).toBe("read");
+    expect(clampMcpAccess("dev", "bogus")).toBe("read");
+    // a session saved as write and later relabelled prod is exposed read-only
+    const out = exposedSessions([{ id: "a", label: "P", status: "connected", environment: "prod", readOnly: false, mcpAccess: "write" }]);
+    expect(out[0].access).toBe("read");
+  });
+
+  it("default redaction patterns catch accessToken, clientSecret, passwordHash and userPassword", () => {
+    const hidden = (name: string) => DEFAULT_REDACT_FIELDS.some((p) => fieldMatchesPattern(name, p));
+    for (const n of ["accessToken", "clientSecret", "passwordHash", "userPassword", "API_KEY", "apiKey", "cardNumber", "ssn"]) {
+      expect(hidden(n), n).toBe(true);
+    }
+    expect(hidden("className")).toBe(false);
+    expect(hidden("name")).toBe(false);
+  });
+
+  it("reads the redaction list from prefs JSON, falling back to the defaults", () => {
+    expect(parseRedactFields(null)).toEqual([...DEFAULT_REDACT_FIELDS]);
+    expect(parseRedactFields("not json")).toEqual([...DEFAULT_REDACT_FIELDS]);
+    expect(parseRedactFields('{"a":1}')).toEqual([...DEFAULT_REDACT_FIELDS]);
+    expect(parseRedactFields('[" iban ","IBAN","",  "pin"]')).toEqual(["iban", "pin"]);
+    expect(parseRedactFields("[]")).toEqual([]);
+    expect(fieldsFromText("a, b\nA ,,c")).toEqual(["a", "b", "c"]);
   });
 
   it("keeps activity newest first and bounded", () => {

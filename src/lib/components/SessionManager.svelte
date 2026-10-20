@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { vault } from "../stores/vault.svelte";
   import { pushModal } from "#lib/stores/modalStack.js";
   import { backdropClose } from "../actions/backdropClose";
   import { createConnectionRegistry, type ConnectRequest } from "../stores/connections.svelte";
@@ -69,6 +70,11 @@
       connecting = false;
     }
   }
+
+  // Unlocking (or erasing) the vault changes which passwords the saved connections carry.
+  $effect(() => {
+    if (vault.epoch > 0) untrack(() => void r.load());
+  });
 
   onMount(() => {
     r.load();

@@ -166,6 +166,7 @@ pub fn run(
     cap: usize,
     read_only: bool,
     cancel: Arc<AtomicBool>,
+    audit: Option<crate::script::host::ScriptAudit>,
 ) -> ScriptOutcome {
     use crate::script::cursors::CursorStore;
     use crate::script::host;
@@ -206,6 +207,7 @@ pub fn run(
                 read_only,
                 cancel: cancel.clone(),
                 deadline,
+                audit,
             };
 
             host::bind(&ctx, host_ctx).map_err(|e| e.to_string())?;
@@ -418,6 +420,7 @@ mod run_tests {
             1000,
             false,
             cancel,
+            None,
         );
 
         assert!(
@@ -442,6 +445,7 @@ mod run_tests {
             1000,
             false,
             Arc::new(AtomicBool::new(false)),
+            None,
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -468,6 +472,7 @@ mod run_tests {
             1000,
             false,
             Arc::new(AtomicBool::new(false)),
+            None,
         );
 
         assert!(
@@ -486,6 +491,7 @@ mod run_tests {
         let outcome = run(
             client, handle, "test".into(), "db.c.find({".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
+            None,
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -503,6 +509,7 @@ mod run_tests {
         let outcome = run(
             client, handle, "test".into(), "undefinedFn()".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
+            None,
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -519,6 +526,7 @@ mod run_tests {
         let outcome = run(
             client, handle, "test".into(), "(async function(){ return 1; })()".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
+            None,
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -535,6 +543,7 @@ mod run_tests {
         let outcome = run(
             client, handle, "test".into(), "throw null".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
+            None,
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -550,6 +559,7 @@ mod run_tests {
         let outcome = run(
             client, handle, "test".into(), r#"throw "boom""#.into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
+            None,
         );
 
         let err = outcome.error.expect("expected an error in outcome");

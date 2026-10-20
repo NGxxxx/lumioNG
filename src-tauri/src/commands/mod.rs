@@ -19,3 +19,4 @@ pub mod watch;
 pub mod profiler;
 pub mod mcp;
 pub mod prefs;
+pub mod audit;

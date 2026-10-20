@@ -13,8 +13,11 @@ pub async fn create_collection(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
-    client.database(&db).create_collection(&coll).await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "create_collection", &format!("{db}.{coll}"), None, |_| None, async {
+            Ok(client.database(&db).create_collection(&coll).await?)
+        })
+        .await
 }
 
 #[tauri::command]
@@ -25,12 +28,11 @@ pub async fn drop_collection(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
-    client
-        .database(&db)
-        .collection::<Document>(&coll)
-        .drop()
-        .await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "drop_collection", &format!("{db}.{coll}"), None, |_| None, async {
+            Ok(client.database(&db).collection::<Document>(&coll).drop().await?)
+        })
+        .await
 }
 
 #[tauri::command]
@@ -43,17 +45,21 @@ pub async fn duplicate_collection(
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
     let database = client.database(&db);
-    // `$out` silently overwrites an existing target collection, so reject up front instead.
-    if database.list_collection_names().await?.iter().any(|n| n == &target) {
-        return Err(AppError::Query(format!("collection \"{target}\" already exists")));
-    }
-    // $out copies documents only (not indexes); draining the empty cursor it returns surfaces any pipeline error.
-    let mut cursor = database
-        .collection::<Document>(&source)
-        .aggregate(vec![doc! { "$out": &target }])
-        .await?;
-    while cursor.try_next().await?.is_some() {}
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "duplicate_collection", &format!("{db}.{source} -> {db}.{target}"), None, |_| None, async {
+            // `$out` silently overwrites an existing target collection, so reject up front instead.
+            if database.list_collection_names().await?.iter().any(|n| n == &target) {
+                return Err(AppError::Query(format!("collection \"{target}\" already exists")));
+            }
+            // $out copies documents only (not indexes); draining the empty cursor it returns surfaces any pipeline error.
+            let mut cursor = database
+                .collection::<Document>(&source)
+                .aggregate(vec![doc! { "$out": &target }])
+                .await?;
+            while cursor.try_next().await?.is_some() {}
+            Ok(())
+        })
+        .await
 }
 
 #[tauri::command]
@@ -66,15 +72,19 @@ pub async fn rename_collection(
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
     // renameCollection must run against the "admin" db; renames within the same DB only.
-    client
-        .database("admin")
-        .run_command(doc! {
-            "renameCollection": format!("{db}.{from}"),
-            "to": format!("{db}.{to}"),
-            "dropTarget": false,
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "rename_collection", &format!("{db}.{from} -> {db}.{to}"), None, |_| None, async {
+            client
+                .database("admin")
+                .run_command(doc! {
+                    "renameCollection": format!("{db}.{from}"),
+                    "to": format!("{db}.{to}"),
+                    "dropTarget": false,
+                })
+                .await?;
+            Ok(())
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -84,8 +94,11 @@ pub async fn drop_database(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
-    client.database(&db).drop().await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "drop_database", &db, None, |_| None, async {
+            Ok(client.database(&db).drop().await?)
+        })
+        .await
 }
 
 /// Sets (or clears, with `validator_json: "{}"`) a collection's JSON-schema validator via `collMod`.
@@ -101,16 +114,20 @@ pub async fn set_collection_validator(
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
     let validator = canonical_string_to_doc(&validator_json)?;
-    client
-        .database(&db)
-        .run_command(doc! {
-            "collMod": &coll,
-            "validator": validator,
-            "validationLevel": validation_level,
-            "validationAction": validation_action,
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "set_collection_validator", &format!("{db}.{coll}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! {
+                    "collMod": &coll,
+                    "validator": validator,
+                    "validationLevel": validation_level,
+                    "validationAction": validation_action,
+                })
+                .await?;
+            Ok(())
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -121,10 +138,10 @@ pub async fn truncate_collection(
     state: State<'_, AppState>,
 ) -> Result<u64, AppError> {
     let client = state.writable_client(&session_id).await?;
-    let res = client
-        .database(&db)
-        .collection::<Document>(&coll)
-        .delete_many(doc! {})
+    let res = state
+        .audited(&session_id, crate::audit::SOURCE_UI, "truncate_collection", &format!("{db}.{coll}"), None, |r| Some(r.deleted_count), async {
+            Ok::<_, AppError>(client.database(&db).collection::<Document>(&coll).delete_many(doc! {}).await?)
+        })
         .await?;
     Ok(res.deleted_count)
 }

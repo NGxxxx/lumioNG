@@ -40,15 +40,19 @@ pub async fn create_user(
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
     let roles_docs = parse_role_refs(&roles)?;
-    client
-        .database(&db)
-        .run_command(doc! {
-            "createUser": &username,
-            "pwd": &password,
-            "roles": roles_docs,
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "create_user", &format!("{db}/user:{username}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! {
+                    "createUser": &username,
+                    "pwd": &password,
+                    "roles": roles_docs,
+                })
+                .await?;
+            Ok::<_, AppError>(())
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -61,14 +65,18 @@ pub async fn update_user_roles(
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
     let roles_docs = parse_role_refs(&roles)?;
-    client
-        .database(&db)
-        .run_command(doc! {
-            "updateUser": &username,
-            "roles": roles_docs,
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "update_user_roles", &format!("{db}/user:{username}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! {
+                    "updateUser": &username,
+                    "roles": roles_docs,
+                })
+                .await?;
+            Ok::<_, AppError>(())
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -82,14 +90,18 @@ pub async fn change_user_password(
     let client = state.writable_client(&session_id).await?;
     // Separate command from update_user_roles: overwriting roles and changing a password are
     // independent operations, and this keeps the UI from ever needing to round-trip a password.
-    client
-        .database(&db)
-        .run_command(doc! {
-            "updateUser": &username,
-            "pwd": &password,
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "change_user_password", &format!("{db}/user:{username}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! {
+                    "updateUser": &username,
+                    "pwd": &password,
+                })
+                .await?;
+            Ok::<_, AppError>(())
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -100,11 +112,15 @@ pub async fn drop_user(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
-    client
-        .database(&db)
-        .run_command(doc! { "dropUser": &username })
-        .await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "drop_user", &format!("{db}/user:{username}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! { "dropUser": &username })
+                .await?;
+            Ok::<_, AppError>(())
+        })
+        .await
 }
 
 /// Parse a Canonical ExtJSON array of privilege documents (`{resource, actions}`).
@@ -148,15 +164,19 @@ pub async fn create_role(
     let client = state.writable_client(&session_id).await?;
     let priv_docs = parse_privileges(&privileges)?;
     let roles_docs = parse_role_refs(&roles)?;
-    client
-        .database(&db)
-        .run_command(doc! {
-            "createRole": &role_name,
-            "privileges": priv_docs,
-            "roles": roles_docs,
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "create_role", &format!("{db}/role:{role_name}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! {
+                    "createRole": &role_name,
+                    "privileges": priv_docs,
+                    "roles": roles_docs,
+                })
+                .await?;
+            Ok::<_, AppError>(())
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -171,15 +191,19 @@ pub async fn update_role(
     let client = state.writable_client(&session_id).await?;
     let priv_docs = parse_privileges(&privileges)?;
     let roles_docs = parse_role_refs(&roles)?;
-    client
-        .database(&db)
-        .run_command(doc! {
-            "updateRole": &role_name,
-            "privileges": priv_docs,
-            "roles": roles_docs,
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "update_role", &format!("{db}/role:{role_name}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! {
+                    "updateRole": &role_name,
+                    "privileges": priv_docs,
+                    "roles": roles_docs,
+                })
+                .await?;
+            Ok::<_, AppError>(())
         })
-        .await?;
-    Ok(())
+        .await
 }
 
 #[tauri::command]
@@ -190,9 +214,13 @@ pub async fn drop_role(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
-    client
-        .database(&db)
-        .run_command(doc! { "dropRole": &role_name })
-        .await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "drop_role", &format!("{db}/role:{role_name}"), None, |_| None, async {
+            client
+                .database(&db)
+                .run_command(doc! { "dropRole": &role_name })
+                .await?;
+            Ok::<_, AppError>(())
+        })
+        .await
 }

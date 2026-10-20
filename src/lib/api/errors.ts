@@ -2,7 +2,7 @@ import { classifyError, truncateError } from "../domain/connectionError";
 import { msgKey } from "../msgkey";
 
 export interface AppErrorShape {
-  kind: "Connection" | "SshTunnel" | "Query" | "Serialize" | "Parse" | "Io" | "NotConnected";
+  kind: "Connection" | "SshTunnel" | "Query" | "Serialize" | "Parse" | "Io" | "Vault" | "NotConnected";
   message?: string;
 }
 

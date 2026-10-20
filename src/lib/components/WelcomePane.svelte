@@ -1,6 +1,7 @@
 <!-- Shown in the work area while no session is open: one-click recent connections and paste-to-connect. -->
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, untrack } from "svelte";
+  import { vault } from "../stores/vault.svelte";
   import { createConnectionRegistry, type ConnectRequest } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
   import EnvBadge from "./EnvBadge.svelte";
@@ -27,6 +28,10 @@
   ];
   const r = createConnectionRegistry();
   onMount(() => void r.load());
+  // Unlocking (or erasing) the vault changes which passwords the saved connections carry.
+  $effect(() => {
+    if (vault.epoch > 0) untrack(() => void r.load());
+  });
 
   const recent = $derived(r.list.slice(0, RECENT_LIMIT));
   let uriText = $state("");

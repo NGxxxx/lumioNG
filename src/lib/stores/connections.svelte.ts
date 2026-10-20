@@ -13,8 +13,13 @@ import { errorMessage } from "../api/errors";
 import { validateProfile, validateSsh } from "../domain/connections";
 import { buildProfileUri, parseUri, normalizeForTunnel, suggestLabelFromHost, changedFieldCount, type ConnectionProfile } from "../domain/connuri";
 import { obfuscate, deobfuscate } from "../domain/secret";
+import { vaultRefusal, withoutSecrets } from "../domain/vault";
+import { vault } from "./vault.svelte";
+import { toast } from "./toast.svelte";
+import * as m from "#lib/paraglide/messages.js";
 import { sortByRecency } from "../domain/recency";
 import type { Environment } from "../domain/environment";
+import { clampMcpAccess, DEFAULT_MCP_ACCESS, type McpAccess } from "../domain/mcp";
 
 
 /** Registry of saved connections + the structured add/edit form + connect. Components only bind. */
@@ -27,6 +32,7 @@ export interface ConnectRequest {
   ssh: SshConnectInput | null;
   environment: Environment;
   color: string;
+  mcpAccess: McpAccess;
 }
 
 export function createConnectionRegistry() {
@@ -34,6 +40,8 @@ export function createConnectionRegistry() {
   const sortedList = $derived(sortByRecency(list));
   let error = $state<string | null>(null);
   let secretStorage = $state<SecretStorage | null>(null);
+  /** The last save was refused for lack of a usable vault: the form offers saving without the password. */
+  let offerSaveWithoutPassword = $state(false);
   let formError = $state<string | null>(null);
   let editingId = $state<number | null>(null);
   // Form values before the last paste-to-fill, so it can be undone.
@@ -54,6 +62,7 @@ export function createConnectionRegistry() {
   let readOnly = $state(false);
   let environment = $state<Environment>("");
   let color = $state("");
+  let mcpAccess = $state<McpAccess>(DEFAULT_MCP_ACCESS);
   let tlsCertificateKeyFile = $state("");
   let tlsCertificateKeyFilePassword = $state("");
 
@@ -97,7 +106,7 @@ export function createConnectionRegistry() {
       sshPasswordEnc: sshAuthMethod === "password" ? obfuscate(sshPassword) : "",
       sshPrivateKeyPath: sshAuthMethod === "key" ? sshPrivateKeyPath : "",
       sshPassphraseEnc: sshAuthMethod === "key" ? obfuscate(sshPassphrase) : "",
-      environment, color,
+      environment, color, mcpAccess: clampMcpAccess(environment, mcpAccess),
     };
   }
 
@@ -118,6 +127,7 @@ export function createConnectionRegistry() {
       const fetched = await listConnections();
       // Lazy migration: legacy entries carry a raw `uri` and no structured host.
       let result = fetched;
+      const needPassword: string[] = [];
       for (const c of fetched) {
         if (c.uri && c.host === "") {
           const { profile: p, password: pw, certKeyPassword } = parseUri(c.uri);
@@ -131,12 +141,28 @@ export function createConnectionRegistry() {
             tlsCertificateKeyFilePasswordEnc: obfuscate(certKeyPassword),
             sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
             sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
-            environment: "", color: "",
+            environment: "", color: "", mcpAccess: DEFAULT_MCP_ACCESS,
           };
-          result = await saveConnection(c.id, input);
+          try {
+            result = await saveConnection(c.id, input);
+          } catch (e) {
+            if (vaultRefusal(e)) {
+              // No usable vault for the password parsed from the URI: keep the connection, drop the password.
+              try {
+                result = await saveConnection(c.id, withoutSecrets(input));
+                needPassword.push(c.label);
+                continue;
+              } catch (e2) {
+                error = errorMessage(e2);
+              }
+            } else {
+              error = errorMessage(e);
+            }
+          }
         }
       }
       list = result;
+      if (needPassword.length > 0) toast.push(m.vault_migration_reenter({ labels: needPassword.join(", ") }), "error", 8000);
     } catch (e) {
       error = errorMessage(e);
     }
@@ -146,7 +172,7 @@ export function createConnectionRegistry() {
     editingId = null;
     label = ""; scheme = "mongodb"; host = "localhost"; port = 27017;
     authMethod = "none"; user = ""; password = ""; authSource = ""; replicaSet = "";
-    tls = false; extraOptions = ""; readOnly = false; environment = ""; color = "";
+    tls = false; extraOptions = ""; readOnly = false; environment = ""; color = ""; mcpAccess = DEFAULT_MCP_ACCESS;
     tlsCertificateKeyFile = ""; tlsCertificateKeyFilePassword = "";
     sshEnabled = false; sshHost = ""; sshPort = 22; sshUser = "";
     sshAuthMethod = "password"; sshPassword = ""; sshPrivateKeyPath = ""; sshPassphrase = "";
@@ -154,7 +180,7 @@ export function createConnectionRegistry() {
     beforeFill = null;
   }
 
-  async function save() {
+  async function doSave(withoutPassword: boolean) {
     const vProfile = validateProfile(label, profile());
     if (!vProfile.ok) { formError = vProfile.error; return; }
     const vSsh = validateSsh({
@@ -163,13 +189,32 @@ export function createConnectionRegistry() {
     });
     if (!vSsh.ok) { formError = vSsh.error; return; }
     formError = null;
-    try {
-      list = await saveConnection(editingId, toInput());
-      clearForm();
-    } catch (e) {
-      error = errorMessage(e);
+    error = null;
+    offerSaveWithoutPassword = false;
+    const input = withoutPassword ? withoutSecrets(toInput()) : toInput();
+    // Without a keychain the backend refuses to write a secret the vault can't seal. Set the vault
+    // up / unlock it (dialog), then try again; if the user backs out, offer to save without the password.
+    for (let attempt = 0; ; attempt++) {
+      try {
+        list = await saveConnection(editingId, input, withoutPassword);
+        clearForm();
+        if (withoutPassword) toast.push(m.vault_saved_without_password());
+        return;
+      } catch (e) {
+        const refusal = vaultRefusal(e);
+        if (!refusal) { error = errorMessage(e); return; }
+        if (refusal !== "vault_seal_failed" && attempt < 2 && !withoutPassword) {
+          if (await vault.ensure(refusal === "vault_uninitialized" ? "setup" : "unlock")) continue;
+        }
+        error = m.vault_save_refused();
+        offerSaveWithoutPassword = !withoutPassword;
+        return;
+      }
     }
   }
+
+  const save = () => doSave(false);
+  const saveWithoutPassword = () => doSave(true);
 
   async function remove(id: number) {
     try {
@@ -196,6 +241,7 @@ export function createConnectionRegistry() {
     readOnly = !!c.readOnly;
     environment = c.environment ?? "";
     color = c.color ?? "";
+    mcpAccess = clampMcpAccess(environment, c.mcpAccess);
     sshEnabled = !!c.sshEnabled;
     sshHost = c.sshHost ?? "";
     sshPort = c.sshPort ?? 22;
@@ -289,7 +335,7 @@ export function createConnectionRegistry() {
   function connectRequest(): ConnectRequest | null {
     const res = connectTo();
     if (!res.ok) return null;
-    return { connId: editingId, label: label.trim() || res.uri, uri: res.uri, readOnly, ssh: res.ssh, environment, color };
+    return { connId: editingId, label: label.trim() || res.uri, uri: res.uri, readOnly, ssh: res.ssh, environment, color, mcpAccess: clampMcpAccess(environment, mcpAccess) };
   }
 
   /** Validates the current form's connection (SSH tunnel + Mongo) without opening a session. */
@@ -316,6 +362,7 @@ export function createConnectionRegistry() {
     /** Where saved passwords are kept; null until known. */
     get secretStorage() { return secretStorage; },
     get formError() { return formError; },
+    get offerSaveWithoutPassword() { return offerSaveWithoutPassword; },
     get editingId() { return editingId; },
     get label() { return label; }, set label(v: string) { label = v; },
     // scheme/authMethod setters accept `string` so `bind:value` on a <select> type-checks cleanly.
@@ -330,7 +377,10 @@ export function createConnectionRegistry() {
     get tls() { return tls; }, set tls(v: boolean) { tls = v; },
     get extraOptions() { return extraOptions; }, set extraOptions(v: string) { extraOptions = v; },
     get readOnly() { return readOnly; }, set readOnly(v: boolean) { readOnly = v; },
-    get environment() { return environment; }, set environment(v: Environment) { environment = v; },
+    get environment() { return environment; },
+    // A PROD connection can never be shared for writes, so choosing PROD drops "write".
+    set environment(v: Environment) { environment = v; mcpAccess = clampMcpAccess(v, mcpAccess); },
+    get mcpAccess() { return mcpAccess; }, set mcpAccess(v: McpAccess) { mcpAccess = clampMcpAccess(environment, v); },
     get color() { return color; }, set color(v: string) { color = v; },
     get tlsCertificateKeyFile() { return tlsCertificateKeyFile; }, set tlsCertificateKeyFile(v: string) { tlsCertificateKeyFile = v; },
     get tlsCertificateKeyFilePassword() { return tlsCertificateKeyFilePassword; }, set tlsCertificateKeyFilePassword(v: string) { tlsCertificateKeyFilePassword = v; },
@@ -343,7 +393,7 @@ export function createConnectionRegistry() {
     get sshPrivateKeyPath() { return sshPrivateKeyPath; }, set sshPrivateKeyPath(v: string) { sshPrivateKeyPath = v; },
     get sshPassphrase() { return sshPassphrase; }, set sshPassphrase(v: string) { sshPassphrase = v; },
     get canUndoFill() { return beforeFill !== null; },
-    load, save, remove, edit, clearForm, connectTo, connectRequest, importFromUri, currentUri, testConnection, toInput,
+    load, save, saveWithoutPassword, remove, edit, clearForm, connectTo, connectRequest, importFromUri, currentUri, testConnection, toInput,
     fillFromUri, undoFill, uriOf, formUri,
   };
 }

@@ -2,6 +2,7 @@
 #![allow(clippy::too_many_arguments)]
 // Tests use literals like 3.14 as ordinary sample values, not as approximations of PI.
 #![cfg_attr(test, allow(clippy::approx_constant))]
+mod audit;
 mod bson_import;
 mod bson_json;
 mod command_log_file;
@@ -27,11 +28,13 @@ mod sql_stream;
 mod ssh_tunnel;
 mod state;
 mod value_infer;
+mod vault;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::default())
+        .manage(vault::VaultSession::default())
         .manage(commands::command_log::CommandLogFile::default())
         .manage(commands::mcp::McpServer::default())
         .plugin(tauri_plugin_dialog::init())
@@ -41,11 +44,16 @@ pub fn run() {
             if let Ok(dir) = app.path().app_log_dir() {
                 logging::init(dir);
             }
+            // The audit log needs a writable data dir; without one, records are dropped (and the write still happens).
+            if let Ok(dir) = app.path().app_data_dir() {
+                app.state::<state::AppState>().audit.set_dir(dir);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
             commands::connection::test_connection,
+            commands::connection::set_session_meta,
             commands::app::app_info,
             commands::connection::list_namespaces,
             commands::connection::list_plain_collections,
@@ -54,6 +62,10 @@ pub fn run() {
             commands::connection::delete_connection,
             commands::connection::touch_connection,
             commands::connection::secret_storage,
+            commands::connection::vault_status,
+            commands::connection::vault_unlock,
+            commands::connection::vault_setup,
+            commands::connection::vault_reset,
             commands::connection::disconnect,
             commands::connection::forget_ssh_host_key,
             commands::query::query_page,
@@ -149,6 +161,10 @@ pub fn run() {
             commands::diagnostics::export_diagnostics,
             commands::diagnostics::take_crash_reports,
             commands::diagnostics::open_crash_folder,
+            commands::audit::audit_set_scope,
+            commands::audit::audit_query,
+            commands::audit::audit_verify,
+            commands::audit::audit_export,
             commands::prefs::prefs_load,
             commands::prefs::prefs_save,
             commands::prefs::prefs_export,

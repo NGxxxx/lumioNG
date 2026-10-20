@@ -1,4 +1,4 @@
-import { connect, disconnect } from "../api/connection";
+import { connect, disconnect, setSessionMeta as pushSessionMeta } from "../api/connection";
 import type { SshConnectInput } from "../api/connection";
 import { touchConnection } from "../api/connections";
 import { pendingEdits } from "./pendingEdits.svelte";
@@ -6,6 +6,7 @@ import { createNamespaceTree } from "./namespaceTree.svelte";
 import { createHostStatus } from "./hostStatus.svelte";
 import { createSessionNav, type SessionNav, type WorkTab, type Active, type DocumentTabInit, type WatchTab, type WatchTabInit } from "./navigation.svelte";
 import type { Environment } from "../domain/environment";
+import { DEFAULT_MCP_ACCESS, type McpAccess } from "../domain/mcp";
 import { savedSessionId, adhocSessionId, adhocLabel, allocColor } from "../domain/session";
 import { nextQuerySeq } from "../domain/queryseq";
 import { commandLog } from "./commandLog.svelte";
@@ -30,6 +31,8 @@ export type Session = {
   uri: string;
   readOnly: boolean;
   environment: Environment;
+  /** What MCP clients may do with this connection (see domain/mcp). */
+  mcpAccess: McpAccess;
   ssh: SshConnectInput | null;
   connectedAt: number | null;
   nav: SessionNav;
@@ -98,7 +101,7 @@ export function createSessionManager() {
 
   function makeSession(
     id: string, label: string, connId: number | null, uri: string, readOnly: boolean, ssh: SshConnectInput | null,
-    environment: Environment, savedColor: string,
+    environment: Environment, savedColor: string, mcpAccess: McpAccess,
   ): Session {
     const color = savedColor || allocColor(sessions.map((s) => s.color));
     setSessionEnvironment(id, environment);
@@ -109,14 +112,14 @@ export function createSessionManager() {
       closeForDatabase: (db) => closeForDatabase(id, db),
       renameCollectionTabs: (db, oldColl, newColl) => renameCollectionTabs(id, db, oldColl, newColl),
     });
-    return { id, label, color, status: "connecting", connId, uri, readOnly, environment, ssh, connectedAt: null, nav, tree, host: createHostStatus(id) };
+    return { id, label, color, status: "connecting", connId, uri, readOnly, environment, mcpAccess, ssh, connectedAt: null, nav, tree, host: createHostStatus(id) };
   }
 
   /** Shared connect flow for both a new session and a reconnect. */
   async function performConnect(s: Session): Promise<boolean> {
     try {
       await commandLog.pushTimed(connectCmd(maskUri(s.uri)), s.id, () =>
-        connect(s.id, s.uri, s.readOnly, s.ssh));
+        connect(s.id, s.uri, s.readOnly, s.ssh, s.label, s.environment));
       s.nav.setConnected(true);
       patchSession(s.id, { status: "connected", connectedAt: Date.now() });
       if (s.connId != null) touchConnection(s.connId).catch(() => {}); // non-critical metadata; never blocks connect
@@ -131,7 +134,7 @@ export function createSessionManager() {
 
   async function focusOrOpen(p: {
     connId: number | null; uri: string; label: string; readOnly?: boolean; ssh?: SshConnectInput | null;
-    environment?: Environment; color?: string;
+    environment?: Environment; color?: string; mcpAccess?: McpAccess;
   }): Promise<boolean> {
     const id = p.connId != null ? savedSessionId(p.connId) : adhocSessionId(++adhocSeq);
     const existing = sessions.find((s) => s.id === id);
@@ -140,13 +143,15 @@ export function createSessionManager() {
       if (p.environment !== undefined && p.environment !== existing.environment) {
         patchSession(id, { environment: p.environment });
         setSessionEnvironment(id, p.environment);
+        if (existing.status === "connected") pushSessionMeta(id, existing.label, p.environment).catch(() => {});
       }
       if (p.color && p.color !== existing.color) patchSession(id, { color: p.color });
+      if (p.mcpAccess !== undefined && p.mcpAccess !== existing.mcpAccess) patchSession(id, { mcpAccess: p.mcpAccess });
       activeId = id;
       return true;
     }
     const label = p.connId != null ? p.label : adhocLabel(adhocSeq);
-    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null, p.environment ?? "", p.color ?? "");
+    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null, p.environment ?? "", p.color ?? "", p.mcpAccess ?? DEFAULT_MCP_ACCESS);
     sessions = [...sessions, s];
     activeId = id;
     const ok = await performConnect(s);

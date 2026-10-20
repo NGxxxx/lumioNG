@@ -2,7 +2,8 @@ import { untrack } from "svelte";
 import { startMcp, stopMcp, setMcpSessions } from "../api/mcp";
 import { errorMessage } from "../api/errors";
 import {
-  DEFAULT_MCP_PORT, generateToken, isValidPort, isValidToken, pushActivity, type McpActivity, type McpSession,
+  DEFAULT_MCP_PORT, cleanFields, generateToken, isValidPort, isValidToken, parseRedactFields, pushActivity,
+  type McpActivity, type McpSession,
 } from "../domain/mcp";
 import { prefs } from "./prefs.svelte";
 
@@ -10,6 +11,8 @@ const ENABLED_KEY = "mcp-enabled";
 const PORT_KEY = "mcp-port";
 const WRITES_KEY = "mcp-allow-writes";
 const TOKEN_KEY = "mcp-token";
+const REDACT_KEY = "mcp-redact-fields";
+const AUDIT_READS_KEY = "mcp-audit-reads";
 
 export type McpState = "off" | "starting" | "running" | "error";
 
@@ -45,12 +48,16 @@ export function createMcp() {
   let port = $state(untrack(readPort));
   let allowWrites = $state(untrack(() => read(WRITES_KEY) === "true"));
   let token = $state(untrack(readToken));
+  let redactFields = $state.raw<string[]>(untrack(() => parseRedactFields(read(REDACT_KEY))));
+  let auditReads = $state(untrack(() => read(AUDIT_READS_KEY) === "true"));
   // The singleton is created while prefs.json is still loading; re-read once it is in.
   prefs.afterHydrate(() => {
     enabled = read(ENABLED_KEY) === "true";
     port = readPort();
     allowWrites = read(WRITES_KEY) === "true";
     token = readToken();
+    redactFields = parseRedactFields(read(REDACT_KEY));
+    auditReads = read(AUDIT_READS_KEY) === "true";
   });
   let status = $state<McpState>("off");
   let error = $state<string | null>(null);
@@ -70,7 +77,7 @@ export function createMcp() {
     status = "starting";
     error = null;
     try {
-      await startMcp(port, token, allowWrites, onActivity);
+      await startMcp(port, token, allowWrites, onActivity, redactFields, auditReads);
       if (my === seq) status = "running";
     } catch (e) {
       if (my !== seq) return;
@@ -100,6 +107,8 @@ export function createMcp() {
     get port() { return port; },
     get allowWrites() { return allowWrites; },
     get token() { return token; },
+    get redactFields() { return redactFields; },
+    get auditReads() { return auditReads; },
     get status() { return status; },
     get error() { return error; },
     get activity() { return activity; },
@@ -128,6 +137,18 @@ export function createMcp() {
     setAllowWrites(v: boolean) {
       allowWrites = v;
       write(WRITES_KEY, v ? "true" : "false");
+      restartIfOn();
+    },
+    /** Field-name patterns whose values MCP results hide ("[redacted]"). */
+    setRedactFields(fields: string[]) {
+      redactFields = cleanFields(fields);
+      write(REDACT_KEY, JSON.stringify(redactFields));
+      restartIfOn();
+    },
+    /** Also audit MCP read calls (writes are always audited). */
+    setAuditReads(v: boolean) {
+      auditReads = v;
+      write(AUDIT_READS_KEY, v ? "true" : "false");
       restartIfOn();
     },
     /** New token: every configured client must be updated, so the old one stops working at once. */

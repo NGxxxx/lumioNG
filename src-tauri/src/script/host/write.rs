@@ -1,5 +1,5 @@
 //! `__write` binding: parses the batched write-op payload from `prelude.js` and applies each op via the driver, gated by [`crate::error::ensure_writable`].
-use super::{run_blocking, HostCtx};
+use super::{audit_write, run_blocking, HostCtx};
 use crate::error::ensure_writable;
 use mongodb::bson::{Bson, Document};
 use rquickjs::{Ctx, Function, Result as JsResult};
@@ -15,6 +15,21 @@ pub(crate) enum WriteOp {
     ReplaceOne { filter: Document, replacement: Document, upsert: bool },
     DeleteOne(Document),
     DeleteMany(Document),
+}
+
+impl WriteOp {
+    /// Operation name and (for ops that have one) the filter, as recorded in the audit log.
+    pub(crate) fn audit_info(&self) -> (&'static str, Option<Document>) {
+        match self {
+            WriteOp::InsertOne(_) => ("insertOne", None),
+            WriteOp::InsertMany(_) => ("insertMany", None),
+            WriteOp::UpdateOne { filter, .. } => ("updateOne", Some(filter.clone())),
+            WriteOp::UpdateMany { filter, .. } => ("updateMany", Some(filter.clone())),
+            WriteOp::ReplaceOne { filter, .. } => ("replaceOne", Some(filter.clone())),
+            WriteOp::DeleteOne(f) => ("deleteOne", Some(f.clone())),
+            WriteOp::DeleteMany(f) => ("deleteMany", Some(f.clone())),
+        }
+    }
 }
 
 /// Accumulated write counts + ids across an op array.
@@ -139,13 +154,16 @@ pub(super) fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                 let mut acc = WriteAccum::default();
                 let mut first_err: Option<crate::error::AppError> = None;
 
+                let ns = format!("{db}.{coll}");
                 for op in ops {
-                    let step: Result<(), crate::error::AppError> = async {
-                        match op {
+                    let (op_name, op_filter) = op.audit_info();
+                    let step: Result<Option<u64>, crate::error::AppError> = async {
+                        let count = match op {
                             WriteOp::InsertOne(doc) => {
                                 let r = c.insert_one(doc).await?;
                                 acc.inserted_count += 1;
                                 acc.inserted_ids.push(bson_to_canonical_string(&r.inserted_id)?);
+                                1
                             }
                             WriteOp::InsertMany(docs) => {
                                 let r = c.insert_many(docs).await?;
@@ -155,6 +173,7 @@ pub(super) fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                                 for (_, b) in entries {
                                     acc.inserted_ids.push(bson_to_canonical_string(b)?);
                                 }
+                                r.inserted_ids.len() as u64
                             }
                             WriteOp::UpdateOne { filter, update, upsert, array_filters } => {
                                 let mut o = UpdateOptions::builder().upsert(upsert).build();
@@ -166,6 +185,7 @@ pub(super) fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                                     acc.upserted_count += 1;
                                     acc.upserted_ids.push(bson_to_canonical_string(&id)?);
                                 }
+                                r.modified_count
                             }
                             WriteOp::UpdateMany { filter, update, upsert, array_filters } => {
                                 let mut o = UpdateOptions::builder().upsert(upsert).build();
@@ -177,6 +197,7 @@ pub(super) fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                                     acc.upserted_count += 1;
                                     acc.upserted_ids.push(bson_to_canonical_string(&id)?);
                                 }
+                                r.modified_count
                             }
                             WriteOp::ReplaceOne { filter, replacement, upsert } => {
                                 let o = ReplaceOptions::builder().upsert(upsert).build();
@@ -187,19 +208,25 @@ pub(super) fn bind_write(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                                     acc.upserted_count += 1;
                                     acc.upserted_ids.push(bson_to_canonical_string(&id)?);
                                 }
+                                r.modified_count
                             }
                             WriteOp::DeleteOne(filter) => {
                                 let r = c.delete_one(filter).await?;
                                 acc.deleted_count += r.deleted_count;
+                                r.deleted_count
                             }
                             WriteOp::DeleteMany(filter) => {
                                 let r = c.delete_many(filter).await?;
                                 acc.deleted_count += r.deleted_count;
+                                r.deleted_count
                             }
-                        }
-                        Ok(())
+                        };
+                        Ok(Some(count))
                     }
                     .await;
+                    // One audit line per write op, success or failure.
+                    audit_write(&h, op_name, &ns, op_filter.as_ref(), &step.as_ref().map(|c| *c));
+                    let step = step.map(|_| ());
 
                     if let Err(e) = step {
                         if ordered {

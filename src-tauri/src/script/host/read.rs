@@ -150,7 +150,13 @@ pub(super) fn bind_aggregate(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
                     }
                 }
 
-                let mut cursor = collection.aggregate(pipeline).with_options(agg_opts).await?;
+                // $out/$merge executes when the command is issued: audit it against its destination.
+                let write_target = crate::audit::pipeline_write_target(&pipeline, &db, &coll);
+                let started = collection.aggregate(pipeline).with_options(agg_opts).await.map_err(crate::error::AppError::from);
+                if let Some((op, ns)) = write_target {
+                    super::audit_write(&h, op, &ns, None, &started.as_ref().map(|_| None));
+                }
+                let mut cursor = started?;
 
                 let batch_size = if h.cap == 0 { 101 } else { h.cap.min(101) };
                 // Drain on the owned cursor first (no RefCell across await), bytes-capped so huge documents can't fill one giant batch.

@@ -7,6 +7,7 @@
 //! refused (DNS-rebinding guard). The server is off until the user turns it on.
 
 pub mod http;
+pub mod redact;
 pub mod tools;
 
 use crate::state::AppState;
@@ -26,7 +27,7 @@ const READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 const INSTRUCTIONS: &str = "LumioNG exposes the MongoDB connections the user has open in the app. \
 Start with list_connections, then list_databases / list_collections, and collection_schema before \
-writing queries. Results are capped (100 documents); prefer filters, projections and $limit.";
+writing queries, and explain to check that a query uses an index. Results are capped (100 documents); prefer filters, projections and $limit. Some fields are redacted and cannot be filtered on.";
 
 /// One tool call, reported to the app's UI (MCP settings → recent activity).
 #[derive(Clone, Debug, Serialize)]
@@ -49,6 +50,10 @@ pub struct Shared {
     pub token: String,
     pub allow_writes: bool,
     pub sessions: Arc<RwLock<Vec<ExposedSession>>>,
+    /// Field-name patterns redacted from results.
+    pub redact_fields: Vec<String>,
+    /// Also audit read tool calls.
+    pub audit_reads: bool,
 }
 
 fn rpc_error(id: Value, code: i64, message: &str) -> Value {
@@ -94,7 +99,13 @@ pub async fn handle_rpc<B: Backend>(b: &B, shared: &Shared, msg: Value) -> Optio
             };
             let args = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             let sessions = shared.sessions.read().await.clone();
-            let ctx = ToolCtx { state: b.app_state(), sessions: &sessions, allow_writes: shared.allow_writes };
+            let ctx = ToolCtx {
+                state: b.app_state(),
+                sessions: &sessions,
+                allow_writes: shared.allow_writes,
+                redact: &shared.redact_fields,
+                audit_reads: shared.audit_reads,
+            };
             let started = Instant::now();
             let outcome = tools::call_tool(&ctx, name, &args).await;
             let connection = tools::resolve_session(&sessions, &args).ok().map(|s| s.label.clone());
@@ -231,8 +242,8 @@ mod tests {
     }
 
     fn shared(allow_writes: bool) -> Shared {
-        let sessions = vec![ExposedSession { id: "s1".into(), label: "Local".into(), environment: String::new(), read_only: false }];
-        Shared { token: "secret-token-123456".into(), allow_writes, sessions: Arc::new(RwLock::new(sessions)) }
+        let sessions = vec![ExposedSession { id: "s1".into(), label: "Local".into(), environment: String::new(), read_only: false, access: "write".into() }];
+        Shared { token: "secret-token-123456".into(), allow_writes, sessions: Arc::new(RwLock::new(sessions)), redact_fields: Vec::new(), audit_reads: false }
     }
 
     async fn rpc(b: &TestBackend, s: &Shared, msg: Value) -> Option<Value> {

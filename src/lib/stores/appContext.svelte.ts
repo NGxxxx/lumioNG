@@ -17,6 +17,7 @@ import * as m from "#lib/paraglide/messages.js";
 import { untrack } from "svelte";
 import type { Doc } from "../domain/doc";
 import type { ConnectRequest } from "./connections.svelte";
+import { vault } from "./vault.svelte";
 import type { Environment } from "../domain/environment";
 import type { SavedQuery } from "../domain/queryTree";
 import type { HistoryEntry } from "../domain/queryHistory";
@@ -93,6 +94,7 @@ export function createAppContext() {
   let confirmQuit = $state(false);
   let aboutOpen = $state(false);
   let mcpOpen = $state(false);
+  let auditOpen = $state(false);
   let paletteOpen = $state(false);
   let shortcutsOpen = $state(false);
   let saveQueryDialog = $state<{ tabId: number } | null>(null);
@@ -101,8 +103,10 @@ export function createAppContext() {
   let namespacePanelRef = $state<{ startImport(sessionId: string, db: string, coll: string | null): void } | undefined>();
 
   async function onConnected(conn: ConnectRequest): Promise<boolean> {
+    // A saved connection's secrets are sealed while the vault is locked: ask for the master password first.
+    if (conn.connId != null && vault.blocksConnect()) return false;
     // focusOrOpen is the sole owner of the backend connect call; passing the real connId lets it dedup saved connections.
-    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh, environment: conn.environment, color: conn.color });
+    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh, environment: conn.environment, color: conn.color, mcpAccess: conn.mcpAccess });
     if (ok) shell.setConnection(conn);
     return ok;
   }
@@ -266,6 +270,7 @@ export function createAppContext() {
     get confirmQuit() { return confirmQuit; }, set confirmQuit(v: boolean) { confirmQuit = v; },
     get aboutOpen() { return aboutOpen; }, set aboutOpen(v: boolean) { aboutOpen = v; },
     get mcpOpen() { return mcpOpen; }, set mcpOpen(v: boolean) { mcpOpen = v; },
+    get auditOpen() { return auditOpen; }, set auditOpen(v: boolean) { auditOpen = v; },
     get paletteOpen() { return paletteOpen; }, set paletteOpen(v: boolean) { paletteOpen = v; },
     get shortcutsOpen() { return shortcutsOpen; }, set shortcutsOpen(v: boolean) { shortcutsOpen = v; },
     get saveQueryDialog() { return saveQueryDialog; }, set saveQueryDialog(v: { tabId: number } | null) { saveQueryDialog = v; },

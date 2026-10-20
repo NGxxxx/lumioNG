@@ -17,8 +17,15 @@ export async function connect(
   uri: string,
   readOnly = false,
   ssh: SshConnectInput | null = null,
+  label = "",
+  environment = "",
 ): Promise<void> {
-  await invoke("connect", { sessionId, uri, readOnly, ssh });
+  await invoke("connect", { sessionId, uri, readOnly, ssh, label, environment });
+}
+
+/** Tells the backend a live session was relabelled (audit log and MCP read the label/environment from Rust). */
+export async function setSessionMeta(sessionId: string, label: string, environment: string): Promise<void> {
+  await invoke("set_session_meta", { sessionId, label, environment });
 }
 
 export async function testConnection(uri: string, ssh: SshConnectInput | null): Promise<void> {

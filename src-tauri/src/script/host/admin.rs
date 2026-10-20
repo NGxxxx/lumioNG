@@ -1,5 +1,5 @@
 //! Admin/command-passthrough bindings: `__runCommand` (per-db) and `__adminCommand` (always against `admin`), each gated by the write/DDL denylist when the connection is read-only.
-use super::{is_write_command, run_blocking, HostCtx};
+use super::{audit_write, is_write_command, run_blocking, HostCtx};
 use rquickjs::{Ctx, Function, Result as JsResult};
 
 /// Rejects a write/DDL command on a read-only connection -- shared by `__runCommand`/`__adminCommand`.
@@ -10,6 +10,16 @@ fn guard_write(h: &HostCtx, cmd: &mongodb::bson::Document) -> Result<(), crate::
         ));
     }
     Ok(())
+}
+
+/// Runs `cmd` against `db`; a write/DDL command (per the denylist) leaves one audit line.
+async fn run_audited(h: &HostCtx, db: &str, cmd: mongodb::bson::Document) -> Result<mongodb::bson::Document, crate::error::AppError> {
+    let write_name = is_write_command(&cmd).then(|| cmd.keys().next().cloned().unwrap_or_default());
+    let reply = h.client.database(db).run_command(cmd).await.map_err(crate::error::AppError::from);
+    if let Some(name) = write_name {
+        audit_write(h, &format!("runCommand:{name}"), db, None, &reply.as_ref().map(|_| None));
+    }
+    reply
 }
 
 // ── __runCommand ──────────────────────────────────────────────────────────────
@@ -26,7 +36,7 @@ pub(super) fn bind_run_command(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
 
                 let cmd = crate::json_bson::canonical_string_to_doc(&cmd_json)?;
                 guard_write(&h, &cmd)?;
-                let reply = h.client.database(&db).run_command(cmd).await?;
+                let reply = run_audited(&h, &db, cmd).await?;
                 doc_to_canonical_string(reply)
             })
         },
@@ -49,7 +59,7 @@ pub(super) fn bind_admin_command(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
 
                 let cmd = crate::json_bson::canonical_string_to_doc(&cmd_json)?;
                 guard_write(&h, &cmd)?;
-                let reply = h.client.database("admin").run_command(cmd).await?;
+                let reply = run_audited(&h, "admin", cmd).await?;
                 doc_to_canonical_string(reply)
             })
         },

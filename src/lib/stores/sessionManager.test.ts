@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("../api/connection", () => ({
   connect: vi.fn().mockResolvedValue(undefined),
   disconnect: vi.fn().mockResolvedValue(undefined),
+  setSessionMeta: vi.fn().mockResolvedValue(undefined),
   listNamespaces: vi.fn().mockResolvedValue([]),
 }));
 vi.mock("../api/mongoServer", () => ({
@@ -18,7 +19,7 @@ import { createSessionManager } from "./sessionManager.svelte";
 import { startWatch, stopWatch } from "../api/watch";
 import { peekWatch } from "./watchTabs.svelte";
 import { SESSION_COLORS } from "../domain/session";
-import { connect } from "../api/connection";
+import { connect, setSessionMeta } from "../api/connection";
 import { commandLog } from "./commandLog.svelte";
 import { sessionEnvironment } from "./sessionEnv";
 
@@ -161,7 +162,7 @@ describe("sessionManager", () => {
     (connect as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     await sm.reconnect("conn:1");
     expect(sm.active?.status).toBe("connected");
-    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, null);
+    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, null, "a", "");
     expect(sm.sessions.length).toBe(1);
     expect(sm.active?.connectedAt).toBeTruthy();
   });
@@ -173,7 +174,7 @@ describe("sessionManager", () => {
     };
     await sm.focusOrOpen({ connId: 1, uri: "u", label: "a", ssh });
     await sm.reconnect("conn:1");
-    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, ssh);
+    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, ssh, "a", "");
   });
 
   it("cross-session DDL only closes the owning session's tabs", async () => {
@@ -370,5 +371,25 @@ describe("sessionManager DDL tab cleanup", () => {
     await sm.focusOrOpen({ connId: 31, uri: "mongodb://h", label: "x", environment: "prod" });
     expect(sm.active?.environment).toBe("prod");
     expect(sessionEnvironment("conn:31")).toBe("prod");
+  });
+
+  it("connect_passes_label_and_environment", async () => {
+    await sm.focusOrOpen({ connId: 41, uri: "mongodb://h", label: "Orders", environment: "prod" });
+    expect(connect).toHaveBeenLastCalledWith("conn:41", "mongodb://h", false, null, "Orders", "prod");
+  });
+
+  it("pushes a changed environment to the backend session", async () => {
+    await sm.focusOrOpen({ connId: 42, uri: "mongodb://h", label: "Orders", environment: "" });
+    await sm.focusOrOpen({ connId: 42, uri: "mongodb://h", label: "Orders", environment: "staging" });
+    expect(setSessionMeta).toHaveBeenLastCalledWith("conn:42", "Orders", "staging");
+  });
+
+  it("a session carries the connection's MCP access (default read) and picks up a change", async () => {
+    await sm.focusOrOpen({ connId: 51, uri: "mongodb://h", label: "a" });
+    expect(sm.active?.mcpAccess).toBe("read");
+    await sm.focusOrOpen({ connId: 52, uri: "mongodb://h", label: "b", mcpAccess: "off" });
+    expect(sm.active?.mcpAccess).toBe("off");
+    await sm.focusOrOpen({ connId: 52, uri: "mongodb://h", label: "b", mcpAccess: "write" });
+    expect(sm.active?.mcpAccess).toBe("write");
   });
 });

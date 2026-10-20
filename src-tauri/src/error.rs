@@ -6,9 +6,14 @@ pub enum AppError {
     Connection(String),
     SshTunnel(String),
     Query(String),
+    /// A server-reported failure; shown and serialized like `Query`, but keeps the code so the
+    /// audit log can record it without the (value-bearing) message.
+    Server { code: i32, code_name: String, message: String },
     Serialize(String),
     Parse(String),
     Io(String),
+    /// Master-password vault failures (wrong password, corrupted vault); never carries secret material.
+    Vault(String),
     NotConnected,
 }
 
@@ -17,10 +22,11 @@ impl std::fmt::Display for AppError {
         match self {
             AppError::Connection(m) => write!(f, "Connection error: {m}"),
             AppError::SshTunnel(m) => write!(f, "SSH tunnel error: {m}"),
-            AppError::Query(m) => write!(f, "Query error: {m}"),
+            AppError::Query(m) | AppError::Server { message: m, .. } => write!(f, "Query error: {m}"),
             AppError::Serialize(m) => write!(f, "Serialize error: {m}"),
             AppError::Parse(m) => write!(f, "Parse error: {m}"),
             AppError::Io(m) => write!(f, "IO error: {m}"),
+            AppError::Vault(m) => write!(f, "Vault error: {m}"),
             AppError::NotConnected => write!(f, "Not connected"),
         }
     }
@@ -35,10 +41,11 @@ impl Serialize for AppError {
         let (kind, message) = match self {
             AppError::Connection(m) => ("Connection", Some(m)),
             AppError::SshTunnel(m) => ("SshTunnel", Some(m)),
-            AppError::Query(m) => ("Query", Some(m)),
+            AppError::Query(m) | AppError::Server { message: m, .. } => ("Query", Some(m)),
             AppError::Serialize(m) => ("Serialize", Some(m)),
             AppError::Parse(m) => ("Parse", Some(m)),
             AppError::Io(m) => ("Io", Some(m)),
+            AppError::Vault(m) => ("Vault", Some(m)),
             AppError::NotConnected => ("NotConnected", None),
         };
         tracing::warn!(kind, "{}", crate::redact::redact_text(&self.to_string()));
@@ -62,7 +69,36 @@ pub fn ensure_writable(read_only: bool) -> Result<(), AppError> {
 
 impl From<mongodb::error::Error> for AppError {
     fn from(e: mongodb::error::Error) -> Self {
-        AppError::Query(friendly_mongo_message(&e))
+        let message = friendly_mongo_message(&e);
+        match server_code(&e) {
+            Some((code, code_name)) => AppError::Server { code, code_name, message },
+            None => AppError::Query(message),
+        }
+    }
+}
+
+/// The server's error code and codeName for command, write and insertMany failures.
+fn server_code(e: &mongodb::error::Error) -> Option<(i32, String)> {
+    use mongodb::error::{ErrorKind, WriteFailure};
+    let (code, name) = match e.kind.as_ref() {
+        ErrorKind::Command(c) => (c.code, Some(c.code_name.clone())),
+        ErrorKind::Write(WriteFailure::WriteError(w)) => (w.code, w.code_name.clone()),
+        ErrorKind::InsertMany(m) => {
+            let w = m.write_errors.as_ref()?.first()?;
+            (w.code, w.code_name.clone())
+        }
+        _ => return None,
+    };
+    let name = name.filter(|n| !n.is_empty()).unwrap_or_else(|| known_code_name(code).to_string());
+    Some((code, name))
+}
+
+/// Names for the codes the server sometimes sends without a `codeName`.
+fn known_code_name(code: i32) -> &'static str {
+    match code {
+        11000 | 11001 | 12582 => "DuplicateKey",
+        121 => "DocumentValidationFailure",
+        _ => "",
     }
 }
 

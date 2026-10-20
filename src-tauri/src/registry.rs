@@ -2,6 +2,24 @@ use crate::error::AppError;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
+/// How MCP clients may use a connection: "off" (hidden), "read" (default) or "write".
+pub const MCP_ACCESS_READ: &str = "read";
+
+fn default_mcp_access() -> String {
+    MCP_ACCESS_READ.to_string()
+}
+
+/// A valid access level for a connection of `environment`: unknown values become "read", and a PROD
+/// connection can never be "write" (the frontend enforces the same rule; this is the backstop).
+pub fn clamp_mcp_access(environment: &str, access: &str) -> String {
+    match access {
+        "off" => "off",
+        "write" if environment != "prod" => "write",
+        _ => MCP_ACCESS_READ,
+    }
+    .to_string()
+}
+
 /// Profile fields supplied by the frontend on save (no id); `password_enc` is already obfuscated by the frontend `domain/secret` transform — never plaintext.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,6 +52,9 @@ pub struct ConnectionInput {
     /// Hex session color; "" = assigned automatically.
     #[serde(default)]
     pub color: String,
+    /// "off" | "read" | "write" — what MCP clients may do with this connection once open.
+    #[serde(default = "default_mcp_access")]
+    pub mcp_access: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -87,6 +108,8 @@ pub struct SavedConnection {
     pub environment: String,
     #[serde(default)]
     pub color: String,
+    #[serde(default = "default_mcp_access")]
+    pub mcp_access: String,
     /// Legacy pre-Phase-E field; present only in un-migrated files. Cleared on next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
@@ -124,6 +147,7 @@ impl SavedConnection {
             ssh_password_enc: input.ssh_password_enc,
             ssh_private_key_path: input.ssh_private_key_path,
             ssh_passphrase_enc: input.ssh_passphrase_enc,
+            mcp_access: clamp_mcp_access(&input.environment, &input.mcp_access),
             environment: input.environment,
             color: input.color,
             uri: None,
@@ -183,11 +207,57 @@ pub fn save(path: &Path, list: &[SavedConnection]) -> Result<(), AppError> {
         std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
     }
     let s = serde_json::to_string_pretty(list).map_err(|e| AppError::Serialize(e.to_string()))?;
-    std::fs::write(path, s).map_err(|e| AppError::Io(e.to_string()))
+    write_atomic(path, s.as_bytes())
+}
+
+/// Replaces `path` with `bytes` without ever leaving a half-written file: the data goes to a temp
+/// file in the same directory, is flushed to disk, then renamed over the target.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
+    use std::io::Write;
+    let io = |e: std::io::Error| AppError::Io(e.to_string());
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(".tmp");
+    let tmp = std::path::PathBuf::from(tmp);
+    let written = (|| {
+        let mut f = std::fs::File::create(&tmp)?;
+        f.write_all(bytes)?;
+        f.sync_all()?;
+        std::fs::rename(&tmp, path)
+    })();
+    if let Err(e) = written {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(io(e));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 pub(crate) mod tests {
+    #[test]
+    fn write_atomic_replaces_content_and_leaves_no_temp_file() {
+        let dir = std::env::temp_dir().join("lumiong_test_write_atomic_ok");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.json");
+        write_atomic(&path, b"old").unwrap();
+        write_atomic(&path, b"new content").unwrap();
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new content");
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1);
+    }
+
+    #[test]
+    fn a_failed_atomic_write_keeps_the_existing_file() {
+        let dir = std::env::temp_dir().join("lumiong_test_write_atomic_fail");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("f.json");
+        std::fs::write(&path, "precious").unwrap();
+        // A directory squatting on the temp name makes the temp file impossible to create.
+        std::fs::create_dir(dir.join("f.json.tmp")).unwrap();
+        assert!(write_atomic(&path, b"replacement").is_err());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "precious");
+    }
+
     use super::*;
 
     /// A saved connection with no secrets, for other modules' tests.
@@ -221,6 +291,7 @@ pub(crate) mod tests {
             ssh_passphrase_enc: String::new(),
             environment: String::new(),
             color: String::new(),
+            mcp_access: "read".into(),
         }
     }
 
@@ -319,6 +390,26 @@ pub(crate) mod tests {
         let list = load(&path).unwrap();
         assert!(!list[0].read_only);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn old_files_load_with_read_access_and_prod_is_never_write() {
+        let list: Vec<SavedConnection> = serde_json::from_str(r#"[{"id":1,"label":"Old","host":"h"}]"#).unwrap();
+        assert_eq!(list[0].mcp_access, "read");
+        // an input from an older frontend has no field either
+        let mut v = serde_json::to_value(input("a", "h")).unwrap();
+        v.as_object_mut().unwrap().remove("mcpAccess");
+        let i: ConnectionInput = serde_json::from_value(v).unwrap();
+        assert_eq!(i.mcp_access, "read");
+
+        let mut w = input("w", "h");
+        w.mcp_access = "write".into();
+        assert_eq!(upsert(vec![], None, w.clone())[0].mcp_access, "write");
+        w.environment = "prod".into();
+        assert_eq!(upsert(vec![], None, w)[0].mcp_access, "read");
+        assert_eq!(clamp_mcp_access("dev", "off"), "off");
+        assert_eq!(clamp_mcp_access("prod", "off"), "off");
+        assert_eq!(clamp_mcp_access("dev", "bogus"), "read");
     }
 
     #[test]

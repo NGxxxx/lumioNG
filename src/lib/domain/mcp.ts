@@ -8,7 +8,66 @@ export const MCP_SERVER_NAME = "lumiong";
 export const MIN_TOKEN_LEN = 16;
 export const MAX_ACTIVITY = 50;
 
-export type McpSession = { id: string; label: string; environment: string; readOnly: boolean };
+/** Per-connection sharing with MCP clients: not at all, read tools only, or read + write tools. */
+export type McpAccess = "off" | "read" | "write";
+export const MCP_ACCESS_LEVELS: readonly McpAccess[] = ["off", "read", "write"];
+export const DEFAULT_MCP_ACCESS: McpAccess = "read";
+
+/** Field-name patterns whose values MCP replaces with "[redacted]" unless the user changes the list.
+ *  `*` is a wildcard, so `accessToken`, `clientSecret`, `passwordHash` and `userPassword` are caught;
+ *  `ssn` stays exact (`*ssn*` would hide `className`). Mirrors `DEFAULT_REDACT_FIELDS` in mcp/redact.rs. */
+export const DEFAULT_REDACT_FIELDS: readonly string[] = [
+  "*password*", "*passwd*", "*secret*", "*token*", "*apikey*", "*api_key*", "*cardnumber*", "ssn",
+];
+
+/** Case-insensitive whole-name match with `*` wildcards (the same rule the Rust side applies). */
+export function fieldMatchesPattern(name: string, pattern: string): boolean {
+  const re = new RegExp("^" + pattern.trim().split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
+  return pattern.trim() !== "" && re.test(name);
+}
+
+/** A stored or typed access level made valid: unknown → "read", and a PROD connection can never be "write". */
+export function clampMcpAccess(environment: string, access: string | null | undefined): McpAccess {
+  const a = (MCP_ACCESS_LEVELS as readonly string[]).includes(access ?? "") ? (access as McpAccess) : DEFAULT_MCP_ACCESS;
+  return a === "write" && environment === "prod" ? "read" : a;
+}
+
+/** The redaction list from its stored JSON array; a missing or malformed value gives the defaults. */
+export function parseRedactFields(raw: string | null | undefined): string[] {
+  if (raw === null || raw === undefined) return [...DEFAULT_REDACT_FIELDS];
+  try {
+    const v: unknown = JSON.parse(raw);
+    if (Array.isArray(v) && v.every((x) => typeof x === "string")) return cleanFields(v as string[]);
+  } catch {
+    /* fall through to the defaults */
+  }
+  return [...DEFAULT_REDACT_FIELDS];
+}
+
+/** Trimmed, non-empty, de-duplicated (case-insensitively) field names. */
+export function cleanFields(fields: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const f of fields) {
+    const t = f.trim();
+    if (t && !seen.has(t.toLowerCase())) {
+      seen.add(t.toLowerCase());
+      out.push(t);
+    }
+  }
+  return out;
+}
+
+/** Text typed in the settings box (commas or new lines) → field list. */
+export function fieldsFromText(text: string): string[] {
+  return cleanFields(text.split(/[,\n]/));
+}
+
+export function fieldsToText(fields: readonly string[]): string {
+  return fields.join(", ");
+}
+
+export type McpSession = { id: string; label: string; environment: string; readOnly: boolean; access: McpAccess };
 export type McpActivity = { tool: string; connection: string | null; ok: boolean; ms: number; error: string | null };
 export type McpClientId = "claude-code" | "claude-desktop" | "cursor" | "vscode";
 export type McpSnippet = { id: McpClientId; label: string; kind: "shell" | "json"; text: string };
@@ -72,13 +131,16 @@ export function clientSnippets(port: number, token: string): McpSnippet[] {
   ];
 }
 
-/** The connections MCP may see: connected sessions only, labelled as in the app. */
+/** The connections MCP may see: connected sessions whose access is not "off", labelled as in the app. */
 export function exposedSessions(
-  sessions: readonly { id: string; label: string; status: string; environment: string; readOnly: boolean }[],
+  sessions: readonly { id: string; label: string; status: string; environment: string; readOnly: boolean; mcpAccess?: McpAccess }[],
 ): McpSession[] {
   return sessions
-    .filter((s) => s.status === "connected")
-    .map((s) => ({ id: s.id, label: s.label, environment: s.environment, readOnly: s.readOnly }));
+    .filter((s) => s.status === "connected" && s.mcpAccess !== "off")
+    .map((s) => ({
+      id: s.id, label: s.label, environment: s.environment, readOnly: s.readOnly,
+      access: clampMcpAccess(s.environment, s.mcpAccess),
+    }));
 }
 
 /** Newest first, bounded. */

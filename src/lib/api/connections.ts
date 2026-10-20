@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Environment } from "../domain/environment";
+import type { McpAccess } from "../domain/mcp";
 
 export interface ConnectionInput {
   label: string;
@@ -28,6 +29,8 @@ export interface ConnectionInput {
   environment: Environment;
   /** Hex session color; "" = assigned automatically. */
   color: string;
+  /** What MCP clients may do with this connection once open; files saved before this field existed load as "read". */
+  mcpAccess: McpAccess;
 }
 
 export interface SavedConnection extends ConnectionInput {
@@ -50,8 +53,10 @@ export async function listConnections(): Promise<SavedConnection[]> {
 export async function saveConnection(
   id: number | null,
   input: ConnectionInput,
+  /** "Save without password": also discard secrets the backend is holding sealed for this connection. */
+  clearSecrets = false,
 ): Promise<SavedConnection[]> {
-  return await invoke<SavedConnection[]>("save_connection", { id, input });
+  return await invoke<SavedConnection[]>("save_connection", { id, input, clearSecrets });
 }
 
 export async function deleteConnection(id: number): Promise<SavedConnection[]> {

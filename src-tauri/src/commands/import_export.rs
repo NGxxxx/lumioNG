@@ -492,30 +492,34 @@ pub async fn import_documents(
 ) -> Result<ImportResult, AppError> {
     state.ensure_writable(&session_id).await?;
 
-    let count_path = path.clone();
-    let (is_array, total) = tokio::task::spawn_blocking(move || -> Result<(bool, u64), AppError> {
-        let is_array = detect_json_array(&count_path)?;
-        let file = std::fs::File::open(&count_path).map_err(|e| AppError::Io(e.to_string()))?;
-        let reader = std::io::BufReader::new(file);
-        let total = if is_array {
-            crate::json_stream::count_array_elements(reader).map_err(AppError::Parse)?
+    state
+        .audited(&session_id, crate::audit::SOURCE_IMPORT, "import_documents", &format!("{db}.{coll}"), None, |r: &ImportResult| Some(r.inserted), async {
+        let count_path = path.clone();
+        let (is_array, total) = tokio::task::spawn_blocking(move || -> Result<(bool, u64), AppError> {
+            let is_array = detect_json_array(&count_path)?;
+            let file = std::fs::File::open(&count_path).map_err(|e| AppError::Io(e.to_string()))?;
+            let reader = std::io::BufReader::new(file);
+            let total = if is_array {
+                crate::json_stream::count_array_elements(reader).map_err(AppError::Parse)?
+            } else {
+                count_jsonl_lines(reader)?
+            };
+            Ok((is_array, total))
+        })
+        .await
+        .map_err(|e| AppError::Io(e.to_string()))??;
+
+        let client = state.client(&session_id).await?;
+        let collection = client.database(&db).collection::<Document>(&coll);
+
+        let rx = if is_array {
+            spawn_json_array_producer(path)
         } else {
-            count_jsonl_lines(reader)?
+            spawn_jsonl_producer(path)
         };
-        Ok((is_array, total))
-    })
-    .await
-    .map_err(|e| AppError::Io(e.to_string()))??;
-
-    let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
-
-    let rx = if is_array {
-        spawn_json_array_producer(path)
-    } else {
-        spawn_jsonl_producer(path)
-    };
-    consume_import_batches(rx, &collection, insert_mode, total, &on_progress).await
+        consume_import_batches(rx, &collection, insert_mode, total, &on_progress).await
+        })
+        .await
 }
 
 #[tauri::command]
@@ -793,19 +797,23 @@ pub async fn import_bson(
 ) -> Result<ImportResult, AppError> {
     state.ensure_writable(&session_id).await?;
 
-    let count_path = path.clone();
-    let total = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
-        let file = std::fs::File::open(&count_path).map_err(|e| AppError::Io(e.to_string()))?;
-        count_bson_docs_streaming(std::io::BufReader::new(file))
-    })
-    .await
-    .map_err(|e| AppError::Io(e.to_string()))??;
+    state
+        .audited(&session_id, crate::audit::SOURCE_IMPORT, "import_bson", &format!("{db}.{coll}"), None, |r: &ImportResult| Some(r.inserted), async {
+        let count_path = path.clone();
+        let total = tokio::task::spawn_blocking(move || -> Result<u64, AppError> {
+            let file = std::fs::File::open(&count_path).map_err(|e| AppError::Io(e.to_string()))?;
+            count_bson_docs_streaming(std::io::BufReader::new(file))
+        })
+        .await
+        .map_err(|e| AppError::Io(e.to_string()))??;
 
-    let client = state.client(&session_id).await?;
-    let collection = client.database(&db).collection::<Document>(&coll);
+        let client = state.client(&session_id).await?;
+        let collection = client.database(&db).collection::<Document>(&coll);
 
-    let rx = spawn_bson_producer(path, total);
-    consume_import_batches(rx, &collection, insert_mode, total, &on_progress).await
+        let rx = spawn_bson_producer(path, total);
+        consume_import_batches(rx, &collection, insert_mode, total, &on_progress).await
+        })
+        .await
 }
 
 #[cfg(test)]

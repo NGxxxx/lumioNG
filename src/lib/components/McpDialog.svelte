@@ -3,7 +3,7 @@
   import Modal from "./Modal.svelte";
   import { mcp } from "../stores/mcp.svelte";
   import { sessionManager } from "../stores/sessionManager.svelte";
-  import { clientSnippets, endpointUrl, exposedSessions, isValidPort, type McpClientId } from "../domain/mcp";
+  import { clientSnippets, endpointUrl, exposedSessions, fieldsFromText, fieldsToText, isValidPort, type McpClientId } from "../domain/mcp";
   import { copyToClipboard } from "../clipboard";
   import { msgCount } from "#lib/msgkey.js";
   import * as m from "#lib/paraglide/messages.js";
@@ -11,6 +11,7 @@
   let { onclose }: { onclose: () => void } = $props();
 
   let portText = $state(String(mcp.port));
+  let redactText = $state(fieldsToText(mcp.redactFields));
   const portOk = $derived(isValidPort(Number(portText)));
   let showToken = $state(false);
   let client = $state<McpClientId>("claude-code");
@@ -31,6 +32,11 @@
       copied = key;
       setTimeout(() => { if (copied === key) copied = null; }, 1500);
     }
+  }
+
+  function commitRedact() {
+    mcp.setRedactFields(fieldsFromText(redactText));
+    redactText = fieldsToText(mcp.redactFields);
   }
 
   function commitPort() {
@@ -75,6 +81,19 @@
         <label class="check">
           <input type="checkbox" checked={mcp.allowWrites} onchange={(e) => mcp.setAllowWrites(e.currentTarget.checked)} />
           <span>{m.mcp_allow_writes()}<span class="hint">{m.mcp_allow_writes_hint()}</span></span>
+        </label>
+
+        <label for="mcp-redact">{m.mcp_redact_fields()}</label>
+        <div>
+          <input id="mcp-redact" class="redact" bind:value={redactText} onblur={commitRedact} spellcheck="false" autocomplete="off"
+            onkeydown={(e) => { if (e.key === "Enter") { e.stopPropagation(); commitRedact(); } }} />
+          <div class="hint">{m.mcp_redact_fields_hint()}</div>
+        </div>
+
+        <span></span>
+        <label class="check">
+          <input type="checkbox" checked={mcp.auditReads} onchange={(e) => mcp.setAuditReads(e.currentTarget.checked)} />
+          <span>{m.mcp_audit_reads()}<span class="hint">{m.mcp_audit_reads_hint()}</span></span>
         </label>
       </div>
 
@@ -133,6 +152,7 @@
   .grid { display: grid; grid-template-columns: 7rem minmax(0, 1fr); gap: 0.625rem 0.75rem; align-items: center; }
   .grid > label, .grid > span { color: var(--muted); font-size: 0.75rem; }
   .grid .check { color: var(--fg); font-size: var(--fs); }
+  .mcp .redact { width: 100% !important; margin-top: 0 !important; font-family: var(--mono); }
   .mcp .port { width: 7rem !important; margin-top: 0 !important; font-family: var(--mono); }
   .token { display: flex; align-items: center; gap: 0.375rem; }
   .tok { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.3125rem 0.5rem !important; }

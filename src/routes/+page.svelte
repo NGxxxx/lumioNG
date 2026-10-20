@@ -11,6 +11,8 @@
   import { formatCombo } from "#lib/domain/shortcuts.js";
   import { settings } from "#lib/stores/settings.svelte.js";
   import { mcp } from "#lib/stores/mcp.svelte.js";
+  import { audit } from "#lib/stores/audit.svelte.js";
+  import { vault } from "#lib/stores/vault.svelte.js";
   import { undo } from "#lib/stores/undo.svelte.js";
   import { SHORTCUTS, type Command, type CommandId } from "#lib/domain/commands.js";
   import { detectPlatform } from "#lib/stores/platform.js";
@@ -29,6 +31,8 @@
   onMount(() => {
     queryLibrary.load(); // once at app start; failure shows in the panel and never blocks the app
     mcp.init(); // brings the MCP server back if it was on last time
+    vault.init(); // locked master-password vault: ask for it before any saved connection is opened
+    audit.init(); // tells Rust which environments to audit (it assumes PROD only until then)
   });
 
   const plat = detectPlatform();
@@ -80,6 +84,7 @@
     "help.about": { disabled: false, run: () => (app.aboutOpen = true) },
     "help.exportDiagnostics": { disabled: false, run: () => void app.exportDiagnosticsBundle() },
     "tools.mcpSettings": { disabled: false, run: () => (app.mcpOpen = true) },
+    "tools.auditLog": { disabled: false, run: () => (app.auditOpen = true) },
     "tools.exportSettings": { disabled: false, run: () => void app.exportSettings() },
     "tools.importSettings": { disabled: false, run: () => void app.importSettings() },
     "query.history": { disabled: !app.activeQueryRun, run: () => app.activeQueryRun?.toggleHistory() },

@@ -21,6 +21,20 @@ pub struct InsertManyResult {
     pub inserted_ids: Vec<String>,
 }
 
+/// Runs one UI write and records it in the audit log (source `ui`, namespace `db.coll`).
+async fn audited<T>(
+    state: &AppState,
+    session_id: &str,
+    op: &str,
+    db: &str,
+    coll: &str,
+    filter: Option<&Document>,
+    count: impl FnOnce(&T) -> Option<u64>,
+    fut: impl std::future::Future<Output = Result<T, AppError>>,
+) -> Result<T, AppError> {
+    state.audited(session_id, crate::audit::SOURCE_UI, op, &format!("{db}.{coll}"), filter, count, fut).await
+}
+
 /// Parse a Canonical Extended JSON **array** of documents into Vec<Document>.
 fn parse_doc_array(json: &str) -> Result<Vec<Document>, AppError> {
     canonical_string_to_doc_array(
@@ -82,7 +96,10 @@ pub async fn insert_document(
 
     let new_doc = canonical_string_to_doc(&doc_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    let res = collection.insert_one(new_doc).await?;
+    let res = audited(&state, &session_id, "insert_document", &db, &coll, None, |_| Some(1), async {
+        Ok(collection.insert_one(new_doc).await?)
+    })
+    .await?;
     bson_to_canonical_string(&res.inserted_id)
 }
 
@@ -104,13 +121,15 @@ pub async fn replace_document(
     ensure_id_unchanged(&new_doc, &id_bson)?;
 
     let collection = client.database(&db).collection::<Document>(&coll);
-    let res = collection
-        .replace_one(doc! { "_id": id_bson }, new_doc)
-        .await?;
-    if res.matched_count == 0 {
-        return Err(AppError::Query("document no longer exists".into()));
-    }
-    Ok(())
+    let filter = doc! { "_id": id_bson };
+    audited(&state, &session_id, "replace_document", &db, &coll, Some(&filter), |_| Some(1), async {
+        let res = collection.replace_one(filter.clone(), new_doc).await?;
+        if res.matched_count == 0 {
+            return Err(AppError::Query("document no longer exists".into()));
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -125,11 +144,15 @@ pub async fn delete_document(
 
     let id_bson = canonical_string_to_bson(&id_json)?;
     let collection = client.database(&db).collection::<Document>(&coll);
-    let res = collection.delete_one(doc! { "_id": id_bson }).await?;
-    if res.deleted_count == 0 {
-        return Err(AppError::Query("no document found to delete".into()));
-    }
-    Ok(())
+    let filter = doc! { "_id": id_bson };
+    audited(&state, &session_id, "delete_document", &db, &coll, Some(&filter), |_| Some(1), async {
+        let res = collection.delete_one(filter.clone()).await?;
+        if res.deleted_count == 0 {
+            return Err(AppError::Query("no document found to delete".into()));
+        }
+        Ok(())
+    })
+    .await
 }
 
 #[tauri::command]
@@ -145,7 +168,10 @@ pub async fn update_many(
     let (collection, f) =
         resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let update_doc = canonical_string_to_doc(&update)?;
-    let res = collection.update_many(f, update_doc).await?;
+    let res = audited(&state, &session_id, "update_many", &db, &coll, Some(&f), |r| Some(r.modified_count), async {
+        Ok(collection.update_many(f.clone(), update_doc).await?)
+    })
+    .await?;
     Ok(BulkResult {
         matched: res.matched_count,
         modified: res.modified_count,
@@ -163,7 +189,10 @@ pub async fn delete_many(
 ) -> Result<u64, AppError> {
     let (collection, f) =
         resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
-    let res = collection.delete_many(f).await?;
+    let res = audited(&state, &session_id, "delete_many", &db, &coll, Some(&f), |r| Some(r.deleted_count), async {
+        Ok(collection.delete_many(f.clone()).await?)
+    })
+    .await?;
     Ok(res.deleted_count)
 }
 
@@ -181,7 +210,10 @@ pub async fn insert_many(
         return Err(AppError::Query("insertMany requires at least one document".into()));
     }
     let collection = client.database(&db).collection::<Document>(&coll);
-    let res = collection.insert_many(docs).await?;
+    let res = audited(&state, &session_id, "insert_many", &db, &coll, None, |r| Some(r.inserted_ids.len() as u64), async {
+        Ok(collection.insert_many(docs).await?)
+    })
+    .await?;
     // inserted_ids is a HashMap<usize, Bson>; restore insertion order by index.
     let mut entries: Vec<(usize, &mongodb::bson::Bson)> =
         res.inserted_ids.iter().map(|(k, v)| (*k, v)).collect();
@@ -209,7 +241,10 @@ pub async fn update_one(
     let (collection, f) =
         resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let update_doc = canonical_string_to_doc(&update)?;
-    let res = collection.update_one(f, update_doc).await?;
+    let res = audited(&state, &session_id, "update_one", &db, &coll, Some(&f), |r| Some(r.modified_count), async {
+        Ok(collection.update_one(f.clone(), update_doc).await?)
+    })
+    .await?;
     Ok(BulkResult {
         matched: res.matched_count,
         modified: res.modified_count,
@@ -229,7 +264,10 @@ pub async fn replace_one(
     let (collection, f) =
         resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let repl = canonical_string_to_doc(&replacement)?;
-    let res = collection.replace_one(f, repl).await?;
+    let res = audited(&state, &session_id, "replace_one", &db, &coll, Some(&f), |r| Some(r.modified_count), async {
+        Ok(collection.replace_one(f.clone(), repl).await?)
+    })
+    .await?;
     Ok(BulkResult {
         matched: res.matched_count,
         modified: res.modified_count,
@@ -247,7 +285,10 @@ pub async fn delete_one(
 ) -> Result<u64, AppError> {
     let (collection, f) =
         resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
-    let res = collection.delete_one(f).await?;
+    let res = audited(&state, &session_id, "delete_one", &db, &coll, Some(&f), |r| Some(r.deleted_count), async {
+        Ok(collection.delete_one(f.clone()).await?)
+    })
+    .await?;
     Ok(res.deleted_count)
 }
 

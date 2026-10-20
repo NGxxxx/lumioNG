@@ -5,7 +5,8 @@
 //! secret fields as JSON. The values are the frontend's obfuscated `*Enc` strings, so the IPC
 //! contract is unchanged: the frontend still sends and receives them exactly as before. When no
 //! credential store is available (e.g. a Linux session without a Secret Service), secrets stay in
-//! the file as they always did.
+//! the file, sealed by the master-password vault (`vault.rs`, see the bottom half of this module)
+//! once the user has set one up, and merely obfuscated until then.
 
 use crate::registry::SavedConnection;
 use serde::{Deserialize, Serialize};
@@ -156,6 +157,262 @@ pub fn sync(before: &[SavedConnection], after: &[SavedConnection], locked: &Lock
         let _ = store.delete(b.id);
     }
     file
+}
+
+// ── Master-password vault for the file fallback ─────────────────────────────────────────────────
+//
+// Only when the OS has no credential store: every `*Enc` field written to `connections.json` is
+// wrapped by the `Vault` (see `vault.rs`) and unwrapped on read. The fields are found by name
+// (JSON keys ending in `Enc`), so a secret field added to `SavedConnection` later is covered
+// without touching this code. With a credential store present nothing here opens or seals.
+
+use crate::error::AppError;
+use crate::registry;
+use crate::vault::{self, Vault, VaultSession};
+use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// Sealed values that could not be opened this time (vault locked, or the value is damaged),
+/// per connection as `(json field, original sealed text)`. They are blanked for the frontend and
+/// put back on save, so an unrelated save never destroys them.
+pub type Held = HashMap<u32, Vec<(String, String)>>;
+
+/// Where the vault lives and whether its key is in memory.
+pub struct VaultCtx<'a> {
+    pub path: PathBuf,
+    pub session: &'a VaultSession,
+}
+
+/// Applies `f(field, value)` to every non-empty string field whose JSON name ends in `Enc`;
+/// `Some(new)` replaces the value. Returns whether anything changed.
+fn edit_enc(c: &mut SavedConnection, mut f: impl FnMut(&str, &str) -> Option<String>) -> bool {
+    let Ok(serde_json::Value::Object(mut map)) = serde_json::to_value(&*c) else { return false };
+    let mut changed = false;
+    for (k, v) in map.iter_mut().filter(|(k, _)| k.ends_with("Enc")) {
+        if let Some(new) = v.as_str().filter(|s| !s.is_empty()).and_then(|s| f(k, s)) {
+            *v = serde_json::Value::String(new);
+            changed = true;
+        }
+    }
+    if changed {
+        if let Ok(n) = serde_json::from_value(serde_json::Value::Object(map)) {
+            *c = n;
+            return true;
+        }
+    }
+    false
+}
+
+/// Unwraps sealed fields after loading. With `use_vault` false (a credential store is present) or
+/// a locked/mismatched vault, sealed fields are blanked and held instead of opened.
+pub fn open_list(list: &mut [SavedConnection], session: &VaultSession, use_vault: bool) -> Held {
+    let mut held = Held::new();
+    for c in list.iter_mut() {
+        let id = c.id;
+        edit_enc(c, |field, value| {
+            if !vault::is_sealed(value) {
+                return None;
+            }
+            let opened = if use_vault { session.with(|v| v.open(value)) } else { None };
+            match opened {
+                Some(Ok(plain)) => Some(plain),
+                other => {
+                    if matches!(other, Some(Err(_))) {
+                        tracing::warn!(connection = id, field, "sealed secret could not be opened and was left as is");
+                    }
+                    held.entry(id).or_default().push((field.to_string(), value.to_string()));
+                    Some(String::new())
+                }
+            }
+        });
+    }
+    held
+}
+
+/// Seals one value, logging only the field name when it fails.
+fn seal_value(v: &Vault, field: &str, value: &str) -> Option<String> {
+    match v.seal(value) {
+        Ok(sealed) => Some(sealed),
+        Err(_) => {
+            tracing::warn!(field, "could not seal a secret field");
+            None
+        }
+    }
+}
+
+/// The non-empty `*Enc` fields of a connection as `(json field, value)`.
+fn enc_fields(c: &SavedConnection) -> Vec<(String, String)> {
+    match serde_json::to_value(c) {
+        Ok(serde_json::Value::Object(m)) => m
+            .into_iter()
+            .filter_map(|(k, v)| match v {
+                serde_json::Value::String(s) if k.ends_with("Enc") && !s.is_empty() => Some((k, s)),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Prepares the file image before saving: puts held sealed values back where the field is still
+/// blank, and (when `use_vault`, i.e. there is no credential store) seals every plain value.
+///
+/// A secret must never reach the file protected only by obfuscation. So when the vault cannot seal
+/// (locked, not set up, or a seal failure) a plain value that is new or changed compared with
+/// `before` makes the whole save fail with `AppError::Vault("vault_locked" | "vault_uninitialized"
+/// | "vault_seal_failed")`. Plain values that merely stay as they were (legacy files, before a
+/// vault exists) pass through untouched.
+pub fn seal_list(
+    file: &mut [SavedConnection],
+    before: &[SavedConnection],
+    held: &Held,
+    ctx: &VaultCtx,
+    use_vault: bool,
+) -> Result<(), AppError> {
+    for c in file.iter_mut() {
+        let id = c.id;
+        if use_vault {
+            let prev = before.iter().find(|b| b.id == id).map(enc_fields).unwrap_or_default();
+            let unlocked = ctx.session.is_unlocked();
+            let mut refusal: Option<&'static str> = None;
+            edit_enc(c, |field, value| {
+                if vault::is_sealed(value) {
+                    return None;
+                }
+                if !unlocked {
+                    if !prev.iter().any(|(k, v)| k == field && v == value) {
+                        refusal = Some(match vault::read_file(&ctx.path) {
+                            Ok(None) => "vault_uninitialized",
+                            _ => "vault_locked",
+                        });
+                    }
+                    return None;
+                }
+                match ctx.session.with(|v| seal_value(v, field, value)).flatten() {
+                    Some(sealed) => Some(sealed),
+                    None => {
+                        refusal = Some("vault_seal_failed");
+                        None
+                    }
+                }
+            });
+            if let Some(code) = refusal {
+                return Err(AppError::Vault(code.into()));
+            }
+        }
+        if let Some(fields) = held.get(&id) {
+            restore(c, fields);
+        }
+    }
+    Ok(())
+}
+
+/// Puts held sealed values back into fields that are blank.
+fn restore(c: &mut SavedConnection, fields: &[(String, String)]) {
+    let Ok(serde_json::Value::Object(mut map)) = serde_json::to_value(&*c) else { return };
+    let mut changed = false;
+    for (k, original) in fields {
+        if map.get(k).and_then(|v| v.as_str()).is_some_and(str::is_empty) {
+            map.insert(k.clone(), serde_json::Value::String(original.clone()));
+            changed = true;
+        }
+    }
+    if changed {
+        if let Ok(n) = serde_json::from_value(serde_json::Value::Object(map)) {
+            *c = n;
+        }
+    }
+}
+
+/// `"not_needed"` (a credential store exists), `"uninitialized"` (no vault yet), `"locked"` or `"unlocked"`.
+pub fn vault_status(store: &dyn SecretStore, ctx: &VaultCtx) -> &'static str {
+    if store.available() {
+        return "not_needed";
+    }
+    match vault::read_file(&ctx.path) {
+        Ok(None) => "uninitialized",
+        _ if ctx.session.is_unlocked() => "unlocked",
+        _ => "locked",
+    }
+}
+
+/// Seals every plain `*Enc` value in the registry file (the one-time migration of a fallback file).
+/// Nothing is written unless every value sealed.
+fn seal_registry_file(registry_path: &Path, v: &Vault) -> Result<(), AppError> {
+    let mut list = registry::load(registry_path)?;
+    let mut changed = false;
+    let mut failed = false;
+    for c in list.iter_mut() {
+        changed |= edit_enc(c, |field, value| {
+            if vault::is_sealed(value) {
+                return None;
+            }
+            let sealed = seal_value(v, field, value);
+            failed |= sealed.is_none();
+            sealed
+        });
+    }
+    if failed {
+        return Err(AppError::Vault("vault_seal_failed".into()));
+    }
+    if changed {
+        registry::save(registry_path, &list)?;
+    }
+    Ok(())
+}
+
+/// Shortest master password `vault_setup` accepts (characters).
+pub const MIN_PASSWORD_CHARS: usize = 8;
+
+/// Creates the vault for `password`, unlocks it and seals what the file already holds. The session
+/// is unlocked only when all of that succeeded; on failure nothing is left behind.
+pub fn vault_setup(ctx: &VaultCtx, registry_path: &Path, password: &str) -> Result<(), AppError> {
+    if password.chars().count() < MIN_PASSWORD_CHARS {
+        return Err(AppError::Vault("master password is too short".into()));
+    }
+    if vault::read_file(&ctx.path)?.is_some() {
+        return Err(AppError::Vault("a master password is already set".into()));
+    }
+    let (v, file) = Vault::create(password)?;
+    vault::write_file(&ctx.path, &file)?;
+    if let Err(e) = seal_registry_file(registry_path, &v) {
+        // Sealing writes the registry atomically and only at the end, so it is still unsealed here.
+        let _ = std::fs::remove_file(&ctx.path);
+        return Err(e);
+    }
+    ctx.session.set(v);
+    Ok(())
+}
+
+/// Unlocks with `password` (wrong password: `Err`, nothing changes) and seals leftover plain
+/// values. The session is unlocked only if sealing succeeded, so the UI and backend agree.
+pub fn vault_unlock(ctx: &VaultCtx, registry_path: &Path, password: &str) -> Result<(), AppError> {
+    let file = vault::read_file(&ctx.path)?.ok_or_else(|| AppError::Vault("no master password is set".into()))?;
+    let v = Vault::unlock(password, &file).inspect_err(|_| tracing::warn!("vault unlock failed"))?;
+    seal_registry_file(registry_path, &v)?;
+    ctx.session.set(v);
+    Ok(())
+}
+
+/// "Forgot master password": drops the vault and blanks every sealed field. Connections stay; there
+/// is no way back to the sealed values.
+pub fn vault_reset(ctx: &VaultCtx, registry_path: &Path) -> Result<(), AppError> {
+    let mut list = registry::load(registry_path)?;
+    let mut cleared = false;
+    for c in list.iter_mut() {
+        cleared |= edit_enc(c, |_, value| vault::is_sealed(value).then(String::new));
+    }
+    if cleared {
+        registry::save(registry_path, &list)?;
+    }
+    match std::fs::remove_file(&ctx.path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(AppError::Io(e.to_string())),
+    }
+    ctx.session.clear();
+    tracing::warn!("vault reset: sealed secrets were discarded");
+    Ok(())
 }
 
 #[cfg(test)]

@@ -72,12 +72,12 @@ pub async fn create_index(
         .collation(collation_opt)
         .build();
     let model = IndexModel::builder().keys(keys_doc).options(options).build();
-    client
-        .database(&db)
-        .collection::<Document>(&coll)
-        .create_index(model)
-        .await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "create_index", &format!("{db}.{coll}"), None, |_| None, async {
+            client.database(&db).collection::<Document>(&coll).create_index(model).await?;
+            Ok::<_, AppError>(())
+        })
+        .await
 }
 
 /// Recreates indexes from their raw `listIndexes` documents (as produced by `list_indexes`) —
@@ -104,11 +104,12 @@ pub async fn create_indexes_raw(
     if specs.is_empty() {
         return Ok(());
     }
-    client
-        .database(&db)
-        .run_command(doc! { "createIndexes": &coll, "indexes": specs })
-        .await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "create_indexes", &format!("{db}.{coll}"), None, |_| None, async {
+            client.database(&db).run_command(doc! { "createIndexes": &coll, "indexes": specs }).await?;
+            Ok::<_, AppError>(())
+        })
+        .await
 }
 
 #[tauri::command]
@@ -120,12 +121,12 @@ pub async fn drop_index(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
-    client
-        .database(&db)
-        .collection::<Document>(&coll)
-        .drop_index(name)
-        .await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "drop_index", &format!("{db}.{coll}"), None, |_| None, async {
+            client.database(&db).collection::<Document>(&coll).drop_index(name).await?;
+            Ok::<_, AppError>(())
+        })
+        .await
 }
 
 /// Per-index usage counters (`$indexStats`): one entry per index per host/shard.
@@ -164,11 +165,12 @@ pub async fn set_index_hidden(
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
-    client
-        .database(&db)
-        .run_command(hide_index_command(&coll, &name, hidden))
-        .await?;
-    Ok(())
+    state
+        .audited(&session_id, crate::audit::SOURCE_UI, "set_index_hidden", &format!("{db}.{coll}"), None, |_| None, async {
+            client.database(&db).run_command(hide_index_command(&coll, &name, hidden)).await?;
+            Ok::<_, AppError>(())
+        })
+        .await
 }
 
 #[cfg(test)]

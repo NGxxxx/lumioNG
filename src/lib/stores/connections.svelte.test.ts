@@ -150,11 +150,26 @@ describe("connections store — connectRequest", () => {
       passwordEnc: "", authSource: "", replicaSet: "", tls: false, extraOptions: "", readOnly: true,
       tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "", sshEnabled: false, sshHost: "", sshPort: 22,
       sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
-      environment: "prod", color: "#ff0000",
+      environment: "prod", color: "#ff0000", mcpAccess: "read",
     });
     expect(r.connectRequest()).toEqual({
       connId: 7, label: "Prod", uri: "mongodb://db.example:27017/", readOnly: true, ssh: null, environment: "prod", color: "#ff0000",
+      mcpAccess: "read",
     });
+  });
+
+  it("prod_cannot_be_set_to_write: choosing PROD drops write and the select cannot set it again", () => {
+    const r = createConnectionRegistry();
+    r.environment = "staging";
+    r.mcpAccess = "write";
+    expect(r.mcpAccess).toBe("write");
+    expect(r.connectRequest()?.mcpAccess).toBe("write");
+    r.environment = "prod";
+    expect(r.mcpAccess).toBe("read");
+    r.mcpAccess = "write";
+    expect(r.mcpAccess).toBe("read");
+    r.mcpAccess = "off";
+    expect(r.connectRequest()?.mcpAccess).toBe("off");
   });
 
   it("an ad-hoc connection has no id and is labelled by its URI", () => {

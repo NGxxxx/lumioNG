@@ -87,7 +87,7 @@ describe("ConnectionForm — connection string", () => {
   it("Copy URI is offered for a saved connection, without and with the password", async () => {
     const { r, getByRole, queryByRole } = setup();
     expect(queryByRole("button", { name: "Copy URI" })).toBeNull();
-    r.edit({ id: 2, label: "x", scheme: "mongodb", host: "h", port: 27017, authMethod: "password", user: "bob", passwordEnc: "", authSource: "", replicaSet: "", tls: false, extraOptions: "", readOnly: false, tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "", sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", environment: "", color: "" });
+    r.edit({ id: 2, label: "x", scheme: "mongodb", host: "h", port: 27017, authMethod: "password", user: "bob", passwordEnc: "", authSource: "", replicaSet: "", tls: false, extraOptions: "", readOnly: false, tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "", sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", environment: "", color: "", mcpAccess: "read" });
     r.password = "pw";
     await Promise.resolve();
     const writeText = vi.fn().mockResolvedValue(undefined);

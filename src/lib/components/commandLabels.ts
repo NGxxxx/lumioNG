@@ -26,6 +26,7 @@ const LABELS: Record<CommandId, () => string> = {
   "view.closeWorkTab": m.cmd_close_tab,
   "view.resetToDefault": m.menu_reset_to_default,
   "tools.mcpSettings": m.menu_mcp_settings,
+  "tools.auditLog": m.menu_audit_log,
   "tools.exportSettings": m.menu_export_settings,
   "tools.importSettings": m.menu_import_settings,
   "view.resetLayout": m.cmd_reset_layout,

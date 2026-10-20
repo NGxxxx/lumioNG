@@ -65,6 +65,8 @@ pub async fn mcp_start(
     token: String,
     allow_writes: bool,
     on_activity: Channel<Activity>,
+    redact_fields: Option<Vec<String>>,
+    audit_reads: Option<bool>,
     server: State<'_, McpServer>,
 ) -> Result<McpStatus, AppError> {
     if token.trim().len() < MIN_TOKEN_LEN {
@@ -75,7 +77,13 @@ pub async fn mcp_start(
     }
     let mut running = server.running.lock().await;
     *running = None; // stop the old listener before binding (the port may be the same)
-    let shared = Arc::new(Shared { token: token.trim().to_string(), allow_writes, sessions: server.sessions.clone() });
+    let shared = Arc::new(Shared {
+        token: token.trim().to_string(),
+        allow_writes,
+        sessions: server.sessions.clone(),
+        redact_fields: redact_fields.unwrap_or_else(crate::mcp::redact::default_patterns),
+        audit_reads: audit_reads.unwrap_or(false),
+    });
     let backend = Arc::new(TauriBackend { app, on_activity });
     let (bound, stop) = mcp::start(backend, shared, port)
         .await
@@ -99,13 +107,43 @@ pub async fn mcp_status(server: State<'_, McpServer>) -> Result<McpStatus, AppEr
 /// open, close or get relabelled).
 #[tauri::command]
 pub async fn mcp_set_sessions(sessions: Vec<ExposedSession>, server: State<'_, McpServer>) -> Result<(), AppError> {
-    *server.sessions.write().await = sessions;
+    *server.sessions.write().await = normalize_sessions(sessions);
     Ok(())
+}
+
+/// Drops connections the user did not share (`access: "off"`) and clamps the rest to a valid level
+/// (a PROD connection is never `write`, whatever the frontend sent).
+fn normalize_sessions(sessions: Vec<ExposedSession>) -> Vec<ExposedSession> {
+    sessions
+        .into_iter()
+        .filter(|s| s.access != "off")
+        .map(|mut s| {
+            s.access = crate::registry::clamp_mcp_access(&s.environment, &s.access);
+            s
+        })
+        .collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn exposed(id: &str, environment: &str, access: &str) -> ExposedSession {
+        ExposedSession { id: id.into(), label: id.into(), environment: environment.into(), read_only: false, access: access.into() }
+    }
+
+    #[test]
+    fn off_connections_are_not_listed() {
+        let out = normalize_sessions(vec![exposed("a", "dev", "off"), exposed("b", "dev", "read"), exposed("c", "dev", "write")]);
+        assert_eq!(out.iter().map(|s| s.id.as_str()).collect::<Vec<_>>(), ["b", "c"]);
+    }
+
+    #[test]
+    fn prod_is_clamped_to_read_and_junk_access_to_read() {
+        let out = normalize_sessions(vec![exposed("p", "prod", "write"), exposed("j", "dev", "root")]);
+        assert_eq!(out[0].access, "read");
+        assert_eq!(out[1].access, "read");
+    }
 
     #[test]
     fn status_reflects_running_state() {

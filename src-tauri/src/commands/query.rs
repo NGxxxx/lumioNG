@@ -142,8 +142,10 @@ pub async fn aggregate(
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
 
     let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
+    // A pipeline ending in $out/$merge writes to its destination: audit it there.
+    let write_target = crate::audit::pipeline_write_target(&stages, &db, &coll);
 
-    with_interrupt(cancel, deadline, async move {
+    let run = with_interrupt(cancel, deadline, async move {
         let collection = client.database(&db).collection::<Document>(&coll);
         let mut agg = collection.aggregate(stages);
         if let Some(mt) = remaining_until(deadline) {
@@ -155,8 +157,11 @@ pub async fn aggregate(
             docs.push(doc_to_raw(d)?);
         }
         Ok(docs)
-    })
-    .await
+    });
+    match write_target {
+        Some((op, ns)) => state.audited(&session_id, crate::audit::SOURCE_UI, op, &ns, None, |_| None, run).await,
+        None => run.await,
+    }
 }
 
 #[tauri::command]

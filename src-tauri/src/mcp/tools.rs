@@ -3,6 +3,9 @@
 //! read-only or production-labelled connection. Results are Relaxed Extended JSON text — friendlier
 //! for a model to read than the canonical form the app's own frontend uses.
 
+use super::redact::{first_redacted_field, first_redacted_in_pipeline, redact_document};
+use crate::audit::{AuditEntry, AuditError, SOURCE_MCP};
+use crate::state::SessionMeta;
 use crate::state::AppState;
 use futures::stream::TryStreamExt;
 use mongodb::bson::{doc, Bson, Document};
@@ -10,6 +13,8 @@ use mongodb::options::{AggregateOptions, FindOptions};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Mutex;
 use std::time::Duration;
 
 /// A connection the frontend chose to expose (every live session, labelled as the user sees it).
@@ -22,12 +27,23 @@ pub struct ExposedSession {
     pub environment: String,
     #[serde(default)]
     pub read_only: bool,
+    /// "off" | "read" | "write": what the user allowed MCP clients to do with this connection.
+    #[serde(default = "default_access")]
+    pub access: String,
+}
+
+fn default_access() -> String {
+    crate::registry::MCP_ACCESS_READ.to_string()
 }
 
 pub struct ToolCtx<'a> {
     pub state: &'a AppState,
     pub sessions: &'a [ExposedSession],
     pub allow_writes: bool,
+    /// Field-name patterns whose values are replaced with "[redacted]" in results (see `mcp::redact`).
+    pub redact: &'a [String],
+    /// Also audit read tool calls (writes are always audited).
+    pub audit_reads: bool,
 }
 
 const DEFAULT_LIMIT: i64 = 20;
@@ -38,6 +54,9 @@ const MAX_INSERT: usize = 1000;
 const OP_TIMEOUT: Duration = Duration::from_secs(30);
 /// Tool output cap: a model's context is the real limit, and a runaway result helps nobody.
 const MAX_OUTPUT: usize = 200 * 1024;
+
+/// Sentinel for "no count recorded" in the per-call affected-documents counter.
+const NO_COUNT: u64 = u64::MAX;
 
 const WRITE_TOOLS: [&str; 3] = ["insert_documents", "update_documents", "delete_documents"];
 
@@ -107,6 +126,19 @@ pub fn tool_list(allow_writes: bool) -> Vec<Value> {
             true,
         ),
         tool("list_indexes", "List a collection's indexes.", json!({}), &["database", "collection"], true),
+        tool(
+            "explain",
+            "Show how MongoDB would run a find (or an aggregation when `pipeline` is given) without running it: the winning plan's stages and the index each uses (queryPlanner verbosity). Use it to check that a query is covered by an index.",
+            json!({
+                "filter": filter,
+                "sort": { "type": "object" },
+                "projection": { "type": "object" },
+                "limit": { "type": "integer", "minimum": 1, "maximum": MAX_LIMIT },
+                "pipeline": { "type": "array", "items": { "type": "object" }, "description": "Explain this aggregation instead of a find." }
+            }),
+            &["database", "collection"],
+            true,
+        ),
     ];
     if allow_writes {
         tools.push(tool(
@@ -214,12 +246,20 @@ pub fn resolve_session<'s>(sessions: &'s [ExposedSession], args: &Value) -> Resu
     }
 }
 
-fn writes_refused(ctx: &ToolCtx<'_>, s: &ExposedSession) -> Option<String> {
+/// Why a write on `s` must not run, or `None`. `meta` is the session's label, environment and
+/// read-only flag as held by Rust; the frontend-supplied copies in `ExposedSession` are never trusted
+/// for these, and a missing `meta` refuses the write.
+fn writes_refused(ctx: &ToolCtx<'_>, s: &ExposedSession, meta: Option<&SessionMeta>) -> Option<String> {
+    let Some(meta) = meta else {
+        return Some(format!("connection `{}` has no live session state; refusing to write", s.label));
+    };
     if !ctx.allow_writes {
         Some("writes are disabled in LumioNG's MCP settings".into())
-    } else if s.read_only {
+    } else if s.access != "write" {
+        Some(format!("connection `{}` is shared with MCP as `{}`; set its MCP access to write in the connection settings to allow writes", s.label, s.access))
+    } else if meta.read_only {
         Some(format!("connection `{}` is read-only", s.label))
-    } else if s.environment == "prod" {
+    } else if meta.environment == "prod" {
         Some(format!("connection `{}` is labelled production; MCP never writes to it", s.label))
     } else {
         None
@@ -231,6 +271,11 @@ fn pipeline_writes(stages: &[Document]) -> bool {
 }
 
 // ── output helpers ──
+
+/// `relaxed` after replacing the values of fields matching `redact`.
+fn relaxed_redacted(docs: Vec<Document>, redact: &[String]) -> Value {
+    relaxed(docs.into_iter().map(|d| redact_document(d, redact)).collect())
+}
 
 fn relaxed(docs: Vec<Document>) -> Value {
     Value::Array(docs.into_iter().map(|d| Bson::Document(d).into_relaxed_extjson()).collect())
@@ -326,7 +371,7 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
         let list: Vec<Value> = ctx
             .sessions
             .iter()
-            .map(|s| json!({ "id": s.id, "label": s.label, "environment": s.environment, "readOnly": s.read_only }))
+            .map(|s| json!({ "id": s.id, "label": s.label, "environment": s.environment, "readOnly": s.read_only, "access": s.access }))
             .collect();
         return Ok(render(&Value::Array(list)));
     }
@@ -335,6 +380,25 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
     }
     let session = resolve_session(ctx.sessions, args)?;
     let client = ctx.state.client(&session.id).await.map_err(|e| e.to_string())?;
+    // Filled in by the arms below so the audit line can carry the affected count and know whether
+    // an `aggregate` turned out to write ($out/$merge).
+    let count = AtomicU64::new(NO_COUNT);
+    let wrote = AtomicBool::new(is_write_tool(name));
+    // Environment and read-only flag come from Rust's own session record, not from the frontend list.
+    let meta = ctx.state.meta(&session.id).await.ok();
+    // Value-free failure summary for the audit line (server code + codeName, or a refusal reason).
+    let audit_error: Mutex<Option<String>> = Mutex::new(None);
+    // Destination of a writing aggregate (`$out` / `$merge`): (op, namespace).
+    let write_target: Mutex<Option<(&'static str, String)>> = Mutex::new(None);
+    let mongo_err = |e: mongodb::error::Error| {
+        let text = e.to_string();
+        *audit_error.lock().unwrap_or_else(|p| p.into_inner()) = Some(crate::error::AppError::from(e).audit_summary());
+        text
+    };
+    let refuse = |why: String| {
+        *audit_error.lock().unwrap_or_else(|p| p.into_inner()) = Some(format!("Refused: {why}"));
+        why
+    };
     let run = async {
         match name {
             "list_databases" => {
@@ -353,35 +417,43 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
             "find" => {
                 let coll = client.database(str_arg(args, "database")?).collection::<Document>(str_arg(args, "collection")?);
                 let filter = doc_arg(args, "filter")?.unwrap_or_default();
+                let sort = doc_arg(args, "sort")?;
+                refuse_redacted(ctx, [Some(&filter), sort.as_ref()])?;
                 let limit = int_arg(args, "limit", DEFAULT_LIMIT, 1, MAX_LIMIT)?;
                 let skip = int_arg(args, "skip", 0, 0, i64::MAX)?;
                 let opts = FindOptions::builder()
                     .projection(doc_arg(args, "projection")?)
-                    .sort(doc_arg(args, "sort")?)
+                    .sort(sort)
                     .limit(limit)
                     .skip(skip as u64)
                     .max_time(OP_TIMEOUT)
                     .build();
                 let docs: Vec<Document> = coll.find(filter).with_options(opts).await.map_err(|e| e.to_string())?.try_collect().await.map_err(|e| e.to_string())?;
-                Ok(render(&relaxed(docs)))
+                Ok(render(&relaxed_redacted(docs, ctx.redact)))
             }
             "aggregate" => {
                 let coll = client.database(str_arg(args, "database")?).collection::<Document>(str_arg(args, "collection")?);
                 let mut stages = doc_array_arg(args, "pipeline")?;
+                refuse_redacted_pipeline(ctx, &stages)?;
                 if pipeline_writes(&stages) {
-                    if let Some(why) = writes_refused(ctx, session) {
-                        return Err(format!("$out/$merge refused: {why}"));
+                    wrote.store(true, Ordering::Relaxed);
+                    *write_target.lock().unwrap_or_else(|p| p.into_inner()) =
+                        crate::audit::pipeline_write_target(&stages, str_arg(args, "database")?, str_arg(args, "collection")?);
+                    if let Some(why) = writes_refused(ctx, session, meta.as_ref()) {
+                        return Err(refuse(format!("$out/$merge refused: {why}")));
                     }
                 } else {
                     stages.push(doc! { "$limit": int_arg(args, "limit", DEFAULT_LIMIT, 1, MAX_LIMIT)? });
                 }
                 let opts = AggregateOptions::builder().max_time(OP_TIMEOUT).build();
-                let docs: Vec<Document> = coll.aggregate(stages).with_options(opts).await.map_err(|e| e.to_string())?.try_collect().await.map_err(|e| e.to_string())?;
-                Ok(render(&relaxed(docs)))
+                let docs: Vec<Document> = coll.aggregate(stages).with_options(opts).await.map_err(&mongo_err)?.try_collect().await.map_err(&mongo_err)?;
+                Ok(render(&relaxed_redacted(docs, ctx.redact)))
             }
             "count_documents" => {
                 let coll = client.database(str_arg(args, "database")?).collection::<Document>(str_arg(args, "collection")?);
-                let n = coll.count_documents(doc_arg(args, "filter")?.unwrap_or_default()).max_time(OP_TIMEOUT).await.map_err(|e| e.to_string())?;
+                let filter = doc_arg(args, "filter")?.unwrap_or_default();
+                refuse_redacted(ctx, [Some(&filter)])?;
+                let n = coll.count_documents(filter).max_time(OP_TIMEOUT).await.map_err(|e| e.to_string())?;
                 Ok(render(&json!({ "count": n })))
             }
             "collection_schema" => {
@@ -409,21 +481,51 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
                     .map_err(|e| e.to_string())?;
                 Ok(render(&relaxed(raw)))
             }
+            "explain" => {
+                let collection = str_arg(args, "collection")?;
+                let filter = doc_arg(args, "filter")?.unwrap_or_default();
+                let sort = doc_arg(args, "sort")?;
+                refuse_redacted(ctx, [Some(&filter), sort.as_ref()])?;
+                let inner = if args.get("pipeline").is_some_and(|p| !p.is_null()) {
+                    let stages = doc_array_arg(args, "pipeline")?;
+                    refuse_redacted_pipeline(ctx, &stages)?;
+                    if pipeline_writes(&stages) {
+                        return Err("explain does not accept $out/$merge pipelines".into());
+                    }
+                    doc! { "aggregate": collection, "pipeline": stages, "cursor": {}, "maxTimeMS": OP_TIMEOUT.as_millis() as i64 }
+                } else {
+                    let mut f = doc! { "find": collection, "filter": filter, "limit": int_arg(args, "limit", DEFAULT_LIMIT, 1, MAX_LIMIT)?, "maxTimeMS": OP_TIMEOUT.as_millis() as i64 };
+                    if let Some(sort) = sort {
+                        f.insert("sort", sort);
+                    }
+                    if let Some(projection) = doc_arg(args, "projection")? {
+                        f.insert("projection", projection);
+                    }
+                    f
+                };
+                let reply = client
+                    .database(str_arg(args, "database")?)
+                    .run_command(doc! { "explain": inner, "verbosity": "queryPlanner" })
+                    .await
+                    .map_err(|e| e.to_string())?;
+                Ok(render(&plan_summary(&reply)))
+            }
             "insert_documents" => {
-                if let Some(why) = writes_refused(ctx, session) {
-                    return Err(why);
+                if let Some(why) = writes_refused(ctx, session, meta.as_ref()) {
+                    return Err(refuse(why));
                 }
                 let coll = client.database(str_arg(args, "database")?).collection::<Document>(str_arg(args, "collection")?);
                 let docs = doc_array_arg(args, "documents")?;
                 if docs.is_empty() || docs.len() > MAX_INSERT {
                     return Err(format!("`documents` must hold 1 to {MAX_INSERT} documents"));
                 }
-                let res = coll.insert_many(docs).await.map_err(|e| e.to_string())?;
+                let res = coll.insert_many(docs).await.map_err(&mongo_err)?;
+                count.store(res.inserted_ids.len() as u64, Ordering::Relaxed);
                 Ok(render(&json!({ "insertedCount": res.inserted_ids.len() })))
             }
             "update_documents" => {
-                if let Some(why) = writes_refused(ctx, session) {
-                    return Err(why);
+                if let Some(why) = writes_refused(ctx, session, meta.as_ref()) {
+                    return Err(refuse(why));
                 }
                 let coll = client.database(str_arg(args, "database")?).collection::<Document>(str_arg(args, "collection")?);
                 let filter = non_empty_filter(args)?;
@@ -436,22 +538,131 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
                     _ => return Err("`update` is required: an update document or a pipeline array".into()),
                 };
                 let res = if bool_arg(args, "many") { coll.update_many(filter, update).await } else { coll.update_one(filter, update).await }
-                    .map_err(|e| e.to_string())?;
+                    .map_err(&mongo_err)?;
+                count.store(res.modified_count, Ordering::Relaxed);
                 Ok(render(&json!({ "matchedCount": res.matched_count, "modifiedCount": res.modified_count })))
             }
             "delete_documents" => {
-                if let Some(why) = writes_refused(ctx, session) {
-                    return Err(why);
+                if let Some(why) = writes_refused(ctx, session, meta.as_ref()) {
+                    return Err(refuse(why));
                 }
                 let coll = client.database(str_arg(args, "database")?).collection::<Document>(str_arg(args, "collection")?);
                 let filter = non_empty_filter(args)?;
-                let res = if bool_arg(args, "many") { coll.delete_many(filter).await } else { coll.delete_one(filter).await }.map_err(|e| e.to_string())?;
+                let res = if bool_arg(args, "many") { coll.delete_many(filter).await } else { coll.delete_one(filter).await }.map_err(&mongo_err)?;
+                count.store(res.deleted_count, Ordering::Relaxed);
                 Ok(render(&json!({ "deletedCount": res.deleted_count })))
             }
             other => Err(format!("unknown tool `{other}`")),
         }
     };
-    run.await
+    let outcome = run.await;
+    if wrote.load(Ordering::Relaxed) || ctx.audit_reads {
+        let n = count.load(Ordering::Relaxed);
+        let summary = audit_error.into_inner().unwrap_or_else(|p| p.into_inner());
+        let target = write_target.into_inner().unwrap_or_else(|p| p.into_inner());
+        audit_call(ctx, session, meta.as_ref(), name, args, &outcome, (n != NO_COUNT).then_some(n), summary, target);
+    }
+    outcome
+}
+
+/// One audit line (source `mcp`) for a tool call that wrote, or tried to. Only the redacted filter is
+/// kept, never the documents or update bodies the model sent, and a failure is recorded as a
+/// value-free summary. A writing aggregate is recorded against its `$out`/`$merge` destination.
+fn audit_call(
+    ctx: &ToolCtx<'_>,
+    session: &ExposedSession,
+    meta: Option<&SessionMeta>,
+    name: &str,
+    args: &Value,
+    outcome: &Result<String, String>,
+    count: Option<u64>,
+    error_summary: Option<String>,
+    write_target: Option<(&'static str, String)>,
+) {
+    let field = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or("");
+    let (op, ns) = match write_target {
+        Some((op, ns)) => (op.to_string(), ns),
+        None => (name.to_string(), format!("{}.{}", field("database"), field("collection"))),
+    };
+    let filter = doc_arg(args, "filter").ok().flatten();
+    let (label, environment) = match meta {
+        Some(m) => (m.label.as_str(), m.environment.as_str()),
+        None => (session.label.as_str(), session.environment.as_str()),
+    };
+    let entry = AuditEntry::new(SOURCE_MCP, &op, &ns).with_session(label, environment).with_filter(filter.as_ref());
+    let entry = match outcome {
+        Ok(_) => entry.with_count(count),
+        Err(_) => entry.with_error(&error_summary.unwrap_or_else(|| "Rejected".into())),
+    };
+    if let Err(e) = ctx.state.audit.record(entry) {
+        tracing::error!("audit log write failed: {e}");
+    }
+}
+
+/// Refuses a query whose filter or sort names a redacted field: answers such as "how many documents
+/// match password = …" would leak the very values redaction hides.
+fn refuse_redacted<'d>(ctx: &ToolCtx<'_>, docs: impl IntoIterator<Item = Option<&'d Document>>) -> Result<(), String> {
+    for d in docs.into_iter().flatten() {
+        if let Some(field) = first_redacted_field(d, ctx.redact) {
+            return Err(format!("`{field}` is a redacted field; queries cannot filter or sort on it"));
+        }
+    }
+    Ok(())
+}
+
+/// Pipeline version of [`refuse_redacted`]: every stage, including field references like `"$password"`.
+fn refuse_redacted_pipeline(ctx: &ToolCtx<'_>, stages: &[Document]) -> Result<(), String> {
+    match first_redacted_in_pipeline(stages, ctx.redact) {
+        Some(field) => Err(format!("`{field}` is a redacted field; pipelines cannot use it")),
+        None => Ok(()),
+    }
+}
+
+/// Plan stage keys worth showing a model; everything else (costs, bounds, SBE slots) is dropped.
+const PLAN_KEYS: [&str; 9] = ["stage", "indexName", "keyPattern", "direction", "isMultiKey", "isUnique", "isSparse", "isPartial", "shardName"];
+/// Keys that hold a child stage (or a list of them).
+const PLAN_CHILDREN: [&str; 6] = ["inputStage", "inputStages", "queryPlan", "outerStage", "innerStage", "shards"];
+
+fn compact_plan(b: &Bson) -> Value {
+    match b {
+        Bson::Document(d) => {
+            let mut out = serde_json::Map::new();
+            for k in PLAN_KEYS {
+                if let Some(v) = d.get(k) {
+                    out.insert(k.to_string(), v.clone().into_relaxed_extjson());
+                }
+            }
+            for k in PLAN_CHILDREN {
+                if let Some(v) = d.get(k) {
+                    out.insert(k.to_string(), compact_plan(v));
+                }
+            }
+            if let Some(w) = d.get("winningPlan") {
+                out.insert("winningPlan".into(), compact_plan(w));
+            }
+            Value::Object(out)
+        }
+        Bson::Array(items) => Value::Array(items.iter().map(compact_plan).collect()),
+        _ => Value::Null,
+    }
+}
+
+/// `{namespace, winningPlan, rejectedPlans}` from an `explain` reply (find, aggregate or sharded).
+pub fn plan_summary(reply: &Document) -> Value {
+    let planner = reply
+        .get_document("queryPlanner")
+        .ok()
+        .or_else(|| {
+            reply.get_array("stages").ok()?.iter().find_map(|s| s.as_document()?.get_document("$cursor").ok()?.get_document("queryPlanner").ok())
+        });
+    let Some(p) = planner else {
+        return json!({ "note": "the server returned no queryPlanner section" });
+    };
+    json!({
+        "namespace": p.get_str("namespace").unwrap_or(""),
+        "winningPlan": p.get("winningPlan").map(compact_plan).unwrap_or(Value::Null),
+        "rejectedPlans": p.get_array("rejectedPlans").map(|a| a.len()).unwrap_or(0),
+    })
 }
 
 /// Writes never run with an empty filter: "update/delete everything" is not something to do by chat.
@@ -467,7 +678,7 @@ mod tests {
     use super::*;
 
     fn s(id: &str, label: &str) -> ExposedSession {
-        ExposedSession { id: id.into(), label: label.into(), environment: String::new(), read_only: false }
+        ExposedSession { id: id.into(), label: label.into(), environment: String::new(), read_only: false, access: "write".into() }
     }
 
     #[test]
@@ -491,18 +702,181 @@ mod tests {
     }
 
     #[test]
+    fn write_tool_refused_when_access_is_read() {
+        let state = AppState::default();
+        let ctx = ToolCtx { state: &state, sessions: &[], allow_writes: true, redact: &[], audit_reads: false };
+        let mut sess = s("a", "A");
+        let m = meta("dev", false);
+        assert!(writes_refused(&ctx, &sess, Some(&m)).is_none());
+        sess.access = "read".into();
+        let why = writes_refused(&ctx, &sess, Some(&m)).unwrap();
+        assert!(why.contains("MCP access"), "{why}");
+        // a session JSON without the field (older frontend) deserializes as read-only access
+        let parsed: ExposedSession = serde_json::from_value(json!({ "id": "x", "label": "X" })).unwrap();
+        assert_eq!(parsed.access, "read");
+        assert!(writes_refused(&ctx, &parsed, Some(&m)).is_some());
+    }
+
+    #[tokio::test]
+    async fn write_tool_call_on_read_access_is_refused_and_audited() {
+        let dir = std::env::temp_dir().join(format!("lumiong_mcp_access_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::default();
+        state.audit.set_dir(dir.clone());
+        state.audit.set_scope(crate::audit::AuditScope::All);
+        state.insert_session("r1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "Dev".into(), "dev".into(), None).await;
+        let mut sess = s("r1", "Dev");
+        sess.access = "read".into();
+        let sessions = [sess];
+        let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: true, redact: &[], audit_reads: false };
+        let err = call_tool(&ctx, "delete_documents", &json!({ "database": "d", "collection": "c", "filter": { "a": 1 } })).await.unwrap_err();
+        assert!(err.contains("MCP access"));
+        assert_eq!(state.audit.query(0, i64::MAX, None).unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn explain_tool_is_read_only() {
+        for allow in [false, true] {
+            let list = tool_list(allow);
+            let t = list.iter().find(|t| t["name"] == "explain").expect("explain is listed");
+            assert_eq!(t["annotations"]["readOnlyHint"], true);
+            assert_eq!(t["annotations"]["destructiveHint"], false);
+        }
+        assert!(!is_write_tool("explain"));
+    }
+
+    #[test]
+    fn plan_summary_keeps_stages_and_indexes_only() {
+        let reply = doc! {
+            "queryPlanner": {
+                "namespace": "shop.orders",
+                "indexFilterSet": false,
+                "winningPlan": {
+                    "stage": "FETCH",
+                    "filter": { "status": { "$eq": "paid" } },
+                    "inputStage": { "stage": "IXSCAN", "keyPattern": { "status": 1 }, "indexName": "status_1", "direction": "forward", "indexBounds": { "status": ["[\"paid\", \"paid\"]"] } },
+                },
+                "rejectedPlans": [ {}, {} ],
+            },
+            "serverInfo": { "host": "secret-host" },
+        };
+        let v = plan_summary(&reply);
+        assert_eq!(v["namespace"], "shop.orders");
+        assert_eq!(v["rejectedPlans"], 2);
+        assert_eq!(v["winningPlan"]["stage"], "FETCH");
+        assert_eq!(v["winningPlan"]["inputStage"]["indexName"], "status_1");
+        assert!(v["winningPlan"].get("filter").is_none());
+        assert!(v["winningPlan"]["inputStage"].get("indexBounds").is_none());
+        assert!(!v.to_string().contains("secret-host"));
+        // aggregation replies nest the planner under the first $cursor stage
+        let agg = doc! { "stages": [ { "$cursor": { "queryPlanner": { "namespace": "a.b", "winningPlan": { "stage": "COLLSCAN", "direction": "forward" } } } } ] };
+        assert_eq!(plan_summary(&agg)["winningPlan"]["stage"], "COLLSCAN");
+        assert!(plan_summary(&doc! {}).get("note").is_some());
+    }
+
+    #[tokio::test]
+    async fn queries_on_redacted_fields_are_refused() {
+        let state = AppState::default();
+        state.insert_session("a".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "".into(), "".into(), None).await;
+        let sessions = [s("a", "A")];
+        let redact = vec!["password".to_string()];
+        let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &redact, audit_reads: false };
+        for tool in ["find", "count_documents", "explain"] {
+            let err = call_tool(&ctx, tool, &json!({ "database": "d", "collection": "c", "filter": { "password": { "$regex": "^a" } } })).await.unwrap_err();
+            assert!(err.contains("redacted field"), "{tool}: {err}");
+        }
+        let err = call_tool(&ctx, "find", &json!({ "database": "d", "collection": "c", "sort": { "password": 1 } })).await.unwrap_err();
+        assert!(err.contains("redacted field"));
+    }
+
+    #[tokio::test]
+    async fn read_calls_are_audited_only_when_enabled() {
+        let dir = std::env::temp_dir().join(format!("lumiong_mcp_reads_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::default();
+        state.audit.set_dir(dir.clone());
+        state.audit.set_scope(crate::audit::AuditScope::All);
+        state.insert_session("a".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "A".into(), "dev".into(), None).await;
+        let sessions = [s("a", "A")];
+        let redact = vec!["password".to_string()];
+        let args = json!({ "database": "d", "collection": "c", "filter": { "password": 1 } });
+        let off = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &redact, audit_reads: false };
+        let _ = call_tool(&off, "find", &args).await;
+        assert!(state.audit.query(0, i64::MAX, None).unwrap().is_empty());
+        let on = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &redact, audit_reads: true };
+        let _ = call_tool(&on, "find", &args).await;
+        let lines = state.audit.query(0, i64::MAX, None).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!((lines[0].source.as_str(), lines[0].op.as_str()), ("mcp", "find"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn meta(environment: &str, read_only: bool) -> SessionMeta {
+        SessionMeta { label: "A".into(), environment: environment.into(), read_only }
+    }
+
+    #[test]
     fn writes_refused_for_disabled_read_only_and_prod() {
         let state = AppState::default();
-        let mut sess = s("a", "A");
-        let off = ToolCtx { state: &state, sessions: &[], allow_writes: false };
-        assert!(writes_refused(&off, &sess).is_some());
-        let on = ToolCtx { state: &state, sessions: &[], allow_writes: true };
-        assert!(writes_refused(&on, &sess).is_none());
-        sess.read_only = true;
-        assert!(writes_refused(&on, &sess).unwrap().contains("read-only"));
-        sess.read_only = false;
-        sess.environment = "prod".into();
-        assert!(writes_refused(&on, &sess).unwrap().contains("production"));
+        let sess = s("a", "A");
+        let off = ToolCtx { state: &state, sessions: &[], allow_writes: false, redact: &[], audit_reads: false };
+        assert!(writes_refused(&off, &sess, Some(&meta("dev", false))).is_some());
+        let on = ToolCtx { state: &state, sessions: &[], allow_writes: true, redact: &[], audit_reads: false };
+        assert!(writes_refused(&on, &sess, Some(&meta("dev", false))).is_none());
+        assert!(writes_refused(&on, &sess, Some(&meta("dev", true))).unwrap().contains("read-only"));
+        assert!(writes_refused(&on, &sess, Some(&meta("prod", false))).unwrap().contains("production"));
+    }
+
+    #[test]
+    fn writes_are_refused_without_rust_side_session_state() {
+        let state = AppState::default();
+        let on = ToolCtx { state: &state, sessions: &[], allow_writes: true, redact: &[], audit_reads: false };
+        // the frontend list claims dev / writable, but Rust holds no record of the session
+        assert!(writes_refused(&on, &s("a", "A"), None).unwrap().contains("no live session state"));
+    }
+
+    #[tokio::test]
+    async fn environment_comes_from_rust_not_the_frontend_list() {
+        let dir = std::env::temp_dir().join(format!("lumiong_mcp_trust_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::default();
+        state.audit.set_dir(dir.clone());
+        // Rust knows this connection is production and read-only...
+        state.insert_session("t1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), true, "Real".into(), "prod".into(), None).await;
+        // ...but the frontend list says dev, writable, write access.
+        let sessions = [s("t1", "Spoofed")];
+        let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: true, redact: &[], audit_reads: false };
+        let err = call_tool(&ctx, "delete_documents", &json!({ "database": "d", "collection": "c", "filter": { "a": 1 } })).await.unwrap_err();
+        assert!(err.contains("read-only") || err.contains("production"), "{err}");
+        let lines = state.audit.query(0, i64::MAX, None).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!((lines[0].session_label.as_str(), lines[0].environment.as_str()), ("Real", "prod"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn aggregate_pipelines_cannot_reach_redacted_fields_and_out_is_audited_at_its_destination() {
+        let dir = std::env::temp_dir().join(format!("lumiong_mcp_agg_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::default();
+        state.audit.set_dir(dir.clone());
+        state.audit.set_scope(crate::audit::AuditScope::All);
+        state.insert_session("g1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "G".into(), "dev".into(), None).await;
+        let sessions = [s("g1", "G")];
+        let redact = vec!["*password*".to_string()];
+        let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &redact, audit_reads: false };
+        for pipeline in [json!([{ "$match": { "userPassword": { "$regex": "^a" } } }]), json!([{ "$group": { "_id": "$password" } }])] {
+            let err = call_tool(&ctx, "aggregate", &json!({ "database": "d", "collection": "c", "pipeline": pipeline })).await.unwrap_err();
+            assert!(err.contains("redacted field"), "{err}");
+        }
+        // writes disabled: an $out pipeline is refused, and the attempt is audited against the destination
+        let err = call_tool(&ctx, "aggregate", &json!({ "database": "d", "collection": "c", "pipeline": [{ "$out": { "db": "backup", "coll": "copy" } }] })).await.unwrap_err();
+        assert!(err.contains("refused"));
+        let lines = state.audit.query(0, i64::MAX, None).unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!((lines[0].op.as_str(), lines[0].ns.as_str()), ("aggregate:$out", "backup.copy"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -572,12 +946,38 @@ mod tests {
     async fn list_connections_needs_no_client_and_unknown_write_tools_are_refused() {
         let state = AppState::default();
         let sessions = [s("a", "Local")];
-        let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: false };
+        let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &[], audit_reads: false };
         let out = call_tool(&ctx, "list_connections", &json!({})).await.unwrap();
         assert!(out.contains("\"Local\""));
         assert!(call_tool(&ctx, "delete_documents", &json!({})).await.unwrap_err().contains("writes are disabled"));
         // a known session id that has no live client is reported, not panicked on
         assert!(call_tool(&ctx, "list_databases", &json!({})).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn refused_mcp_write_is_audited_once_with_redacted_filter() {
+        let dir = std::env::temp_dir().join(format!("lumiong_mcp_audit_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let state = AppState::default();
+        state.audit.set_dir(dir.clone());
+        // A lazily-connecting client: the refusal happens before any network I/O.
+        state.insert_session("p1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "Shop".into(), "prod".into(), None).await;
+        let mut sess = s("p1", "Shop");
+        sess.environment = "prod".into();
+        let sessions = [sess];
+        let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: true, redact: &[], audit_reads: false };
+        let args = json!({ "database": "shop", "collection": "orders", "filter": { "email": "a@b.c" }, "update": { "$set": { "x": 1 } } });
+        let err = call_tool(&ctx, "update_documents", &args).await.unwrap_err();
+        assert!(err.contains("production"));
+        // reads are not audited by default
+        let _ = call_tool(&ctx, "list_databases", &json!({})).await;
+        let lines = state.audit.query(0, i64::MAX, None).unwrap();
+        assert_eq!(lines.len(), 1);
+        let e = &lines[0];
+        assert_eq!((e.source.as_str(), e.op.as_str(), e.ns.as_str(), e.environment.as_str()), ("mcp", "update_documents", "shop.orders", "prod"));
+        assert!(!e.ok);
+        assert_eq!(e.filter_redacted.as_ref().unwrap()["email"], "<str:5>");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// End-to-end against a real server: `LUMIO_TEST_MONGO_URI=mongodb://localhost cargo test -- --ignored`.
@@ -586,7 +986,7 @@ mod tests {
     async fn tools_against_a_live_server() {
         let uri = std::env::var("LUMIO_TEST_MONGO_URI").unwrap_or_else(|_| "mongodb://localhost:27017".into());
         let state = AppState::default();
-        state.insert_session("s1".into(), mongodb::Client::with_uri_str(&uri).await.unwrap(), false, None).await;
+        state.insert_session("s1".into(), mongodb::Client::with_uri_str(&uri).await.unwrap(), false, "".into(), "".into(), None).await;
         let sessions = [s("s1", "Local")];
         let db = "lumio_mcp_test";
         let ns = |extra: Value| {
@@ -594,8 +994,8 @@ mod tests {
             v.as_object_mut().unwrap().extend(extra.as_object().unwrap().clone());
             v
         };
-        let read = ToolCtx { state: &state, sessions: &sessions, allow_writes: false };
-        let write = ToolCtx { state: &state, sessions: &sessions, allow_writes: true };
+        let read = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &[], audit_reads: false };
+        let write = ToolCtx { state: &state, sessions: &sessions, allow_writes: true, redact: &[], audit_reads: false };
         let _ = state.client("s1").await.unwrap().database(db).drop().await;
 
         let docs = json!([{ "name": "Ann", "age": 31, "tags": ["a"] }, { "name": "Bo", "age": 25 }, { "name": "Cy", "age": 40, "born": { "$date": "1985-01-02T00:00:00Z" } }]);

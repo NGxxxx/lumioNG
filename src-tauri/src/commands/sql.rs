@@ -201,68 +201,72 @@ pub async fn sql_import_commit(
     state.ensure_writable(&session_id).await?;
     let cancel = state.begin_cancel(&session_id, CancelScope::Job).await;
 
-    let schema_path = path.clone();
-    let (schemas, columns_by_table) = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
-        let reader = open_file(&schema_path)?;
-        let opts = InferOptions { parse_json_like: true, infer_scalars: true };
-        let mut acc = SqlSchemaAccumulator::new(false, opts);
-        let mut scanner = SqlStatementReader::new(reader);
-        while let Some(text) = scanner.next_statement().map_err(AppError::Parse)? {
-            if let Ok(stmt) = parse_one_statement(&text) {
-                acc.add_statement(&stmt);
+    state
+        .audited(&session_id, crate::audit::SOURCE_IMPORT, "sql_import", &db.clone(), None, |r: &SqlImportCommitResult| Some(r.tables.iter().map(|t| t.inserted).sum()), async {
+        let schema_path = path.clone();
+        let (schemas, columns_by_table) = tokio::task::spawn_blocking(move || -> Result<_, AppError> {
+            let reader = open_file(&schema_path)?;
+            let opts = InferOptions { parse_json_like: true, infer_scalars: true };
+            let mut acc = SqlSchemaAccumulator::new(false, opts);
+            let mut scanner = SqlStatementReader::new(reader);
+            while let Some(text) = scanner.next_statement().map_err(AppError::Parse)? {
+                if let Ok(stmt) = parse_one_statement(&text) {
+                    acc.add_statement(&stmt);
+                }
+            }
+            Ok(acc.finish())
+        })
+        .await
+        .map_err(|e| AppError::Io(e.to_string()))??;
+
+        let client = state.client(&session_id).await?;
+
+        let totals: HashMap<String, u64> = schemas.iter().map(|s| (s.name.clone(), s.row_count)).collect();
+        // Preserve the dump's first-seen table order, restricted to the selected tables — matches the
+        // pre-rewrite output order and keeps a selected-but-empty table in the results (inserted: 0).
+        let order: Vec<String> = schemas.into_iter().map(|s| s.name).filter(|n| tables.contains(n)).collect();
+        let infer_opts = InferOptions { parse_json_like: true, infer_scalars: true };
+
+        let mut rx = spawn_sql_producer(path, tables, columns_by_table, infer_opts);
+        let mut inserted_by_table: HashMap<String, u64> = HashMap::new();
+        let mut errors_by_table: HashMap<String, Vec<String>> = HashMap::new();
+        let mut cancelled = false;
+
+        while let Some(msg) = rx.recv().await {
+            if cancel.load(Ordering::Relaxed) {
+                cancelled = true;
+                break; // dropping rx here signals spawn_sql_producer's blocking_send to stop, same as `stop` below
+            }
+            let (table, batch) = msg?;
+            let coll_name = resolve_target_collection(&table, target_coll.as_deref());
+            let collection = client.database(&db).collection::<Document>(&coll_name);
+            let total = *totals.get(&table).unwrap_or(&0);
+
+            let inserted_entry = inserted_by_table.entry(table.clone()).or_insert(0);
+            let errors_entry = errors_by_table.entry(table.clone()).or_default();
+            let start = (*inserted_entry + errors_entry.len() as u64) as usize;
+            let raw_idx: Vec<usize> = (start..start + batch.len()).collect();
+            let stop = insert_batch(&collection, batch, &raw_idx, insert_mode, inserted_entry, errors_entry).await;
+            let done = (*inserted_entry + errors_entry.len() as u64).min(total);
+            let _ = on_progress.send(SqlImportProgress { table: table.clone(), done, total });
+            if stop {
+                break; // dropping rx here signals spawn_sql_producer's blocking_send to stop
             }
         }
-        Ok(acc.finish())
-    })
-    .await
-    .map_err(|e| AppError::Io(e.to_string()))??;
 
-    let client = state.client(&session_id).await?;
-
-    let totals: HashMap<String, u64> = schemas.iter().map(|s| (s.name.clone(), s.row_count)).collect();
-    // Preserve the dump's first-seen table order, restricted to the selected tables — matches the
-    // pre-rewrite output order and keeps a selected-but-empty table in the results (inserted: 0).
-    let order: Vec<String> = schemas.into_iter().map(|s| s.name).filter(|n| tables.contains(n)).collect();
-    let infer_opts = InferOptions { parse_json_like: true, infer_scalars: true };
-
-    let mut rx = spawn_sql_producer(path, tables, columns_by_table, infer_opts);
-    let mut inserted_by_table: HashMap<String, u64> = HashMap::new();
-    let mut errors_by_table: HashMap<String, Vec<String>> = HashMap::new();
-    let mut cancelled = false;
-
-    while let Some(msg) = rx.recv().await {
-        if cancel.load(Ordering::Relaxed) {
-            cancelled = true;
-            break; // dropping rx here signals spawn_sql_producer's blocking_send to stop, same as `stop` below
-        }
-        let (table, batch) = msg?;
-        let coll_name = resolve_target_collection(&table, target_coll.as_deref());
-        let collection = client.database(&db).collection::<Document>(&coll_name);
-        let total = *totals.get(&table).unwrap_or(&0);
-
-        let inserted_entry = inserted_by_table.entry(table.clone()).or_insert(0);
-        let errors_entry = errors_by_table.entry(table.clone()).or_default();
-        let start = (*inserted_entry + errors_entry.len() as u64) as usize;
-        let raw_idx: Vec<usize> = (start..start + batch.len()).collect();
-        let stop = insert_batch(&collection, batch, &raw_idx, insert_mode, inserted_entry, errors_entry).await;
-        let done = (*inserted_entry + errors_entry.len() as u64).min(total);
-        let _ = on_progress.send(SqlImportProgress { table: table.clone(), done, total });
-        if stop {
-            break; // dropping rx here signals spawn_sql_producer's blocking_send to stop
-        }
-    }
-
-    let tables = order
-        .into_iter()
-        .map(|table| {
-            let inserted = inserted_by_table.remove(&table).unwrap_or(0);
-            let mut errors = errors_by_table.remove(&table).unwrap_or_default();
-            let failed = errors.len() as u64;
-            errors.truncate(5);
-            SqlImportTableResult { table, inserted, failed, errors }
+        let tables = order
+            .into_iter()
+            .map(|table| {
+                let inserted = inserted_by_table.remove(&table).unwrap_or(0);
+                let mut errors = errors_by_table.remove(&table).unwrap_or_default();
+                let failed = errors.len() as u64;
+                errors.truncate(5);
+                SqlImportTableResult { table, inserted, failed, errors }
+            })
+            .collect();
+        Ok(SqlImportCommitResult { tables, cancelled })
         })
-        .collect();
-    Ok(SqlImportCommitResult { tables, cancelled })
+        .await
 }
 
 #[cfg(test)]

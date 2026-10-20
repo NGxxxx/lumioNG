@@ -38,6 +38,46 @@ pub(crate) async fn with_interrupt<T>(
     }
 }
 
+// ── Audit ────────────────────────────────────────────────────────────────────
+
+/// Where a script's writes are recorded: the shared audit log plus the session's label/environment
+/// at the time the script started.
+#[derive(Clone)]
+pub struct ScriptAudit {
+    pub log: crate::audit::AuditLog,
+    pub label: String,
+    pub environment: String,
+}
+
+impl ScriptAudit {
+    /// One audit line (source `script`) for a write the script ran; never fails the script.
+    pub fn record(&self, op: &str, ns: &str, filter: Option<&Document>, outcome: &Result<Option<u64>, &crate::error::AppError>) {
+        let entry = crate::audit::AuditEntry::new(crate::audit::SOURCE_SCRIPT, op, ns)
+            .with_session(&self.label, &self.environment)
+            .with_filter(filter);
+        let entry = match outcome {
+            Ok(count) => entry.with_count(*count),
+            Err(e) => entry.with_error(&crate::audit::AuditError::audit_summary(*e)),
+        };
+        if let Err(e) = self.log.record(entry) {
+            tracing::error!("audit log write failed: {e}");
+        }
+    }
+}
+
+/// Records `outcome` when the host context carries an audit sink.
+pub(crate) fn audit_write(
+    h: &HostCtx,
+    op: &str,
+    ns: &str,
+    filter: Option<&Document>,
+    outcome: &Result<Option<u64>, &crate::error::AppError>,
+) {
+    if let Some(a) = &h.audit {
+        a.record(op, ns, filter, outcome);
+    }
+}
+
 // ── HostCtx ──────────────────────────────────────────────────────────────────
 
 /// Shared context passed into every host function closure; `Rc`-based since QuickJS is single-threaded and all host fn calls happen on the same worker thread.
@@ -55,6 +95,8 @@ pub struct HostCtx {
     pub cancel: Arc<AtomicBool>,
     /// Absolute deadline for all DB operations in this script run.
     pub deadline: Instant,
+    /// Where write ops are audited; `None` in tests that don't care.
+    pub audit: Option<ScriptAudit>,
 }
 
 // ── Error helper ─────────────────────────────────────────────────────────────

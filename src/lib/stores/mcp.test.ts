@@ -9,6 +9,7 @@ vi.mock("../api/mcp", () => ({
 import { createMcp } from "./mcp.svelte";
 import { startMcp, stopMcp, setMcpSessions } from "../api/mcp";
 import { prefs } from "./prefs.svelte";
+import { DEFAULT_REDACT_FIELDS } from "../domain/mcp";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -32,7 +33,7 @@ describe("mcp store", () => {
     const s = createMcp();
     s.setEnabled(true);
     await flush();
-    expect(startMcp).toHaveBeenCalledWith(7737, s.token, false, expect.any(Function));
+    expect(startMcp).toHaveBeenCalledWith(7737, s.token, false, expect.any(Function), [...DEFAULT_REDACT_FIELDS], false);
     expect(s.status).toBe("running");
     expect(prefs.getItem("mcp-enabled")).toBe("true");
     s.setEnabled(false);
@@ -68,7 +69,7 @@ describe("mcp store", () => {
     await flush();
     s.setAllowWrites(true);
     await flush();
-    expect(startMcp).toHaveBeenLastCalledWith(9000, s.token, true, expect.any(Function));
+    expect(startMcp).toHaveBeenLastCalledWith(9000, s.token, true, expect.any(Function), [...DEFAULT_REDACT_FIELDS], false);
     const old = s.token;
     s.regenerateToken();
     await flush();
@@ -90,11 +91,26 @@ describe("mcp store", () => {
 
   it("syncs sessions only when the list changes", async () => {
     const s = createMcp();
-    const list = [{ id: "a", label: "Local", environment: "", readOnly: false }];
+    const list = [{ id: "a", label: "Local", environment: "", readOnly: false, access: "read" as const }];
     s.syncSessions(list);
     s.syncSessions([...list]);
     expect(setMcpSessions).toHaveBeenCalledTimes(1);
     s.syncSessions([]);
     expect(setMcpSessions).toHaveBeenCalledTimes(2);
+  });
+
+  it("persists the redaction list and the audit-reads option and passes them on restart", async () => {
+    const s = createMcp();
+    s.setEnabled(true);
+    await flush();
+    s.setRedactFields([" iban ", "IBAN", "pin"]);
+    s.setAuditReads(true);
+    await flush();
+    expect(startMcp).toHaveBeenLastCalledWith(7737, s.token, false, expect.any(Function), ["iban", "pin"], true);
+    expect(prefs.getItem("mcp-redact-fields")).toBe('["iban","pin"]');
+    expect(prefs.getItem("mcp-audit-reads")).toBe("true");
+    const again = createMcp();
+    expect(again.redactFields).toEqual(["iban", "pin"]);
+    expect(again.auditReads).toBe(true);
   });
 });

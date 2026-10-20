@@ -10,7 +10,9 @@
   import ShortcutsDialog from "#lib/components/ShortcutsDialog.svelte";
   import AboutDialog from "#lib/components/AboutDialog.svelte";
   import CrashReportDialog from "#lib/components/CrashReportDialog.svelte";
+  import VaultUnlockDialog from "#lib/components/VaultUnlockDialog.svelte";
   import McpDialog from "#lib/components/McpDialog.svelte";
+  import AuditLogView from "#lib/components/AuditLogView.svelte";
   import ToastHost from "#lib/components/ToastHost.svelte";
   import { namespacePaletteItems, parseNamespaceId, parseRecentCollectionId, recentPaletteItems, type PaletteItem } from "#lib/domain/palette.js";
   import { queryHistory } from "#lib/stores/queryHistory.svelte.js";
@@ -73,6 +75,7 @@
     ["help.about", m.menu_about, "view"],
     ["help.exportDiagnostics", m.menu_export_diagnostics, "actions"],
     ["tools.mcpSettings", m.menu_mcp_settings, "actions"],
+    ["tools.auditLog", m.menu_audit_log, "actions"],
     ["tools.exportSettings", m.menu_export_settings, "actions"],
     ["tools.importSettings", m.menu_import_settings, "actions"],
     ["file.quit", m.menu_quit, "view"],
@@ -187,11 +190,15 @@
   />
 {/if}
 <CrashReportDialog />
+<VaultUnlockDialog />
 {#if app.aboutOpen}
   <AboutDialog onclose={() => (app.aboutOpen = false)} />
 {/if}
 {#if app.mcpOpen}
   <McpDialog onclose={() => (app.mcpOpen = false)} />
+{/if}
+{#if app.auditOpen}
+  <AuditLogView onclose={() => (app.auditOpen = false)} />
 {/if}
 {#if app.shortcutsOpen}
   <ShortcutsDialog platform={plat} onclose={() => (app.shortcutsOpen = false)} />
