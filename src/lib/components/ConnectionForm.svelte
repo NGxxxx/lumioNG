@@ -19,7 +19,7 @@
   let uriError = $state(false);
   let filled = $state<number | null>(null);
   const copy = createClipboardCopy((msg) => toast.push(msg, "error"));
-  let activeTab = $state<"general" | "ssh">("general");
+  let activeTab = $state<"general" | "ssh" | "proxy">("general");
   let forgettingHostKey = $state(false);
   let forgotHostKey = $state(false);
 
@@ -102,6 +102,9 @@
     <button type="button" class="toggle-btn" class:toggle-active={activeTab === "ssh"} onclick={() => (activeTab = "ssh")}>
       {m.session_manager_tab_ssh()}
     </button>
+    <button type="button" class="toggle-btn" class:toggle-active={activeTab === "proxy"} onclick={() => (activeTab = "proxy")}>
+      {m.session_manager_tab_proxy()}
+    </button>
   </div>
 
   {#if activeTab === "general"}
@@ -181,7 +184,7 @@
       <span class="form-label">{m.session_manager_label_conn_type()}</span>
       <select class="form-input" bind:value={r.scheme} aria-label={m.session_manager_label_conn_type()}>
         <option value="mongodb">{m.session_manager_conn_direct()}</option>
-        {#if !r.sshEnabled}
+        {#if !r.sshEnabled && r.proxyType !== "http"}
           <option value="mongodb+srv">{m.session_manager_conn_srv()}</option>
         {/if}
       </select>
@@ -205,9 +208,75 @@
         <option value="password">{m.session_manager_auth_password()}</option>
         <option value="x509">{m.session_manager_auth_x509()}</option>
         <option value="ldap">{m.session_manager_auth_ldap()}</option>
+        <option value="aws">{m.session_manager_auth_aws()}</option>
+        <option value="kerberos">{m.session_manager_auth_kerberos()}</option>
+        <option value="oidc">{m.session_manager_auth_oidc()}</option>
       </select>
 
-      {#if r.authMethod !== "x509"}
+      {#if r.authMethod === "aws"}
+        <span class="form-label"></span>
+        <div class="form-notice">{m.conn_aws_hint()}</div>
+
+        <span class="form-label">{m.conn_aws_access_key()}</span>
+        <input class="form-input mono" bind:value={r.user} autocomplete="off" aria-label={m.conn_aws_access_key()} />
+
+        <span class="form-label">{m.conn_aws_secret_key()}</span>
+        <input class="form-input" type="password" bind:value={r.password} autocomplete="off" aria-label={m.conn_aws_secret_key()} />
+
+        <span class="form-label">{m.conn_aws_session_token()}</span>
+        <input class="form-input" type="password" bind:value={r.awsSessionToken} autocomplete="off" aria-label={m.conn_aws_session_token()} />
+        {@render secretNote()}
+      {:else if r.authMethod === "oidc"}
+        <span class="form-label">{m.conn_oidc_mode()}</span>
+        <select class="form-input" bind:value={r.oidcMode} aria-label={m.conn_oidc_mode()}>
+          <option value="workforce">{m.conn_oidc_mode_workforce()}</option>
+          <option value="workload">{m.conn_oidc_mode_workload()}</option>
+        </select>
+
+        <span class="form-label"></span>
+        <div class="form-notice">{r.oidcMode === "workload" ? m.conn_oidc_hint_workload() : m.conn_oidc_hint_workforce()}</div>
+
+        {#if r.oidcMode === "workload"}
+          <span class="form-label">{m.conn_oidc_environment()}</span>
+          <select class="form-input" bind:value={r.oidcEnvironment} aria-label={m.conn_oidc_environment()}>
+            <option value="azure">{m.conn_oidc_env_azure()}</option>
+            <option value="gcp">{m.conn_oidc_env_gcp()}</option>
+            <option value="k8s">{m.conn_oidc_env_k8s()}</option>
+          </select>
+
+          {#if r.oidcEnvironment === "azure"}
+            <span class="form-label">{m.conn_oidc_azure_client_id()}</span>
+            <input class="form-input mono" bind:value={r.user} autocomplete="off" aria-label={m.conn_oidc_azure_client_id()} />
+          {/if}
+          {#if r.oidcEnvironment !== "k8s"}
+            <span class="form-label">{m.conn_oidc_token_resource()}</span>
+            <input class="form-input mono" bind:value={r.oidcTokenResource} autocomplete="off" aria-label={m.conn_oidc_token_resource()} />
+          {/if}
+        {:else}
+          <span class="form-label">{m.conn_oidc_username_hint()}</span>
+          <input class="form-input" bind:value={r.user} autocomplete="off" aria-label={m.conn_oidc_username_hint()} />
+        {/if}
+      {:else if r.authMethod === "kerberos"}
+        <span class="form-label"></span>
+        <div class="form-notice">{m.conn_kerberos_hint()}</div>
+
+        <span class="form-label">{m.conn_kerberos_principal()}</span>
+        <input class="form-input mono" bind:value={r.user} placeholder="user@EXAMPLE.COM" autocomplete="off" aria-label={m.conn_kerberos_principal()} />
+
+        <span class="form-label">{m.conn_kerberos_service_name()}</span>
+        <input class="form-input mono" bind:value={r.gssapiServiceName} placeholder="mongodb" aria-label={m.conn_kerberos_service_name()} />
+
+        <span class="form-label">{m.conn_kerberos_service_realm()}</span>
+        <input class="form-input mono" bind:value={r.gssapiServiceRealm} placeholder={m.connection_form_optional()} aria-label={m.conn_kerberos_service_realm()} />
+
+        <span class="form-label">{m.conn_kerberos_canonicalize()}</span>
+        <select class="form-input" bind:value={r.gssapiCanonicalize} aria-label={m.conn_kerberos_canonicalize()}>
+          <option value="">{m.conn_kerberos_canon_default()}</option>
+          <option value="none">none</option>
+          <option value="forward">forward</option>
+          <option value="forwardAndReverse">forwardAndReverse</option>
+        </select>
+      {:else if r.authMethod !== "x509"}
         <span class="form-label">{m.session_manager_label_user()}</span>
         <input class="form-input" bind:value={r.user} disabled={r.authMethod === "none"} aria-label={m.session_manager_label_user()} />
 
@@ -228,15 +297,15 @@
       <span class="form-label">{m.session_manager_label_auth_db()}</span>
       <input
         class="form-input mono"
-        value={r.authMethod === "ldap" ? "$external" : r.authSource}
+        value={r.authMethod === "ldap" || r.authMethod === "aws" || r.authMethod === "kerberos" || r.authMethod === "oidc" ? "$external" : r.authSource}
         oninput={(e) => { r.authSource = e.currentTarget.value; }}
-        disabled={r.authMethod === "x509" || r.authMethod === "ldap"}
+        disabled={r.authMethod === "x509" || r.authMethod === "ldap" || r.authMethod === "aws" || r.authMethod === "kerberos" || r.authMethod === "oidc"}
         placeholder="admin"
         aria-label={m.session_manager_label_auth_db()}
       />
 
       <span class="form-label">{m.session_manager_label_replica_set()}</span>
-      <input class="form-input mono" bind:value={r.replicaSet} disabled={r.sshEnabled} title={r.sshEnabled ? m.session_manager_tooltip_ssh_lock() : undefined} placeholder={m.connection_form_optional()} aria-label={m.session_manager_label_replica_set()} />
+      <input class="form-input mono" bind:value={r.replicaSet} disabled={r.sshEnabled || r.proxyType === "http"} title={r.sshEnabled || r.proxyType === "http" ? m.session_manager_tooltip_ssh_lock() : undefined} placeholder={m.connection_form_optional()} aria-label={m.session_manager_label_replica_set()} />
 
       <span class="form-label">{m.session_manager_label_tls()}</span>
       <label class="form-check">
@@ -250,6 +319,11 @@
         <span>{m.session_manager_tls_enable()}</span>
       </label>
 
+      {#if (r.tls || r.authMethod === "x509" || r.authMethod === "ldap") && (r.sshEnabled || r.proxyType === "http")}
+        <span class="form-label"></span>
+        <div class="form-notice" data-testid="tls-tunnel-hint">{m.conn_tls_tunnel_hostname_hint()}</div>
+      {/if}
+
       <span class="form-label">{m.session_manager_label_readonly()}</span>
       <label class="form-check">
         <input type="checkbox" bind:checked={r.readOnly} aria-label={m.session_manager_label_readonly()} />
@@ -258,6 +332,37 @@
 
       <span class="form-label">{m.session_manager_label_extra()}</span>
       <input class="form-input mono" bind:value={r.extraOptions} placeholder="readPreference=secondary&appName=x" aria-label={m.session_manager_label_extra()} />
+    </div>
+  {:else if activeTab === "proxy"}
+    <div class="form-grid">
+      <span class="form-label">{m.session_manager_proxy_type()}</span>
+      <select class="form-input" bind:value={r.proxyType} aria-label={m.session_manager_proxy_type()}>
+        <option value="none">{m.session_manager_proxy_none()}</option>
+        <option value="socks5">SOCKS5</option>
+        <option value="http">{m.session_manager_proxy_http()}</option>
+      </select>
+
+      {#if r.proxyType !== "none"}
+        <span class="form-label"></span>
+        <div class="form-notice">{r.proxyType === "http" ? m.session_manager_proxy_http_notice() : m.session_manager_proxy_socks_notice()}</div>
+        {#if r.sshEnabled}
+          <span class="form-label"></span>
+          <div class="form-error">{m.session_manager_proxy_ssh_conflict()}</div>
+        {/if}
+
+        <span class="form-label">{m.session_manager_label_proxy_host()}</span>
+        <input class="form-input mono" bind:value={r.proxyHost} aria-label={m.session_manager_label_proxy_host()} />
+
+        <span class="form-label">{m.session_manager_label_proxy_port()}</span>
+        <input class="form-input mono short" type="number" bind:value={r.proxyPort} placeholder={r.proxyType === "http" ? "3128" : "1080"} aria-label={m.session_manager_label_proxy_port()} />
+
+        <span class="form-label">{m.session_manager_label_proxy_user()}</span>
+        <input class="form-input" bind:value={r.proxyUser} placeholder={m.connection_form_optional()} autocomplete="off" aria-label={m.session_manager_label_proxy_user()} />
+
+        <span class="form-label">{m.session_manager_label_proxy_password()}</span>
+        <input class="form-input" type="password" bind:value={r.proxyPassword} autocomplete="off" aria-label={m.session_manager_label_proxy_password()} />
+        {@render secretNote()}
+      {/if}
     </div>
   {:else}
     <div class="form-grid">

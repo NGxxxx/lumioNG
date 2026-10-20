@@ -7,7 +7,7 @@ export interface ConnectionInput {
   scheme: string; // "mongodb" | "mongodb+srv"
   host: string;
   port: number | null;
-  authMethod: string; // "none" | "password" | "x509" | "ldap"
+  authMethod: string; // "none" | "password" | "x509" | "ldap" | "aws" | "kerberos" | "oidc"
   user: string;
   passwordEnc: string;
   authSource: string;
@@ -31,6 +31,24 @@ export interface ConnectionInput {
   color: string;
   /** What MCP clients may do with this connection once open; files saved before this field existed load as "read". */
   mcpAccess: McpAccess;
+  /** "none" | "socks5" | "http"; files saved before proxies existed load as "". */
+  proxyType: string;
+  proxyHost: string;
+  proxyPort: number | null;
+  proxyUser: string;
+  proxyPasswordEnc: string;
+  /** MONGODB-AWS optional STS session token. */
+  awsSessionTokenEnc: string;
+  /** Kerberos (GSSAPI) mechanism properties; "" = driver default. */
+  gssapiServiceName: string;
+  gssapiServiceRealm: string;
+  gssapiCanonicalize: string;
+  /** MONGODB-OIDC: "workforce" (browser sign-in) | "workload"; "" (older files) = workforce. */
+  oidcMode: string;
+  /** Workload only: "azure" | "gcp" | "k8s". */
+  oidcEnvironment: string;
+  /** Workload only: the audience the token is requested for. */
+  oidcTokenResource: string;
 }
 
 export interface SavedConnection extends ConnectionInput {

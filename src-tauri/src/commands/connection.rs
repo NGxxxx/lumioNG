@@ -1,5 +1,9 @@
 use crate::error::AppError;
+use crate::http_client;
+use crate::http_proxy_tunnel::{self, HttpProxyTunnelHandle};
 use crate::known_hosts;
+use crate::oidc_human;
+use crate::proxy::ProxyConfig;
 use crate::registry::{self, ConnectionInput, SavedConnection};
 use crate::secrets::{self, Held, Locked, OsKeychain, SecretStore, VaultCtx};
 use crate::vault::VaultSession;
@@ -7,19 +11,96 @@ use crate::ssh_tunnel::{self, SshTunnelConfig, SshTunnelHandle};
 use crate::state::AppState;
 use futures::future::try_join_all;
 use mongodb::bson::doc;
-use mongodb::options::{ClientOptions, ServerAddress};
+use mongodb::options::{AuthMechanism, ClientOptions, ServerAddress};
 use mongodb::Client;
 use serde::Serialize;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_opener::OpenerExt;
 
-/// Opens an SSH tunnel (if enabled) and rewrites `opts.hosts` to the local forwarded port; shared by `connect` and `test_connection`.
+/// Refresh tokens of OIDC connections whose token could not be persisted (vault locked or never set
+/// up), so a reconnect within this run still skips the browser. Never written anywhere.
+static OIDC_MEMORY: LazyLock<Mutex<HashMap<u32, String>>> = LazyLock::new(Default::default);
+
+/// The OIDC refresh token of one saved connection: memory for this run, the OS keychain (or the
+/// vault when there is none) across runs.
+struct AppTokens {
+    app: AppHandle,
+    id: u32,
+}
+
+impl AppTokens {
+    fn with_ctx<T>(&self, f: impl FnOnce(&VaultCtx) -> T) -> Option<T> {
+        let session = self.app.state::<VaultSession>();
+        let ctx = vault_ctx(&self.app, &session).ok()?;
+        Some(f(&ctx))
+    }
+}
+
+impl oidc_human::TokenPersist for AppTokens {
+    fn load(&self) -> Option<String> {
+        if let Some(t) = OIDC_MEMORY.lock().ok().and_then(|m| m.get(&self.id).cloned()) {
+            return Some(t);
+        }
+        self.with_ctx(|ctx| secrets::oidc_token_load(&OsKeychain, ctx, self.id)).flatten()
+    }
+    fn save(&self, token: &str) {
+        if let Ok(mut m) = OIDC_MEMORY.lock() {
+            m.insert(self.id, token.to_string());
+        }
+        if let Some(secrets::TokenOutcome::NotPersisted(reason)) = self.with_ctx(|ctx| secrets::oidc_token_save(&OsKeychain, ctx, self.id, token)) {
+            tracing::warn!(connection = self.id, reason, "OIDC refresh token not saved; it is kept in memory for this session only");
+        }
+    }
+    fn forget(&self) {
+        if let Ok(mut m) = OIDC_MEMORY.lock() {
+            m.remove(&self.id);
+        }
+        self.with_ctx(|ctx| secrets::oidc_token_forget(&OsKeychain, ctx, self.id));
+    }
+}
+
+/// Whether the URI asked for MONGODB-OIDC with no `ENVIRONMENT`, i.e. a person signing in (workforce).
+/// With an `ENVIRONMENT` the driver fetches the token itself and refuses a user-supplied callback.
+pub(crate) fn needs_human_oidc(opts: &ClientOptions) -> bool {
+    opts.credential.as_ref().is_some_and(|c| {
+        c.mechanism == Some(AuthMechanism::MongoDbOidc) && !c.mechanism_properties.as_ref().is_some_and(|p| p.contains_key("ENVIRONMENT"))
+    })
+}
+
+/// Installs the browser sign-in callback; its HTTP traffic (discovery, token endpoint) uses the connection's proxy.
+fn attach_human_oidc(app: &AppHandle, opts: &mut ClientOptions, proxy: Option<&ProxyConfig>, connection_id: Option<u32>) -> Result<(), AppError> {
+    if !needs_human_oidc(opts) {
+        return Ok(());
+    }
+    let http = http_client::build_no_redirect(proxy, Duration::from_secs(30))?;
+    let opener = app.clone();
+    let open: oidc_human::OpenBrowser = Arc::new(move |url: &str| opener.opener().open_url(url, None::<&str>).map_err(|e| e.to_string()));
+    let tokens = connection_id.map(|id| Arc::new(AppTokens { app: app.clone(), id }) as Arc<dyn oidc_human::TokenPersist>);
+    let Some(cred) = opts.credential.as_mut() else { return Ok(()) };
+    let hint = cred.username.clone();
+    cred.oidc_callback = oidc_human::HumanFlow::new(http, open, tokens, hint).into_callback();
+    Ok(())
+}
+
+/// Opens an SSH tunnel or an HTTP CONNECT forwarder (if requested) and rewrites `opts.hosts` to the local
+/// forwarded port; shared by `connect` and `test_connection`. A SOCKS5 proxy needs no work here: its
+/// `proxyHost`/`proxyPort`/... options travel in the URI and the driver applies them to every host.
 async fn open_client(
     app: &AppHandle,
     uri: &str,
     ssh: Option<SshTunnelConfig>,
-) -> Result<(Client, Option<SshTunnelHandle>), AppError> {
+    proxy: Option<ProxyConfig>,
+    connection_id: Option<u32>,
+) -> Result<(Client, Option<SshTunnelHandle>, Option<HttpProxyTunnelHandle>), AppError> {
+    let oidc_proxy = proxy.clone();
+    let http_proxy = proxy.filter(|p| p.is_http());
+    if http_proxy.is_some() && ssh.as_ref().is_some_and(|s| s.enabled) {
+        return Err(AppError::Connection("An SSH tunnel and a proxy cannot be used together".into()));
+    }
     // Override the driver's 30s server_selection_timeout default so a transient Atlas hiccup doesn't freeze every operation for 30s; also set app_name for Atlas metrics/profiler.
     let mut opts = ClientOptions::parse(uri)
         .await
@@ -27,6 +108,7 @@ async fn open_client(
     opts.app_name.get_or_insert_with(|| "LumioNG".to_string());
     opts.server_selection_timeout = Some(Duration::from_secs(10));
     opts.connect_timeout.get_or_insert(Duration::from_secs(10));
+    attach_human_oidc(app, &mut opts, oidc_proxy.as_ref(), connection_id)?;
 
     let tunnel = match ssh {
         Some(cfg) if cfg.enabled => {
@@ -45,6 +127,26 @@ async fn open_client(
         _ => None,
     };
 
+    let proxy_tunnel = match http_proxy {
+        Some(cfg) => {
+            let ServerAddress::Tcp { host: remote_host, port: remote_port } = opts
+                .hosts
+                .first()
+                .cloned()
+                .ok_or_else(|| AppError::Connection("no host in connection URI".into()))?
+            else {
+                return Err(AppError::Connection("An HTTP proxy requires a direct host:port URI".into()));
+            };
+            if opts.hosts.len() != 1 || uri.trim_start().to_lowercase().starts_with("mongodb+srv") {
+                return Err(AppError::Connection("An HTTP proxy requires a single direct host (no mongodb+srv, no replica set seed list)".into()));
+            }
+            let t = http_proxy_tunnel::open(&cfg, &remote_host, remote_port.unwrap_or(27017)).await?;
+            opts.hosts = vec![ServerAddress::Tcp { host: "127.0.0.1".into(), port: Some(t.local_port) }];
+            Some(t)
+        }
+        None => None,
+    };
+
     let client = Client::with_options(opts).map_err(|e| AppError::Connection(e.to_string()))?;
 
     // Ping to confirm the connection is actually live (TLS/auth/SRV) — through the tunnel, if any.
@@ -54,7 +156,7 @@ async fn open_client(
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
 
-    Ok((client, tunnel))
+    Ok((client, tunnel, proxy_tunnel))
 }
 
 #[tauri::command]
@@ -66,12 +168,17 @@ pub async fn connect(
     ssh: Option<SshTunnelConfig>,
     label: Option<String>,
     environment: Option<String>,
+    proxy: Option<ProxyConfig>,
+    connection_id: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (client, tunnel) = open_client(&app, &uri, ssh).await?;
+    let (client, tunnel, proxy_tunnel) = open_client(&app, &uri, ssh, proxy, connection_id).await?;
     state
-        .insert_session(session_id, client, read_only, label.unwrap_or_default(), environment.unwrap_or_default(), tunnel)
+        .insert_session(session_id.clone(), client, read_only, label.unwrap_or_default(), environment.unwrap_or_default(), tunnel)
         .await;
+    if let Some(t) = proxy_tunnel {
+        state.set_proxy_tunnel(&session_id, t).await;
+    }
     Ok(())
 }
 
@@ -89,10 +196,37 @@ pub async fn set_session_meta(
 /// Validates a connection (SSH tunnel + Mongo auth/TLS) without opening a session — the client
 /// and tunnel are simply dropped at the end of this function.
 #[tauri::command]
-pub async fn test_connection(app: AppHandle, uri: String, ssh: Option<SshTunnelConfig>) -> Result<(), AppError> {
-    open_client(&app, &uri, ssh).await?;
+pub async fn test_connection(
+    app: AppHandle,
+    uri: String,
+    ssh: Option<SshTunnelConfig>,
+    proxy: Option<ProxyConfig>,
+    connection_id: Option<u32>,
+) -> Result<(), AppError> {
+    open_client(&app, &uri, ssh, proxy, connection_id).await?;
     Ok(())
 }
+
+/// Health probe for a live session: one `ping` with a hard deadline. The UI calls it every 30 s;
+/// a failure marks the session degraded (the driver itself recovers topology on its own).
+#[tauri::command]
+pub async fn session_ping(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
+    let client = state.client(&session_id).await?;
+    let res = match tokio::time::timeout(PING_TIMEOUT, client.database("admin").run_command(doc! { "ping": 1 })).await {
+        Err(_) => Err(AppError::Connection("ping timed out".into())),
+        Ok(r) => r.map(|_| ()).map_err(|e| AppError::Connection(e.to_string())),
+    };
+    if res.is_err() {
+        // Name the real cause: the SSH tunnel under the session, not the driver's generic timeout.
+        // The message is exactly `host:port` of the SSH server; the UI wraps it in a localized sentence.
+        if let Some(endpoint) = state.tunnel_down(&session_id).await {
+            return Err(AppError::SshTunnel(endpoint));
+        }
+    }
+    res
+}
+
+const PING_TIMEOUT: Duration = Duration::from_secs(10);
 
 #[tauri::command]
 pub async fn disconnect(session_id: String, state: State<'_, AppState>) -> Result<(), AppError> {
@@ -159,7 +293,7 @@ pub(crate) fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("connections.json"))
 }
 
-fn known_hosts_path(app: &AppHandle) -> Result<PathBuf, AppError> {
+pub(crate) fn known_hosts_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app
         .path()
         .app_config_dir()
@@ -276,6 +410,8 @@ pub fn save_connection(
 
 #[tauri::command]
 pub fn delete_connection(app: AppHandle, vault: State<'_, VaultSession>, id: u32) -> Result<Vec<SavedConnection>, AppError> {
+    // A deleted connection must not leave its OIDC refresh token behind.
+    oidc_human::TokenPersist::forget(&AppTokens { app: app.clone(), id });
     update_registry(&app, &vault, |list| registry::remove(list, id))
 }
 
@@ -325,6 +461,41 @@ fn now_ms() -> i64 {
 #[tauri::command]
 pub fn touch_connection(app: AppHandle, vault: State<'_, VaultSession>, id: u32) -> Result<Vec<SavedConnection>, AppError> {
     update_registry(&app, &vault, |list| registry::touch(list, id, now_ms()))
+}
+
+#[cfg(test)]
+mod oidc_tests {
+    use super::*;
+
+    async fn opts(uri: &str) -> ClientOptions {
+        ClientOptions::parse(uri).await.unwrap()
+    }
+
+    #[tokio::test]
+    async fn only_oidc_without_an_environment_needs_the_browser_flow() {
+        assert!(needs_human_oidc(&opts("mongodb://h/?authMechanism=MONGODB-OIDC").await));
+        assert!(needs_human_oidc(&opts("mongodb://me%40x.com@h/?authMechanism=MONGODB-OIDC&authSource=%24external").await));
+        assert!(!needs_human_oidc(&opts("mongodb://h/?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s").await));
+        assert!(!needs_human_oidc(&opts("mongodb://h/?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:azure,TOKEN_RESOURCE:api%3A%2F%2Fx").await));
+        assert!(!needs_human_oidc(&opts("mongodb://u:p@h/").await));
+    }
+
+    #[tokio::test]
+    async fn the_frontend_workload_uri_reaches_the_driver_intact() {
+        let o = opts("mongodb://client-1@h/?authSource=%24external&authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:azure,TOKEN_RESOURCE:api%3A%2F%2Fmy-app%2F.default").await;
+        let c = o.credential.unwrap();
+        let props = c.mechanism_properties.unwrap();
+        assert_eq!((props.get_str("ENVIRONMENT").unwrap(), props.get_str("TOKEN_RESOURCE").unwrap()), ("azure", "api://my-app/.default"));
+        assert_eq!(c.username.as_deref(), Some("client-1"));
+    }
+
+    #[tokio::test]
+    async fn workload_environments_parse_with_the_enabled_driver_features() {
+        for env in ["azure,TOKEN_RESOURCE:api%3A%2F%2Fx", "gcp,TOKEN_RESOURCE:https%3A%2F%2Fx", "k8s"] {
+            let o = opts(&format!("mongodb://h/?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:{env}")).await;
+            assert!(o.credential.is_some(), "{env}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -594,11 +765,13 @@ mod registry_secret_tests {
         list[0].tls_certificate_key_file_password_enc = "p2".into();
         list[0].ssh_password_enc = "p3".into();
         list[0].ssh_passphrase_enc = "p4".into();
+        list[0].proxy_password_enc = "p5".into();
+        list[0].aws_session_token_enc = "p6".into();
         registry::save(&path, &list).unwrap();
         let session = VaultSession::default();
         secrets::vault_setup(&ctx(&path, &session), &path, MASTER).unwrap();
         let raw = std::fs::read_to_string(&path).unwrap();
-        for plain in ["p1", "p2", "p3", "p4"] {
+        for plain in ["p1", "p2", "p3", "p4", "p5", "p6"] {
             assert!(!raw.contains(&format!("\"{plain}\"")), "{plain} still readable");
         }
         // "Forgot master password": the connection stays, its secrets are gone, the vault is reset.
@@ -609,5 +782,21 @@ mod registry_secret_tests {
         assert_eq!(secrets::Secrets::of(&list[0]), secrets::Secrets::default());
         assert!(!path.with_file_name("vault.json").exists());
         assert_eq!(secrets::vault_status(&no_store(), &ctx(&path, &restarted)), "uninitialized");
+    }
+}
+
+#[cfg(test)]
+mod aws_integration {
+    use super::*;
+
+    /// Needs a MongoDB with MONGODB-AWS enabled (e.g. Atlas) and AWS credentials in the environment or in the URI:
+    /// `LUMIO_TEST_AWS_URI='mongodb+srv://<cluster>/?authMechanism=MONGODB-AWS&authSource=%24external' cargo test -- --ignored aws`
+    #[tokio::test]
+    #[ignore = "needs LUMIO_TEST_AWS_URI"]
+    async fn aws_iam_authenticates() {
+        let uri = std::env::var("LUMIO_TEST_AWS_URI").expect("set LUMIO_TEST_AWS_URI");
+        let opts = ClientOptions::parse(&uri).await.unwrap();
+        let client = Client::with_options(opts).unwrap();
+        client.database("admin").run_command(doc! { "ping": 1 }).await.unwrap();
     }
 }

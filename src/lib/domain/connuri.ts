@@ -4,14 +4,43 @@ export type ConnectionProfile = {
   scheme: "mongodb" | "mongodb+srv";
   host: string;
   port: number | null;
-  authMethod: "none" | "password" | "x509" | "ldap";
+  authMethod: "none" | "password" | "x509" | "ldap" | "aws" | "kerberos" | "oidc";
   user: string;
   authSource: string;
   replicaSet: string;
   tls: boolean;
   extraOptions: string; // raw query fragment, no leading "?"/"&"
   tlsCertificateKeyFile: string; // path; x509 only
+  // Optional so a profile without them (an older caller, a test fixture) stays valid; absent = default.
+  /** "socks5" travels in the URI (driver-native); "http" is handled by the app (CONNECT tunnel) and never appears in the URI. */
+  proxyType?: ProxyType;
+  proxyHost?: string;
+  proxyPort?: number | null;
+  proxyUser?: string;
+  /** Kerberos (GSSAPI) mechanism properties; "" = driver default. */
+  gssapiServiceName?: string;
+  gssapiServiceRealm?: string;
+  gssapiCanonicalize?: string;
+  /** MONGODB-OIDC. "workforce" (default when absent): browser sign-in, `user` is only a username hint.
+   *  "workload": the machine identity of `oidcEnvironment`, with `oidcTokenResource` as audience. */
+  oidcMode?: OidcMode;
+  oidcEnvironment?: OidcEnvironment;
+  oidcTokenResource?: string;
 };
+
+export type OidcMode = "workforce" | "workload";
+export type OidcEnvironment = "azure" | "gcp" | "k8s";
+export const OIDC_ENVIRONMENTS: readonly OidcEnvironment[] = ["azure", "gcp", "k8s"];
+
+/** Whether the workload environment takes a TOKEN_RESOURCE (k8s reads its own token file). */
+export function oidcNeedsResource(env: OidcEnvironment | undefined): boolean {
+  return env === "azure" || env === "gcp";
+}
+
+export type ProxyType = "none" | "socks5" | "http";
+
+/** Secrets that live in the URI but outside the profile (never stored in the profile object). */
+export type UriSecrets = { proxyPassword?: string; awsSessionToken?: string };
 
 function hostHasPort(host: string): boolean {
   return host.includes(",") || /:[0-9]+$/.test(host);
@@ -21,16 +50,22 @@ function safeDecode(s: string): string {
   try { return decodeURIComponent(s); } catch { return s; }
 }
 
-export function buildProfileUri(p: ConnectionProfile, password: string, certKeyPassword = ""): string {
+export function buildProfileUri(p: ConnectionProfile, password: string, certKeyPassword = "", secrets: UriSecrets = {}): string {
   const isLdap = p.authMethod === "ldap";
   const isX509 = p.authMethod === "x509";
-  const authSource = isLdap ? "$external" : p.authSource;
+  const isAws = p.authMethod === "aws";
+  const isKerberos = p.authMethod === "kerberos";
+  const isOidc = p.authMethod === "oidc";
+  const oidcWorkload = isOidc && p.oidcMode === "workload";
+  // Workforce: the user name is a sign-in hint. Workload: only Azure takes one (the managed identity's client id).
+  const oidcUser = isOidc && (!oidcWorkload || p.oidcEnvironment === "azure");
+  const authSource = isLdap || isAws || isKerberos || isOidc ? "$external" : p.authSource;
   const forcedTls = p.tls || isLdap || isX509;
 
   let uri = p.scheme + "://";
-  if ((p.authMethod === "password" || isLdap) && p.user !== "") {
+  if ((p.authMethod === "password" || isLdap || isAws || isKerberos || oidcUser) && p.user !== "") {
     uri += encodeURIComponent(p.user);
-    if (password !== "") uri += ":" + encodeURIComponent(password);
+    if (password !== "" && !isKerberos && !isOidc) uri += ":" + encodeURIComponent(password);
     uri += "@";
   }
   uri += p.host;
@@ -51,6 +86,32 @@ export function buildProfileUri(p: ConnectionProfile, password: string, certKeyP
     }
   } else if (isLdap) {
     params.push("authMechanism=PLAIN");
+  } else if (isAws) {
+    params.push("authMechanism=MONGODB-AWS");
+    // Empty credentials: the driver falls back to the environment / instance profile / ECS / EKS.
+    const token = secrets.awsSessionToken ?? "";
+    if (token !== "") params.push("authMechanismProperties=AWS_SESSION_TOKEN:" + encodeURIComponent(token));
+  } else if (isOidc) {
+    params.push("authMechanism=MONGODB-OIDC");
+    if (oidcWorkload && p.oidcEnvironment) {
+      const props = ["ENVIRONMENT:" + p.oidcEnvironment];
+      const resource = (p.oidcTokenResource ?? "").trim();
+      if (oidcNeedsResource(p.oidcEnvironment) && resource !== "") props.push("TOKEN_RESOURCE:" + encodeURIComponent(resource));
+      params.push("authMechanismProperties=" + props.join(","));
+    }
+  } else if (isKerberos) {
+    params.push("authMechanism=GSSAPI");
+    const props: string[] = [];
+    if ((p.gssapiServiceName ?? "") !== "") props.push("SERVICE_NAME:" + encodeURIComponent(p.gssapiServiceName!));
+    if ((p.gssapiServiceRealm ?? "") !== "") props.push("SERVICE_REALM:" + encodeURIComponent(p.gssapiServiceRealm!));
+    if ((p.gssapiCanonicalize ?? "") !== "") props.push("CANONICALIZE_HOST_NAME:" + encodeURIComponent(p.gssapiCanonicalize!));
+    if (props.length) params.push("authMechanismProperties=" + props.join(","));
+  }
+  if (p.proxyType === "socks5" && (p.proxyHost ?? "") !== "") {
+    params.push("proxyHost=" + encodeURIComponent(p.proxyHost!));
+    if (p.proxyPort != null) params.push("proxyPort=" + p.proxyPort);
+    if ((p.proxyUser ?? "") !== "") params.push("proxyUsername=" + encodeURIComponent(p.proxyUser!));
+    if ((secrets.proxyPassword ?? "") !== "") params.push("proxyPassword=" + encodeURIComponent(secrets.proxyPassword!));
   }
   const extra = p.extraOptions.trim().replace(/^[?&]+/, "");
   if (extra !== "") params.push(extra);
@@ -59,7 +120,7 @@ export function buildProfileUri(p: ConnectionProfile, password: string, certKeyP
   return uri;
 }
 
-export function parseUri(uri: string): { profile: ConnectionProfile; password: string; certKeyPassword: string } {
+export function parseUri(uri: string): { profile: ConnectionProfile; password: string; certKeyPassword: string } & UriSecrets {
   const blank: ConnectionProfile = {
     scheme: "mongodb", host: "", port: null, authMethod: "none",
     user: "", authSource: "", replicaSet: "", tls: false, extraOptions: "",
@@ -104,6 +165,9 @@ export function parseUri(uri: string): { profile: ConnectionProfile; password: s
   let authSource = "", replicaSet = "", tls = false;
   let tlsCertificateKeyFile = "", certKeyPassword = "";
   let authMechanism = "";
+  let mechProps = "";
+  let proxyHost = "", proxyUser = "", proxyPassword = "";
+  let proxyPort: number | null = null;
   const leftover: string[] = [];
   for (const pair of query.split("&")) {
     if (pair === "") continue;
@@ -116,25 +180,72 @@ export function parseUri(uri: string): { profile: ConnectionProfile; password: s
     else if (k === "authMechanism") authMechanism = safeDecode(v);
     else if (k === "tlsCertificateKeyFile") tlsCertificateKeyFile = safeDecode(v);
     else if (k === "tlsCertificateKeyFilePassword") certKeyPassword = safeDecode(v);
+    else if (k === "authMechanismProperties") mechProps = v;
+    else if (k === "proxyHost") proxyHost = safeDecode(v);
+    else if (k === "proxyPort") { const n = parseInt(v, 10); proxyPort = Number.isNaN(n) ? null : n; }
+    else if (k === "proxyUsername") proxyUser = safeDecode(v);
+    else if (k === "proxyPassword") proxyPassword = safeDecode(v);
     else leftover.push(pair);
   }
 
   if (authMechanism === "MONGODB-X509") authMethod = "x509";
   else if (authMechanism === "PLAIN") authMethod = "ldap";
+  else if (authMechanism === "MONGODB-AWS") authMethod = "aws";
+  else if (authMechanism === "GSSAPI") authMethod = "kerberos";
+  else if (authMechanism === "MONGODB-OIDC") authMethod = "oidc";
 
+  // Mechanism properties: the ones this app edits become fields, any others stay in extraOptions.
+  let awsSessionToken = "", gssapiServiceName = "", gssapiServiceRealm = "", gssapiCanonicalize = "";
+  let oidcEnvironment = "", oidcTokenResource = "";
+  if (mechProps !== "") {
+    const rest: string[] = [];
+    for (const prop of mechProps.split(",")) {
+      const c = prop.indexOf(":");
+      const name = c >= 0 ? prop.slice(0, c) : prop;
+      const val = c >= 0 ? safeDecode(prop.slice(c + 1)) : "";
+      if (authMethod === "aws" && name === "AWS_SESSION_TOKEN") awsSessionToken = val;
+      else if (authMethod === "kerberos" && name === "SERVICE_NAME") gssapiServiceName = val;
+      else if (authMethod === "kerberos" && name === "SERVICE_REALM") gssapiServiceRealm = val;
+      else if (authMethod === "kerberos" && name === "CANONICALIZE_HOST_NAME") gssapiCanonicalize = val;
+      else if (authMethod === "oidc" && name === "ENVIRONMENT" && (OIDC_ENVIRONMENTS as readonly string[]).includes(val)) oidcEnvironment = val;
+      else if (authMethod === "oidc" && name === "TOKEN_RESOURCE") oidcTokenResource = val;
+      else rest.push(prop);
+    }
+    if (rest.length) leftover.push("authMechanismProperties=" + rest.join(","));
+  }
+  // Kerberos never takes a password from the form; aws keeps userinfo as key id + secret.
+  if (authMethod === "kerberos" || authMethod === "oidc") password = "";
+
+  const profile: ConnectionProfile = {
+    scheme, host, port, authMethod, user, authSource, replicaSet, tls,
+    extraOptions: leftover.join("&"), tlsCertificateKeyFile,
+  };
+  if (proxyHost !== "") {
+    profile.proxyType = "socks5";
+    profile.proxyHost = proxyHost;
+    profile.proxyPort = proxyPort;
+    if (proxyUser !== "") profile.proxyUser = proxyUser;
+  }
+  if (gssapiServiceName !== "") profile.gssapiServiceName = gssapiServiceName;
+  if (gssapiServiceRealm !== "") profile.gssapiServiceRealm = gssapiServiceRealm;
+  if (gssapiCanonicalize !== "") profile.gssapiCanonicalize = gssapiCanonicalize;
+  if (authMethod === "oidc") {
+    profile.oidcMode = oidcEnvironment !== "" ? "workload" : "workforce";
+    if (oidcEnvironment !== "") profile.oidcEnvironment = oidcEnvironment as OidcEnvironment;
+    if (oidcTokenResource !== "") profile.oidcTokenResource = oidcTokenResource;
+  }
   return {
-    profile: {
-      scheme, host, port, authMethod, user, authSource, replicaSet, tls,
-      extraOptions: leftover.join("&"), tlsCertificateKeyFile,
-    },
+    profile,
     password,
     certKeyPassword,
+    ...(proxyPassword !== "" ? { proxyPassword } : {}),
+    ...(awsSessionToken !== "" ? { awsSessionToken } : {}),
   };
 }
 
-/** SSH tunnels forward a single fixed host:port, so force a direct single-host shape (no SRV/replicaSet leaking into the built URI). */
-export function normalizeForTunnel(p: ConnectionProfile, sshEnabled: boolean): ConnectionProfile {
-  if (!sshEnabled) return p;
+/** SSH and HTTP-proxy tunnels forward a single fixed host:port, so force a direct single-host shape (no SRV/replicaSet leaking into the built URI). */
+export function normalizeForTunnel(p: ConnectionProfile, tunneled: boolean): ConnectionProfile {
+  if (!tunneled) return p;
   return { ...p, scheme: "mongodb", replicaSet: "" };
 }
 

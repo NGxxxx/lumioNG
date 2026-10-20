@@ -136,7 +136,7 @@ export function exposedSessions(
   sessions: readonly { id: string; label: string; status: string; environment: string; readOnly: boolean; mcpAccess?: McpAccess }[],
 ): McpSession[] {
   return sessions
-    .filter((s) => s.status === "connected" && s.mcpAccess !== "off")
+    .filter((s) => (s.status === "connected" || s.status === "degraded") && s.mcpAccess !== "off")
     .map((s) => ({
       id: s.id, label: s.label, environment: s.environment, readOnly: s.readOnly,
       access: clampMcpAccess(s.environment, s.mcpAccess),

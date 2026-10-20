@@ -106,7 +106,7 @@ export function createAppContext() {
     // A saved connection's secrets are sealed while the vault is locked: ask for the master password first.
     if (conn.connId != null && vault.blocksConnect()) return false;
     // focusOrOpen is the sole owner of the backend connect call; passing the real connId lets it dedup saved connections.
-    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh, environment: conn.environment, color: conn.color, mcpAccess: conn.mcpAccess });
+    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh, environment: conn.environment, color: conn.color, mcpAccess: conn.mcpAccess, proxy: conn.proxy });
     if (ok) shell.setConnection(conn);
     return ok;
   }
@@ -202,7 +202,7 @@ export function createAppContext() {
   /** Re-opens a history entry on its own session (and database) in a new query tab. */
   function openHistoryEntry(e: HistoryEntry) {
     const s = sm.sessions.find((x) => (e.connId !== null ? x.connId === e.connId : x.label === e.sessionLabel));
-    if (!s || s.status !== "connected") {
+    if (!s || (s.status !== "connected" && s.status !== "degraded")) {
       toast.push(m.history_connect_first({ label: e.sessionLabel }), "error");
       return;
     }

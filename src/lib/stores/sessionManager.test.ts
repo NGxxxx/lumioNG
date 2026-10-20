@@ -162,7 +162,7 @@ describe("sessionManager", () => {
     (connect as ReturnType<typeof vi.fn>).mockResolvedValueOnce(undefined);
     await sm.reconnect("conn:1");
     expect(sm.active?.status).toBe("connected");
-    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, null, "a", "");
+    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, null, "a", "", null, 1);
     expect(sm.sessions.length).toBe(1);
     expect(sm.active?.connectedAt).toBeTruthy();
   });
@@ -174,7 +174,7 @@ describe("sessionManager", () => {
     };
     await sm.focusOrOpen({ connId: 1, uri: "u", label: "a", ssh });
     await sm.reconnect("conn:1");
-    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, ssh, "a", "");
+    expect(connect).toHaveBeenLastCalledWith("conn:1", "u", false, ssh, "a", "", null, 1);
   });
 
   it("cross-session DDL only closes the owning session's tabs", async () => {
@@ -375,7 +375,7 @@ describe("sessionManager DDL tab cleanup", () => {
 
   it("connect_passes_label_and_environment", async () => {
     await sm.focusOrOpen({ connId: 41, uri: "mongodb://h", label: "Orders", environment: "prod" });
-    expect(connect).toHaveBeenLastCalledWith("conn:41", "mongodb://h", false, null, "Orders", "prod");
+    expect(connect).toHaveBeenLastCalledWith("conn:41", "mongodb://h", false, null, "Orders", "prod", null, 41);
   });
 
   it("pushes a changed environment to the backend session", async () => {

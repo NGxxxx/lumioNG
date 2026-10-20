@@ -13,6 +13,7 @@
   import { mcp } from "#lib/stores/mcp.svelte.js";
   import { audit } from "#lib/stores/audit.svelte.js";
   import { vault } from "#lib/stores/vault.svelte.js";
+  import { startSessionHealth } from "#lib/stores/sessionHealthApp.js";
   import { undo } from "#lib/stores/undo.svelte.js";
   import { SHORTCUTS, type Command, type CommandId } from "#lib/domain/commands.js";
   import { detectPlatform } from "#lib/stores/platform.js";
@@ -33,6 +34,7 @@
     mcp.init(); // brings the MCP server back if it was on last time
     vault.init(); // locked master-password vault: ask for it before any saved connection is opened
     audit.init(); // tells Rust which environments to audit (it assumes PROD only until then)
+    return startSessionHealth(); // pings open sessions; marks them degraded and reconnects when they go dark
   });
 
   const plat = detectPlatform();

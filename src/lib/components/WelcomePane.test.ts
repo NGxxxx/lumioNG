@@ -5,7 +5,7 @@ const saved = (id: number, label: string, lastConnectedAt: number | null) => ({
   id, label, scheme: "mongodb", host: `${label.toLowerCase()}.local`, port: 27017, authMethod: "none", user: "",
   passwordEnc: "", authSource: "", replicaSet: "", tls: false, extraOptions: "", readOnly: false,
   tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "", sshEnabled: false, sshHost: "", sshPort: 22,
-  sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
+  sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", proxyType: "none", proxyHost: "", proxyPort: null, proxyUser: "", proxyPasswordEnc: "", awsSessionTokenEnc: "", gssapiServiceName: "", gssapiServiceRealm: "", gssapiCanonicalize: "", oidcMode: "", oidcEnvironment: "", oidcTokenResource: "",
   environment: "", color: "", lastConnectedAt,
 });
 

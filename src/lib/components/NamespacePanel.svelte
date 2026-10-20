@@ -244,6 +244,12 @@
             <circle cx="5" cy="5" r="4" fill="var(--danger)" stroke="none"/>
           </svg>
         </span>
+      {:else if sess.status === "degraded"}
+        <span class="status-degraded" aria-label={m.namespace_panel_status_degraded()} title={m.namespace_panel_status_degraded()}>
+          <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10">
+            <circle cx="5" cy="5" r="4" fill="var(--warn)" stroke="none"/>
+          </svg>
+        </span>
       {:else}
         <span class="status-ok" aria-label={m.namespace_panel_status_connected()} title={m.namespace_panel_status_connected()}>
           <svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10">
@@ -271,7 +277,7 @@
 
     <!-- Tree body (shown when not collapsed) -->
     {#if !isCollapsed}
-      {#if sess.status === "connected"}
+      {#if sess.status === "connected" || sess.status === "degraded"}
         <button
           class="overview"
           class:active={sessionManager.activeId === sess.id && sess.nav.page === "host" && sessionManager.activeZone?.zone === "destination"}
@@ -453,6 +459,7 @@
 
   .status-spinner,
   .status-error,
+  .status-degraded,
   .status-ok {
     flex: none;
     display: flex;

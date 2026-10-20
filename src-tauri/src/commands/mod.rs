@@ -1,4 +1,5 @@
 pub mod app;
+pub mod diagnose;
 pub mod diagnostics;
 pub mod admin;
 pub mod connection;

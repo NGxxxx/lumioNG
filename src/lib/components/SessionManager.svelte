@@ -105,7 +105,7 @@
     </div>
 
     {#if testResult}
-      <TestConnectionDialog result={testResult} onclose={() => (testResult = null)} />
+      <TestConnectionDialog result={testResult} ondiagnose={r.diagnose} onclose={() => (testResult = null)} />
     {/if}
 
     <!-- Footer -->

@@ -1,5 +1,5 @@
 import { connect, disconnect, setSessionMeta as pushSessionMeta } from "../api/connection";
-import type { SshConnectInput } from "../api/connection";
+import type { SshConnectInput, ProxyConnectInput } from "../api/connection";
 import { touchConnection } from "../api/connections";
 import { pendingEdits } from "./pendingEdits.svelte";
 import { createNamespaceTree } from "./namespaceTree.svelte";
@@ -21,7 +21,8 @@ import { disposeGridfsBucketProbes } from "./gridfsBucketProbe.svelte";
 import { disposeFieldSuggestions } from "./fieldSuggestions";
 import { setSessionEnvironment, setSessionMeta } from "./sessionEnv";
 
-export type SessionStatus = "connecting" | "connected" | "error";
+/** `degraded`: connected before, but the last health ping failed (see sessionHealth). */
+export type SessionStatus = "connecting" | "connected" | "degraded" | "error";
 export type Session = {
   id: string;
   label: string;
@@ -34,6 +35,8 @@ export type Session = {
   /** What MCP clients may do with this connection (see domain/mcp). */
   mcpAccess: McpAccess;
   ssh: SshConnectInput | null;
+  /** HTTP CONNECT proxy for this connection (SOCKS5 lives in the URI); kept for reconnects. */
+  proxy?: ProxyConnectInput | null;
   connectedAt: number | null;
   nav: SessionNav;
   tree: ReturnType<typeof createNamespaceTree>;
@@ -101,7 +104,7 @@ export function createSessionManager() {
 
   function makeSession(
     id: string, label: string, connId: number | null, uri: string, readOnly: boolean, ssh: SshConnectInput | null,
-    environment: Environment, savedColor: string, mcpAccess: McpAccess,
+    environment: Environment, savedColor: string, mcpAccess: McpAccess, proxy: ProxyConnectInput | null = null,
   ): Session {
     const color = savedColor || allocColor(sessions.map((s) => s.color));
     setSessionEnvironment(id, environment);
@@ -112,14 +115,14 @@ export function createSessionManager() {
       closeForDatabase: (db) => closeForDatabase(id, db),
       renameCollectionTabs: (db, oldColl, newColl) => renameCollectionTabs(id, db, oldColl, newColl),
     });
-    return { id, label, color, status: "connecting", connId, uri, readOnly, environment, mcpAccess, ssh, connectedAt: null, nav, tree, host: createHostStatus(id) };
+    return { id, label, color, status: "connecting", connId, uri, readOnly, environment, mcpAccess, ssh, proxy, connectedAt: null, nav, tree, host: createHostStatus(id) };
   }
 
   /** Shared connect flow for both a new session and a reconnect. */
   async function performConnect(s: Session): Promise<boolean> {
     try {
       await commandLog.pushTimed(connectCmd(maskUri(s.uri)), s.id, () =>
-        connect(s.id, s.uri, s.readOnly, s.ssh, s.label, s.environment));
+        connect(s.id, s.uri, s.readOnly, s.ssh, s.label, s.environment, s.proxy ?? null, s.connId));
       s.nav.setConnected(true);
       patchSession(s.id, { status: "connected", connectedAt: Date.now() });
       if (s.connId != null) touchConnection(s.connId).catch(() => {}); // non-critical metadata; never blocks connect
@@ -134,7 +137,7 @@ export function createSessionManager() {
 
   async function focusOrOpen(p: {
     connId: number | null; uri: string; label: string; readOnly?: boolean; ssh?: SshConnectInput | null;
-    environment?: Environment; color?: string; mcpAccess?: McpAccess;
+    environment?: Environment; color?: string; mcpAccess?: McpAccess; proxy?: ProxyConnectInput | null;
   }): Promise<boolean> {
     const id = p.connId != null ? savedSessionId(p.connId) : adhocSessionId(++adhocSeq);
     const existing = sessions.find((s) => s.id === id);
@@ -143,7 +146,7 @@ export function createSessionManager() {
       if (p.environment !== undefined && p.environment !== existing.environment) {
         patchSession(id, { environment: p.environment });
         setSessionEnvironment(id, p.environment);
-        if (existing.status === "connected") pushSessionMeta(id, existing.label, p.environment).catch(() => {});
+        if (existing.status === "connected" || existing.status === "degraded") pushSessionMeta(id, existing.label, p.environment).catch(() => {});
       }
       if (p.color && p.color !== existing.color) patchSession(id, { color: p.color });
       if (p.mcpAccess !== undefined && p.mcpAccess !== existing.mcpAccess) patchSession(id, { mcpAccess: p.mcpAccess });
@@ -151,7 +154,7 @@ export function createSessionManager() {
       return true;
     }
     const label = p.connId != null ? p.label : adhocLabel(adhocSeq);
-    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null, p.environment ?? "", p.color ?? "", p.mcpAccess ?? DEFAULT_MCP_ACCESS);
+    const s = makeSession(id, label, p.connId, p.uri, p.readOnly ?? false, p.ssh ?? null, p.environment ?? "", p.color ?? "", p.mcpAccess ?? DEFAULT_MCP_ACCESS, p.proxy ?? null);
     sessions = [...sessions, s];
     activeId = id;
     const ok = await performConnect(s);
@@ -164,6 +167,12 @@ export function createSessionManager() {
     if (!s) return;
     patchSession(id, { status: "connecting" });
     await performConnect(s);
+  }
+
+  /** Health monitor verdict for a live session; ignored while it is connecting or failed, which own their status. */
+  function setHealth(id: string, status: "connected" | "degraded") {
+    const s = sessions.find((x) => x.id === id);
+    if (s && (s.status === "connected" || s.status === "degraded") && s.status !== status) patchSession(id, { status });
   }
 
   /** Focusing a different session while a Query tab is the open work item re-binds that tab to
@@ -291,6 +300,7 @@ export function createSessionManager() {
     focusOrOpen,
     focusSession,
     reconnect,
+    setHealth,
     closeSession,
     openQuery,
     associateQueryTab,

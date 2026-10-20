@@ -87,3 +87,33 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod proxy_tests {
+    use super::*;
+
+    #[test]
+    fn redacts_proxy_password_in_uri_and_free_text() {
+        let uri = "mongodb://h/?proxyHost=p&proxyUsername=u&proxyPassword=pr0xy";
+        assert_eq!(redact_uri(uri), "mongodb://h/?proxyHost=p&proxyUsername=u&proxyPassword=****");
+        assert!(!redact_text(&format!("failed: {uri}")).contains("pr0xy"));
+        assert!(!redact_text(r#"{"proxyPassword": "pr0xy"}"#).contains("pr0xy"));
+    }
+}
+
+#[cfg(test)]
+mod oidc_tests {
+    use super::*;
+
+    #[test]
+    fn redacts_oidc_token_fields_in_json_and_forms() {
+        let body = r#"{"access_token":"AT.secret","refresh_token": "RT-secret","id_token":"ID.secret","expires_in":3600}"#;
+        let out = redact_text(body);
+        assert!(["AT.secret", "RT-secret", "ID.secret"].iter().all(|t| !out.contains(t)), "{out}");
+        assert!(out.contains("3600"), "non-secret fields stay: {out}");
+        let form = redact_text("grant_type=refresh_token&refresh_token=RT-secret&client_id=abc&code_verifier=v&access_token=AT.secret");
+        assert!(!form.contains("RT-secret") && !form.contains("AT.secret"), "{form}");
+        assert!(form.contains("client_id=abc"), "{form}");
+        assert!(!redact_text("Authorization: Bearer AT.secret").contains("AT.secret"));
+    }
+}

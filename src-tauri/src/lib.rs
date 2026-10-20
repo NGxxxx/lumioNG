@@ -13,10 +13,14 @@ mod error;
 mod json_bson;
 mod json_import;
 mod json_stream;
+mod http_client;
+mod http_proxy_tunnel;
 mod known_hosts;
 mod logging;
 mod mcp;
+mod oidc_human;
 mod prefs;
+mod proxy;
 mod query_library;
 mod redact;
 mod registry;
@@ -38,6 +42,7 @@ pub fn run() {
         .manage(commands::command_log::CommandLogFile::default())
         .manage(commands::mcp::McpServer::default())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             use tauri::Manager;
             // Logging is best-effort: the app runs fine without a writable log directory.
@@ -53,6 +58,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
             commands::connection::test_connection,
+            commands::diagnose::diagnose_connection,
+            commands::connection::session_ping,
             commands::connection::set_session_meta,
             commands::app::app_info,
             commands::connection::list_namespaces,

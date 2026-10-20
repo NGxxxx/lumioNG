@@ -87,7 +87,7 @@ describe("ConnectionForm — connection string", () => {
   it("Copy URI is offered for a saved connection, without and with the password", async () => {
     const { r, getByRole, queryByRole } = setup();
     expect(queryByRole("button", { name: "Copy URI" })).toBeNull();
-    r.edit({ id: 2, label: "x", scheme: "mongodb", host: "h", port: 27017, authMethod: "password", user: "bob", passwordEnc: "", authSource: "", replicaSet: "", tls: false, extraOptions: "", readOnly: false, tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "", sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", environment: "", color: "", mcpAccess: "read" });
+    r.edit({ id: 2, label: "x", scheme: "mongodb", host: "h", port: 27017, authMethod: "password", user: "bob", passwordEnc: "", authSource: "", replicaSet: "", tls: false, extraOptions: "", readOnly: false, tlsCertificateKeyFile: "", tlsCertificateKeyFilePasswordEnc: "", sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password", sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "", proxyType: "none", proxyHost: "", proxyPort: null, proxyUser: "", proxyPasswordEnc: "", awsSessionTokenEnc: "", gssapiServiceName: "", gssapiServiceRealm: "", gssapiCanonicalize: "", oidcMode: "", oidcEnvironment: "", oidcTokenResource: "", environment: "", color: "", mcpAccess: "read" });
     r.password = "pw";
     await Promise.resolve();
     const writeText = vi.fn().mockResolvedValue(undefined);
@@ -116,5 +116,43 @@ describe("ConnectionForm — where passwords are stored", () => {
     await r.load();
     await fireEvent.change(getByLabelText("Authentication:"), { target: { value: "password" } });
     expect((await findByText(/System keychain unavailable/)).classList.contains("warn")).toBe(true);
+  });
+});
+
+describe("ConnectionForm — TLS hostname hint", () => {
+  it("shows only when TLS is on together with an HTTP proxy or an SSH tunnel", async () => {
+    const { r, queryByTestId } = setup();
+    expect(queryByTestId("tls-tunnel-hint")).toBeNull();
+    r.tls = true;
+    await Promise.resolve();
+    expect(queryByTestId("tls-tunnel-hint")).toBeNull();
+    r.proxyType = "http";
+    await vi.waitFor(() => expect(queryByTestId("tls-tunnel-hint")).not.toBeNull());
+    expect(queryByTestId("tls-tunnel-hint")!.textContent).toContain("tlsAllowInvalidHostnames");
+    r.proxyType = "socks5"; // SOCKS5 keeps the real hostname
+    await vi.waitFor(() => expect(queryByTestId("tls-tunnel-hint")).toBeNull());
+    r.sshEnabled = true;
+    await vi.waitFor(() => expect(queryByTestId("tls-tunnel-hint")).not.toBeNull());
+    r.tls = false;
+    await vi.waitFor(() => expect(queryByTestId("tls-tunnel-hint")).toBeNull());
+  });
+});
+
+describe("ConnectionForm — OIDC", () => {
+  it("workforce shows a username hint; workload shows environment and resource", async () => {
+    const { r, getByLabelText, queryByLabelText } = setup();
+    await fireEvent.change(getByLabelText("Authentication:"), { target: { value: "oidc" } });
+    expect(r.authMethod).toBe("oidc");
+    expect(getByLabelText("Username (optional hint):")).toBeTruthy();
+    expect(queryByLabelText("Environment:")).toBeNull();
+
+    await fireEvent.change(getByLabelText("OIDC mode:"), { target: { value: "workload" } });
+    expect(r.oidcMode).toBe("workload");
+    expect(queryByLabelText("Username (optional hint):")).toBeNull();
+    await fireEvent.change(getByLabelText("Environment:"), { target: { value: "gcp" } });
+    await fireEvent.input(getByLabelText("Token resource (audience):"), { target: { value: "aud" } });
+    expect(r.currentUri()).toContain("ENVIRONMENT:gcp,TOKEN_RESOURCE:aud");
+    await fireEvent.change(getByLabelText("Environment:"), { target: { value: "k8s" } });
+    expect(queryByLabelText("Token resource (audience):")).toBeNull();
   });
 });

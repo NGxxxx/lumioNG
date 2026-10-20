@@ -39,10 +39,14 @@ fn account(id: u32) -> String {
 
 /// Runs one store call; any error other than "no such credential" latches `FAILED`.
 fn guarded<T>(id: u32, call: impl FnOnce(&keyring::Entry) -> keyring::Result<T>) -> Result<Option<T>, String> {
+    guarded_account(&account(id), call)
+}
+
+fn guarded_account<T>(account: &str, call: impl FnOnce(&keyring::Entry) -> keyring::Result<T>) -> Result<Option<T>, String> {
     if FAILED.load(Ordering::Relaxed) {
         return Err("credential store unavailable".into());
     }
-    let result = keyring::Entry::new(SERVICE, &account(id)).and_then(|e| call(&e));
+    let result = keyring::Entry::new(SERVICE, account).and_then(|e| call(&e));
     match result {
         Ok(v) => Ok(Some(v)),
         Err(keyring::Error::NoEntry) => Ok(None),
@@ -68,7 +72,31 @@ impl SecretStore for OsKeychain {
     }
 }
 
-/// The four secret fields of a connection, as stored in one credential.
+/// OIDC refresh tokens: one credential per connection id (account `oidc-refresh-<id>`), kept apart
+/// from the connection secrets so saving or clearing a connection never touches them.
+pub trait TokenStore: SecretStore {
+    fn token_get(&self, id: u32) -> Result<Option<String>, String>;
+    fn token_set(&self, id: u32, value: &str) -> Result<(), String>;
+    fn token_delete(&self, id: u32) -> Result<(), String>;
+}
+
+fn token_account(id: u32) -> String {
+    format!("oidc-refresh-{id}")
+}
+
+impl TokenStore for OsKeychain {
+    fn token_get(&self, id: u32) -> Result<Option<String>, String> {
+        guarded_account(&token_account(id), |e| e.get_password())
+    }
+    fn token_set(&self, id: u32, value: &str) -> Result<(), String> {
+        guarded_account(&token_account(id), |e| e.set_password(value)).map(|_| ())
+    }
+    fn token_delete(&self, id: u32) -> Result<(), String> {
+        guarded_account(&token_account(id), |e| e.delete_credential()).map(|_| ())
+    }
+}
+
+/// The secret fields of a connection, as stored in one credential.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Secrets {
@@ -76,6 +104,8 @@ pub struct Secrets {
     pub tls_certificate_key_file_password_enc: String,
     pub ssh_password_enc: String,
     pub ssh_passphrase_enc: String,
+    pub proxy_password_enc: String,
+    pub aws_session_token_enc: String,
 }
 
 impl Secrets {
@@ -85,6 +115,8 @@ impl Secrets {
             tls_certificate_key_file_password_enc: c.tls_certificate_key_file_password_enc.clone(),
             ssh_password_enc: c.ssh_password_enc.clone(),
             ssh_passphrase_enc: c.ssh_passphrase_enc.clone(),
+            proxy_password_enc: c.proxy_password_enc.clone(),
+            aws_session_token_enc: c.aws_session_token_enc.clone(),
         }
     }
     pub fn is_empty(&self) -> bool {
@@ -95,6 +127,8 @@ impl Secrets {
         c.tls_certificate_key_file_password_enc = self.tls_certificate_key_file_password_enc;
         c.ssh_password_enc = self.ssh_password_enc;
         c.ssh_passphrase_enc = self.ssh_passphrase_enc;
+        c.proxy_password_enc = self.proxy_password_enc;
+        c.aws_session_token_enc = self.aws_session_token_enc;
     }
 }
 
@@ -397,6 +431,13 @@ pub fn vault_unlock(ctx: &VaultCtx, registry_path: &Path, password: &str) -> Res
 /// "Forgot master password": drops the vault and blanks every sealed field. Connections stay; there
 /// is no way back to the sealed values.
 pub fn vault_reset(ctx: &VaultCtx, registry_path: &Path) -> Result<(), AppError> {
+    // The sealed OIDC refresh tokens are unreadable without the vault: drop them first. A failure
+    // here is logged, never allowed to leave the reset half done.
+    match std::fs::remove_file(tokens_path(ctx)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!(error = %e, "vault reset: could not delete oidc_tokens.json"),
+    }
     let mut list = registry::load(registry_path)?;
     let mut cleared = false;
     for c in list.iter_mut() {
@@ -415,6 +456,85 @@ pub fn vault_reset(ctx: &VaultCtx, registry_path: &Path) -> Result<(), AppError>
     Ok(())
 }
 
+// ---- OIDC refresh tokens -------------------------------------------------------------------------
+
+/// Where a refresh token ended up.
+#[derive(Debug, PartialEq)]
+pub enum TokenOutcome {
+    Keychain,
+    Vault,
+    /// Not written anywhere (the caller keeps it in memory for this run). The reason never contains the token.
+    NotPersisted(&'static str),
+}
+
+fn tokens_path(ctx: &VaultCtx) -> PathBuf {
+    ctx.path.with_file_name("oidc_tokens.json")
+}
+
+/// `connection id -> vault-sealed refresh token`. A missing or unreadable file is an empty map.
+fn read_tokens(ctx: &VaultCtx) -> std::collections::BTreeMap<String, String> {
+    std::fs::read_to_string(tokens_path(ctx)).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
+fn write_tokens(ctx: &VaultCtx, map: &std::collections::BTreeMap<String, String>) -> Result<(), AppError> {
+    if map.is_empty() {
+        return match std::fs::remove_file(tokens_path(ctx)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(AppError::Io(e.to_string())),
+            _ => Ok(()),
+        };
+    }
+    let s = serde_json::to_string_pretty(map).map_err(|e| AppError::Serialize(e.to_string()))?;
+    registry::write_atomic(&tokens_path(ctx), s.as_bytes())
+}
+
+/// The stored refresh token of connection `id`: from the credential store, or (without one) opened
+/// from the vault when it is unlocked. `None` when absent or unreadable.
+pub fn oidc_token_load(store: &dyn TokenStore, ctx: &VaultCtx, id: u32) -> Option<String> {
+    if store.available() {
+        return store.token_get(id).ok().flatten();
+    }
+    let sealed = read_tokens(ctx).remove(&id.to_string())?;
+    ctx.session.with(|v| v.open(&sealed).ok()).flatten()
+}
+
+/// Persists a refresh token: in the credential store, or sealed by the vault when there is no store.
+/// A locked or uninitialized vault means it is NOT persisted (never written in the clear).
+pub fn oidc_token_save(store: &dyn TokenStore, ctx: &VaultCtx, id: u32, token: &str) -> TokenOutcome {
+    if store.available() {
+        return match store.token_set(id, token) {
+            Ok(()) => TokenOutcome::Keychain,
+            Err(_) => TokenOutcome::NotPersisted("the credential store refused the write"),
+        };
+    }
+    if !ctx.session.is_unlocked() {
+        return TokenOutcome::NotPersisted(match vault::read_file(&ctx.path) {
+            Ok(None) => "no master password is set up",
+            _ => "the vault is locked",
+        });
+    }
+    let Some(Ok(sealed)) = ctx.session.with(|v| v.seal(token)) else {
+        return TokenOutcome::NotPersisted("the token could not be sealed");
+    };
+    let mut map = read_tokens(ctx);
+    map.insert(id.to_string(), sealed);
+    match write_tokens(ctx, &map) {
+        Ok(()) => TokenOutcome::Vault,
+        Err(_) => TokenOutcome::NotPersisted("the token file could not be written"),
+    }
+}
+
+/// Drops the stored refresh token of connection `id` (sign-out, or the connection was deleted). Needs no unlocked vault.
+pub fn oidc_token_forget(store: &dyn TokenStore, ctx: &VaultCtx, id: u32) {
+    if store.available() {
+        let _ = store.token_delete(id);
+        return;
+    }
+    let mut map = read_tokens(ctx);
+    if map.remove(&id.to_string()).is_some() {
+        let _ = write_tokens(ctx, &map);
+    }
+}
+
 #[cfg(test)]
 pub mod memory {
     use super::SecretStore;
@@ -427,6 +547,27 @@ pub mod memory {
         pub items: RefCell<HashMap<u32, String>>,
         pub broken: bool,
         pub writes: RefCell<u32>,
+        pub tokens: RefCell<HashMap<u32, String>>,
+    }
+
+    impl super::TokenStore for MemoryStore {
+        fn token_get(&self, id: u32) -> Result<Option<String>, String> {
+            if self.broken {
+                return Err("locked".into());
+            }
+            Ok(self.tokens.borrow().get(&id).cloned())
+        }
+        fn token_set(&self, id: u32, value: &str) -> Result<(), String> {
+            if self.broken {
+                return Err("locked".into());
+            }
+            self.tokens.borrow_mut().insert(id, value.to_string());
+            Ok(())
+        }
+        fn token_delete(&self, id: u32) -> Result<(), String> {
+            self.tokens.borrow_mut().remove(&id);
+            Ok(())
+        }
     }
 
     impl SecretStore for MemoryStore {
@@ -479,6 +620,20 @@ mod tests {
         assert!(!file[1].secrets_in_keychain); // nothing secret, nothing stored
         assert!(store.items.borrow()[&1].contains("enc-pw"));
         assert!(!store.items.borrow().contains_key(&2));
+    }
+
+    #[test]
+    fn proxy_password_and_aws_token_go_to_the_store_and_come_back() {
+        let store = MemoryStore::default();
+        let mut c = conn(1);
+        c.proxy_password_enc = "enc-proxy".into();
+        c.aws_session_token_enc = "enc-token".into();
+        let file = sync(&[], &[c], &Locked::new(), &store);
+        assert_eq!((file[0].proxy_password_enc.as_str(), file[0].aws_session_token_enc.as_str()), ("", ""));
+        assert!(file[0].secrets_in_keychain);
+        let mut loaded = file;
+        fill(&mut loaded, &store);
+        assert_eq!((loaded[0].proxy_password_enc.as_str(), loaded[0].aws_session_token_enc.as_str()), ("enc-proxy", "enc-token"));
     }
 
     #[test]
@@ -583,6 +738,74 @@ mod tests {
         store.delete(id).unwrap();
         store.delete(id).unwrap(); // deleting twice is fine
         assert_eq!(store.get(id).unwrap(), None);
+    }
+
+    fn token_ctx<'a>(name: &str, session: &'a VaultSession) -> VaultCtx<'a> {
+        let dir = std::env::temp_dir().join(format!("lumiong_oidc_tokens_{name}"));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        VaultCtx { path: dir.join("vault.json"), session }
+    }
+
+    #[test]
+    fn oidc_refresh_token_lives_in_the_keychain_under_its_own_account() {
+        let store = MemoryStore::default();
+        let session = VaultSession::default();
+        let ctx = token_ctx("keychain", &session);
+        assert_eq!(oidc_token_load(&store, &ctx, 7), None);
+        assert_eq!(oidc_token_save(&store, &ctx, 7, "rt-1"), TokenOutcome::Keychain);
+        assert_eq!(oidc_token_load(&store, &ctx, 7).as_deref(), Some("rt-1"));
+        // The connection secrets credential is a different account: untouched.
+        assert!(store.items.borrow().is_empty());
+        oidc_token_forget(&store, &ctx, 7);
+        assert_eq!(oidc_token_load(&store, &ctx, 7), None);
+        assert_eq!(token_account(7), "oidc-refresh-7");
+    }
+
+    #[test]
+    fn oidc_refresh_token_is_sealed_by_an_unlocked_vault_when_there_is_no_keychain() {
+        let store = MemoryStore { broken: true, ..Default::default() };
+        let session = VaultSession::default();
+        let ctx = token_ctx("sealed", &session);
+        let (vault, _) = Vault::create("correct horse").unwrap();
+        session.set(vault);
+        assert_eq!(oidc_token_save(&store, &ctx, 3, "rt-secret"), TokenOutcome::Vault);
+        let on_disk = std::fs::read_to_string(tokens_path(&ctx)).unwrap();
+        assert!(!on_disk.contains("rt-secret") && on_disk.contains("vault:v1:"), "{on_disk}");
+        assert_eq!(oidc_token_load(&store, &ctx, 3).as_deref(), Some("rt-secret"));
+        // Locked again: unreadable, but it can still be forgotten.
+        session.clear();
+        assert_eq!(oidc_token_load(&store, &ctx, 3), None);
+        oidc_token_forget(&store, &ctx, 3);
+        assert!(!tokens_path(&ctx).exists());
+    }
+
+    #[test]
+    fn oidc_refresh_token_is_not_persisted_with_a_locked_or_missing_vault() {
+        let store = MemoryStore { broken: true, ..Default::default() };
+        let session = VaultSession::default();
+        let ctx = token_ctx("locked", &session);
+        assert_eq!(oidc_token_save(&store, &ctx, 1, "rt"), TokenOutcome::NotPersisted("no master password is set up"));
+        let (vault, file) = Vault::create("pw-123456").unwrap();
+        vault::write_file(&ctx.path, &file).unwrap();
+        drop(vault);
+        assert_eq!(oidc_token_save(&store, &ctx, 1, "rt"), TokenOutcome::NotPersisted("the vault is locked"));
+        assert!(!tokens_path(&ctx).exists());
+    }
+
+    #[test]
+    fn vault_reset_also_deletes_the_sealed_oidc_tokens() {
+        let store = MemoryStore { broken: true, ..Default::default() };
+        let session = VaultSession::default();
+        let ctx = token_ctx("reset", &session);
+        let (vault, file) = Vault::create("pw-123456").unwrap();
+        vault::write_file(&ctx.path, &file).unwrap();
+        session.set(vault);
+        assert_eq!(oidc_token_save(&store, &ctx, 2, "rt"), TokenOutcome::Vault);
+        assert!(tokens_path(&ctx).exists());
+        let reg = ctx.path.with_file_name("connections.json");
+        vault_reset(&ctx, &reg).unwrap();
+        assert!(!tokens_path(&ctx).exists() && !ctx.path.exists());
     }
 }
 

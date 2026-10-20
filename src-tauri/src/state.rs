@@ -1,6 +1,7 @@
 use crate::audit::{AuditEntry, AuditError, AuditLog};
 use crate::error::AppError;
 use mongodb::bson::Document;
+use crate::http_proxy_tunnel::HttpProxyTunnelHandle;
 use crate::ssh_tunnel::SshTunnelHandle;
 use mongodb::Client;
 use std::collections::HashMap;
@@ -16,9 +17,10 @@ pub struct Session {
     pub label: String,
     /// "", "dev", "staging" or "prod" (see the frontend's `Environment`).
     pub environment: String,
-    // Held only for its `Drop` side effect (closes the SSH tunnel) — never read directly.
-    #[allow(dead_code)]
+    // Closes the SSH tunnel on drop; also asked whether it is down (see `AppState::tunnel_down`).
     pub tunnel: Option<SshTunnelHandle>,
+    // Local HTTP CONNECT forwarder when the connection goes through an HTTP proxy; closes on drop.
+    pub proxy_tunnel: Option<HttpProxyTunnelHandle>,
 }
 
 /// What the audit log and MCP need to know about a live session.
@@ -62,7 +64,14 @@ impl AppState {
         environment: String,
         tunnel: Option<SshTunnelHandle>,
     ) {
-        self.sessions.lock().await.insert(session_id, Session { client, read_only, label, environment, tunnel });
+        self.sessions.lock().await.insert(session_id, Session { client, read_only, label, environment, tunnel, proxy_tunnel: None });
+    }
+
+    /// Keeps an HTTP proxy forwarder alive for as long as the session lives.
+    pub async fn set_proxy_tunnel(&self, session_id: &str, handle: HttpProxyTunnelHandle) {
+        if let Some(s) = self.sessions.lock().await.get_mut(session_id) {
+            s.proxy_tunnel = Some(handle);
+        }
     }
 
     pub async fn meta(&self, session_id: &str) -> Result<SessionMeta, AppError> {
@@ -81,6 +90,13 @@ impl AppState {
         s.label = label;
         s.environment = environment;
         Ok(())
+    }
+
+    /// `host:port` of the session's SSH server when its tunnel is currently down (never credentials).
+    pub async fn tunnel_down(&self, session_id: &str) -> Option<String> {
+        let g = self.sessions.lock().await;
+        let t = g.get(session_id)?.tunnel.as_ref()?;
+        t.is_down().then(|| t.endpoint())
     }
 
     pub async fn client(&self, session_id: &str) -> Result<Client, AppError> {

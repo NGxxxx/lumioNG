@@ -55,6 +55,36 @@ pub struct ConnectionInput {
     /// "off" | "read" | "write" — what MCP clients may do with this connection once open.
     #[serde(default = "default_mcp_access")]
     pub mcp_access: String,
+    /// "none" | "socks5" | "http"; "" (older files) means none.
+    #[serde(default)]
+    pub proxy_type: String,
+    #[serde(default)]
+    pub proxy_host: String,
+    #[serde(default)]
+    pub proxy_port: Option<u16>,
+    #[serde(default)]
+    pub proxy_user: String,
+    #[serde(default)]
+    pub proxy_password_enc: String,
+    /// MONGODB-AWS optional STS session token (obfuscated; a secret like the other `*Enc` fields).
+    #[serde(default)]
+    pub aws_session_token_enc: String,
+    /// Kerberos (GSSAPI) mechanism properties; "" = driver default.
+    #[serde(default)]
+    pub gssapi_service_name: String,
+    #[serde(default)]
+    pub gssapi_service_realm: String,
+    #[serde(default)]
+    pub gssapi_canonicalize: String,
+    /// MONGODB-OIDC: "workforce" (browser sign-in) or "workload" (machine identity); "" (older files) means workforce.
+    #[serde(default)]
+    pub oidc_mode: String,
+    /// Workload only: "azure" | "gcp" | "k8s".
+    #[serde(default)]
+    pub oidc_environment: String,
+    /// Workload only: the audience / resource the token is requested for (azure, gcp).
+    #[serde(default)]
+    pub oidc_token_resource: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -110,6 +140,36 @@ pub struct SavedConnection {
     pub color: String,
     #[serde(default = "default_mcp_access")]
     pub mcp_access: String,
+    /// "none" | "socks5" | "http"; "" (older files) means none.
+    #[serde(default)]
+    pub proxy_type: String,
+    #[serde(default)]
+    pub proxy_host: String,
+    #[serde(default)]
+    pub proxy_port: Option<u16>,
+    #[serde(default)]
+    pub proxy_user: String,
+    #[serde(default)]
+    pub proxy_password_enc: String,
+    /// MONGODB-AWS optional STS session token (obfuscated; a secret like the other `*Enc` fields).
+    #[serde(default)]
+    pub aws_session_token_enc: String,
+    /// Kerberos (GSSAPI) mechanism properties; "" = driver default.
+    #[serde(default)]
+    pub gssapi_service_name: String,
+    #[serde(default)]
+    pub gssapi_service_realm: String,
+    #[serde(default)]
+    pub gssapi_canonicalize: String,
+    /// MONGODB-OIDC: "workforce" (browser sign-in) or "workload" (machine identity); "" (older files) means workforce.
+    #[serde(default)]
+    pub oidc_mode: String,
+    /// Workload only: "azure" | "gcp" | "k8s".
+    #[serde(default)]
+    pub oidc_environment: String,
+    /// Workload only: the audience / resource the token is requested for (azure, gcp).
+    #[serde(default)]
+    pub oidc_token_resource: String,
     /// Legacy pre-Phase-E field; present only in un-migrated files. Cleared on next save.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub uri: Option<String>,
@@ -150,6 +210,18 @@ impl SavedConnection {
             mcp_access: clamp_mcp_access(&input.environment, &input.mcp_access),
             environment: input.environment,
             color: input.color,
+            proxy_type: input.proxy_type,
+            proxy_host: input.proxy_host,
+            proxy_port: input.proxy_port,
+            proxy_user: input.proxy_user,
+            proxy_password_enc: input.proxy_password_enc,
+            aws_session_token_enc: input.aws_session_token_enc,
+            gssapi_service_name: input.gssapi_service_name,
+            gssapi_service_realm: input.gssapi_service_realm,
+            gssapi_canonicalize: input.gssapi_canonicalize,
+            oidc_mode: input.oidc_mode,
+            oidc_environment: input.oidc_environment,
+            oidc_token_resource: input.oidc_token_resource,
             uri: None,
             last_connected_at: None,
             secrets_in_keychain: false,
@@ -292,6 +364,18 @@ pub(crate) mod tests {
             environment: String::new(),
             color: String::new(),
             mcp_access: "read".into(),
+            proxy_type: String::new(),
+            proxy_host: String::new(),
+            proxy_port: None,
+            proxy_user: String::new(),
+            proxy_password_enc: String::new(),
+            aws_session_token_enc: String::new(),
+            oidc_mode: String::new(),
+            oidc_environment: String::new(),
+            oidc_token_resource: String::new(),
+            gssapi_service_name: String::new(),
+            gssapi_service_realm: String::new(),
+            gssapi_canonicalize: String::new(),
         }
     }
 
@@ -511,5 +595,41 @@ pub(crate) mod tests {
         )
         .unwrap();
         assert_eq!(i.environment, "");
+    }
+
+    #[test]
+    fn an_old_file_without_proxy_aws_or_kerberos_fields_still_loads() {
+        let old = r#"[{"id":1,"label":"old","host":"h","passwordEnc":"x"}]"#;
+        let list: Vec<SavedConnection> = serde_json::from_str(old).unwrap();
+        assert_eq!(list[0].proxy_type, "");
+        assert_eq!(list[0].proxy_port, None);
+        assert_eq!(list[0].aws_session_token_enc, "");
+        assert_eq!(list[0].gssapi_canonicalize, "");
+    }
+
+    #[test]
+    fn proxy_and_auth_fields_survive_an_upsert() {
+        let mut i = input("p", "h");
+        i.proxy_type = "http".into();
+        i.proxy_host = "proxy".into();
+        i.proxy_port = Some(3128);
+        i.proxy_password_enc = "pw".into();
+        i.aws_session_token_enc = "tok".into();
+        i.gssapi_service_realm = "R".into();
+        let c = &upsert(vec![], None, i)[0];
+        assert_eq!((c.proxy_type.as_str(), c.proxy_port, c.proxy_password_enc.as_str()), ("http", Some(3128), "pw"));
+        assert_eq!((c.aws_session_token_enc.as_str(), c.gssapi_service_realm.as_str()), ("tok", "R"));
+    }
+
+    #[test]
+    fn oidc_fields_default_for_old_files_and_survive_an_upsert() {
+        let list: Vec<SavedConnection> = serde_json::from_str(r#"[{"id":1,"label":"old","host":"h"}]"#).unwrap();
+        assert_eq!((list[0].oidc_mode.as_str(), list[0].oidc_environment.as_str(), list[0].oidc_token_resource.as_str()), ("", "", ""));
+        let mut i = input("o", "h");
+        i.oidc_mode = "workload".into();
+        i.oidc_environment = "azure".into();
+        i.oidc_token_resource = "api://x".into();
+        let c = &upsert(vec![], None, i)[0];
+        assert_eq!((c.oidc_mode.as_str(), c.oidc_environment.as_str(), c.oidc_token_resource.as_str()), ("workload", "azure", "api://x"));
     }
 }

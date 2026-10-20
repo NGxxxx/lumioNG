@@ -157,6 +157,9 @@ mod tests {
         c.ssh_password_enc = "SECRETSSH".into();
         c.ssh_passphrase_enc = "SECRETPASS".into();
         c.tls_certificate_key_file_password_enc = "SECRETTLS".into();
+        c.proxy_password_enc = "SECRETPROXYPW".into();
+        c.aws_session_token_enc = "SECRETAWSTOKEN".into();
+        c.proxy_user = "SECRETPROXYUSER".into();
         c.uri = Some("mongodb://admin:SECRETURI@db.example.com".into());
         c.environment = "prod".into();
         let app = build_info(Some("1.0".into()));
@@ -173,7 +176,7 @@ mod tests {
         assert!(["app.json", "connections.json", "settings-keys.json", "logs/lumio.2026-10-20.log"].iter().all(|n| names.iter().any(|x| x == n)));
         assert!(!all.contains("Enc\""), "no *Enc field names");
         assert!(!all.contains("_enc"));
-        for secret in ["SECRETPASSWORD", "SECRETSSH", "SECRETPASS", "SECRETTLS", "SECRETURI", "SECRETLOG"] {
+        for secret in ["SECRETPASSWORD", "SECRETSSH", "SECRETPASS", "SECRETTLS", "SECRETURI", "SECRETLOG", "SECRETPROXYPW", "SECRETAWSTOKEN", "SECRETPROXYUSER"] {
             assert!(!all.contains(secret), "{secret} leaked");
         }
         assert!(all.contains("db.example.com") && all.contains("prod"));

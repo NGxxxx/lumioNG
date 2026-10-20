@@ -21,3 +21,14 @@ describe("maskUri", () => {
     expect(maskUri("not a uri")).toBe("not a uri");
   });
 });
+
+describe("maskUri — option secrets", () => {
+  it("masks the proxy password, the cert key password and the AWS session token", () => {
+    expect(maskUri("mongodb://h/?proxyHost=p&proxyPassword=a%40b&tlsCertificateKeyFilePassword=x&tls=true")).toBe(
+      "mongodb://h/?proxyHost=p&proxyPassword=****&tlsCertificateKeyFilePassword=****&tls=true",
+    );
+    expect(maskUri("mongodb://k:s@h/?authMechanismProperties=AWS_SESSION_TOKEN:tok%2Fen&tls=true")).toBe(
+      "mongodb://k:****@h/?authMechanismProperties=AWS_SESSION_TOKEN:****&tls=true",
+    );
+  });
+});

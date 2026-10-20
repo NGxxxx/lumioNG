@@ -8,10 +8,10 @@ import {
   type SecretStorage,
   type ConnectionInput,
 } from "../api/connections";
-import { testConnection as apiTestConnection, type SshConnectInput } from "../api/connection";
+import { testConnection as apiTestConnection, diagnoseConnection as apiDiagnose, type SshConnectInput, type ProxyConnectInput } from "../api/connection";
 import { errorMessage } from "../api/errors";
-import { validateProfile, validateSsh } from "../domain/connections";
-import { buildProfileUri, parseUri, normalizeForTunnel, suggestLabelFromHost, changedFieldCount, type ConnectionProfile } from "../domain/connuri";
+import { awsCredentialProblem, validateProfile, validateProxy, validateSsh } from "../domain/connections";
+import { buildProfileUri, parseUri, normalizeForTunnel, suggestLabelFromHost, changedFieldCount, type ConnectionProfile, type ProxyType, type OidcMode, type OidcEnvironment } from "../domain/connuri";
 import { obfuscate, deobfuscate } from "../domain/secret";
 import { vaultRefusal, withoutSecrets } from "../domain/vault";
 import { vault } from "./vault.svelte";
@@ -33,6 +33,8 @@ export interface ConnectRequest {
   environment: Environment;
   color: string;
   mcpAccess: McpAccess;
+  /** HTTP CONNECT proxy to run for this connection (SOCKS5 is in the URI). */
+  proxy: ProxyConnectInput | null;
 }
 
 export function createConnectionRegistry() {
@@ -45,14 +47,14 @@ export function createConnectionRegistry() {
   let formError = $state<string | null>(null);
   let editingId = $state<number | null>(null);
   // Form values before the last paste-to-fill, so it can be undone.
-  let beforeFill = $state.raw<{ label: string; profile: ConnectionProfile; password: string; certKeyPassword: string } | null>(null);
+  let beforeFill = $state.raw<{ label: string; profile: ConnectionProfile; password: string; certKeyPassword: string; proxyPassword: string; awsSessionToken: string } | null>(null);
 
   // form fields
   let label = $state("");
   let scheme = $state<"mongodb" | "mongodb+srv">("mongodb");
   let host = $state("localhost");
   let port = $state<number | null>(27017);
-  let authMethod = $state<"none" | "password" | "x509" | "ldap">("none");
+  let authMethod = $state<ConnectionProfile["authMethod"]>("none");
   let user = $state("");
   let password = $state("");
   let authSource = $state("");
@@ -65,6 +67,20 @@ export function createConnectionRegistry() {
   let mcpAccess = $state<McpAccess>(DEFAULT_MCP_ACCESS);
   let tlsCertificateKeyFile = $state("");
   let tlsCertificateKeyFilePassword = $state("");
+  let awsSessionToken = $state("");
+  let gssapiServiceName = $state("");
+  let gssapiServiceRealm = $state("");
+  let gssapiCanonicalize = $state("");
+  let oidcMode = $state<OidcMode>("workforce");
+  let oidcEnvironment = $state<OidcEnvironment>("azure");
+  let oidcTokenResource = $state("");
+
+  // Proxy form fields
+  let proxyType = $state<ProxyType>("none");
+  let proxyHost = $state("");
+  let proxyPort = $state<number | null>(1080);
+  let proxyUser = $state("");
+  let proxyPassword = $state("");
 
   // SSH tunnel form fields
   let sshEnabled = $state(false);
@@ -80,8 +96,31 @@ export function createConnectionRegistry() {
     return {
       scheme, host, port, authMethod, user, authSource, replicaSet, tls, extraOptions,
       tlsCertificateKeyFile,
+      proxyType, proxyHost, proxyPort, proxyUser,
+      gssapiServiceName, gssapiServiceRealm, gssapiCanonicalize,
+      oidcMode, oidcEnvironment, oidcTokenResource,
     };
   }
+
+  /** The URI-only secrets (proxy password, AWS session token) that sit outside the profile. */
+  function uriSecrets() {
+    return { proxyPassword, awsSessionToken };
+  }
+
+  /** The HTTP proxy the backend must tunnel through; SOCKS5 travels in the URI so is not returned. */
+  function httpProxyInput(): ProxyConnectInput | null {
+    if (proxyType !== "http") return null;
+    return { kind: "http", host: proxyHost.trim(), port: proxyPort ?? 0, user: proxyUser, password: proxyPassword };
+  }
+
+  /** Any proxy, for diagnosis (the backend probes the SOCKS5 proxy itself). */
+  function anyProxyInput(): ProxyConnectInput | null {
+    if (proxyType === "none") return null;
+    return { kind: proxyType, host: proxyHost.trim(), port: proxyPort ?? 0, user: proxyUser, password: proxyPassword };
+  }
+
+  /** Single-host shape is forced by an SSH tunnel and by an HTTP proxy alike. */
+  const tunneled = () => sshEnabled || proxyType === "http";
 
   function sshConnectInput(): SshConnectInput | null {
     if (!sshEnabled) return null;
@@ -94,11 +133,11 @@ export function createConnectionRegistry() {
   }
 
   function toInput(): ConnectionInput {
-    const p = normalizeForTunnel(profile(), sshEnabled);
+    const p = normalizeForTunnel(profile(), tunneled());
     return {
       label: label.trim(),
       scheme: p.scheme, host, port, authMethod, user,
-      passwordEnc: authMethod === "password" || authMethod === "ldap" ? obfuscate(password) : "",
+      passwordEnc: authMethod === "password" || authMethod === "ldap" || authMethod === "aws" ? obfuscate(password) : "",
       authSource, replicaSet: p.replicaSet, tls, extraOptions, readOnly,
       tlsCertificateKeyFile,
       tlsCertificateKeyFilePasswordEnc: authMethod === "x509" ? obfuscate(tlsCertificateKeyFilePassword) : "",
@@ -107,6 +146,15 @@ export function createConnectionRegistry() {
       sshPrivateKeyPath: sshAuthMethod === "key" ? sshPrivateKeyPath : "",
       sshPassphraseEnc: sshAuthMethod === "key" ? obfuscate(sshPassphrase) : "",
       environment, color, mcpAccess: clampMcpAccess(environment, mcpAccess),
+      proxyType, proxyHost, proxyPort, proxyUser,
+      proxyPasswordEnc: proxyType !== "none" ? obfuscate(proxyPassword) : "",
+      awsSessionTokenEnc: authMethod === "aws" ? obfuscate(awsSessionToken) : "",
+      gssapiServiceName: authMethod === "kerberos" ? gssapiServiceName : "",
+      gssapiServiceRealm: authMethod === "kerberos" ? gssapiServiceRealm : "",
+      gssapiCanonicalize: authMethod === "kerberos" ? gssapiCanonicalize : "",
+      oidcMode: authMethod === "oidc" ? oidcMode : "",
+      oidcEnvironment: authMethod === "oidc" && oidcMode === "workload" ? oidcEnvironment : "",
+      oidcTokenResource: authMethod === "oidc" && oidcMode === "workload" ? oidcTokenResource : "",
     };
   }
 
@@ -114,10 +162,15 @@ export function createConnectionRegistry() {
     scheme = p.scheme; host = p.host; port = p.port; authMethod = p.authMethod;
     user = p.user; authSource = p.authSource; replicaSet = p.replicaSet;
     tls = p.tls; extraOptions = p.extraOptions; tlsCertificateKeyFile = p.tlsCertificateKeyFile;
+    proxyType = p.proxyType ?? "none"; proxyHost = p.proxyHost ?? ""; proxyPort = p.proxyPort ?? (p.proxyHost ? null : 1080);
+    proxyUser = p.proxyUser ?? "";
+    gssapiServiceName = p.gssapiServiceName ?? ""; gssapiServiceRealm = p.gssapiServiceRealm ?? "";
+    gssapiCanonicalize = p.gssapiCanonicalize ?? "";
+    oidcMode = p.oidcMode ?? "workforce"; oidcEnvironment = p.oidcEnvironment ?? "azure"; oidcTokenResource = p.oidcTokenResource ?? "";
   }
 
   function currentUri(): string {
-    return buildProfileUri(normalizeForTunnel(profile(), sshEnabled), password, tlsCertificateKeyFilePassword);
+    return buildProfileUri(normalizeForTunnel(profile(), tunneled()), password, tlsCertificateKeyFilePassword, uriSecrets());
   }
 
   async function load() {
@@ -134,7 +187,7 @@ export function createConnectionRegistry() {
           const input: ConnectionInput = {
             label: c.label,
             scheme: p.scheme, host: p.host, port: p.port, authMethod: p.authMethod,
-            user: p.user, passwordEnc: p.authMethod === "password" || p.authMethod === "ldap" ? obfuscate(pw) : "",
+            user: p.user, passwordEnc: p.authMethod === "password" || p.authMethod === "ldap" || p.authMethod === "aws" ? obfuscate(pw) : "",
             authSource: p.authSource, replicaSet: p.replicaSet, tls: p.tls, extraOptions: p.extraOptions,
             readOnly: false,
             tlsCertificateKeyFile: p.tlsCertificateKeyFile,
@@ -142,6 +195,9 @@ export function createConnectionRegistry() {
             sshEnabled: false, sshHost: "", sshPort: 22, sshUser: "", sshAuthMethod: "password",
             sshPasswordEnc: "", sshPrivateKeyPath: "", sshPassphraseEnc: "",
             environment: "", color: "", mcpAccess: DEFAULT_MCP_ACCESS,
+            proxyType: "none", proxyHost: "", proxyPort: null, proxyUser: "", proxyPasswordEnc: "",
+            awsSessionTokenEnc: "", gssapiServiceName: "", gssapiServiceRealm: "", gssapiCanonicalize: "",
+            oidcMode: p.oidcMode ?? "", oidcEnvironment: p.oidcEnvironment ?? "", oidcTokenResource: p.oidcTokenResource ?? "",
           };
           try {
             result = await saveConnection(c.id, input);
@@ -174,20 +230,34 @@ export function createConnectionRegistry() {
     authMethod = "none"; user = ""; password = ""; authSource = ""; replicaSet = "";
     tls = false; extraOptions = ""; readOnly = false; environment = ""; color = ""; mcpAccess = DEFAULT_MCP_ACCESS;
     tlsCertificateKeyFile = ""; tlsCertificateKeyFilePassword = "";
+    awsSessionToken = ""; gssapiServiceName = ""; gssapiServiceRealm = ""; gssapiCanonicalize = "";
+    oidcMode = "workforce"; oidcEnvironment = "azure"; oidcTokenResource = "";
+    proxyType = "none"; proxyHost = ""; proxyPort = 1080; proxyUser = ""; proxyPassword = "";
     sshEnabled = false; sshHost = ""; sshPort = 22; sshUser = "";
     sshAuthMethod = "password"; sshPassword = ""; sshPrivateKeyPath = ""; sshPassphrase = "";
     formError = null;
     beforeFill = null;
   }
 
+  /** MONGODB-AWS credentials must be a pair (or empty): a lone secret would be silently dropped from the URI. */
+  function awsError(): string | null {
+    if (authMethod !== "aws") return null;
+    const problem = awsCredentialProblem(user, password, awsSessionToken);
+    return problem === "needs_key_id" ? m.conn_aws_needs_key_id() : problem === "needs_secret" ? m.conn_aws_needs_secret() : null;
+  }
+
   async function doSave(withoutPassword: boolean) {
     const vProfile = validateProfile(label, profile());
     if (!vProfile.ok) { formError = vProfile.error; return; }
+    const aws = awsError();
+    if (aws && !withoutPassword) { formError = aws; return; }
     const vSsh = validateSsh({
       enabled: sshEnabled, host: sshHost, port: sshPort, user: sshUser,
       authMethod: sshAuthMethod, privateKeyPath: sshPrivateKeyPath,
     });
     if (!vSsh.ok) { formError = vSsh.error; return; }
+    const vProxy = validateProxy(profile(), sshEnabled);
+    if (!vProxy.ok) { formError = vProxy.error; return; }
     formError = null;
     error = null;
     offerSaveWithoutPassword = false;
@@ -235,8 +305,16 @@ export function createConnectionRegistry() {
       user: c.user, authSource: c.authSource, replicaSet: c.replicaSet,
       tls: c.tls, extraOptions: c.extraOptions,
       tlsCertificateKeyFile: c.tlsCertificateKeyFile ?? "",
+      proxyType: (c.proxyType as ProxyType) || "none", proxyHost: c.proxyHost ?? "", proxyPort: c.proxyPort ?? null,
+      proxyUser: c.proxyUser ?? "",
+      gssapiServiceName: c.gssapiServiceName ?? "", gssapiServiceRealm: c.gssapiServiceRealm ?? "",
+      gssapiCanonicalize: c.gssapiCanonicalize ?? "",
+      oidcMode: (c.oidcMode as OidcMode) || "workforce", oidcEnvironment: (c.oidcEnvironment as OidcEnvironment) || "azure",
+      oidcTokenResource: c.oidcTokenResource ?? "",
     });
     password = c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
+    proxyPassword = c.proxyPasswordEnc ? deobfuscate(c.proxyPasswordEnc) : "";
+    awsSessionToken = c.awsSessionTokenEnc ? deobfuscate(c.awsSessionTokenEnc) : "";
     tlsCertificateKeyFilePassword = c.tlsCertificateKeyFilePasswordEnc ? deobfuscate(c.tlsCertificateKeyFilePasswordEnc) : "";
     readOnly = !!c.readOnly;
     environment = c.environment ?? "";
@@ -259,10 +337,12 @@ export function createConnectionRegistry() {
     if (!/^mongodb(\+srv)?:\/\//i.test(text)) return { ok: false };
     const parsed = parseUri(text);
     if (!parsed.profile.host) return { ok: false };
-    const before = { label, profile: profile(), password, certKeyPassword: tlsCertificateKeyFilePassword };
-    loadProfile(parsed.profile);
+    const before = { label, profile: profile(), password, certKeyPassword: tlsCertificateKeyFilePassword, proxyPassword, awsSessionToken };
+    loadProfile(keepHttpProxy(parsed.profile));
     password = parsed.password;
     tlsCertificateKeyFilePassword = parsed.certKeyPassword;
+    proxyPassword = parsed.proxyPassword ?? (parsed.profile.proxyType === "socks5" ? "" : proxyPassword);
+    awsSessionToken = parsed.awsSessionToken ?? "";
     let filled = changedFieldCount(before.profile, parsed.profile) + (password !== before.password ? 1 : 0);
     if (!label.trim()) {
       label = suggestLabelFromHost(parsed.profile.host);
@@ -272,6 +352,12 @@ export function createConnectionRegistry() {
     return { ok: true, filled };
   }
 
+  /** A pasted URI says nothing about an HTTP proxy (it never travels in a URI), so one set in the form stays. */
+  function keepHttpProxy(p: ConnectionProfile): ConnectionProfile {
+    if (p.proxyType === "socks5" || proxyType !== "http") return p;
+    return { ...p, proxyType, proxyHost, proxyPort, proxyUser };
+  }
+
   function undoFill() {
     const b = beforeFill;
     if (!b) return;
@@ -279,6 +365,8 @@ export function createConnectionRegistry() {
     loadProfile(b.profile);
     password = b.password;
     tlsCertificateKeyFilePassword = b.certKeyPassword;
+    proxyPassword = b.proxyPassword;
+    awsSessionToken = b.awsSessionToken;
     beforeFill = null;
   }
 
@@ -290,21 +378,35 @@ export function createConnectionRegistry() {
       authMethod: (c.authMethod as ConnectionProfile["authMethod"]) || "none",
       user: c.user, authSource: c.authSource, replicaSet: c.replicaSet,
       tls: c.tls, extraOptions: c.extraOptions, tlsCertificateKeyFile: c.tlsCertificateKeyFile ?? "",
+      proxyType: (c.proxyType as ProxyType) || "none", proxyHost: c.proxyHost ?? "", proxyPort: c.proxyPort ?? null,
+      proxyUser: c.proxyUser ?? "",
+      gssapiServiceName: c.gssapiServiceName ?? "", gssapiServiceRealm: c.gssapiServiceRealm ?? "",
+      gssapiCanonicalize: c.gssapiCanonicalize ?? "",
+      oidcMode: (c.oidcMode as OidcMode) || "workforce", oidcEnvironment: (c.oidcEnvironment as OidcEnvironment) || "azure",
+      oidcTokenResource: c.oidcTokenResource ?? "",
     };
     const pw = includePassword && c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
-    return buildProfileUri(normalizeForTunnel(p, !!c.sshEnabled), pw);
+    const secrets = includePassword
+      ? {
+          proxyPassword: c.proxyPasswordEnc ? deobfuscate(c.proxyPasswordEnc) : "",
+          awsSessionToken: c.awsSessionTokenEnc ? deobfuscate(c.awsSessionTokenEnc) : "",
+        }
+      : {};
+    return buildProfileUri(normalizeForTunnel(p, !!c.sshEnabled || c.proxyType === "http"), pw, "", secrets);
   }
 
   /** URI of what the form currently shows; the password only when asked for. */
   function formUri(includePassword: boolean): string {
-    return buildProfileUri(normalizeForTunnel(profile(), sshEnabled), includePassword ? password : "");
+    return buildProfileUri(normalizeForTunnel(profile(), tunneled()), includePassword ? password : "", "", includePassword ? uriSecrets() : {});
   }
 
   function importFromUri(uri: string) {
-    const { profile: p, password: pw, certKeyPassword } = parseUri(uri);
-    loadProfile(p);
-    password = pw;
-    tlsCertificateKeyFilePassword = certKeyPassword;
+    const parsed = parseUri(uri);
+    loadProfile(keepHttpProxy(parsed.profile));
+    password = parsed.password;
+    tlsCertificateKeyFilePassword = parsed.certKeyPassword;
+    proxyPassword = parsed.proxyPassword ?? (parsed.profile.proxyType === "socks5" ? "" : proxyPassword);
+    awsSessionToken = parsed.awsSessionToken ?? "";
   }
 
   /** Validates host/port/auth/SSH fields for connecting (not saving) — deliberately skips the
@@ -312,30 +414,34 @@ export function createConnectionRegistry() {
   function validateConnectFields(): string | null {
     const vProfile = validateProfile(label.trim() || "untitled", profile());
     if (!vProfile.ok) return vProfile.error;
+    const aws = awsError();
+    if (aws) return aws;
     const vSsh = validateSsh({
       enabled: sshEnabled, host: sshHost, port: sshPort, user: sshUser,
       authMethod: sshAuthMethod, privateKeyPath: sshPrivateKeyPath,
     });
     if (!vSsh.ok) return vSsh.error;
+    const vProxy = validateProxy(profile(), sshEnabled);
+    if (!vProxy.ok) return vProxy.error;
     return null;
   }
 
   /** Build and validate the URI. Returns `{ ok: true, uri, ssh }` or `{ ok: false }` (sets `error`). */
-  function connectTo(): { ok: true; uri: string; ssh: SshConnectInput | null } | { ok: false } {
+  function connectTo(): { ok: true; uri: string; ssh: SshConnectInput | null; proxy: ProxyConnectInput | null } | { ok: false } {
     error = null;
     const validationError = validateConnectFields();
     if (validationError) {
       error = validationError;
       return { ok: false };
     }
-    return { ok: true, uri: currentUri(), ssh: sshConnectInput() };
+    return { ok: true, uri: currentUri(), ssh: sshConnectInput(), proxy: httpProxyInput() };
   }
 
   /** Everything opening a session needs for the profile in the form; null (with `error` set) when it fails validation. */
   function connectRequest(): ConnectRequest | null {
     const res = connectTo();
     if (!res.ok) return null;
-    return { connId: editingId, label: label.trim() || res.uri, uri: res.uri, readOnly, ssh: res.ssh, environment, color, mcpAccess: clampMcpAccess(environment, mcpAccess) };
+    return { connId: editingId, label: label.trim() || res.uri, uri: res.uri, readOnly, ssh: res.ssh, environment, color, mcpAccess: clampMcpAccess(environment, mcpAccess), proxy: res.proxy };
   }
 
   /** Validates the current form's connection (SSH tunnel + Mongo) without opening a session. */
@@ -347,13 +453,18 @@ export function createConnectionRegistry() {
       return { ok: false, kind: "validation", message: validationError };
     }
     try {
-      await apiTestConnection(currentUri(), sshConnectInput());
+      await apiTestConnection(currentUri(), sshConnectInput(), httpProxyInput(), editingId);
       return { ok: true };
     } catch (e) {
       const shape = e as { kind?: string; message?: string };
       const kind = shape.kind === "SshTunnel" ? "ssh" : "mongo";
       return { ok: false, kind, message: shape.message ?? errorMessage(e) };
     }
+  }
+
+  /** Step-by-step diagnosis of the form's connection (after a failed test). */
+  async function diagnose() {
+    return await apiDiagnose(currentUri(), sshConnectInput(), anyProxyInput());
   }
 
   return {
@@ -392,8 +503,20 @@ export function createConnectionRegistry() {
     get sshPassword() { return sshPassword; }, set sshPassword(v: string) { sshPassword = v; },
     get sshPrivateKeyPath() { return sshPrivateKeyPath; }, set sshPrivateKeyPath(v: string) { sshPrivateKeyPath = v; },
     get sshPassphrase() { return sshPassphrase; }, set sshPassphrase(v: string) { sshPassphrase = v; },
+    get proxyType() { return proxyType; }, set proxyType(v: string) { proxyType = v as ProxyType; },
+    get proxyHost() { return proxyHost; }, set proxyHost(v: string) { proxyHost = v; },
+    get proxyPort() { return proxyPort; }, set proxyPort(v: number | null) { proxyPort = v; },
+    get proxyUser() { return proxyUser; }, set proxyUser(v: string) { proxyUser = v; },
+    get proxyPassword() { return proxyPassword; }, set proxyPassword(v: string) { proxyPassword = v; },
+    get awsSessionToken() { return awsSessionToken; }, set awsSessionToken(v: string) { awsSessionToken = v; },
+    get gssapiServiceName() { return gssapiServiceName; }, set gssapiServiceName(v: string) { gssapiServiceName = v; },
+    get gssapiServiceRealm() { return gssapiServiceRealm; }, set gssapiServiceRealm(v: string) { gssapiServiceRealm = v; },
+    get gssapiCanonicalize() { return gssapiCanonicalize; }, set gssapiCanonicalize(v: string) { gssapiCanonicalize = v; },
+    get oidcMode() { return oidcMode; }, set oidcMode(v: string) { oidcMode = v as OidcMode; },
+    get oidcEnvironment() { return oidcEnvironment; }, set oidcEnvironment(v: string) { oidcEnvironment = v as OidcEnvironment; },
+    get oidcTokenResource() { return oidcTokenResource; }, set oidcTokenResource(v: string) { oidcTokenResource = v; },
     get canUndoFill() { return beforeFill !== null; },
-    load, save, saveWithoutPassword, remove, edit, clearForm, connectTo, connectRequest, importFromUri, currentUri, testConnection, toInput,
+    load, save, saveWithoutPassword, remove, edit, clearForm, connectTo, connectRequest, importFromUri, currentUri, testConnection, diagnose, toInput,
     fillFromUri, undoFill, uriOf, formUri,
   };
 }

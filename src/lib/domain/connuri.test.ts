@@ -154,3 +154,101 @@ describe("changedFieldCount", () => {
     expect(changedFieldCount(base, parseUri("mongodb+srv://u@c.example.net/?replicaSet=rs").profile)).toBeGreaterThan(3);
   });
 });
+
+describe("socks5 proxy", () => {
+  const socks = { ...base, proxyType: "socks5" as const, proxyHost: "proxy.local", proxyPort: 1080, proxyUser: "pu" };
+  it("adds_socks5_params", () => {
+    expect(buildProfileUri(socks, "", "", { proxyPassword: "p@w" })).toBe(
+      "mongodb://localhost:27017/?proxyHost=proxy.local&proxyPort=1080&proxyUsername=pu&proxyPassword=p%40w",
+    );
+    expect(buildProfileUri({ ...socks, proxyUser: "" }, "")).toBe("mongodb://localhost:27017/?proxyHost=proxy.local&proxyPort=1080");
+  });
+  it("never puts an HTTP proxy in the URI", () => {
+    expect(buildProfileUri({ ...socks, proxyType: "http" }, "")).toBe("mongodb://localhost:27017/");
+  });
+  it("parses_socks5_params_back", () => {
+    const uri = buildProfileUri(socks, "", "", { proxyPassword: "p@w" });
+    const out = parseUri(uri);
+    expect(out.profile).toMatchObject({ proxyType: "socks5", proxyHost: "proxy.local", proxyPort: 1080, proxyUser: "pu", extraOptions: "" });
+    expect(out.proxyPassword).toBe("p@w");
+  });
+});
+
+describe("MONGODB-AWS", () => {
+  const aws = { ...base, authMethod: "aws" as const, user: "AKIA1" };
+  it("builds_aws_uri_with_session_token", () => {
+    expect(buildProfileUri(aws, "sec/ret+", "", { awsSessionToken: "tok/en=" })).toBe(
+      "mongodb://AKIA1:sec%2Fret%2B@localhost:27017/?authSource=%24external&authMechanism=MONGODB-AWS&authMechanismProperties=AWS_SESSION_TOKEN:tok%2Fen%3D",
+    );
+  });
+  it("builds_aws_uri_without_credentials", () => {
+    expect(buildProfileUri({ ...aws, user: "" }, "")).toBe(
+      "mongodb://localhost:27017/?authSource=%24external&authMechanism=MONGODB-AWS",
+    );
+  });
+  it("parses_mongodb_aws_mechanism", () => {
+    const uri = buildProfileUri(aws, "sec/ret+", "", { awsSessionToken: "tok/en=" });
+    const out = parseUri(uri);
+    expect(out.profile.authMethod).toBe("aws");
+    expect(out.profile.user).toBe("AKIA1");
+    expect(out.password).toBe("sec/ret+");
+    expect(out.awsSessionToken).toBe("tok/en=");
+    expect(out.profile.extraOptions).toBe("");
+  });
+  it("keeps unrelated mechanism properties in extraOptions", () => {
+    const out = parseUri("mongodb://h/?authMechanism=MONGODB-AWS&authMechanismProperties=AWS_SESSION_TOKEN:t,OTHER:x");
+    expect(out.awsSessionToken).toBe("t");
+    expect(out.profile.extraOptions).toBe("authMechanismProperties=OTHER:x");
+  });
+});
+
+describe("GSSAPI (Kerberos)", () => {
+  const krb = { ...base, authMethod: "kerberos" as const, user: "bob@EXAMPLE.COM", gssapiServiceName: "mongodb", gssapiServiceRealm: "OTHER.COM", gssapiCanonicalize: "forwardAndReverse" };
+  it("builds_gssapi_uri_with_properties", () => {
+    expect(buildProfileUri(krb, "ignored")).toBe(
+      "mongodb://bob%40EXAMPLE.COM@localhost:27017/?authSource=%24external&authMechanism=GSSAPI&authMechanismProperties=SERVICE_NAME:mongodb,SERVICE_REALM:OTHER.COM,CANONICALIZE_HOST_NAME:forwardAndReverse",
+    );
+  });
+  it("omits the properties block when none are set", () => {
+    expect(buildProfileUri({ ...krb, gssapiServiceName: "", gssapiServiceRealm: "", gssapiCanonicalize: "" }, "")).toBe(
+      "mongodb://bob%40EXAMPLE.COM@localhost:27017/?authSource=%24external&authMechanism=GSSAPI",
+    );
+  });
+  it("parses_gssapi_mechanism", () => {
+    const out = parseUri(buildProfileUri(krb, ""));
+    expect(out.profile).toMatchObject({ authMethod: "kerberos", user: "bob@EXAMPLE.COM", gssapiServiceName: "mongodb", gssapiServiceRealm: "OTHER.COM", gssapiCanonicalize: "forwardAndReverse", extraOptions: "" });
+    expect(out.password).toBe("");
+  });
+});
+
+describe("MONGODB-OIDC", () => {
+  const workload = { ...base, authMethod: "oidc" as const, oidcMode: "workload" as const };
+  it("builds_oidc_workload_uri", () => {
+    expect(buildProfileUri({ ...workload, oidcEnvironment: "azure", oidcTokenResource: "api://my-app/.default", user: "client-1" }, "ignored")).toBe(
+      "mongodb://client-1@localhost:27017/?authSource=%24external&authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:azure,TOKEN_RESOURCE:api%3A%2F%2Fmy-app%2F.default",
+    );
+    expect(buildProfileUri({ ...workload, oidcEnvironment: "gcp", oidcTokenResource: "https://db.example" }, "")).toBe(
+      "mongodb://localhost:27017/?authSource=%24external&authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:gcp,TOKEN_RESOURCE:https%3A%2F%2Fdb.example",
+    );
+    // k8s has no resource, and only azure takes a user (its managed identity client id).
+    expect(buildProfileUri({ ...workload, oidcEnvironment: "k8s", oidcTokenResource: "leftover", user: "x" }, "")).toBe(
+      "mongodb://localhost:27017/?authSource=%24external&authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s",
+    );
+  });
+  it("builds the workforce URI with an optional username hint and no environment", () => {
+    const wf = { ...base, authMethod: "oidc" as const, oidcMode: "workforce" as const, oidcEnvironment: "azure" as const, oidcTokenResource: "r" };
+    expect(buildProfileUri(wf, "")).toBe("mongodb://localhost:27017/?authSource=%24external&authMechanism=MONGODB-OIDC");
+    expect(buildProfileUri({ ...wf, user: "me@corp.com" }, "pw")).toBe(
+      "mongodb://me%40corp.com@localhost:27017/?authSource=%24external&authMechanism=MONGODB-OIDC",
+    );
+  });
+  it("parses_workload_and_workforce_uris_back", () => {
+    const w = parseUri(buildProfileUri({ ...workload, oidcEnvironment: "azure", oidcTokenResource: "api://x", user: "c1" }, ""));
+    expect(w.profile).toMatchObject({ authMethod: "oidc", oidcMode: "workload", oidcEnvironment: "azure", oidcTokenResource: "api://x", user: "c1", extraOptions: "" });
+    const f = parseUri("mongodb://me%40corp.com@h/?authSource=%24external&authMechanism=MONGODB-OIDC&tls=true");
+    expect(f.profile).toMatchObject({ authMethod: "oidc", oidcMode: "workforce", user: "me@corp.com", tls: true });
+    expect(f.password).toBe("");
+    // Unknown properties are kept rather than dropped.
+    expect(parseUri("mongodb://h/?authMechanism=MONGODB-OIDC&authMechanismProperties=ENVIRONMENT:k8s,ALLOWED_HOSTS:a.b").profile.extraOptions).toBe("authMechanismProperties=ALLOWED_HOSTS:a.b");
+  });
+});

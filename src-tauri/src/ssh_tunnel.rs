@@ -6,6 +6,7 @@ use russh::client::{self, Handle};
 use russh::keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertificate};
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
+use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex, MutexGuard};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
@@ -116,6 +117,25 @@ pub struct SshTunnelHandle {
     pub local_port: u16,
     task: JoinHandle<()>,
     forwards: Arc<Mutex<Vec<JoinHandle<()>>>>,
+    shared: Arc<Shared>,
+}
+
+impl SshTunnelHandle {
+    /// True while the SSH session is closed (dropped and not re-established yet).
+    pub fn is_down(&self) -> bool {
+        lock(&self.shared.snap).session.is_closed()
+    }
+
+    /// `host:port` of the SSH server (no credentials).
+    pub fn endpoint(&self) -> String {
+        format!("{}:{}", self.shared.cfg.host, self.shared.cfg.port)
+    }
+
+    /// How many full reopen cycles (all backoff attempts) have been run.
+    #[cfg(test)]
+    fn reopen_cycles(&self) -> usize {
+        self.shared.cycles.load(std::sync::atomic::Ordering::SeqCst)
+    }
 }
 
 impl Drop for SshTunnelHandle {
@@ -127,13 +147,30 @@ impl Drop for SshTunnelHandle {
     }
 }
 
-pub async fn open(
-    cfg: &SshTunnelConfig,
-    remote_host: &str,
-    remote_port: u16,
-    known_hosts_path: &Path,
-) -> Result<SshTunnelHandle, AppError> {
-    let config = Arc::new(client::Config::default());
+/// How long to wait before each of the (at most three) attempts to re-establish a dropped SSH session.
+pub const REOPEN_BACKOFF: [Duration; 3] = [Duration::from_secs(1), Duration::from_secs(2), Duration::from_secs(4)];
+
+/// Upper bound for connecting + authenticating an SSH session, and for opening one forwarding channel.
+pub const SSH_IO_TIMEOUT: Duration = Duration::from_secs(10);
+/// After a reopen cycle fails, new connections fail immediately for this long instead of retrying.
+const REOPEN_FAIL_WINDOW: Duration = Duration::from_secs(5);
+
+type SshSession = Handle<ClientHandler>;
+
+/// Connects and authenticates one SSH session (no forwarding yet), within `timeout`.
+async fn connect_session(cfg: &SshTunnelConfig, known_hosts_path: &Path, timeout: Duration) -> Result<SshSession, AppError> {
+    tokio::time::timeout(timeout, connect_session_inner(cfg, known_hosts_path))
+        .await
+        .map_err(|_| AppError::SshTunnel(format!("timed out connecting to {}:{}", cfg.host, cfg.port)))?
+}
+
+async fn connect_session_inner(cfg: &SshTunnelConfig, known_hosts_path: &Path) -> Result<SshSession, AppError> {
+    // Keepalives detect a half-open session (NAT timeout, cable pulled) that never reports a close.
+    let config = Arc::new(client::Config {
+        keepalive_interval: Some(Duration::from_secs(15)),
+        keepalive_max: 3,
+        ..Default::default()
+    });
     let mismatch: Arc<Mutex<Option<HostKeyMismatch>>> = Arc::new(Mutex::new(None));
     let handler = ClientHandler {
         host: cfg.host.clone(),
@@ -189,6 +226,41 @@ pub async fn open(
         return Err(AppError::SshTunnel("SSH authentication rejected".into()));
     }
 
+    Ok(session)
+}
+
+pub async fn open(
+    cfg: &SshTunnelConfig,
+    remote_host: &str,
+    remote_port: u16,
+    known_hosts_path: &Path,
+) -> Result<SshTunnelHandle, AppError> {
+    open_with_backoff(cfg, remote_host, remote_port, known_hosts_path, REOPEN_BACKOFF.to_vec()).await
+}
+
+pub async fn open_with_backoff(
+    cfg: &SshTunnelConfig,
+    remote_host: &str,
+    remote_port: u16,
+    known_hosts_path: &Path,
+    backoff: Vec<Duration>,
+) -> Result<SshTunnelHandle, AppError> {
+    open_with_timeouts(cfg, remote_host, remote_port, known_hosts_path, backoff, SSH_IO_TIMEOUT).await
+}
+
+/// `open` with an explicit reopen schedule: when the SSH session drops, the tunnel re-establishes it
+/// (one attempt per entry, sleeping that long first) on the same `local_port`, so the driver's
+/// pooled connections just reconnect to the address they already know.
+async fn open_with_timeouts(
+    cfg: &SshTunnelConfig,
+    remote_host: &str,
+    remote_port: u16,
+    known_hosts_path: &Path,
+    backoff: Vec<Duration>,
+    io_timeout: Duration,
+) -> Result<SshTunnelHandle, AppError> {
+    let session = connect_session(cfg, known_hosts_path, io_timeout).await?;
+
     let listener = TcpListener::bind("127.0.0.1:0")
         .await
         .map_err(|e| AppError::SshTunnel(format!("failed to bind local port: {e}")))?;
@@ -197,7 +269,17 @@ pub async fn open(
         .map_err(|e| AppError::SshTunnel(e.to_string()))?
         .port();
 
-    let session = Arc::new(session);
+    let shared = Arc::new(Shared {
+        snap: Mutex::new(Snapshot { session: Arc::new(session), failed_at: None }),
+        reopen_lock: tokio::sync::Mutex::new(()),
+        cycles: std::sync::atomic::AtomicUsize::new(0),
+        cfg: cfg.clone(),
+        known_hosts_path: known_hosts_path.to_path_buf(),
+        backoff,
+        io_timeout,
+        fail_window: REOPEN_FAIL_WINDOW,
+    });
+    let handle_shared = shared.clone();
     let remote_host = remote_host.to_string();
     let forwards: Arc<Mutex<Vec<JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
     let forwards_for_loop = forwards.clone();
@@ -206,11 +288,11 @@ pub async fn open(
             let Ok((local_stream, _)) = listener.accept().await else {
                 break;
             };
-            let session = session.clone();
+            let shared = shared.clone();
             let remote_host = remote_host.clone();
             let handle = tokio::spawn(async move {
-                if let Err(e) = forward_one(session, local_stream, &remote_host, remote_port).await {
-                    eprintln!("ssh tunnel: forward to {remote_host}:{remote_port} failed: {e}");
+                if let Err(e) = forward_one(shared, local_stream, &remote_host, remote_port).await {
+                    tracing::warn!("ssh tunnel: forward to {remote_host}:{remote_port} failed: {e}");
                 }
             });
             let mut guard = lock(&forwards_for_loop);
@@ -219,20 +301,131 @@ pub async fn open(
         }
     });
 
-    Ok(SshTunnelHandle { local_port, task, forwards })
+    Ok(SshTunnelHandle { local_port, task, forwards, shared: handle_shared })
+}
+
+/// The current SSH session. Guarded by a plain mutex that is only ever held for a clone or an
+/// assignment - never across a sleep or I/O - so reading it never waits for a reopen.
+struct Snapshot {
+    session: Arc<SshSession>,
+    /// When the last reopen cycle failed completely.
+    failed_at: Option<Instant>,
+}
+
+/// Everything needed to re-establish the SSH session after it drops.
+struct Shared {
+    snap: Mutex<Snapshot>,
+    /// Held by whoever is running a reopen cycle; other connections queue on it and then reuse its outcome.
+    reopen_lock: tokio::sync::Mutex<()>,
+    cycles: std::sync::atomic::AtomicUsize,
+    cfg: SshTunnelConfig,
+    known_hosts_path: PathBuf,
+    backoff: Vec<Duration>,
+    io_timeout: Duration,
+    fail_window: Duration,
+}
+
+impl std::fmt::Debug for Shared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Shared").field("host", &self.cfg.host).field("port", &self.cfg.port).finish()
+    }
+}
+
+impl Shared {
+    fn current(&self) -> Arc<SshSession> {
+        lock(&self.snap).session.clone()
+    }
+
+    /// `Some(err)` while the last reopen cycle failed less than `fail_window` ago for this `stale` session.
+    fn recent_failure(&self, stale: &Arc<SshSession>) -> Option<AppError> {
+        let g = lock(&self.snap);
+        let recent = g.failed_at.is_some_and(|t| t.elapsed() < self.fail_window);
+        (recent && Arc::ptr_eq(&g.session, stale) && g.session.is_closed()).then(|| self.down_error())
+    }
+
+    fn down_error(&self) -> AppError {
+        AppError::SshTunnel(format!("SSH tunnel to {}:{} is down; reconnecting failed", self.cfg.host, self.cfg.port))
+    }
+
+    /// Replaces the dropped `stale` session. One cycle runs at a time; connections that arrive
+    /// meanwhile wait for it and share its outcome, and for a few seconds after a failed cycle
+    /// new arrivals fail at once rather than start another.
+    async fn reopen(&self, stale: &Arc<SshSession>) -> Result<Arc<SshSession>, AppError> {
+        if let Some(e) = self.recent_failure(stale) {
+            return Err(e);
+        }
+        let _cycle = self.reopen_lock.lock().await;
+        {
+            let g = lock(&self.snap);
+            if !Arc::ptr_eq(&g.session, stale) || !g.session.is_closed() {
+                return Ok(g.session.clone()); // somebody else already reopened it
+            }
+        }
+        if let Some(e) = self.recent_failure(stale) {
+            return Err(e); // the cycle we queued behind failed
+        }
+        self.cycles.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut last = AppError::SshTunnel("SSH session closed".into());
+        for (attempt, delay) in self.backoff.iter().enumerate() {
+            tokio::time::sleep(*delay).await;
+            match connect_session(&self.cfg, &self.known_hosts_path, self.io_timeout).await {
+                Ok(fresh) => {
+                    tracing::info!("ssh tunnel: re-established after {} attempt(s)", attempt + 1);
+                    let fresh = Arc::new(fresh);
+                    let mut g = lock(&self.snap);
+                    g.session = fresh.clone();
+                    g.failed_at = None;
+                    return Ok(fresh);
+                }
+                Err(e) => {
+                    tracing::warn!("ssh tunnel: reopen attempt {} failed: {e}", attempt + 1);
+                    last = e;
+                }
+            }
+        }
+        lock(&self.snap).failed_at = Some(Instant::now());
+        let _ = last; // the specific cause is in the log; callers get the stable "is down" message
+        Err(self.down_error())
+    }
+
+    async fn open_on(&self, session: &SshSession, remote_host: &str, remote_port: u16) -> Result<russh::Channel<client::Msg>, AppError> {
+        match tokio::time::timeout(
+            self.io_timeout,
+            session.channel_open_direct_tcpip(remote_host, remote_port as u32, "127.0.0.1", 0),
+        )
+        .await
+        {
+            Ok(Ok(c)) => Ok(c),
+            Ok(Err(e)) => Err(AppError::SshTunnel(e.to_string())),
+            Err(_) => Err(AppError::SshTunnel("timed out opening an SSH channel".into())),
+        }
+    }
+
+    /// Opens a `direct-tcpip` channel, re-establishing the SSH session first when it has dropped.
+    async fn open_channel(&self, remote_host: &str, remote_port: u16) -> Result<russh::Channel<client::Msg>, AppError> {
+        let session = self.current();
+        if !session.is_closed() {
+            match self.open_on(&session, remote_host, remote_port).await {
+                Ok(c) => return Ok(c),
+                // The target refused the forward (or it timed out) but the SSH session is fine: not a reopen case.
+                Err(e) if !session.is_closed() => return Err(e),
+                Err(_) => {}
+            }
+        }
+        let fresh = self.reopen(&session).await?;
+        self.open_on(&fresh, remote_host, remote_port).await
+    }
 }
 
 /// Mongo's driver opens a connection pool, not one socket — every accepted local connection gets
 /// its own `direct-tcpip` channel, forwarded independently.
 async fn forward_one(
-    session: Arc<Handle<ClientHandler>>,
+    shared: Arc<Shared>,
     mut local: TcpStream,
     remote_host: &str,
     remote_port: u16,
-) -> Result<(), russh::Error> {
-    let channel = session
-        .channel_open_direct_tcpip(remote_host, remote_port as u32, "127.0.0.1", 0)
-        .await?;
+) -> Result<(), AppError> {
+    let channel = shared.open_channel(remote_host, remote_port).await?;
     let mut ssh_stream = channel.into_stream();
     let _ = tokio::io::copy_bidirectional(&mut local, &mut ssh_stream).await;
     Ok(())
@@ -366,6 +559,159 @@ mod tests {
         let path = std::env::temp_dir().join(format!("lumiong_test_known_hosts_{name}.json"));
         let _ = std::fs::remove_file(&path);
         path
+    }
+
+    /// Like `spawn_mock_ssh_server_with_key`, but also hands back every accepted client's task so a
+    /// test can drop all live SSH sessions at once (a channel dropping abnormally) while the server keeps listening.
+    async fn spawn_killable_ssh_server(key: PrivateKey) -> (u16, Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>>, tokio::task::JoinHandle<()>) {
+        let config = Arc::new(server::Config { keys: vec![key], ..Default::default() });
+        let listener = TcpListener::bind(("127.0.0.1", 0)).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let clients: Arc<Mutex<Vec<tokio::task::JoinHandle<()>>>> = Arc::new(Mutex::new(Vec::new()));
+        let clients_for_loop = clients.clone();
+        let accept = tokio::spawn(async move {
+            let mut server = MockHandler;
+            loop {
+                let Ok((stream, addr)) = listener.accept().await else { break };
+                let config = config.clone();
+                let handler = server.new_client(Some(addr));
+                // The SSH server talks to an in-memory pipe that a relay task bridges to the socket:
+                // aborting the relay closes the socket (the client sees the session die) and the pipe (the server session ends).
+                let (server_end, relay_end) = tokio::io::duplex(64 * 1024);
+                tokio::spawn(async move {
+                    let _ = server::run_stream(config, server_end, handler).await;
+                });
+                let relay = tokio::spawn(async move {
+                    let (mut stream, mut relay_end) = (stream, relay_end);
+                    let _ = tokio::io::copy_bidirectional(&mut stream, &mut relay_end).await;
+                });
+                lock(&clients_for_loop).push(relay);
+            }
+        });
+        (port, clients, accept)
+    }
+
+    /// Polls `cond` every 10 ms until it holds; panics after a generous 10 s.
+    async fn wait_until(mut cond: impl FnMut() -> bool) {
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !cond() {
+            assert!(std::time::Instant::now() < deadline, "condition not reached in time");
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    }
+
+    fn password_cfg(ssh_port: u16) -> SshTunnelConfig {
+        SshTunnelConfig {
+            enabled: true,
+            host: "127.0.0.1".into(),
+            port: ssh_port,
+            user: "tester".into(),
+            auth_method: "password".into(),
+            password: "testpass".into(),
+            private_key_path: String::new(),
+            passphrase: String::new(),
+        }
+    }
+
+    async fn echo_roundtrip(port: u16, msg: &[u8]) -> std::io::Result<Vec<u8>> {
+        let mut conn = tokio::net::TcpStream::connect(("127.0.0.1", port)).await?;
+        conn.write_all(msg).await?;
+        let mut buf = vec![0u8; msg.len()];
+        tokio::time::timeout(Duration::from_secs(5), conn.read_exact(&mut buf))
+            .await
+            .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "no echo"))??;
+        Ok(buf)
+    }
+
+    #[tokio::test]
+    async fn reopens_after_channel_drop() {
+        let (ssh_port, clients, _accept) = spawn_killable_ssh_server(ed25519_key(2)).await;
+        let echo_port = spawn_echo_server().await;
+        let kh = temp_known_hosts_path("reopen_after_drop");
+        let backoff = vec![Duration::from_millis(10), Duration::from_millis(20), Duration::from_millis(40)];
+        let tunnel = open_with_backoff(&password_cfg(ssh_port), "127.0.0.1", echo_port, &kh, backoff).await.unwrap();
+        let port = tunnel.local_port;
+        assert_eq!(echo_roundtrip(port, b"before").await.unwrap(), b"before");
+
+        // The SSH session dies abnormally; the server keeps accepting new ones.
+        for h in lock(&clients).drain(..) {
+            h.abort();
+        }
+        wait_until(|| tunnel.is_down()).await;
+
+        // Same local port, new SSH session behind it.
+        assert_eq!(tunnel.local_port, port);
+        assert_eq!(echo_roundtrip(port, b"after").await.unwrap(), b"after");
+    }
+
+    #[tokio::test]
+    async fn gives_up_after_the_last_backoff_and_does_not_hang() {
+        let (ssh_port, clients, accept) = spawn_killable_ssh_server(ed25519_key(3)).await;
+        let echo_port = spawn_echo_server().await;
+        let kh = temp_known_hosts_path("reopen_gives_up");
+        let backoff = vec![Duration::from_millis(10), Duration::from_millis(20), Duration::from_millis(40)];
+        let tunnel = open_with_backoff(&password_cfg(ssh_port), "127.0.0.1", echo_port, &kh, backoff).await.unwrap();
+
+        // The SSH server is gone for good.
+        accept.abort();
+        for h in lock(&clients).drain(..) {
+            h.abort();
+        }
+        wait_until(|| tunnel.is_down()).await;
+
+        let started = std::time::Instant::now();
+        let res = echo_roundtrip(tunnel.local_port, b"x").await;
+        assert!(res.is_err(), "{res:?}");
+        assert!(started.elapsed() < Duration::from_secs(4));
+    }
+
+    #[tokio::test]
+    async fn concurrent_connections_during_a_failed_reopen_share_one_cycle() {
+        let (ssh_port, clients, accept) = spawn_killable_ssh_server(ed25519_key(4)).await;
+        let echo_port = spawn_echo_server().await;
+        let kh = temp_known_hosts_path("reopen_concurrent");
+        let backoff = vec![Duration::from_millis(100), Duration::from_millis(200), Duration::from_millis(400)];
+        let tunnel = open_with_backoff(&password_cfg(ssh_port), "127.0.0.1", echo_port, &kh, backoff).await.unwrap();
+
+        accept.abort();
+        for h in lock(&clients).drain(..) {
+            h.abort();
+        }
+        wait_until(|| tunnel.is_down()).await;
+
+        // A cycle takes ~700 ms; five connections arriving together must not take 5 x that.
+        let started = std::time::Instant::now();
+        let port = tunnel.local_port;
+        let attempts: Vec<_> = (0..5).map(|_| tokio::spawn(async move { echo_roundtrip(port, b"x").await })).collect();
+        for a in attempts {
+            assert!(a.await.unwrap().is_err());
+        }
+        assert_eq!(tunnel.reopen_cycles(), 1);
+        assert!(started.elapsed() < Duration::from_millis(2500), "{:?}", started.elapsed());
+
+        // Right after the failed cycle a new connection fails at once, without another cycle.
+        let again = std::time::Instant::now();
+        assert!(echo_roundtrip(port, b"x").await.is_err());
+        assert!(again.elapsed() < Duration::from_millis(300), "{:?}", again.elapsed());
+        assert_eq!(tunnel.reopen_cycles(), 1);
+    }
+
+    #[tokio::test]
+    async fn connect_times_out_against_a_server_that_never_answers() {
+        // Accepts the TCP connection but never sends an SSH banner.
+        let silent = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = silent.local_addr().unwrap().port();
+        let _hold = tokio::spawn(async move {
+            let mut held = Vec::new();
+            while let Ok((stream, _)) = silent.accept().await {
+                held.push(stream);
+            }
+        });
+        let kh = temp_known_hosts_path("connect_timeout");
+        let started = std::time::Instant::now();
+        let err = connect_session(&password_cfg(port), &kh, Duration::from_millis(150)).await.err().expect("must time out");
+        assert!(matches!(&err, AppError::SshTunnel(m) if m.contains("timed out")), "{err}");
+        assert!(started.elapsed() < Duration::from_secs(3));
     }
 
     #[tokio::test]
