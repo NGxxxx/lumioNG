@@ -36,6 +36,7 @@ const LABELS: Record<CommandId, () => string> = {
   "view.toggleSavedQueries": m.toolbar_saved_queries,
   "help.about": m.menu_about,
   "help.exportDiagnostics": m.menu_export_diagnostics,
+  "help.mongoshCompat": m.menu_mongosh_compat,
   "query.history": m.cmd_query_history,
   "edit.undo": m.undo_last,
   "help.shortcuts": m.shortcuts_title,

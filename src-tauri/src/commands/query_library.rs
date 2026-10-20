@@ -11,7 +11,7 @@ fn legacy_library_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(dir.join("query_library.json"))
 }
 
-fn library_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
+pub(crate) fn library_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app
         .path()
         .app_config_dir()

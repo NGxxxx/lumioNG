@@ -26,3 +26,8 @@ export async function onMaximizedChange(callback: (maximized: boolean) => void):
   const win = getCurrentWindow();
   return win.onResized(async () => callback(await win.isMaximized()));
 }
+
+/** Shows or hides the operating system's own window frame (title bar and borders). */
+export async function setDecorations(on: boolean): Promise<void> {
+  await getCurrentWindow().setDecorations(on);
+}

@@ -45,7 +45,8 @@ fn show_all_byte_cap_error() -> AppError {
 #[derive(serde::Serialize, Clone)]
 pub struct ExportProgress {
     pub done: u64,
-    pub total: u64,
+    /// `None` while the match count is unknown (filtered count timed out) -> indeterminate progress.
+    pub total: Option<u64>,
 }
 
 /// Shared setup for the `export_*` commands: create the parent directory if needed and open a buffered writer at `path`, truncating any existing file.
@@ -57,9 +58,26 @@ pub(crate) fn create_output_writer(path: &std::path::Path) -> Result<std::io::Bu
     Ok(std::io::BufWriter::new(file))
 }
 
+/// How `open_export_cursor` sizes the match set for progress reporting.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum CountStrategy {
+    /// Empty filter: collection metadata, O(1).
+    Estimated,
+    /// Real filter: `count_documents`, bounded by `COUNT_MAX_TIME`.
+    Exact,
+}
+
+/// Longest an export waits for the exact count before giving up and reporting an unknown total.
+const COUNT_MAX_TIME: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Pure choice of count strategy: an empty filter needs no scan.
+pub(crate) fn count_strategy(filter: &Document) -> CountStrategy {
+    if filter.is_empty() { CountStrategy::Estimated } else { CountStrategy::Exact }
+}
+
 /// Shared setup for the `export_*` commands: open the sorted (optionally projected) cursor over
-/// matching documents and return it with the total match count. The count and the cursor open are
-/// independent reads against the same filter, so they run concurrently.
+/// matching documents and return it with the match count when it is cheap to get. The cursor opens
+/// immediately; the count runs alongside it and yields `None` if it fails or exceeds `COUNT_MAX_TIME`.
 async fn open_export_cursor(
     state: State<'_, AppState>,
     session_id: &str,
@@ -68,7 +86,7 @@ async fn open_export_cursor(
     filter: Option<&str>,
     sort: Option<&str>,
     projection: Option<&str>,
-) -> Result<(Cursor<Document>, u64), AppError> {
+) -> Result<(Cursor<Document>, Option<u64>), AppError> {
     let client = state.client(session_id).await?;
     let collection = client.database(db).collection::<Document>(coll);
     let (filter_doc, sort_doc, proj_doc) = build_find_options(filter, sort, projection)?;
@@ -76,8 +94,18 @@ async fn open_export_cursor(
     if let Some(p) = proj_doc {
         q = q.projection(p);
     }
-    let (cursor, total) = tokio::try_join!(q, collection.count_documents(filter_doc))?;
-    Ok((cursor, total))
+    let count = async {
+        match count_strategy(&filter_doc) {
+            CountStrategy::Estimated => collection.estimated_document_count().await.ok(),
+            CountStrategy::Exact => collection
+                .count_documents(filter_doc.clone())
+                .max_time(COUNT_MAX_TIME)
+                .await
+                .ok(),
+        }
+    };
+    let (cursor, total) = tokio::join!(q, count);
+    Ok((cursor?, total))
 }
 
 /// Checks the per-session cancel flag; returns an error to unwind the export/import loop once the user requests cancellation.
@@ -337,7 +365,7 @@ async fn consume_import_batches(
             stop = insert_batch(collection, docs, &raw_idx, insert_mode, &mut inserted, &mut errors).await;
         }
         done += batch_len as u64;
-        let _ = on_progress.send(ExportProgress { done, total });
+        let _ = on_progress.send(ExportProgress { done, total: Some(total) });
         if stop {
             break;
         }
@@ -625,7 +653,7 @@ pub async fn export_csv_progress(
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
     )
     .await?;
-    let report_total = total * 2;
+    let report_total = total.map(|t| t * 2);
 
     let mut columns_acc = crate::csv_export::ColumnAccumulator::new();
     let mut scanned: u64 = 0;
@@ -650,14 +678,14 @@ pub async fn export_csv_progress(
 
     let count = cleanup_on_err(p, async {
         let mut count: u64 = 0;
-        if total > 0 {
+        if scanned > 0 {
             crate::csv_export::write_header(&mut w, &columns).map_err(|e| AppError::Io(e.to_string()))?;
             while let Some(d) = write_cursor.try_next().await? {
                 check_cancelled(&cancel)?;
                 crate::csv_export::write_row(&mut w, &columns, &d).map_err(|e| AppError::Io(e.to_string()))?;
                 count += 1;
                 if count.is_multiple_of(PROGRESS_BATCH) {
-                    let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+                    let _ = on_progress.send(ExportProgress { done: scanned + count, total: report_total });
                 }
             }
         }
@@ -666,7 +694,7 @@ pub async fn export_csv_progress(
     })
     .await?;
 
-    let _ = on_progress.send(ExportProgress { done: report_total, total: report_total });
+    let _ = on_progress.send(ExportProgress { done: scanned + count, total: report_total.map(|_| scanned * 2) });
     Ok(count)
 }
 
@@ -688,7 +716,7 @@ pub async fn export_sql_progress(
         filter.as_deref(), sort.as_deref(), projection.as_deref(),
     )
     .await?;
-    let report_total = total * 2;
+    let report_total = total.map(|t| t * 2);
 
     let mut schema = crate::sql_export::SqlSchemaAccumulator::new();
     let mut scanned: u64 = 0;
@@ -713,7 +741,7 @@ pub async fn export_sql_progress(
 
     let count = cleanup_on_err(p, async {
         let mut count: u64 = 0;
-        if total > 0 {
+        if scanned > 0 {
             crate::sql_export::write_create_table(&mut w, &coll, &columns, &types)
                 .map_err(|e| AppError::Io(e.to_string()))?;
             while let Some(d) = write_cursor.try_next().await? {
@@ -722,7 +750,7 @@ pub async fn export_sql_progress(
                     .map_err(|e| AppError::Io(e.to_string()))?;
                 count += 1;
                 if count.is_multiple_of(PROGRESS_BATCH) {
-                    let _ = on_progress.send(ExportProgress { done: total + count, total: report_total });
+                    let _ = on_progress.send(ExportProgress { done: scanned + count, total: report_total });
                 }
             }
         }
@@ -731,7 +759,7 @@ pub async fn export_sql_progress(
     })
     .await?;
 
-    let _ = on_progress.send(ExportProgress { done: report_total, total: report_total });
+    let _ = on_progress.send(ExportProgress { done: scanned + count, total: report_total.map(|_| scanned * 2) });
     Ok(count)
 }
 
@@ -753,7 +781,7 @@ pub async fn export_query_progress(
     )
     .await?;
     // Fail fast on the counted total; the in-loop guard below still covers a cursor that outgrows it.
-    if total > MAX_SHOW_ALL_DOCS {
+    if let Some(total) = total.filter(|t| *t > MAX_SHOW_ALL_DOCS) {
         return Err(show_all_cap_error(Some(total)));
     }
 
@@ -821,7 +849,24 @@ mod tests {
     use super::*;
     use crate::error::AppError;
 
+    use mongodb::bson::doc;
     use mongodb::error::IndexedWriteError;
+
+    #[test]
+    fn empty_filter_uses_estimated_count() {
+        assert_eq!(count_strategy(&doc! {}), CountStrategy::Estimated);
+    }
+
+    #[test]
+    fn real_filter_uses_exact_count() {
+        assert_eq!(count_strategy(&doc! { "status": "active" }), CountStrategy::Exact);
+    }
+
+    #[test]
+    fn unknown_total_serializes_as_null() {
+        let v = serde_json::to_value(ExportProgress { done: 3, total: None }).unwrap();
+        assert_eq!(v, serde_json::json!({ "done": 3, "total": null }));
+    }
 
     fn write_error(index: usize, message: &str) -> IndexedWriteError {
         serde_json::from_str(&format!(r#"{{"index":{index},"code":11000,"errmsg":"{message}"}}"#)).unwrap()

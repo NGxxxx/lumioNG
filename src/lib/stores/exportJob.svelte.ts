@@ -31,7 +31,8 @@ export interface ExportRow {
   coll: string;
   status: RowStatus;
   done: number;
-  total: number;
+  /** null = match count unknown (indeterminate progress). */
+  total: number | null;
   error: string | null;
 }
 
@@ -73,7 +74,7 @@ export function createExportJob(sessionId: string, config: ExportJobConfig) {
     const t = config.targets[i];
     const path = pathFor(i);
     update(i, { status: "running" });
-    const onProg = (done: number, total: number) => update(i, { done, total });
+    const onProg = (done: number, total: number | null) => update(i, { done, total });
     try {
       const toText = (data: Doc[]) => (config.format === "csv" ? toCsv(data) : config.format === "sql" ? toSql(data, t.coll) : toJsonArray(data));
       if (t.source.kind === "memory") {

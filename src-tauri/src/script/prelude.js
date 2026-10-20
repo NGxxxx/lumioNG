@@ -1,7 +1,7 @@
 // prelude.js — mongosh read shim for QuickJS
 // Injected globals from Rust host:
 //   __find, __aggregate, __count, __distinct, __runCommand, __adminCommand, __listCollections
-//   __cursorFetch, __cursorClose, __print
+//   __cursorFetch, __cursorClose, __print, __loadSnippet
 //   __DBNAME  (current database name string)
 //
 // All host fns accept/return Canonical Extended JSON strings.
@@ -195,6 +195,58 @@ var console = {
   info: print,
 };
 
+// ── load("name") ──────────────────────────────────────────────────────────────
+// Runs a saved query from the library as a snippet in this same global context and returns its
+// completion value. Nesting is capped (a snippet may load another); a cycle simply hits the cap.
+
+var __LOAD_MAX_DEPTH = 8;
+var __loadStack = [];
+
+function load(name) {
+  name = String(name);
+  var chain = __loadStack.concat([name]).join(" \u2192 ");
+  if (__loadStack.length >= __LOAD_MAX_DEPTH) {
+    throw new Error("load(): maximum depth " + __LOAD_MAX_DEPTH + " exceeded (possible cycle): " + chain);
+  }
+  var src;
+  try {
+    src = __loadSnippet(name);
+  } catch (e) {
+    // Top-level failures already name the snippet; nested ones also show how we got there.
+    if (__loadStack.length > 0 && e && e.message) throw new Error(e.message + " [load chain: " + chain + "]");
+    throw e;
+  }
+  __loadStack.push(name);
+  try {
+    return (0, eval)(src);
+  } catch (e) {
+    // Say which saved query failed (an outer load() adds its own frame, so the path reads outer -> inner).
+    var detail = e && e.message !== undefined ? (e.name ? e.name + ": " : "") + e.message : String(e);
+    throw new Error('in saved query "' + name + '": ' + detail);
+  } finally {
+    __loadStack.pop();
+  }
+}
+
+// ── Unsupported-method guard ──────────────────────────────────────────────────
+// Wraps an API object so calling a method it lacks throws a clear message instead of a bare
+// "not a function". Property reads stay undefined-safe for the engine's own probing (symbols,
+// promise/JSON hooks, "_internal" fields); only a *call* of an unknown name throws.
+
+function __guardUnknown(target, label) {
+  return new Proxy(target, {
+    get(t, key, receiver) {
+      if (key in t) return Reflect.get(t, key, receiver);
+      if (typeof key === "symbol") return undefined;
+      if (key === "then" || key === "catch" || key === "finally" || key === "toJSON") return undefined;
+      if (key.charAt(0) === "_") return undefined;
+      return function () {
+        throw new Error(label + "." + key + " is not supported in LumioNG (see Help \u2192 mongosh compatibility)");
+      };
+    },
+  });
+}
+
 // ── Cursor ────────────────────────────────────────────────────────────────────
 // Lazy cursor: does not open the host cursor until materialized.
 // kind: "find" | "agg"
@@ -222,6 +274,7 @@ class Cursor {
     this._handle = null;
     this._exhausted = false;
     this._capped = false; // true once toArray() stopped before natural exhaustion (row or byte cap)
+    return __guardUnknown(this, "db." + coll + ".find()");
   }
 
   sort(s)       { this._o.sort = s; return this; }
@@ -388,7 +441,7 @@ function makeBulk(dbn, c, ordered) {
 // ── Collection ────────────────────────────────────────────────────────────────
 
 function makeColl(dbn, c) {
-  return {
+  return __guardUnknown({
     find(q, p) {
       const opts = {};
       if (p) { opts.projection = p; }
@@ -621,7 +674,7 @@ function makeColl(dbn, c) {
         },
       };
     },
-  };
+  }, "db." + c);
 }
 
 // ── Database ──────────────────────────────────────────────────────────────────
@@ -810,7 +863,7 @@ function makeDb(name) {
 var db = makeDb(__DBNAME);
 
 // ── rs.* (replication) ──────────────────────────────────────────────────────────
-var rs = {
+var rs = __guardUnknown({
   status()  { return JSON.parse(__adminCommand(JSON.stringify({ replSetGetStatus: 1 }))); },
   conf()    { var r = JSON.parse(__adminCommand(JSON.stringify({ replSetGetConfig: 1 }))); return r.config || r; },
   config()  { return this.conf(); },
@@ -848,10 +901,10 @@ var rs = {
   // Best-effort: derived summaries printed to the console.
   printReplicationInfo()          { printjson(this.status()); },
   printSecondaryReplicationInfo() { printjson(this.status()); },
-};
+}, "rs");
 
 // ── sh.* (sharding) ─────────────────────────────────────────────────────────────
-var sh = {
+var sh = __guardUnknown({
   status() {
     // Simplified: shard list + balancer state (mongosh's full formatted status reads config.*).
     return {
@@ -889,7 +942,7 @@ var sh = {
   isBalancerRunning()  { return JSON.parse(__adminCommand(JSON.stringify({ balancerStatus: 1 }))); },
   enableAutoSplit()    { return JSON.parse(__adminCommand(JSON.stringify({ balancerCollectionStatus: 1 }))); },
   disableAutoSplit()   { return JSON.parse(__adminCommand(JSON.stringify({ balancerCollectionStatus: 1 }))); },
-};
+}, "sh");
 
 // ── __finalize ────────────────────────────────────────────────────────────────
 // Called by the engine (Task 7) on the completion value of the user script.

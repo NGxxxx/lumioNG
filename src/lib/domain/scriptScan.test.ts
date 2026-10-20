@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { scanDestructive, scanCritical } from "./scriptScan";
+import { scanDestructive, scanCritical, withLoadedSnippets } from "./scriptScan";
 
 describe("scanDestructive", () => {
   it("flags update/delete/replace/remove/drop family", () => {
@@ -57,5 +57,63 @@ describe("scanCritical", () => {
 
   it("dedupes and ignores comments (best-effort)", () => {
     expect(scanCritical("db.c.drop(); db.d.drop(); // db.dropDatabase()")).toEqual(["drop"]);
+  });
+});
+
+describe("withLoadedSnippets", () => {
+  const lib: Record<string, string> = {
+    wipe: `db.logs.deleteMany({})`,
+    outer: `load("wipe")`,
+    loop: `load("loop")`,
+    safe: `db.logs.find()`,
+  };
+  const lookup = (n: string) => lib[n];
+
+  it("appends the source of snippets the script loads, so the destructive scan sees them", () => {
+    const { text, unresolved } = withLoadedSnippets(`load("outer")`, lookup);
+    expect(unresolved).toBe(false);
+    expect(scanDestructive(text)).toEqual(["deleteMany"]);
+    expect(scanCritical(text)).toContain("deleteMany");
+  });
+
+  it("reads backtick literals without interpolation", () => {
+    const { text, unresolved } = withLoadedSnippets("load(`wipe`)", lookup);
+    expect(unresolved).toBe(false);
+    expect(scanDestructive(text)).toEqual(["deleteMany"]);
+  });
+
+  it("is quiet for plain scripts, resolved safe loads and commented-out loads", () => {
+    expect(withLoadedSnippets(`db.c.find()`, lookup).unresolved).toBe(false);
+    expect(withLoadedSnippets(`load("safe")`, lookup).unresolved).toBe(false);
+    expect(withLoadedSnippets(`// load(n)\n/* load("x") */ db.c.find()`, lookup).unresolved).toBe(false);
+    expect(withLoadedSnippets(`db.payload.find()`, lookup).unresolved).toBe(false);
+    expect(withLoadedSnippets(`globalThis.load("safe")`, lookup).unresolved).toBe(false); // still a literal, still scanned
+  });
+
+  it("fails closed on loads it cannot resolve", () => {
+    for (const script of [
+      `var n = "wipe"; load(n)`,
+      `load("wi" + "pe")`,
+      "load(`w${'ipe'}`)",
+      `var l = load; l("wipe")`,
+      `globalThis.load(n)`,
+      `this["load"]("wipe")`,
+      `load("missing")`,
+      `load("wipe", 1)`,
+    ]) {
+      expect(withLoadedSnippets(script, lookup).unresolved, script).toBe(true);
+    }
+  });
+
+  it("fails closed when a loaded snippet itself loads dynamically", () => {
+    expect(withLoadedSnippets(`load("dyn")`, (n) => (n === "dyn" ? `load(x)` : undefined)).unresolved).toBe(true);
+  });
+
+  it("is unresolved when the library is unavailable (nothing can be looked up)", () => {
+    expect(withLoadedSnippets(`load("wipe")`, () => undefined).unresolved).toBe(true);
+  });
+
+  it("stops at the depth cap on cycles", () => {
+    expect(() => withLoadedSnippets(`load("loop")`, lookup)).not.toThrow();
   });
 });

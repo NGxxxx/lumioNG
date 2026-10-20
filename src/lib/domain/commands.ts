@@ -32,6 +32,7 @@ export type CommandId =
   | "view.toggleSavedQueries"
   | "help.about"
   | "help.exportDiagnostics"
+  | "help.mongoshCompat"
   | "tools.mcpSettings"
   | "tools.auditLog"
   | "tools.exportSettings"

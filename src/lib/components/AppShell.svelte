@@ -31,6 +31,7 @@
   import StatusBar from "#lib/components/StatusBar.svelte";
   import CommandLog from "#lib/components/CommandLog.svelte";
   import { mcp } from "#lib/stores/mcp.svelte.js";
+  import { windowFrame } from "#lib/stores/windowFrame.svelte.js";
   import type { Command, CommandId } from "#lib/domain/commands.js";
   import type { AppContext } from "#lib/stores/appContext.svelte.js";
   import type { Snippet } from "svelte";
@@ -167,6 +168,7 @@
     coll={sel?.coll ?? null}
     onquit={() => (app.confirmQuit = true)}
     env={focusEnv}
+    nativeFrame={windowFrame.native}
     onpalette={() => (app.paletteOpen = true)}
     paletteHint={shortcutHint("view.commandPalette") ?? ""}
   >

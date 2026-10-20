@@ -43,8 +43,32 @@ pub fn run() {
         .manage(commands::mcp::McpServer::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
+        // Remembers size, position and maximized state (saved on close/exit, restored when the window is
+        // created; a saved position that no monitor shows any more is ignored by the plugin). Decorations are
+        // left out on purpose: the "system window frame" option owns them (see TitleBar / windowFrame store).
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::SIZE
+                        | tauri_plugin_window_state::StateFlags::POSITION
+                        | tauri_plugin_window_state::StateFlags::MAXIMIZED,
+                )
+                .build(),
+        )
         .setup(|app| {
             use tauri::Manager;
+            // First run (no saved window state yet): start maximized, as tauri.conf.json used to force.
+            // The config no longer sets `maximized`, because the plugin cannot un-maximize a window.
+            let first_run = app
+                .path()
+                .app_config_dir()
+                .map(|d| !d.join(".window-state.json").exists())
+                .unwrap_or(true);
+            if first_run {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.maximize();
+                }
+            }
             // Logging is best-effort: the app runs fine without a writable log directory.
             if let Ok(dir) = app.path().app_log_dir() {
                 logging::init(dir);

@@ -13,6 +13,7 @@
   import { mcp } from "#lib/stores/mcp.svelte.js";
   import { audit } from "#lib/stores/audit.svelte.js";
   import { vault } from "#lib/stores/vault.svelte.js";
+  import { windowFrame } from "#lib/stores/windowFrame.svelte.js";
   import { startSessionHealth } from "#lib/stores/sessionHealthApp.js";
   import { undo } from "#lib/stores/undo.svelte.js";
   import { SHORTCUTS, type Command, type CommandId } from "#lib/domain/commands.js";
@@ -33,6 +34,8 @@
     queryLibrary.load(); // once at app start; failure shows in the panel and never blocks the app
     mcp.init(); // brings the MCP server back if it was on last time
     vault.init(); // locked master-password vault: ask for it before any saved connection is opened
+    void windowFrame.init(); // applies the "system window frame" choice
+    void app.workspace.init(); // offers the tabs of the previous session
     audit.init(); // tells Rust which environments to audit (it assumes PROD only until then)
     return startSessionHealth(); // pings open sessions; marks them degraded and reconnects when they go dark
   });
@@ -84,6 +87,7 @@
     "view.resetToDefault": { disabled: false, run: () => (app.confirmReset = true) },
     "view.resetLayout": { disabled: !dataViewActive, run: () => activeDataView.handle?.resetLayout?.() },
     "help.about": { disabled: false, run: () => (app.aboutOpen = true) },
+    "help.mongoshCompat": { disabled: false, run: () => (app.mongoshCompatOpen = true) },
     "help.exportDiagnostics": { disabled: false, run: () => void app.exportDiagnosticsBundle() },
     "tools.mcpSettings": { disabled: false, run: () => (app.mcpOpen = true) },
     "tools.auditLog": { disabled: false, run: () => (app.auditOpen = true) },

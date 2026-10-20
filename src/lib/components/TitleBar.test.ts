@@ -25,4 +25,15 @@ describe("TitleBar", () => {
     const { queryByText } = render(TitleBar, { props: { conn: "x", db: null, coll: null, onquit: vi.fn() } });
     expect(queryByText("PROD")).toBeNull();
   });
+
+  it("hides_window_buttons_when_native_frame", () => {
+    const custom = render(TitleBar, { props: { conn: null, db: null, coll: null, onquit: vi.fn() } });
+    expect(custom.container.querySelector(".wbtns")).not.toBeNull();
+    expect(custom.getByLabelText("Close")).toBeTruthy();
+    custom.unmount();
+    const native = render(TitleBar, { props: { conn: null, db: null, coll: null, onquit: vi.fn(), nativeFrame: true } });
+    expect(native.container.querySelector(".wbtns")).toBeNull();
+    expect(native.queryByLabelText("Close")).toBeNull();
+    expect(native.queryByLabelText("Minimize")).toBeNull();
+  });
 });

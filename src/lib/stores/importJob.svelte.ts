@@ -30,9 +30,9 @@ export function createImportJob(config: ImportJobConfig) {
     if (running || finished) return;
     running = true;
     activity.begin(m.common_running());
-    const onProgress = (d: number, t: number) => {
+    const onProgress = (d: number, t: number | null) => {
       done = d;
-      total = t;
+      total = t ?? total;
     };
     try {
       const isBson = config.path.toLowerCase().endsWith(".bson");

@@ -1,11 +1,14 @@
 import { runScript, cancelScript } from "../api/script";
+import type { ConsoleEntry } from "../api/script";
+import { rafThrottle } from "../domain/rafThrottle";
 import { queryPage, aggregate, aggregateCount, countDocuments } from "../api/documents";
 import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
 import { mergeColumns, type ColumnField } from "../domain/schema";
 import { computeColumnWidths } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
-import { scanDestructive, scanCritical } from "../domain/scriptScan";
+import { scanDestructive, scanCritical, withLoadedSnippets } from "../domain/scriptScan";
+import { queryLibrary } from "./queryLibrary.svelte";
 import { errorMessage } from "../api/errors";
 import { canSuppress } from "../domain/confirmPolicy";
 import type { HistoryEntry } from "../domain/queryHistory";
@@ -140,7 +143,8 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     r.valueJson = s.valueJson; r.ackJson = s.ackJson;
   }
 
-  async function execute(db: string, script: string) {
+  /** `confirmed`: the user passed the destructive/critical gate for this run; Rust requires it before a PROD load() may run destructive snippet code. */
+  async function execute(db: string, script: string, confirmed: boolean) {
     staleAfterUndo = false;
     previewStash = null;
     previewLabel = null;
@@ -156,14 +160,33 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     r.bumpGeneration(); // invalidate any still in-flight paged fetch (and drop any open cell edit) from before this fresh run
     const startedAt = Date.now();
     activity.begin(m.status_bar_running_query());
+    // Printed lines arrive while the script runs. `consoleEntries` is `$state.raw`, so lines are buffered
+    // and appended in one reassignment per animation frame (up to 1,000 lines/s must not mean 1,000 reassignments).
+    r.consoleEntries = [];
+    let buffered: ConsoleEntry[] = [];
+    let streaming = true;
+    const flushOutput = () => {
+      if (!buffered.length) return;
+      r.consoleEntries = [...r.consoleEntries, ...buffered];
+      buffered = [];
+    };
+    const scheduleFlush = rafThrottle(flushOutput);
     try {
       const outcome = await runScript(ctx.getSessionId(), db, script, {
         timeoutMs: settings.queryTimeoutMs,
         cap: settings.queryResultCapUnlimited ? 0 : settings.queryResultCap,
+        confirmed,
+        onOutput: (entry) => {
+          if (!streaming) return;
+          buffered.push(entry);
+          scheduleFlush();
+        },
       });
+      streaming = false;
+      scheduleFlush.cancel();
       commandLog.push(script, ctx.getSessionId(), Date.now() - startedAt);
 
-      r.consoleEntries = outcome.console;
+      r.consoleEntries = outcome.console; // authoritative: the same lines the stream delivered
       explain.explainHint = outcome.explainHint ?? null;
       r.displayModeVal = computeDisplayMode(outcome);
 
@@ -231,6 +254,9 @@ export function createScriptRun(ctx: ScriptRunCtx) {
 
       r.error = outcome.error;
     } catch (e) {
+      streaming = false;
+      scheduleFlush.cancel();
+      flushOutput(); // keep what was printed before the failure
       r.error = errorMessage(e);
     } finally {
       r.lastElapsedMs = Date.now() - startedAt;
@@ -287,13 +313,22 @@ export function createScriptRun(ctx: ScriptRunCtx) {
       r.error = m.query_tab_select_db_first();
       return;
     }
-    const critical = scanCritical(script);
+    // Snippets pulled in by load("name") are not in the editor, but they run with the same rights: scan them too.
+    // A load() that can't be traced to a known snippet (dynamic, aliased, library not loaded or errored) counts as destructive.
+    const libraryReady = queryLibrary.loaded && !queryLibrary.loadError;
+    const { text: scanned, unresolved } = withLoadedSnippets(script, (name) => {
+      if (!libraryReady) return undefined;
+      const q = queryLibrary.nodes.find((n) => n.kind === "query" && n.name === name);
+      return q?.kind === "query" ? q.statement : undefined;
+    });
+    const critical = scanCritical(scanned);
     if (critical.length) {
       pending = { db, script };
       criticalConfirm = { ops: critical };
       return;
     }
-    const ops = scanDestructive(script);
+    const ops = scanDestructive(scanned);
+    if (unresolved) ops.push("load");
     // "Don't ask again" never applies on PROD.
     const prod = !canSuppress(sessionEnvironment(ctx.getSessionId()), "script");
     if (ops.length && (prod || !settings.suppressDestructiveWarning)) {
@@ -301,14 +336,14 @@ export function createScriptRun(ctx: ScriptRunCtx) {
       destructiveConfirm = { ops, prod };
       return;
     }
-    await execute(db, script);
+    await execute(db, script, false);
   }
 
   async function confirmRun() {
     const p = pending;
     destructiveConfirm = null;
     pending = null;
-    if (p) await execute(p.db, p.script);
+    if (p) await execute(p.db, p.script, true);
   }
 
   function cancelConfirm() {
@@ -320,7 +355,7 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     const p = pending;
     criticalConfirm = null;
     pending = null;
-    if (p) await execute(p.db, p.script);
+    if (p) await execute(p.db, p.script, true);
   }
 
   function cancelCritical() {

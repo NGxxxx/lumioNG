@@ -27,7 +27,7 @@ export function createGridfsDownload(sessionId: string, db: string, bucket: stri
     try {
       await gridfsDownload(sessionId, db, bucket, doc, length, path, (d, t) => {
         done = d;
-        total = t;
+        total = t ?? length;
       });
       status = "done";
     } catch (e) {

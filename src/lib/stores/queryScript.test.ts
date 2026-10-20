@@ -326,7 +326,7 @@ describe("execute forwards engine settings", () => {
     settings.setQueryResultCap(42);
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("mydb");
-    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", { timeoutMs: 7000, cap: 42 });
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", expect.objectContaining({ timeoutMs: 7000, cap: 42 }));
   });
 
   it("passes cap: 0 (unlimited) when queryResultCapUnlimited is on, ignoring the numeric cap", async () => {
@@ -337,7 +337,7 @@ describe("execute forwards engine settings", () => {
     settings.setQueryResultCapUnlimited(true);
     const s = createQueryScript("sess", "db.c.find()");
     await s.run("mydb");
-    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", { timeoutMs: 30000, cap: 0 });
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find()", expect.objectContaining({ timeoutMs: 30000, cap: 0 }));
   });
 });
 
@@ -1472,5 +1472,71 @@ describe("session switch gate", () => {
     const s = createQueryScript("sess", "db.c.find({}).toArray()");
     s.rebindSession("new-sess");
     expect(s.sessionId).toBe("new-sess");
+  });
+});
+
+describe("streamed script output", () => {
+  let frames: FrameRequestCallback[] = [];
+  beforeEach(() => {
+    frames = [];
+    vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) => { frames.push(cb); return frames.length; });
+    vi.stubGlobal("cancelAnimationFrame", () => { frames = []; });
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  const flushFrame = () => { const f = frames; frames = []; f.forEach((cb) => cb(0)); };
+
+  it("appends_streamed_output", async () => {
+    let finish!: (o: unknown) => void;
+    let emit!: (e: { level: string; text: string }) => void;
+    (runScript as any).mockImplementationOnce((_s: string, _d: string, _q: string, opts: any) => {
+      emit = opts.onOutput;
+      return new Promise((res) => { finish = res; });
+    });
+    const s = createQueryScript("sess", "print('a')");
+    const done = s.run("mydb");
+    await Promise.resolve();
+
+    // Many lines in one frame reassign the (raw) array once, and only when the frame fires.
+    emit({ level: "log", text: "a" });
+    emit({ level: "log", text: "b" });
+    expect(s.consoleEntries).toEqual([]);
+    expect(frames).toHaveLength(1);
+    flushFrame();
+    const afterFirst = s.consoleEntries;
+    expect(afterFirst.map((e) => e.text)).toEqual(["a", "b"]);
+    emit({ level: "error", text: "c" });
+    flushFrame();
+    expect(s.consoleEntries.map((e) => e.text)).toEqual(["a", "b", "c"]);
+    expect(s.consoleEntries).not.toBe(afterFirst); // immutable append
+
+    // The final outcome is authoritative and does not duplicate the streamed lines.
+    finish({
+      console: [{ level: "log", text: "a" }, { level: "log", text: "b" }, { level: "error", text: "c" }],
+      result: { kind: "none" }, provenance: null, capped: false, error: null,
+    });
+    await done;
+    expect(s.consoleEntries.map((e) => e.text)).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("load() and the destructive gate", () => {
+  beforeEach(() => {
+    (runScript as any).mockClear();
+    settings.setSuppressDestructiveWarning(false);
+  });
+
+  it("a load() that can't be resolved (library not loaded) asks for confirmation, and the run is flagged confirmed", async () => {
+    const s = createQueryScript("sess", `var n = "x"; load(n)`);
+    await s.run("mydb");
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.destructiveConfirm?.ops).toContain("load");
+    await s.confirmRun();
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", expect.anything(), expect.objectContaining({ confirmed: true }));
+  });
+
+  it("an ungated run is sent as unconfirmed", async () => {
+    const s = createQueryScript("sess", "db.c.find({})");
+    await s.run("mydb");
+    expect(runScript).toHaveBeenCalledWith("sess", "mydb", "db.c.find({})", expect.objectContaining({ confirmed: false }));
   });
 });

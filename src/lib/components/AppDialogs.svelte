@@ -9,6 +9,7 @@
   import CommandPalette from "#lib/components/CommandPalette.svelte";
   import ShortcutsDialog from "#lib/components/ShortcutsDialog.svelte";
   import AboutDialog from "#lib/components/AboutDialog.svelte";
+  import MongoshCompatDialog from "#lib/components/MongoshCompatDialog.svelte";
   import CrashReportDialog from "#lib/components/CrashReportDialog.svelte";
   import VaultUnlockDialog from "#lib/components/VaultUnlockDialog.svelte";
   import McpDialog from "#lib/components/McpDialog.svelte";
@@ -74,6 +75,7 @@
     ["help.shortcuts", m.menu_keyboard_shortcuts, "view"],
     ["help.about", m.menu_about, "view"],
     ["help.exportDiagnostics", m.menu_export_diagnostics, "actions"],
+    ["help.mongoshCompat", m.menu_mongosh_compat, "view"],
     ["tools.mcpSettings", m.menu_mcp_settings, "actions"],
     ["tools.auditLog", m.menu_audit_log, "actions"],
     ["tools.exportSettings", m.menu_export_settings, "actions"],
@@ -172,8 +174,30 @@
     confirmLabel={m.page_quit_confirm()}
     cancelLabel={m.page_quit_cancel()}
     danger
-    onconfirm={quit}
+    onconfirm={() => { app.workspace.saveNow(); return quit(); }}
     oncancel={() => (app.confirmQuit = false)}
+  />
+{/if}
+{#if app.workspace.prompt?.stage === "restore"}
+  <ConfirmDialog
+    title={m.workspace_restore_title()}
+    message={m.workspace_restore_message({ count: String(app.workspace.prompt.plan.tabCount) })}
+    detail={app.workspace.prompt.plan.dropped > 0 ? m.workspace_restore_dropped({ count: String(app.workspace.prompt.plan.dropped) }) : null}
+    confirmLabel={m.workspace_restore_confirm()}
+    cancelLabel={m.workspace_restore_cancel()}
+    onconfirm={() => void app.workspace.accept()}
+    oncancel={() => app.workspace.decline()}
+  />
+{:else if app.workspace.prompt?.stage === "prod"}
+  <ConfirmDialog
+    title={m.workspace_restore_prod_title()}
+    message={m.workspace_restore_prod_message()}
+    detail={app.workspace.prompt.plan.confirm.map((c) => c.environment ? `${c.label} (${c.environment.toUpperCase()})` : c.label).join(", ")}
+    confirmLabel={m.workspace_restore_prod_confirm()}
+    cancelLabel={m.workspace_restore_prod_skip()}
+    danger
+    onconfirm={() => void app.workspace.acceptProd()}
+    oncancel={() => app.workspace.declineProd()}
   />
 {/if}
 {#if app.saveQueryDialog}
@@ -193,6 +217,9 @@
 <VaultUnlockDialog />
 {#if app.aboutOpen}
   <AboutDialog onclose={() => (app.aboutOpen = false)} />
+{/if}
+{#if app.mongoshCompatOpen}
+  <MongoshCompatDialog onclose={() => (app.mongoshCompatOpen = false)} />
 {/if}
 {#if app.mcpOpen}
   <McpDialog onclose={() => (app.mcpOpen = false)} />

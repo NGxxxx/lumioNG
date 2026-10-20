@@ -314,7 +314,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     get pageCount() { return paging.pageCount; },
     get totalCount() { return paging.totalCount; },
     get allShown() { return paging.allShown; },
-    get lastQueryMs() { return paging.lastQueryMs; },
+    get lastQueryMs() { return paging.lastQueryMs; }, get deepPageSlow() { return paging.deepPageSlow; },
     get presets() { return filter.presets; },
     saveViewPreset: filter.saveViewPreset,
     removeViewPreset: filter.removeViewPreset,

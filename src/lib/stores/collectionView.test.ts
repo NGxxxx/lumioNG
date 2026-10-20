@@ -142,6 +142,82 @@ describe("createCollectionView — paging", () => {
     expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 100, 50, "{}", null, null, 30000);
   });
 
+  describe("keyset paging", () => {
+    const page = (from: number, n: number) => Array.from({ length: n }, (_, i) => ({ _id: { $oid: String(from + i).padStart(24, "0") } }));
+    const oid = (n: number) => ({ $oid: String(n).padStart(24, "0") });
+
+    it("nextPage uses a keyset filter with skip 0 and keeps a full page", async () => {
+      cnt.mockResolvedValue(200);
+      qp.mockResolvedValueOnce(page(1, 50)); // page 1
+      samp.mockResolvedValueOnce([]);
+      const v = createCollectionView("conn:1", "d", "c");
+      await v.init();
+      qp.mockResolvedValueOnce(page(51, 50));
+      await v.nextPage();
+      expect(qp).toHaveBeenLastCalledWith(
+        "conn:1", "d", "c", 0, 50, JSON.stringify({ _id: { $gt: oid(50) } }), null, null, 30000);
+      expect(qp).toHaveBeenCalledTimes(2);
+      expect(v.docs).toEqual(page(51, 50));
+    });
+
+    it("prevPage queries backwards with reversed sort and reverses the result", async () => {
+      cnt.mockResolvedValue(200);
+      qp.mockResolvedValueOnce(page(1, 50));
+      samp.mockResolvedValueOnce([]);
+      const v = createCollectionView("conn:1", "d", "c");
+      await v.init();
+      qp.mockResolvedValueOnce(page(51, 50));
+      await v.nextPage();
+      qp.mockResolvedValueOnce(page(101, 50));
+      await v.nextPage(); // page 3
+      qp.mockResolvedValueOnce(page(51, 50).reverse()); // server returns descending
+      await v.prevPage();
+      expect(qp).toHaveBeenLastCalledWith(
+        "conn:1", "d", "c", 0, 50, JSON.stringify({ _id: { $lt: oid(101) } }), JSON.stringify({ _id: -1 }), null, 30000);
+      expect(v.docs).toEqual(page(51, 50));
+    });
+
+    it("falls_back_to_skip_when_keyset_page_is_short", async () => {
+      cnt.mockResolvedValue(200);
+      qp.mockResolvedValueOnce(page(1, 50));
+      samp.mockResolvedValueOnce([]);
+      const v = createCollectionView("conn:1", "d", "c");
+      await v.init();
+      // $gt on a mixed-type _id collection matches only same-type docs -> short page although more exist.
+      qp.mockResolvedValueOnce(page(51, 10));
+      const real = page(51, 50);
+      qp.mockResolvedValueOnce(real);
+      await v.nextPage();
+      expect(qp).toHaveBeenCalledTimes(3);
+      expect(qp).toHaveBeenLastCalledWith("conn:1", "d", "c", 50, 50, "{}", null, null, 30000);
+      expect(v.docs).toEqual(real);
+    });
+
+    it("flags deep pages once skip passes 100,000", async () => {
+      cnt.mockResolvedValue(10_000_000);
+      qp.mockResolvedValue([]);
+      samp.mockResolvedValueOnce([]);
+      const v = createCollectionView("conn:1", "d", "c");
+      await v.init();
+      expect(v.deepPageSlow).toBe(false);
+      await v.goToPage(3000); // skip 149,950
+      expect(v.deepPageSlow).toBe(true);
+    });
+
+    it("uses skip when sorted by a non-_id field", async () => {
+      cnt.mockResolvedValue(200);
+      qp.mockResolvedValueOnce(page(1, 50));
+      samp.mockResolvedValueOnce([]);
+      const v = createCollectionView("conn:1", "d", "c");
+      await v.init();
+      v.toggleSort("name", false);
+      await Promise.resolve();
+      qp.mockResolvedValue(page(1, 50));
+      await v.nextPage();
+      expect((qp.mock.calls.at(-1) as unknown[])[3]).toBe(50);
+    });
+  });
+
   it("goToPage past pageCount → clamps to the last page", async () => {
     cnt.mockResolvedValue(100); // pageCount = 2
     qp.mockResolvedValue([]);
@@ -1421,7 +1497,8 @@ describe("createCollectionView — column widths", () => {
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
     v.setColWidth("name", 300);
-    qp.mockResolvedValueOnce([{ _id: { $oid: "b" }, name: "Bob" }]);
+    // Page 1 held 1 doc of 200, so the keyset fetch looks short and falls back to skip: both calls answer.
+    qp.mockResolvedValue([{ _id: { $oid: "b" }, name: "Bob" }]);
     await v.goToPage(2);
     expect(v.colWidths.name).toBe(300);
   });

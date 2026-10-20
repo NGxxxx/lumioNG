@@ -1,0 +1,150 @@
+# Builds installers and portable packages for Windows, Linux and macOS and attaches them to a
+# DRAFT GitHub release. Trigger: push a tag `vX.Y.Z` matching the version in package.json,
+# src-tauri/Cargo.toml and src-tauri/tauri.conf.json. Review the draft, then publish it by hand.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: # re-run for an existing tag: pick the tag in "Use workflow from"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      release_id: ${{ steps.release.outputs.id }}
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check the tag matches the app version
+        id: version
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then echo "::error::Run this workflow from a tag (vX.Y.Z)"; exit 1; fi
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p 'require("./package.json").version')
+          CONF=$(node -p 'require("./src-tauri/tauri.conf.json").version')
+          CARGO=$(grep -m1 '^version' src-tauri/Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "tag=$TAG_VERSION package.json=$PKG tauri.conf.json=$CONF Cargo.toml=$CARGO"
+          for v in "$PKG" "$CONF" "$CARGO"; do
+            if [ "$v" != "$TAG_VERSION" ]; then echo "::error::Version mismatch (see above)"; exit 1; fi
+          done
+          echo "version=$TAG_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Create (or reuse) the draft release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          ID=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$GITHUB_REF_NAME\") | .id" | head -1)
+          if [ -z "$ID" ]; then
+            sed "s/{{VERSION}}/$VERSION/g" .github/release-notes.md > notes.md
+            # Take the id from the create response: a fresh draft is not listed right away.
+            ID=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$GITHUB_REF_NAME" -f name="LumioNG $VERSION" -F draft=true -F body=@notes.md --jq .id)
+          fi
+          if [ -z "$ID" ]; then echo "::error::Could not get the release id"; exit 1; fi
+          echo "Release id: $ID"
+          echo "id=$ID" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows
+            os: windows-latest
+            args: ""
+          - name: linux
+            os: ubuntu-22.04 # oldest supported glibc, so the AppImage/deb run on more distros
+            args: ""
+          - name: macos
+            os: macos-latest
+            args: "--target universal-apple-darwin" # one .dmg for Apple Silicon and Intel
+    runs-on: ${{ matrix.os }}
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      RELEASE_ID: ${{ needs.prepare.outputs.release_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Check the release id
+        shell: bash
+        run: if [ -z "$RELEASE_ID" ]; then echo "::error::Missing release id from the prepare job"; exit 1; fi
+
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.name == 'macos' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.name }}
+
+      - name: Linux build dependencies
+        if: matrix.name == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            libxdo-dev libssl-dev patchelf file libkrb5-dev libclang-dev pkg-config
+
+      - run: npm ci
+
+      # Installers: NSIS .exe + .msi (Windows), .deb + .rpm + .AppImage (Linux), .dmg (macOS).
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # macOS signing + notarization (Apple Developer Program). Add these repository secrets and
+          # uncomment; until then the app is ad-hoc signed (signingIdentity "-" in tauri.conf.json).
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          args: ${{ matrix.args }}
+
+      # Portable (no installer) packages. Linux: the AppImage above is the portable build.
+      - name: Package portable build (Windows)
+        if: matrix.name == 'windows'
+        shell: bash
+        run: |
+          mkdir portable
+          cp src-tauri/target/release/lumio-ng-app.exe portable/LumioNG.exe
+          cp LICENSE portable/
+          7z a "LumioNG_${VERSION}_x64_portable.zip" ./portable/*
+          echo "PORTABLE=LumioNG_${VERSION}_x64_portable.zip" >> "$GITHUB_ENV"
+
+      - name: Package portable build (macOS)
+        if: matrix.name == 'macos'
+        run: |
+          ditto -c -k --keepParent src-tauri/target/universal-apple-darwin/release/bundle/macos/LumioNG.app \
+            "LumioNG_${VERSION}_universal_portable.app.zip"
+          echo "PORTABLE=LumioNG_${VERSION}_universal_portable.app.zip" >> "$GITHUB_ENV"
+
+      - name: Upload portable build
+        if: env.PORTABLE != ''
+        shell: bash
+        run: |
+          if [ -z "$RELEASE_ID" ]; then echo "::error::Missing release id"; exit 1; fi
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" -H "Content-Type: application/zip" \
+            --data-binary @"$PORTABLE" \
+            "https://uploads.github.com/repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID/assets?name=$PORTABLE" > /dev/null

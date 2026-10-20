@@ -115,7 +115,7 @@ pub async fn csv_import_commit(
                 stop = insert_batch(&collection, docs, &raw_idx, insert_mode, &mut inserted, &mut errors).await;
             }
             done += batch_len as u64;
-            let _ = on_progress.send(ExportProgress { done: done.min(total), total });
+            let _ = on_progress.send(ExportProgress { done: done.min(total), total: Some(total) });
             if stop {
                 break; // dropping rx here signals the producer thread to stop (see spawn_csv_producer)
             }

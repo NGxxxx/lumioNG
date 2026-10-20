@@ -65,3 +65,42 @@ export function scanCritical(script: string): string[] {
   }
   return out;
 }
+
+/** Literal `load("name")` / `load('name')` / `` load(`name`) `` call sites (after comment stripping). */
+const LOAD_CALL = /\bload\s*\(\s*(["'`])((?:(?!\1)[^\\])*)\1\s*\)/g;
+/** Every mention of the identifier `load`: calls, aliases (`var l = load`), `globalThis.load`, ... */
+const LOAD_REF = /\bload\b/g;
+
+/**
+ * The script followed by the source of every saved query it `load()`s (transitively, up to `maxDepth` levels, matching the engine), so the destructive scans cover code that is not in the editor.
+ * Fails closed: `unresolved` is true when the code mentions `load` in a way that cannot be traced to a known snippet
+ * (a non-literal or template-interpolated argument, an alias, an unknown name, or `lookup` unavailable because the library is not loaded) — callers must then ask for confirmation.
+ */
+export function withLoadedSnippets(
+  script: string,
+  lookup: (name: string) => string | undefined,
+  maxDepth = 8,
+): { text: string; unresolved: boolean } {
+  const parts = [script];
+  let unresolved = false;
+  let level = [script];
+  for (let depth = 0; depth < maxDepth && level.length; depth++) {
+    const next: string[] = [];
+    for (const src of level) {
+      const code = stripComments(src);
+      let resolved = 0;
+      for (const match of code.matchAll(LOAD_CALL)) {
+        if (match[1] === "`" && match[2].includes("${")) continue;
+        const body = lookup(match[2]);
+        if (body !== undefined) {
+          resolved++;
+          next.push(body);
+        }
+      }
+      if ((code.match(LOAD_REF)?.length ?? 0) > resolved) unresolved = true;
+    }
+    parts.push(...next);
+    level = next;
+  }
+  return { text: parts.join("\n"), unresolved };
+}

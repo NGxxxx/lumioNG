@@ -263,8 +263,13 @@
           </table>
         </div>
         <div class="overall">
-          <div class="bar"><div class="fill" style="width:{j.overall.percent}%"></div></div>
-          <span>{m.export_wizard_overall()}: {j.overall.percent}%</span>
+          {#if j.overall.percent === null && !j.done}
+            <div class="bar indeterminate" role="progressbar" aria-busy="true"><div class="fill"></div></div>
+            <span>{m.export_wizard_overall()}: {j.overall.done}</span>
+          {:else}
+            <div class="bar"><div class="fill" style="width:{j.overall.percent ?? 0}%"></div></div>
+            <span>{m.export_wizard_overall()}: {j.overall.percent ?? 0}%</span>
+          {/if}
         </div>
         {#if j.done}<div class="io-ok">{m.export_wizard_summary_done({ ok: j.succeeded, fail: j.failed })}</div>{/if}
       </div>
@@ -337,6 +342,9 @@
   .overall { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.625rem; }
   .bar { flex: 1; height: 0.5rem; background: var(--bg); border-radius: var(--radius); overflow: hidden; }
   .fill { height: 100%; background: var(--progress); transition: width .2s; }
+  .bar.indeterminate .fill { width: 35%; animation: export-indeterminate 1.2s ease-in-out infinite; }
+  @keyframes export-indeterminate { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+  @media (prefers-reduced-motion: reduce) { .bar.indeterminate .fill { animation: none; width: 100%; opacity: 0.5; } }
   .error { background: var(--error-bg); color: var(--error); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; }
   .io-ok { background: var(--ok-bg); color: var(--ok-fg); padding: 0.375rem 0.625rem; font-size: var(--fs); margin-top: 0.625rem; }
 </style>

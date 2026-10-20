@@ -18,6 +18,12 @@ import { untrack } from "svelte";
 import type { Doc } from "../domain/doc";
 import type { ConnectRequest } from "./connections.svelte";
 import { vault } from "./vault.svelte";
+import { listConnections } from "../api/connections";
+import { createConnectionRegistry } from "./connections.svelte";
+import { createWorkspaceRestore } from "./workspaceRestore.svelte";
+import { peekFilterText, seedFilterText } from "./collectionViews.svelte";
+import { savedSessionId } from "../domain/session";
+import type { LiveTab } from "../domain/workspaceSnapshot";
 import type { Environment } from "../domain/environment";
 import type { SavedQuery } from "../domain/queryTree";
 import type { HistoryEntry } from "../domain/queryHistory";
@@ -90,9 +96,82 @@ export function createAppContext() {
     if (s?.coll) untrack(() => recentCollections.touch(sm.active?.connId ?? null, s.db, s.coll!));
   });
 
+  // ── Session restore: remembers the open tabs and offers them back on the next start ──
+  /** The tabs open now, as the snapshot sees them: each session's collection page, then the query tabs. */
+  function captureTabs(): { tabs: LiveTab[]; active: number | null } {
+    const tabs: LiveTab[] = [];
+    let activeIdx: number | null = null;
+    for (const s of sm.sessions) {
+      const selection = s.nav.selection;
+      if (s.connId == null || !selection) continue;
+      if (s.id === sm.activeId && sm.activeZone?.zone === "destination") activeIdx = tabs.length;
+      tabs.push({
+        kind: "collection", connId: s.connId, db: selection.db, coll: selection.coll,
+        filterText: selection.coll ? peekFilterText(s.id, selection.db, selection.coll) : "", scriptText: "",
+      });
+    }
+    const zone = sm.activeZone;
+    for (const t of sm.workTabs) {
+      if (t.kind !== "query") continue;
+      const connId = sm.sessions.find((s) => s.id === t.sessionId)?.connId ?? null;
+      if (zone?.zone === "work" && zone.id === t.id) activeIdx = tabs.length;
+      tabs.push({ kind: "query", connId, db: dbForSession(t.sessionId), coll: null, filterText: "", scriptText: getQueryRun(t.id, t.sessionId, t.initialStatement).statementText });
+    }
+    return { tabs, active: activeIdx };
+  }
+
+  const workspace = createWorkspaceRestore({
+    capture: captureTabs,
+    listSaved: async () => (await listConnections()).map((c) => ({ id: c.id, label: c.label, environment: c.environment })),
+    async connect(connId) {
+      // A sealed vault must be opened first; cancelling it leaves this connection (and its tabs) out.
+      if (vault.status === "locked" && !(await vault.ensure("unlock"))) return "cancelled";
+      const registry = createConnectionRegistry();
+      await registry.load();
+      const saved = registry.list.find((c) => c.id === connId);
+      if (!saved) return false;
+      registry.edit(saved);
+      const req = registry.connectRequest();
+      return req ? await onConnected(req) : false;
+    },
+    openTab(t) {
+      const sid = savedSessionId(t.connId);
+      const s = sm.sessions.find((x) => x.id === sid);
+      if (!s) return;
+      if (t.kind === "collection") {
+        if (!t.db) return;
+        if (t.coll) {
+          seedFilterText(sid, t.db, t.coll, t.filterText);
+          s.nav.selectCollection(t.db, t.coll);
+        } else s.nav.selectDatabase(t.db);
+      } else {
+        if (t.db) s.nav.selectDatabase(t.db);
+        sm.openQuery(t.scriptText, null, sid);
+      }
+    },
+    activate(t) {
+      const sid = savedSessionId(t.connId);
+      if (t.kind === "query") {
+        const tab = [...sm.workTabs].reverse().find((w) => w.kind === "query" && w.sessionId === sid && w.initialStatement === t.scriptText);
+        if (tab) sm.activateWork(tab.id);
+      } else {
+        sm.focusSession(sid);
+        sm.showDestination();
+      }
+    },
+    onUnlockCancelled: () => toast.push(m.workspace_restore_unlock_cancelled(), "error"),
+    onConnectFailed: (label) => toast.push(m.workspace_restore_connect_failed({ label }), "error"),
+  });
+  // Keep the saved snapshot current (debounced) so a crash does not lose it; the quit path writes it once more.
+  $effect(() => {
+    void captureTabs(); // subscribes to everything the snapshot reads
+    untrack(() => workspace.queueSave());
+  });
+
   // ── Dialog flags (rendered by AppDialogs) ──
   let confirmQuit = $state(false);
   let aboutOpen = $state(false);
+  let mongoshCompatOpen = $state(false);
   let mcpOpen = $state(false);
   let auditOpen = $state(false);
   let paletteOpen = $state(false);
@@ -250,6 +329,7 @@ export function createAppContext() {
   }
 
   return {
+    get workspace() { return workspace; },
     get session() { return session; },
     get nav() { return nav; },
     get tree() { return tree; },
@@ -269,6 +349,7 @@ export function createAppContext() {
     get canUseDataView() { return canUseDataView; },
     get confirmQuit() { return confirmQuit; }, set confirmQuit(v: boolean) { confirmQuit = v; },
     get aboutOpen() { return aboutOpen; }, set aboutOpen(v: boolean) { aboutOpen = v; },
+    get mongoshCompatOpen() { return mongoshCompatOpen; }, set mongoshCompatOpen(v: boolean) { mongoshCompatOpen = v; },
     get mcpOpen() { return mcpOpen; }, set mcpOpen(v: boolean) { mcpOpen = v; },
     get auditOpen() { return auditOpen; }, set auditOpen(v: boolean) { auditOpen = v; },
     get paletteOpen() { return paletteOpen; }, set paletteOpen(v: boolean) { paletteOpen = v; },

@@ -180,10 +180,11 @@ export async function deleteOne(
   return await invoke<number>("delete_one", { sessionId, db, coll, filter, allowAll });
 }
 
-export type ProgressCb = (done: number, total: number) => void;
+/** `total` is null while the backend does not know the match count (export of a filtered set whose count timed out). */
+export type ProgressCb = (done: number, total: number | null) => void;
 
-export function progressChannel(onProgress: ProgressCb): Channel<{ done: number; total: number }> {
-  const ch = new Channel<{ done: number; total: number }>();
+export function progressChannel(onProgress: ProgressCb): Channel<{ done: number; total: number | null }> {
+  const ch = new Channel<{ done: number; total: number | null }>();
   ch.onmessage = (m) => onProgress(m.done, m.total);
   return ch;
 }

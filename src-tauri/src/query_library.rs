@@ -121,6 +121,14 @@ pub fn load(dir: &Path) -> Result<Vec<QueryNode>, AppError> {
         .collect()
 }
 
+/// The statement of the saved query called exactly `name` (case-sensitive; first match wins), for `load("name")`.
+pub fn find_statement(dir: &Path, name: &str) -> Result<Option<String>, AppError> {
+    Ok(load(dir)?.into_iter().find_map(|n| match n {
+        QueryNode::Query { name: n, statement, .. } if n == name => Some(statement),
+        _ => None,
+    }))
+}
+
 /// Writes `manifest.json` plus one `<id>.json` per query node; stale per-id files for nodes no
 /// longer present (deleted queries) are removed so they don't leave orphaned content behind.
 pub fn save(dir: &Path, nodes: &[QueryNode]) -> Result<(), AppError> {
@@ -190,6 +198,15 @@ mod tests {
         let dir = std::env::temp_dir().join(name);
         let _ = std::fs::remove_dir_all(&dir);
         dir
+    }
+
+    #[test]
+    fn find_statement_matches_the_exact_name_of_a_query() {
+        let dir = temp_dir("lumiong_test_qlib_find");
+        save(&dir, &[folder(1, None, "Reports"), query(2, Some(1), "Active users")]).unwrap();
+        assert_eq!(find_statement(&dir, "Active users").unwrap().as_deref(), Some("db.users.find()"));
+        assert_eq!(find_statement(&dir, "active users").unwrap(), None);
+        assert_eq!(find_statement(&dir, "Reports").unwrap(), None, "folders are not snippets");
     }
 
     #[test]

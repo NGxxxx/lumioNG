@@ -11,10 +11,11 @@ const FILE: &str = "prefs.json";
 /// An imported file larger than this is not a settings file.
 const MAX_IMPORT_BYTES: u64 = 32 * 1024 * 1024;
 /// Keys that never travel through export/import: every `mcp-*` key (bearer token, enabled, port, write flag)
-/// and every `audit-*` key (which environments are audited).
+/// every `audit-*` key (which environments are audited) and every `workspace-*` key (the restore snapshot holds
+/// query/filter text and machine-local connection ids).
 /// A settings file must neither leak the token nor be able to turn the MCP server or its write access on,
 /// and must not be able to switch auditing off for production.
-const EXCLUDED_PREFIXES: [&str; 2] = ["mcp-", "audit-"];
+const EXCLUDED_PREFIXES: [&str; 3] = ["mcp-", "audit-", "workspace-"];
 
 fn is_excluded(key: &str) -> bool {
     EXCLUDED_PREFIXES.iter().any(|p| key.starts_with(p))
@@ -182,6 +183,26 @@ mod tests {
         let merged = import(&dir, &file).unwrap();
         assert_eq!(merged, map(&[("mcp-token", "mine"), ("mcp-enabled", "false"), ("theme", "latte")]));
         assert!(!merged.contains_key("mcp-allow-writes"));
+    }
+
+    #[test]
+    fn workspace_snapshot_is_excluded_from_export() {
+        let dir = temp_dir("lumiong_test_prefs_workspace_export");
+        save(&dir, &map(&[("workspace-snapshot", "{\"tabs\":[]}"), ("theme", "latte")])).unwrap();
+        let out = dir.join("out.json");
+        export(&dir, &out).unwrap();
+        assert_eq!(read_import(&out).unwrap(), map(&[("theme", "latte")]));
+    }
+
+    #[test]
+    fn import_keeps_the_local_workspace_snapshot() {
+        let dir = temp_dir("lumiong_test_prefs_workspace_import");
+        save(&dir, &map(&[("workspace-snapshot", "mine"), ("theme", "mocha")])).unwrap();
+        let file = dir.join("in.json");
+        std::fs::write(&file, r#"{"workspace-snapshot":"theirs","workspace-other":"x","theme":"latte"}"#).unwrap();
+        assert_eq!(read_import(&file).unwrap(), map(&[("theme", "latte")]));
+        let merged = import(&dir, &file).unwrap();
+        assert_eq!(merged, map(&[("workspace-snapshot", "mine"), ("theme", "latte")]));
     }
 
     #[test]

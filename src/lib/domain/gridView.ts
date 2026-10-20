@@ -23,6 +23,8 @@ export interface GridPageView {
   readonly allShown: boolean;
   /** Duration of the query behind the current rows, shown beside the pager; absent when not tracked. */
   readonly lastQueryMs?: number | null;
+  /** The page just loaded used a skip past `DEEP_SKIP_HINT_THRESHOLD`; the pager suggests a filter or an indexed sort. */
+  readonly deepPageSlow?: boolean;
   /** `pendingKey(idJson, path)` of cells with an uncommitted staged edit, highlighted in the grid. */
   readonly pendingCells?: ReadonlySet<string>;
   readonly loading: boolean;

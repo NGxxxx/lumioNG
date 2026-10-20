@@ -28,12 +28,13 @@ export function exportFileName(db: string, coll: string, ext: string): string {
   return `${db}.${coll}.${ext}`;
 }
 
-/** Sum done/total across rows; percent rounded (0 when total is 0). */
+/** Sum done/total across rows; percent rounded (0 when total is 0). A row with an unknown total (null) makes the whole percent null = indeterminate. */
 export function aggregateProgress(
-  rows: { done: number; total: number }[],
-): { done: number; total: number; percent: number } {
+  rows: { done: number; total: number | null }[],
+): { done: number; total: number; percent: number | null } {
   const done = rows.reduce((a, r) => a + r.done, 0);
-  const total = rows.reduce((a, r) => a + r.total, 0);
+  const total = rows.reduce((a, r) => a + (r.total ?? 0), 0);
+  if (rows.some((r) => r.total === null)) return { done, total, percent: null };
   const percent = total === 0 ? 0 : Math.round((done / total) * 100);
   return { done, total, percent };
 }

@@ -3,6 +3,7 @@ import { queryPage, countDocuments } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { pageCount, clampPage, skipFor } from "../domain/paging";
 import { buildSort, buildProjection, type SortKey } from "../domain/grid";
+import { planPageFetch, keysetSortDir, DEEP_SKIP_HINT_THRESHOLD } from "../domain/keyset";
 import { findCmd } from "../domain/mongosh";
 import type { Doc } from "../domain/doc";
 import { commandLog } from "./commandLog.svelte";
@@ -37,7 +38,22 @@ export function createCollectionPaging(ctx: CollectionPagingCtx) {
   let allShown = $state(false);
   let lastQueryMs = $state<number | null>(null);
 
-  /** Load the current page (replaces docs). */
+  /** `_id` boundary of the last page we loaded, valid only for the exact query shape it came from. */
+  let loaded: { page: number; sig: string; firstId: unknown; lastId: unknown } | null = null;
+  let lastSkip = $state(0);
+
+  /** AND the keyset clause onto the user's filter (ExtJSON string); null when the filter cannot be re-parsed. */
+  function mergeKeysetFilter(userFilter: string, patch: object): string | null {
+    const trimmed = userFilter.trim();
+    if (trimmed === "" || trimmed === "{}") return JSON.stringify(patch);
+    try {
+      return JSON.stringify({ $and: [JSON.parse(trimmed), patch] });
+    } catch {
+      return null;
+    }
+  }
+
+  /** Load the current page (replaces docs). Adjacent moves under an `_id` sort seek by key; a short keyset page re-fetches with skip. */
   async function loadPage() {
     ctx.setLoading(true);
     allShown = false;
@@ -46,29 +62,55 @@ export function createCollectionPaging(ctx: CollectionPagingCtx) {
     const startedAt = Date.now();
     activity.begin(m.status_bar_loading());
     try {
-      const skip = skipFor(currentPage, pageSize);
-      const batch = await queryPage(
-        sessionId,
-        db,
-        coll,
-        skip,
+      const filter = ctx.getAppliedFilter();
+      const sortKeys = ctx.getSortKeys();
+      const sort = buildSort(sortKeys);
+      const projection = buildProjection(ctx.getHidden());
+      const sig = JSON.stringify([filter, sort, pageSize]);
+      const page = currentPage;
+      const skipN = skipFor(page, pageSize);
+      const plan = planPageFetch({
+        sort: sortKeys,
+        fromPage: loaded?.page ?? 0,
+        toPage: page,
         pageSize,
-        ctx.getAppliedFilter(),
-        buildSort(ctx.getSortKeys()),
-        buildProjection(ctx.getHidden()),
-        settings.queryTimeoutMs,
-      );
-      if (gen !== ctx.currentGeneration()) return;
+        boundary: loaded && loaded.sig === sig ? loaded : null,
+      });
+      const run = (f: string, srt: string | null, skip: number) =>
+        queryPage(sessionId, db, coll, skip, pageSize, f, srt, projection, settings.queryTimeoutMs);
+
+      let batch: Doc[] | null = null;
+      let usedFilter = filter;
+      let usedSort = sort;
+      let usedSkip = skipN;
+      if (plan.kind === "keyset") {
+        const merged = mergeKeysetFilter(filter, plan.filterPatch);
+        if (merged !== null) {
+          const dir = keysetSortDir(sortKeys) ?? 1;
+          const kSort = plan.reverse ? JSON.stringify({ _id: -dir }) : sort;
+          const got = await run(merged, kSort, 0);
+          if (gen !== ctx.currentGeneration()) return;
+          // `$gt`/`$lt` only match _id values of the same BSON type: a short page while more docs exist means we skipped some.
+          const expected = Math.max(0, Math.min(pageSize, totalCount - skipN));
+          if (got.length >= expected) {
+            batch = plan.reverse ? [...got].reverse() : got;
+            usedFilter = merged;
+            usedSort = kSort;
+            usedSkip = 0;
+          }
+        }
+      }
+      if (batch === null) {
+        batch = await run(filter, sort, skipN);
+        if (gen !== ctx.currentGeneration()) return;
+      }
       lastQueryMs = Date.now() - startedAt;
+      lastSkip = usedSkip;
+      loaded = batch.length > 0
+        ? { page, sig, firstId: batch[0]._id, lastId: batch[batch.length - 1]._id }
+        : null;
       commandLog.push(
-        findCmd({
-          coll,
-          filter: ctx.getAppliedFilter(),
-          projection: buildProjection(ctx.getHidden()),
-          sort: buildSort(ctx.getSortKeys()),
-          skip,
-          limit: pageSize,
-        }),
+        findCmd({ coll, filter: usedFilter, projection, sort: usedSort, skip: usedSkip, limit: pageSize }),
         sessionId,
         lastQueryMs,
       );
@@ -127,6 +169,8 @@ export function createCollectionPaging(ctx: CollectionPagingCtx) {
     get pageCount() { return pgCount; },
     get allShown() { return allShown; },
     set allShown(v: boolean) { allShown = v; },
+    /** True when the page just loaded needed a skip so large that Mongo walks that many entries. */
+    get deepPageSlow() { return lastSkip > DEEP_SKIP_HINT_THRESHOLD; },
     get lastQueryMs() { return lastQueryMs; },
     set lastQueryMs(v: number | null) { lastQueryMs = v; },
     loadPage,

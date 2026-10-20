@@ -38,6 +38,7 @@ function baseCommands(overrides: Partial<Record<CommandId, Command>> = {}): Part
     "goto.prevTab": cmd(true),
     "view.resetToDefault": cmd(),
     "help.about": cmd(),
+    "help.mongoshCompat": cmd(),
     "tools.mcpSettings": cmd(),
     ...overrides,
   };

@@ -16,6 +16,7 @@
     paletteHint = "",
     menus,
     env = "",
+    nativeFrame = false,
   }: {
     conn: string | null;
     db: string | null;
@@ -29,6 +30,8 @@
     menus?: Snippet;
     /** Environment of the session in focus; shown as a chip before the breadcrumb. */
     env?: Environment;
+    /** The OS draws the window frame and buttons: hide ours. */
+    nativeFrame?: boolean;
   } = $props();
 
   let appVersion = $state("");
@@ -45,7 +48,10 @@
   const crumb = $derived(buildBreadcrumb({ conn, db, coll }));
 </script>
 
-<div class="titlebar" data-tauri-drag-region>
+<!-- Dragging and double-click-to-maximize come from Tauri's own handler for data-tauri-drag-region
+     (needs the core:window:allow-start-dragging / internal-toggle-maximize permissions); adding a
+     dblclick listener here would toggle twice and cancel itself out. -->
+<div class="titlebar" class:native={nativeFrame} data-tauri-drag-region>
   <!-- The folded-L cat, small variant (src-tauri/icons/source/logo-16.svg — no star/inner ears, which
        blur at 16 px). Gradient ids are prefixed so they can't clash with other inline SVGs. -->
   <svg class="logo" width="16" height="16" viewBox="0 0 96 96" aria-hidden="true">
@@ -72,6 +78,7 @@
       {#if paletteHint}<kbd>{paletteHint}</kbd>{/if}
     </button>
   {/if}
+  {#if !nativeFrame}
   <div class="wbtns">
     <button class="wbtn" title={m.title_bar_minimize()} onclick={minimize} aria-label={m.title_bar_minimize()}>
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="1" y="5" width="9" height="1" fill="currentColor" /></svg>
@@ -95,6 +102,7 @@
       <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><path d="M1 1 L10 10 M10 1 L1 10" stroke="currentColor" stroke-width="1.1" /></svg>
     </button>
   </div>
+  {/if}
 </div>
 
 <style>
@@ -104,6 +112,8 @@
     background: var(--app-bg);
     padding-left: 0.75rem; user-select: none;
   }
+  /* The system frame sits above this row, so there is no window-button strip to balance on the right. */
+  .titlebar.native { padding-right: 0.5rem; }
   .logo { flex: none; margin-right: 0.25rem; }
   .menus { flex: none; display: flex; align-items: center; }
   .crumb {

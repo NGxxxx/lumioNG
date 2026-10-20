@@ -4,6 +4,7 @@ pub mod read;
 pub mod write;
 
 use crate::script::cursors::CursorStore;
+use crate::script::engine::{OutputSink, SnippetLoader};
 use crate::script::outcome::ConsoleEntry;
 use mongodb::{bson::Document, Client};
 use rquickjs::{Ctx, Exception, Function, Result as JsResult};
@@ -97,6 +98,160 @@ pub struct HostCtx {
     pub deadline: Instant,
     /// Where write ops are audited; `None` in tests that don't care.
     pub audit: Option<ScriptAudit>,
+    /// Receives each console line as it is printed (`None` = only collected into `console`).
+    pub sink: Option<OutputSink>,
+    /// Resolves `load("name")`; `None` = no snippet library in this context.
+    pub loader: Option<SnippetLoader>,
+    /// Caps console output at [`PRINT_LINES_PER_SECOND`].
+    pub printer: Rc<RefCell<PrintLimiter>>,
+    /// Caps the whole run's console output (lines and bytes).
+    pub budget: Rc<RefCell<OutputBudget>>,
+    /// Whether `load()` may run destructive snippet code.
+    pub load_policy: crate::script::engine::LoadPolicy,
+}
+
+impl HostCtx {
+    /// Records one console line (collected for the final outcome and streamed to the sink).
+    fn emit(&self, entry: ConsoleEntry) {
+        if let Some(sink) = &self.sink {
+            sink(&entry);
+        }
+        self.console.borrow_mut().push(entry);
+    }
+
+    /// Prints a script line unless this second's quota is spent; when a new second starts after
+    /// suppressing lines, a single "…N lines suppressed" marker goes out first.
+    pub(crate) fn print(&self, level: String, text: String) {
+        if self.budget.borrow().truncated {
+            return;
+        }
+        let admit = self.printer.borrow_mut().admit(Instant::now());
+        if let Some(n) = admit.marker {
+            self.emit(suppressed_marker(n));
+        }
+        if !admit.allow {
+            return;
+        }
+        let verdict = self.budget.borrow_mut().take(text.len());
+        match verdict {
+            BudgetVerdict::Ok => self.emit(ConsoleEntry { level, text }),
+            BudgetVerdict::Truncate(lines) => self.emit(ConsoleEntry {
+                level: "log".into(),
+                text: format!("…output truncated after {lines} lines"),
+            }),
+            BudgetVerdict::Dropped => {}
+        }
+    }
+
+    /// Emits the marker for lines still suppressed when the script ends.
+    pub(crate) fn flush_suppressed(&self) {
+        if self.budget.borrow().truncated {
+            return;
+        }
+        let pending = self.printer.borrow_mut().take_suppressed();
+        if let Some(n) = pending {
+            self.emit(suppressed_marker(n));
+        }
+    }
+}
+
+/// Per-run console budget: output past either limit is dropped after a single truncation marker.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OutputLimits {
+    pub max_lines: usize,
+    pub max_bytes: usize,
+}
+
+impl Default for OutputLimits {
+    fn default() -> Self {
+        Self { max_lines: 100_000, max_bytes: 10 * 1024 * 1024 }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum BudgetVerdict {
+    Ok,
+    /// This line crosses a limit: emit the truncation marker (with the number of lines kept) instead.
+    Truncate(usize),
+    Dropped,
+}
+
+/// Running totals against [`OutputLimits`].
+#[derive(Default)]
+pub struct OutputBudget {
+    limits: OutputLimits,
+    lines: usize,
+    bytes: usize,
+    pub truncated: bool,
+}
+
+impl OutputBudget {
+    pub fn new(limits: OutputLimits) -> Self {
+        Self { limits, ..Default::default() }
+    }
+
+    pub fn take(&mut self, bytes: usize) -> BudgetVerdict {
+        if self.truncated {
+            return BudgetVerdict::Dropped;
+        }
+        if self.lines >= self.limits.max_lines || self.bytes + bytes > self.limits.max_bytes {
+            self.truncated = true;
+            return BudgetVerdict::Truncate(self.lines);
+        }
+        self.lines += 1;
+        self.bytes += bytes;
+        BudgetVerdict::Ok
+    }
+}
+
+/// Console lines a script may print per second before the rest are suppressed.
+pub const PRINT_LINES_PER_SECOND: u32 = 1000;
+
+fn suppressed_marker(n: u32) -> ConsoleEntry {
+    ConsoleEntry { level: "log".into(), text: format!("…{n} lines suppressed") }
+}
+
+/// What to do with one printed line.
+#[derive(Debug, PartialEq)]
+pub struct Admit {
+    /// A new second began after lines were suppressed: report how many first.
+    pub marker: Option<u32>,
+    pub allow: bool,
+}
+
+/// Fixed one-second windows of at most [`PRINT_LINES_PER_SECOND`] lines each.
+#[derive(Default)]
+pub struct PrintLimiter {
+    window_start: Option<Instant>,
+    emitted: u32,
+    suppressed: u32,
+}
+
+impl PrintLimiter {
+    pub fn admit(&mut self, now: Instant) -> Admit {
+        let mut marker = None;
+        let fresh = match self.window_start {
+            Some(start) => now.duration_since(start) >= Duration::from_secs(1),
+            None => true,
+        };
+        if fresh {
+            marker = self.take_suppressed();
+            self.window_start = Some(now);
+            self.emitted = 0;
+        }
+        if self.emitted < PRINT_LINES_PER_SECOND {
+            self.emitted += 1;
+            Admit { marker, allow: true }
+        } else {
+            self.suppressed += 1;
+            Admit { marker, allow: false }
+        }
+    }
+
+    pub fn take_suppressed(&mut self) -> Option<u32> {
+        let n = std::mem::take(&mut self.suppressed);
+        (n > 0).then_some(n)
+    }
 }
 
 // ── Error helper ─────────────────────────────────────────────────────────────
@@ -161,6 +316,7 @@ pub fn bind(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
     read::bind_list_collections(ctx, host.clone())?;
     read::bind_cursor_fetch(ctx, host.clone())?;
     read::bind_cursor_close(ctx, host.clone())?;
+    bind_load(ctx, host.clone())?;
     bind_print(ctx, host)?;
     Ok(())
 }
@@ -173,12 +329,92 @@ fn bind_print(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
     let f = Function::new(
         ctx.clone(),
         move |_ctx: Ctx<'_>, level: String, text: String| -> JsResult<()> {
-            h.console.borrow_mut().push(ConsoleEntry { level, text });
+            h.print(level, text);
             Ok(())
         },
     )?;
     ctx.globals().set("__print", f)?;
     Ok(())
+}
+
+// ── __loadSnippet ─────────────────────────────────────────────────────────────
+
+/// `__loadSnippet(name)` → the saved query's source; the prelude's `load()` evals it (depth-capped there).
+fn bind_load(ctx: &Ctx<'_>, host: HostCtx) -> JsResult<()> {
+    let f = Function::new(ctx.clone(), move |ctx: Ctx<'_>, name: String| -> JsResult<String> {
+        let Some(loader) = &host.loader else {
+            return Err(to_js_err(&ctx, "load() is not available in this context"));
+        };
+        match loader(&name) {
+            Ok(Some(src)) => {
+                let policy = host.load_policy;
+                if policy.prod && !policy.confirmed {
+                    let ops = crate::script::scan::destructive_ops(&src);
+                    if !ops.is_empty() {
+                        return Err(to_js_err(
+                            &ctx,
+                            format!(
+                                "load(\"{name}\"): refused, the saved query calls {} and this PROD run was not confirmed. Run the script again and confirm the warning.",
+                                ops.join(", ")
+                            ),
+                        ));
+                    }
+                }
+                Ok(src)
+            }
+            Ok(None) => Err(to_js_err(
+                &ctx,
+                format!("load(\"{name}\"): saved query \"{name}\" not found (names are case-sensitive)"),
+            )),
+            Err(e) => Err(to_js_err(&ctx, format!("load(\"{name}\"): {e}"))),
+        }
+    })?;
+    ctx.globals().set("__loadSnippet", f)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod output_budget_tests {
+    use super::*;
+
+    #[test]
+    fn line_and_byte_limits_truncate_once_then_drop() {
+        let mut b = OutputBudget::new(OutputLimits { max_lines: 2, max_bytes: 100 });
+        assert_eq!(b.take(5), BudgetVerdict::Ok);
+        assert_eq!(b.take(5), BudgetVerdict::Ok);
+        assert_eq!(b.take(5), BudgetVerdict::Truncate(2));
+        assert_eq!(b.take(5), BudgetVerdict::Dropped);
+
+        let mut b = OutputBudget::new(OutputLimits { max_lines: 10, max_bytes: 8 });
+        assert_eq!(b.take(5), BudgetVerdict::Ok);
+        assert_eq!(b.take(5), BudgetVerdict::Truncate(1));
+    }
+
+    #[test]
+    fn defaults_are_100k_lines_and_10mb() {
+        let l = OutputLimits::default();
+        assert_eq!((l.max_lines, l.max_bytes), (100_000, 10 * 1024 * 1024));
+    }
+}
+
+#[cfg(test)]
+mod print_limiter_tests {
+    use super::*;
+
+    #[test]
+    fn caps_at_1000_per_second_then_reports_once_in_the_next_second() {
+        let mut l = PrintLimiter::default();
+        let t0 = Instant::now();
+        for _ in 0..1000 {
+            assert_eq!(l.admit(t0), Admit { marker: None, allow: true });
+        }
+        for _ in 0..7 {
+            assert_eq!(l.admit(t0 + Duration::from_millis(900)), Admit { marker: None, allow: false });
+        }
+        assert_eq!(l.admit(t0 + Duration::from_millis(1000)), Admit { marker: Some(7), allow: true });
+        assert_eq!(l.admit(t0 + Duration::from_millis(1001)), Admit { marker: None, allow: true });
+        assert_eq!(l.take_suppressed(), None);
+    }
 }
 
 #[cfg(test)]

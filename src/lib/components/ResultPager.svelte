@@ -35,10 +35,12 @@
     <button class="pg-btn" onclick={v.requestShowAll}>{m.result_table_pager_show_all()}</button>
     <span class="pg-total">{m.result_table_pager_docs({ count: v.totalCount })}</span>
     {#if v.lastQueryMs != null}<span class="pg-time" title={m.pager_query_time_title()}>{formatDuration(v.lastQueryMs)}</span>{/if}
+    {#if v.deepPageSlow}<span class="pg-hint" role="status">{m.pager_deep_page_hint()}</span>{/if}
   </div>
 {/if}
 
 <style>
+  .pg-hint { color: var(--warn-fg); }
   .pager {
     display: flex;
     align-items: center;

@@ -23,6 +23,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 # Opens the IdP sign-in page in the system browser (OIDC workforce flow).
 tauri-plugin-opener = "2"
+# Remembers window size, position and maximized state across runs.
+tauri-plugin-window-state = "2"
 # Pinned below 3.9: 3.9 dropped MongoDB 4.2 (wire version 8) support.
 mongodb = { version = "~3.8", features = ["aws-auth", "socks5-proxy", "azure-oidc", "gcp-oidc"] }
 russh = "0.64"

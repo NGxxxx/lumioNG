@@ -234,3 +234,24 @@ it("live progress: onProg callback updates done/total", async () => {
   expect(job.rows[0].total).toBe(10);
   expect(job.rows[0].done).toBe(10);
 });
+
+it("unknown_total_shows_indeterminate_progress", async () => {
+  let midPercent: number | null | undefined;
+  let midTotal: number | null | undefined;
+  const job = createExportJob("conn:1", {
+    format: "json", dir: "/out",
+    targets: [{ db: "shop", coll: "users", source: qSource }],
+  });
+  api.exportJsonProgress.mockImplementationOnce(async (...args: unknown[]) => {
+    const onProg = args[args.length - 1] as (d: number, t: number | null) => void;
+    onProg(1000, null);
+    midPercent = job.overall.percent;
+    midTotal = job.rows[0].total;
+    return 2500;
+  });
+  await job.run();
+  expect(midTotal).toBeNull();
+  expect(midPercent).toBeNull(); // indeterminate while the count is unknown
+  expect(job.rows[0]).toMatchObject({ status: "done", done: 2500, total: 2500 });
+  expect(job.overall.percent).toBe(100);
+});

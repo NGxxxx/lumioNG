@@ -29,6 +29,10 @@ describe("aggregateProgress", () => {
     expect(aggregateProgress([{ done: 5, total: 10 }, { done: 5, total: 10 }]))
       .toEqual({ done: 10, total: 20, percent: 50 });
   });
+  it("percent is null (indeterminate) when any row total is unknown", () => {
+    expect(aggregateProgress([{ done: 5, total: 10 }, { done: 7, total: null }]))
+      .toEqual({ done: 12, total: 10, percent: null });
+  });
   it("percent 0 when total is 0", () => {
     expect(aggregateProgress([{ done: 0, total: 0 }])).toEqual({ done: 0, total: 0, percent: 0 });
   });

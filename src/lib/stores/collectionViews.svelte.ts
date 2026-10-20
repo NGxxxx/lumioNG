@@ -8,6 +8,19 @@ const cache = new Map<string, Entry>();
 
 const key = (sessionId: string, db: string, coll: string) => `${sessionId}:${db}.${coll}`;
 
+// Filter text to put in a view's box the first time it is created (session restore). Text only: it is never applied.
+const seededFilters = new Map<string, string>();
+
+/** Filter box text of the cached view for sessionId/db/coll ("" when that view is not open). */
+export function peekFilterText(sessionId: string, db: string, coll: string): string {
+  return cache.get(key(sessionId, db, coll))?.view.filterText ?? "";
+}
+
+/** Pre-fills the filter box of a collection view that is about to be opened. */
+export function seedFilterText(sessionId: string, db: string, coll: string, text: string): void {
+  if (text) seededFilters.set(key(sessionId, db, coll), text);
+}
+
 function evict(k: string) {
   cache.get(k)?.dispose();
   cache.delete(k);
@@ -25,6 +38,11 @@ export function getCollectionView(sessionId: string, db: string, coll: string, v
   const dispose = $effect.root(() => {
     view = createCollectionView(sessionId, db, coll);
   });
+  const seed = seededFilters.get(k);
+  if (seed !== undefined) {
+    seededFilters.delete(k);
+    view.filterText = seed;
+  }
   cache.set(k, { version, view, dispose });
   return { view, isNew: true };
 }

@@ -14,6 +14,7 @@
   import { formatCombo } from "../domain/shortcuts";
   import { detectPlatform } from "../stores/platform";
   import { mcp } from "../stores/mcp.svelte";
+  import { windowFrame } from "../stores/windowFrame.svelte";
 
   let {
     commands,
@@ -37,6 +38,8 @@
     disabled?: boolean;
     checked?: boolean;
     toggle?: boolean;
+    /** Longer explanation, shown as the row's tooltip. */
+    hint?: string;
     children?: Item[];
   };
   let openMenu = $state<string | null>(null);
@@ -115,6 +118,7 @@
           (d) => settings.setDensity(d),
         ),
         choice(m.menu_language(), (["en", "vi"] as Locale[]).map((l) => [l, LOCALE_NAMES[l]] as [Locale, string]), appLocale.current, (l) => appLocale.set(l)),
+        { ...toggleItem(m.menu_native_frame(), windowFrame.native, (v) => windowFrame.setNative(v)), hint: m.menu_native_frame_hint() },
         separator(),
         header(m.menu_section_navigator()),
         choice(
@@ -166,7 +170,7 @@
         cmdItem("tools.importSettings", m.menu_import_settings()),
       ],
     },
-    { name: m.menu_help(), items: [cmdItem("help.shortcuts", m.menu_keyboard_shortcuts()), cmdItem("help.about", m.menu_about()), cmdItem("help.exportDiagnostics", m.menu_export_diagnostics())] },
+    { name: m.menu_help(), items: [cmdItem("help.shortcuts", m.menu_keyboard_shortcuts()), cmdItem("help.mongoshCompat", m.menu_mongosh_compat()), cmdItem("help.about", m.menu_about()), cmdItem("help.exportDiagnostics", m.menu_export_diagnostics())] },
   ]);
 
   function closeAll() {
@@ -192,6 +196,7 @@
     role={it.toggle ? "menuitemcheckbox" : undefined}
     aria-checked={it.toggle ? it.checked === true : undefined}
     disabled={it.disabled}
+    title={it.hint}
     onmouseenter={() => { if (!inSub) openSub = null; }}
     onclick={(e) => { if (it.toggle) e.stopPropagation(); choose(it); }}
   >

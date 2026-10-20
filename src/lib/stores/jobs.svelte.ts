@@ -89,7 +89,7 @@ export function exportTargetLabel(targets: { db: string; coll: string }[] | null
 /** An export job (stores/exportJob). */
 export function exportJobSource(
   job: {
-    running: boolean; done: boolean; cancelled?: boolean; overall: { percent: number }; succeeded: number; failed: number; cancel: () => void;
+    running: boolean; done: boolean; cancelled?: boolean; overall: { percent: number | null }; succeeded: number; failed: number; cancel: () => void;
     rows?: { db: string; coll: string; status: string }[];
   },
   target: string,

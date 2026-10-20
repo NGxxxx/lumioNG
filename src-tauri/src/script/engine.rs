@@ -9,6 +9,28 @@ use tokio::runtime::Handle;
 
 const PRELUDE: &str = include_str!("prelude.js");
 
+/// Receives each console line the moment the script prints it.
+pub type OutputSink = Arc<dyn Fn(&ConsoleEntry) + Send + Sync>;
+/// Resolves `load("name")` to the saved snippet's source (`None` = no such name).
+pub type SnippetLoader = Arc<dyn Fn(&str) -> Result<Option<String>, crate::error::AppError> + Send + Sync>;
+
+/// Optional I/O hooks of one script run; the default (no streaming, no snippet library) suits tests.
+#[derive(Clone, Default)]
+pub struct ScriptIo {
+    pub output: Option<OutputSink>,
+    pub loader: Option<SnippetLoader>,
+    pub load_policy: LoadPolicy,
+    /// Overrides the per-run console budget (tests); `None` = [`OutputLimits::default`].
+    pub limits: Option<crate::script::host::OutputLimits>,
+}
+
+/// Guards `load()`: on a PROD session, snippets containing destructive calls only run when the user confirmed this run.
+#[derive(Clone, Copy, Default)]
+pub struct LoadPolicy {
+    pub prod: bool,
+    pub confirmed: bool,
+}
+
 /// Ensure a JS error message is never empty — callers display it directly in the UI.
 pub(crate) fn error_text(raw: String) -> String {
     if raw.trim().is_empty() {
@@ -167,6 +189,7 @@ pub fn run(
     read_only: bool,
     cancel: Arc<AtomicBool>,
     audit: Option<crate::script::host::ScriptAudit>,
+    io: ScriptIo,
 ) -> ScriptOutcome {
     use crate::script::cursors::CursorStore;
     use crate::script::host;
@@ -208,7 +231,13 @@ pub fn run(
                 cancel: cancel.clone(),
                 deadline,
                 audit,
+                sink: io.output,
+                loader: io.loader,
+                printer: Default::default(),
+                budget: Rc::new(RefCell::new(host::OutputBudget::new(io.limits.unwrap_or_default()))),
+                load_policy: io.load_policy,
             };
+            let host_for_flush = host_ctx.clone();
 
             host::bind(&ctx, host_ctx).map_err(|e| e.to_string())?;
 
@@ -238,6 +267,7 @@ pub fn run(
 
             // Always close all cursors before returning
             cursors.borrow_mut().close_all();
+            host_for_flush.flush_suppressed();
 
             let console_entries = console.borrow().clone();
 
@@ -421,6 +451,7 @@ mod run_tests {
             false,
             cancel,
             None,
+            ScriptIo::default(),
         );
 
         assert!(
@@ -446,6 +477,7 @@ mod run_tests {
             false,
             Arc::new(AtomicBool::new(false)),
             None,
+            ScriptIo::default(),
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -473,6 +505,7 @@ mod run_tests {
             false,
             Arc::new(AtomicBool::new(false)),
             None,
+            ScriptIo::default(),
         );
 
         assert!(
@@ -492,6 +525,7 @@ mod run_tests {
             client, handle, "test".into(), "db.c.find({".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
             None,
+            ScriptIo::default(),
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -510,6 +544,7 @@ mod run_tests {
             client, handle, "test".into(), "undefinedFn()".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
             None,
+            ScriptIo::default(),
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -527,6 +562,7 @@ mod run_tests {
             client, handle, "test".into(), "(async function(){ return 1; })()".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
             None,
+            ScriptIo::default(),
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -544,6 +580,7 @@ mod run_tests {
             client, handle, "test".into(), "throw null".into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
             None,
+            ScriptIo::default(),
         );
 
         let err = outcome.error.expect("expected an error in outcome");
@@ -560,9 +597,204 @@ mod run_tests {
             client, handle, "test".into(), r#"throw "boom""#.into(),
             30_000, 1000, false, Arc::new(AtomicBool::new(false)),
             None,
+            ScriptIo::default(),
         );
 
         let err = outcome.error.expect("expected an error in outcome");
         assert_eq!(err, "Uncaught boom");
+    }
+}
+
+#[cfg(test)]
+mod console_load_tests {
+    use super::*;
+    use std::time::Duration;
+    use std::collections::HashMap;
+    use std::sync::Mutex;
+
+    async fn run_with(script: &str, io: ScriptIo) -> ScriptOutcome {
+        let client = Client::with_uri_str("mongodb://localhost:27017").await.unwrap();
+        let handle = Handle::current();
+        let script = script.to_string();
+        // engine::run blocks on the runtime handle, so it needs its own blocking thread.
+        tokio::task::spawn_blocking(move || {
+            run(client, handle, "test".into(), script, 30_000, 1000, false, Arc::new(AtomicBool::new(false)), None, io)
+        })
+        .await
+        .unwrap()
+    }
+
+    fn loader(snippets: &[(&str, &str)]) -> SnippetLoader {
+        let map: HashMap<String, String> = snippets.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+        Arc::new(move |name| Ok(map.get(name).cloned()))
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn print_is_streamed_before_script_ends() {
+        let seen: Arc<Mutex<Vec<(String, Instant)>>> = Arc::default();
+        let sink_seen = seen.clone();
+        let io = ScriptIo {
+            output: Some(Arc::new(move |e: &ConsoleEntry| sink_seen.lock().unwrap().push((e.text.clone(), Instant::now())))),
+            ..Default::default()
+        };
+        let outcome = run_with(
+            r#"print("first"); var t = Date.now(); while (Date.now() - t < 300) {} print("second");"#,
+            io,
+        )
+        .await;
+        let done = Instant::now();
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.iter().map(|(t, _)| t.as_str()).collect::<Vec<_>>(), ["first", "second"]);
+        assert!(done.duration_since(seen[0].1) >= Duration::from_millis(250), "first line must arrive while the script still runs");
+        // The final outcome keeps the same lines.
+        assert_eq!(outcome.console.len(), 2);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn output_over_1000_lines_per_second_is_suppressed_with_a_marker() {
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let sink_seen = seen.clone();
+        let io = ScriptIo {
+            output: Some(Arc::new(move |e: &ConsoleEntry| sink_seen.lock().unwrap().push(e.text.clone()))),
+            ..Default::default()
+        };
+        let outcome = run_with(r#"for (var i = 0; i < 1500; i++) print("l" + i);"#, io).await;
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 1001, "1000 lines plus one marker");
+        assert_eq!(seen.last().unwrap(), "…500 lines suppressed");
+        assert_eq!(&outcome.console.iter().map(|c| c.text.clone()).collect::<Vec<_>>(), &*seen);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn load_runs_saved_snippet() {
+        let io = ScriptIo { output: None, loader: Some(loader(&[("helper", "var base = 40; base + 2")])), ..Default::default() };
+        let outcome = run_with(r#"var r = load("helper"); r + base"#, io).await;
+        assert_eq!(outcome.error, None);
+        assert!(matches!(outcome.result, ResultDisplay::Value { ref json } if json == "82"), "got {:?}", outcome.result);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn load_of_a_missing_name_names_it() {
+        let io = ScriptIo { output: None, loader: Some(loader(&[("Helper", "1")])), ..Default::default() };
+        let outcome = run_with(r#"load("helper")"#, io).await;
+        let err = outcome.error.expect("error");
+        assert!(err.contains(r#"load("helper")"#) && err.contains("not found"), "got {err}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn load_recursion_is_capped() {
+        let io = ScriptIo { output: None, loader: Some(loader(&[("a", r#"load("b")"#), ("b", r#"load("a")"#)])), ..Default::default() };
+        let outcome = run_with(r#"load("a")"#, io).await;
+        let err = outcome.error.expect("error");
+        assert!(err.contains("depth 8"), "got {err}");
+        assert!(err.contains("a → b → a → b"), "chain must be named: {err}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unknown_collection_method_has_friendly_error() {
+        let outcome = run_with("db.coll.foo()", ScriptIo::default()).await;
+        let err = outcome.error.expect("error");
+        assert!(
+            err.contains("db.coll.foo is not supported in LumioNG (see Help → mongosh compatibility)"),
+            "got {err}"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn unknown_cursor_method_and_db_method_have_friendly_errors() {
+        let err = run_with("db.coll.find().batchSize(5)", ScriptIo::default()).await.error.expect("error");
+        assert!(err.contains("db.coll.find().batchSize is not supported in LumioNG"), "got {err}");
+        let err = run_with("rs.nope()", ScriptIo::default()).await.error.expect("error");
+        assert!(err.contains("rs.nope is not supported in LumioNG"), "got {err}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn supported_and_internal_properties_still_work() {
+        let outcome = run_with("db.coll.getName() + '|' + (typeof db.coll.find) + '|' + JSON.stringify(db.coll.then)", ScriptIo::default()).await;
+        assert_eq!(outcome.error, None);
+        assert!(matches!(outcome.result, ResultDisplay::Value { ref json } if json == r#""coll|function|undefined""#), "got {:?}", outcome.result);
+    }
+
+    fn prod_io(prod: bool, confirmed: bool) -> ScriptIo {
+        // Defines (never calls) a destructive function, so no database is needed.
+        ScriptIo {
+            loader: Some(loader(&[("wipe", "var f = function () { db.c.deleteMany({}); }; 7"), ("safe", "8")])),
+            load_policy: LoadPolicy { prod, confirmed },
+            ..Default::default()
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn prod_unconfirmed_load_of_a_destructive_snippet_is_refused() {
+        let err = run_with(r#"load("wipe")"#, prod_io(true, false)).await.error.expect("refused");
+        assert!(err.contains(r#"load("wipe")"#) && err.contains("deleteMany") && err.contains("confirm"), "got {err}");
+        // Snippets without destructive calls still load.
+        let ok = run_with(r#"load("safe")"#, prod_io(true, false)).await;
+        assert_eq!(ok.error, None);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn prod_confirmed_and_non_prod_loads_are_allowed() {
+        for io in [prod_io(true, true), prod_io(false, false)] {
+            let o = run_with(r#"load("wipe")"#, io).await;
+            assert_eq!(o.error, None);
+            assert!(matches!(o.result, ResultDisplay::Value { ref json } if json == "7"), "got {:?}", o.result);
+        }
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn prod_refusal_also_covers_nested_loads() {
+        let io = ScriptIo {
+            loader: Some(loader(&[("outer", r#"load("wipe")"#), ("wipe", "var f = function () { db.c.drop(); }")])),
+            load_policy: LoadPolicy { prod: true, confirmed: false },
+            ..Default::default()
+        };
+        let err = run_with(r#"load("outer")"#, io).await.error.expect("refused");
+        assert!(err.contains("drop"), "got {err}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn console_output_is_capped_by_lines_with_one_marker() {
+        let seen: Arc<Mutex<Vec<String>>> = Arc::default();
+        let sink_seen = seen.clone();
+        let io = ScriptIo {
+            output: Some(Arc::new(move |e: &ConsoleEntry| sink_seen.lock().unwrap().push(e.text.clone()))),
+            limits: Some(crate::script::host::OutputLimits { max_lines: 50, max_bytes: 1 << 20 }),
+            ..Default::default()
+        };
+        let outcome = run_with(r#"for (var i = 0; i < 80; i++) print("l" + i);"#, io).await;
+        let seen = seen.lock().unwrap();
+        assert_eq!(seen.len(), 51, "50 lines plus one marker");
+        assert_eq!(seen.last().unwrap(), "…output truncated after 50 lines");
+        assert_eq!(&outcome.console.iter().map(|c| c.text.clone()).collect::<Vec<_>>(), &*seen);
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn console_output_is_capped_by_bytes() {
+        let io = ScriptIo {
+            limits: Some(crate::script::host::OutputLimits { max_lines: 1000, max_bytes: 100 }),
+            ..Default::default()
+        };
+        let outcome = run_with(r#"for (var i = 0; i < 20; i++) print("0123456789012345678901234567890123456789");"#, io).await;
+        assert_eq!(outcome.console.len(), 3, "two 40-byte lines fit, then the marker: {:?}", outcome.console);
+        assert_eq!(outcome.console[2].text, "…output truncated after 2 lines");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn nested_missing_load_shows_the_chain() {
+        let io = ScriptIo { loader: Some(loader(&[("a", r#"load("b")"#), ("b", r#"load("missing")"#)])), ..Default::default() };
+        let err = run_with(r#"load("a")"#, io).await.error.expect("error");
+        assert!(err.contains("a → b → missing"), "got {err}");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn eval_error_inside_a_snippet_names_the_snippet() {
+        let io = ScriptIo { loader: Some(loader(&[("outer", r#"load("bad")"#), ("bad", "throw new Error('boom')")])), ..Default::default() };
+        let err = run_with(r#"load("outer")"#, io).await.error.expect("error");
+        assert!(err.contains(r#"saved query "bad""#) && err.contains("boom"), "got {err}");
+        assert!(err.contains(r#"saved query "outer""#), "outer frame named too: {err}");
+        let io = ScriptIo { loader: Some(loader(&[("syn", "var = ;")])), ..Default::default() };
+        let err = run_with(r#"load("syn")"#, io).await.error.expect("error");
+        assert!(err.contains(r#"saved query "syn""#) && err.contains("SyntaxError"), "got {err}");
     }
 }
