@@ -32,6 +32,7 @@ import { pendingEdits } from "./pendingEdits.svelte";
 import { viewPresets } from "./viewPresets.svelte";
 import { pendingKey } from "../domain/pendingEdits";
 import { setSessionEnvironment } from "./sessionEnv";
+import { prefs } from "./prefs.svelte";
 
 const qp = documents.queryPage as ReturnType<typeof vi.fn>;
 const del = documents.deleteDocument as ReturnType<typeof vi.fn>;
@@ -43,7 +44,7 @@ const expQ = documents.exportQueryProgress as ReturnType<typeof vi.fn>;
 const cnt = documents.countDocuments as ReturnType<typeof vi.fn>;
 
 // Layouts are remembered per namespace in local storage; most tests share "conn:1/d/c".
-beforeEach(() => localStorage.clear());
+beforeEach(() => prefs.clear());
 
 describe("createCollectionView — paging", () => {
   beforeEach(() => {
@@ -1574,7 +1575,7 @@ describe("createCollectionView — grid depth limit", () => {
 describe("createCollectionView — filter chips", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    prefs.clear();
     cnt.mockResolvedValue(2);
     qp.mockResolvedValue([{ _id: 1, status: "shipped", total: 5 }, { _id: 2, status: "pending", total: 7 }]);
     samp.mockResolvedValue([]);
@@ -1640,7 +1641,7 @@ describe("createCollectionView — filter chips", () => {
 describe("createCollectionView — remembered layout", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    prefs.clear();
     cnt.mockResolvedValue(1);
     qp.mockResolvedValue([{ _id: 1, a: 1, b: 2 }]);
     samp.mockResolvedValue([]);

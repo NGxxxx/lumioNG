@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createFilterHistory, STORAGE_KEY } from "./filterHistory.svelte";
+import { prefs } from "./prefs.svelte";
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => prefs.clear());
 
 describe("filterHistory store", () => {
   it("records per namespace, newest first, and persists", () => {
@@ -24,9 +25,9 @@ describe("filterHistory store", () => {
   });
 
   it("corrupt storage is ignored", () => {
-    localStorage.setItem(STORAGE_KEY, "{not json");
+    prefs.setItem(STORAGE_KEY, "{not json");
     expect(createFilterHistory().entriesFor("ns")).toEqual([]);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ns: [{ text: 5 }, { text: '{"a":1}', at: 1, pinned: false }] }));
+    prefs.setItem(STORAGE_KEY, JSON.stringify({ ns: [{ text: 5 }, { text: '{"a":1}', at: 1, pinned: false }] }));
     expect(createFilterHistory().entriesFor("ns").map((e) => e.text)).toEqual(['{"a":1}']);
   });
 });

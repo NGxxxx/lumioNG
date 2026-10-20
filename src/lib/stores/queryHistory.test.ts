@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { createQueryHistory, QUERY_HISTORY_KEY } from "./queryHistory.svelte";
 import { createRecentCollections } from "./recentCollections.svelte";
 import { settings } from "./settings.svelte";
+import { prefs } from "./prefs.svelte";
 
 beforeEach(() => {
-  localStorage.clear();
+  prefs.clear();
   settings.setRecordQueryHistory(true);
 });
 
@@ -32,11 +33,11 @@ describe("queryHistory store", () => {
     h.record(run("db.a.find()"));
     h.clear();
     expect(h.entries).toEqual([]);
-    expect(localStorage.getItem(QUERY_HISTORY_KEY)).toBe("[]");
+    expect(prefs.getItem(QUERY_HISTORY_KEY)).toBe("[]");
   });
 
   it("corrupt storage starts empty", () => {
-    localStorage.setItem(QUERY_HISTORY_KEY, "{{");
+    prefs.setItem(QUERY_HISTORY_KEY, "{{");
     expect(createQueryHistory().entries).toEqual([]);
   });
 });

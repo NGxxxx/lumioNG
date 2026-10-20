@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { getRemembered, remember, forget, REF_MEMORY_CAP } from "./refMemory";
+import { prefs } from "./prefs.svelte";
 
 describe("refMemory", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => prefs.clear());
 
   it("remembers, overwrites and forgets", () => {
     expect(getRemembered("k")).toBeNull();
@@ -22,9 +23,9 @@ describe("refMemory", () => {
   });
 
   it("corrupt storage is ignored", () => {
-    localStorage.setItem("lumio.refTargets.v1", "{oops");
+    prefs.setItem("lumio.refTargets.v1", "{oops");
     expect(getRemembered("k")).toBeNull();
-    localStorage.setItem("lumio.refTargets.v1", JSON.stringify({ k: { coll: 5 }, j: { coll: "x", at: 1 } }));
+    prefs.setItem("lumio.refTargets.v1", JSON.stringify({ k: { coll: 5 }, j: { coll: "x", at: 1 } }));
     expect(getRemembered("k")).toBeNull();
     expect(getRemembered("j")).toBe("x");
   });

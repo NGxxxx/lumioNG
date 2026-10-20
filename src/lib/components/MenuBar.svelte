@@ -161,9 +161,11 @@
       items: [
         { ...toggleItem(m.menu_mcp_server(), mcp.enabled, (v) => mcp.setEnabled(v)), value: mcpValue },
         cmdItem("tools.mcpSettings", m.menu_mcp_settings()),
+        cmdItem("tools.exportSettings", m.menu_export_settings()),
+        cmdItem("tools.importSettings", m.menu_import_settings()),
       ],
     },
-    { name: m.menu_help(), items: [cmdItem("help.shortcuts", m.menu_keyboard_shortcuts()), cmdItem("help.about", m.menu_about())] },
+    { name: m.menu_help(), items: [cmdItem("help.shortcuts", m.menu_keyboard_shortcuts()), cmdItem("help.about", m.menu_about()), cmdItem("help.exportDiagnostics", m.menu_export_diagnostics())] },
   ]);
 
   function closeAll() {

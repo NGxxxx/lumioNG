@@ -13,7 +13,7 @@ pub struct AppInfo {
     pub webview: Option<String>,
 }
 
-fn build_info(webview: Option<String>) -> AppInfo {
+pub(crate) fn build_info(webview: Option<String>) -> AppInfo {
     AppInfo {
         version: env!("CARGO_PKG_VERSION").into(),
         commit: env!("LUMIO_COMMIT").into(),

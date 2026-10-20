@@ -175,6 +175,8 @@ pub fn run(
     use std::rc::Rc;
 
     // `catch_unwind` turns a host/QuickJS panic into a script error instead of killing the thread.
+    // The panic hook logs such panics but writes no crash report: the app survives them.
+    let caught = crate::logging::CaughtPanicScope::enter();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         let rt = Runtime::new().map_err(|e| e.to_string())?;
 
@@ -251,6 +253,7 @@ pub fn run(
         })
     }))
     .unwrap_or_else(|_| Err("script execution panicked".to_string()));
+    drop(caught);
 
     result.unwrap_or_else(|msg| ScriptOutcome {
         console: vec![],

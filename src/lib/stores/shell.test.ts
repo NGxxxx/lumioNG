@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createShell } from "./shell.svelte";
+import { prefs } from "./prefs.svelte";
 
 describe("createShell", () => {
   it("the command log starts closed", () => {
@@ -40,8 +41,8 @@ describe("createShell", () => {
 
   describe("saved queries section", () => {
     it("defaults open with height 180", () => {
-      localStorage.removeItem("saved-queries-open");
-      localStorage.removeItem("saved-queries-height-px");
+      prefs.removeItem("saved-queries-open");
+      prefs.removeItem("saved-queries-height-px");
       const s = createShell();
       expect(s.savedQueriesOpen).toBe(true);
       expect(s.savedQueriesHeight).toBe(180);
@@ -51,7 +52,7 @@ describe("createShell", () => {
       const s = createShell();
       s.toggleSavedQueries();
       expect(s.savedQueriesOpen).toBe(false);
-      expect(localStorage.getItem("saved-queries-open")).toBe("false");
+      expect(prefs.getItem("saved-queries-open")).toBe("false");
       expect(createShell().savedQueriesOpen).toBe(false);
     });
 

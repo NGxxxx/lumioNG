@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createSettings, MIN_PANE_PX } from "./settings.svelte";
+import { prefs } from "./prefs.svelte";
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => prefs.clear());
 
 describe("settings", () => {
   it("quick-look drawer: width defaults to 360 and clamps to >= 280; pinned defaults off; both persist", () => {
@@ -25,7 +26,7 @@ describe("settings", () => {
   });
 
   it("an unknown stored density falls back to comfortable", () => {
-    localStorage.setItem("grid-density", "huge");
+    prefs.setItem("grid-density", "huge");
     expect(createSettings().density).toBe("comfortable");
   });
 
@@ -93,7 +94,7 @@ describe("settings", () => {
     a.setExportPrefs("csv", true);
     const b = createSettings();
     expect([b.exportFormat, b.exportIncludeMetadata]).toEqual(["csv", true]);
-    localStorage.setItem("export-format", "xml");
+    prefs.setItem("export-format", "xml");
     expect(createSettings().exportFormat).toBe("json");
   });
 

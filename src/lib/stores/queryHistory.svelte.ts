@@ -2,12 +2,13 @@
 // Rules (merge, cap, tolerant parsing) live in domain/queryHistory.
 import { recordRun, parseStoredHistory, type HistoryEntry } from "../domain/queryHistory";
 import { settings } from "./settings.svelte";
+import { prefs } from "./prefs.svelte";
 
 export const QUERY_HISTORY_KEY = "lumio.queryHistory.v1";
 
 function read(): HistoryEntry[] {
   try {
-    return parseStoredHistory(localStorage.getItem(QUERY_HISTORY_KEY));
+    return parseStoredHistory(prefs.getItem(QUERY_HISTORY_KEY));
   } catch {
     return [];
   }
@@ -16,10 +17,11 @@ function read(): HistoryEntry[] {
 export function createQueryHistory() {
   let entries = $state.raw<HistoryEntry[]>(read());
   let seq = Date.now();
+  prefs.afterHydrate(() => (entries = read()));
 
   function persist() {
     try {
-      localStorage.setItem(QUERY_HISTORY_KEY, JSON.stringify(entries));
+      prefs.setItem(QUERY_HISTORY_KEY, JSON.stringify(entries));
     } catch {
       // storage full / unavailable: history just isn't kept
     }

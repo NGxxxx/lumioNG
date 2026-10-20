@@ -8,11 +8,12 @@ vi.mock("../api/mcp", () => ({
 
 import { createMcp } from "./mcp.svelte";
 import { startMcp, stopMcp, setMcpSessions } from "../api/mcp";
+import { prefs } from "./prefs.svelte";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
-  localStorage.clear();
+  prefs.clear();
   vi.clearAllMocks();
 });
 
@@ -23,7 +24,7 @@ describe("mcp store", () => {
     expect(s.status).toBe("off");
     expect(s.port).toBe(7737);
     expect(s.token).toHaveLength(48);
-    expect(localStorage.getItem("mcp-token")).toBe(s.token);
+    expect(prefs.getItem("mcp-token")).toBe(s.token);
     expect(createMcp().token).toBe(s.token); // same token next launch
   });
 
@@ -33,7 +34,7 @@ describe("mcp store", () => {
     await flush();
     expect(startMcp).toHaveBeenCalledWith(7737, s.token, false, expect.any(Function));
     expect(s.status).toBe("running");
-    expect(localStorage.getItem("mcp-enabled")).toBe("true");
+    expect(prefs.getItem("mcp-enabled")).toBe("true");
     s.setEnabled(false);
     await flush();
     expect(stopMcp).toHaveBeenCalled();
@@ -43,7 +44,7 @@ describe("mcp store", () => {
   it("init restarts the server only when it was left on", async () => {
     createMcp().init();
     expect(startMcp).not.toHaveBeenCalled();
-    localStorage.setItem("mcp-enabled", "true");
+    prefs.setItem("mcp-enabled", "true");
     createMcp().init();
     await flush();
     expect(startMcp).toHaveBeenCalledTimes(1);

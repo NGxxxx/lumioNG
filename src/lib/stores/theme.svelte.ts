@@ -1,4 +1,5 @@
 import { untrack } from "svelte";
+import { prefs } from "./prefs.svelte";
 
 export type ThemeKey = "latte" | "mocha";
 
@@ -7,7 +8,7 @@ const DEFAULT: ThemeKey = "mocha";
 
 function readSaved(): ThemeKey {
   try {
-    const v = localStorage.getItem(STORAGE_KEY);
+    const v = prefs.getItem(STORAGE_KEY);
     return v === "latte" || v === "mocha" ? v : DEFAULT;
   } catch {
     return DEFAULT;
@@ -24,6 +25,10 @@ function applyDataTheme(key: ThemeKey) {
 export function createTheme() {
   let current = $state<ThemeKey>(typeof document !== "undefined" ? readSaved() : DEFAULT);
   untrack(() => applyDataTheme(current));
+  prefs.afterHydrate(() => {
+    current = readSaved();
+    applyDataTheme(current);
+  });
 
   return {
     get current(): ThemeKey {
@@ -34,7 +39,7 @@ export function createTheme() {
       current = key;
       applyDataTheme(key);
       try {
-        localStorage.setItem(STORAGE_KEY, key);
+        prefs.setItem(STORAGE_KEY, key);
       } catch {
         /* storage unavailable — keep the in-memory theme */
       }

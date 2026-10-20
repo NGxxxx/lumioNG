@@ -1,6 +1,7 @@
 // src/lib/stores/gridLayout.ts — the Data grid's layout per connection/db/collection (hidden and
 // pinned columns, widths, sort, Grid/Tree), kept in local storage (spec §2.4). Tolerant of bad data.
 import type { SortKey } from "../domain/grid";
+import { prefs } from "./prefs.svelte";
 
 export const LAYOUT_KEY = "lumio.gridLayout.v1";
 
@@ -14,7 +15,7 @@ export type GridLayout = {
 
 function readAll(): Record<string, unknown> {
   try {
-    const raw = JSON.parse(localStorage.getItem(LAYOUT_KEY) ?? "{}") as unknown;
+    const raw = JSON.parse(prefs.getItem(LAYOUT_KEY) ?? "{}") as unknown;
     return raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   } catch {
     return {};
@@ -23,7 +24,7 @@ function readAll(): Record<string, unknown> {
 
 function writeAll(all: Record<string, unknown>) {
   try {
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify(all));
+    prefs.setItem(LAYOUT_KEY, JSON.stringify(all));
   } catch {
     // storage unavailable: layout just isn't remembered
   }

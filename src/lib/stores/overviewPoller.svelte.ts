@@ -11,6 +11,7 @@ import {
   parseSample, parseProfileEntry, rates as rateOf, pushPoint, nextDelay, parseSlowOps,
   type Sample, type Rates, type Point, type SlowOp,
 } from "../domain/serverMetrics";
+import { prefs } from "./prefs.svelte";
 
 export const OVERVIEW_INTERVALS = [2000, 5000, 10000] as const;
 export const SLOW_THRESHOLDS = [1, 5, 30] as const;
@@ -25,7 +26,7 @@ export type ProfilerView = { enabled: string[]; entries: string[] };
 
 function loadIntervals(): Record<string, number | null> {
   try {
-    const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as unknown;
+    const v = JSON.parse(prefs.getItem(STORAGE_KEY) ?? "{}") as unknown;
     return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, number | null>) : {};
   } catch {
     return {};
@@ -42,7 +43,7 @@ function rememberedInterval(connId: number | null): number | null | undefined {
 function saveInterval(connId: number | null, ms: number | null) {
   if (connId === null) return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...loadIntervals(), [String(connId)]: ms }));
+    prefs.setItem(STORAGE_KEY, JSON.stringify({ ...loadIntervals(), [String(connId)]: ms }));
   } catch {
     /* storage unavailable: the choice just isn't remembered */
   }

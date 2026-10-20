@@ -1,4 +1,5 @@
 pub mod app;
+pub mod diagnostics;
 pub mod admin;
 pub mod connection;
 pub mod csv;
@@ -17,3 +18,4 @@ pub mod command_log;
 pub mod watch;
 pub mod profiler;
 pub mod mcp;
+pub mod prefs;

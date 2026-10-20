@@ -1,5 +1,7 @@
 // src/lib/stores/refMemory.ts — remembered "this field points at that collection" choices for the
-// ObjectId reference jump (localStorage, capped; corrupt data is ignored).
+// ObjectId reference jump (prefs store, capped; corrupt data is ignored).
+import { prefs } from "./prefs.svelte";
+
 const KEY = "lumio.refTargets.v1";
 export const REF_MEMORY_CAP = 500;
 
@@ -7,7 +9,7 @@ type Entry = { coll: string; at: number };
 
 function read(): Record<string, Entry> {
   try {
-    const v = JSON.parse(localStorage.getItem(KEY) ?? "{}") as unknown;
+    const v = JSON.parse(prefs.getItem(KEY) ?? "{}") as unknown;
     if (!v || typeof v !== "object" || Array.isArray(v)) return {};
     const out: Record<string, Entry> = {};
     for (const [k, e] of Object.entries(v as Record<string, unknown>)) {
@@ -22,7 +24,7 @@ function read(): Record<string, Entry> {
 
 function write(all: Record<string, Entry>) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(all));
+    prefs.setItem(KEY, JSON.stringify(all));
   } catch {
     /* storage unavailable: nothing is remembered */
   }

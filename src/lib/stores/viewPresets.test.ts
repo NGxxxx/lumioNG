@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { viewPresets, PRESETS_KEY } from "./viewPresets.svelte";
 import type { ViewPreset } from "../domain/viewPresets";
+import { prefs } from "./prefs.svelte";
 
 const p = (name: string, filter = "{}"): ViewPreset => ({ name, filter, sort: [], hidden: [], pinned: [], mode: "grid" });
 
@@ -13,7 +14,7 @@ describe("viewPresets", () => {
     viewPresets.save("a", p("Active", '{"s":1}'));
     viewPresets.save("b", p("Other"));
     expect(viewPresets.list("a").map((x) => x.name)).toEqual(["Active"]);
-    const stored = JSON.parse(localStorage.getItem(PRESETS_KEY)!);
+    const stored = JSON.parse(prefs.getItem(PRESETS_KEY)!);
     expect(stored.a[0].filter).toBe('{"s":1}');
     expect(stored.b[0].name).toBe("Other");
   });
@@ -24,6 +25,6 @@ describe("viewPresets", () => {
     expect(viewPresets.list("a")).toEqual([p("active", '{"x":1}')]);
     viewPresets.remove("a", "active");
     expect(viewPresets.list("a")).toEqual([]);
-    expect(JSON.parse(localStorage.getItem(PRESETS_KEY)!).a).toBeUndefined();
+    expect(JSON.parse(prefs.getItem(PRESETS_KEY)!).a).toBeUndefined();
   });
 });

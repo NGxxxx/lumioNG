@@ -2,9 +2,10 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
 import { settings } from "../stores/settings.svelte";
+import { prefs } from "../stores/prefs.svelte";
 
 beforeEach(() => {
-  localStorage.clear();
+  prefs.clear();
   settings.setQueryTimeoutMs(30000);
   settings.setQueryResultCap(1000);
   settings.setQueryResultCapUnlimited(false);

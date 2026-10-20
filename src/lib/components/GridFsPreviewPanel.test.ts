@@ -94,14 +94,26 @@ describe("GridFsPreviewPanel", () => {
     expect(screen.queryByText("2048 / 0")).not.toBeInTheDocument();
   });
 
-  it("renders a fallback download link alongside the PDF embed", async () => {
-    const b64 = btoa("pdfbytes");
-    previewMock.mockResolvedValueOnce(b64);
+  it("renders a PDF through a blob: URL, with a fallback link, and revokes it on unmount", async () => {
+    const create = vi.fn(() => "blob:mock-1");
+    const revoke = vi.fn();
+    const u = URL as unknown as Record<string, unknown>;
+    u.createObjectURL = create;
+    u.revokeObjectURL = revoke;
+    previewMock.mockResolvedValueOnce(btoa("pdfbytes"));
     const row = { ...baseRow, filename: "report.pdf", contentType: "application/pdf" };
-    render(GridFsPreviewPanel, { db: "db1", bucket: "fs", row, onclose: vi.fn() });
+    const { unmount } = render(GridFsPreviewPanel, { db: "db1", bucket: "fs", row, onclose: vi.fn() });
 
     await waitFor(() => expect(document.querySelector("embed[type='application/pdf']")).toBeInTheDocument());
+    expect(document.querySelector("embed")).toHaveAttribute("src", "blob:mock-1");
+    expect(create).toHaveBeenCalledTimes(1);
+    expect((create.mock.calls[0] as unknown as [Blob])[0].type).toBe("application/pdf");
     const link = screen.getByText("PDF not displaying? Open/download it directly");
-    expect(link.closest("a")).toHaveAttribute("href", `data:application/pdf;base64,${b64}`);
+    expect(link.closest("a")).toHaveAttribute("href", "blob:mock-1");
+    expect(revoke).not.toHaveBeenCalled();
+    unmount();
+    expect(revoke).toHaveBeenCalledWith("blob:mock-1");
+    delete u.createObjectURL;
+    delete u.revokeObjectURL;
   });
 });

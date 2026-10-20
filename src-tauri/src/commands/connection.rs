@@ -135,7 +135,7 @@ pub async fn list_plain_collections(
         .await?)
 }
 
-fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {
+pub(crate) fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     let dir = app
         .path()
         .app_config_dir()

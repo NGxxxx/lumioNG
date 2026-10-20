@@ -1,11 +1,12 @@
 import { untrack } from "svelte";
+import { prefs } from "./prefs.svelte";
 
 const SQ_OPEN_KEY = "saved-queries-open";
 const SQ_HEIGHT_KEY = "saved-queries-height-px";
 
 function readStored(key: string): string | null {
   try {
-    return typeof localStorage === "undefined" ? null : localStorage.getItem(key);
+    return prefs.getItem(key);
   } catch {
     return null;
   }
@@ -13,7 +14,7 @@ function readStored(key: string): string | null {
 
 function writeStored(key: string, value: string) {
   try {
-    localStorage.setItem(key, value);
+    prefs.setItem(key, value);
   } catch {
     /* storage unavailable — keep the in-memory value */
   }
@@ -28,13 +29,17 @@ export function createShell() {
   let logOpen = $state(false); // closed by default; the status bar shows a dot when commands arrive
   let logHeight = $state(140);
   // Saved-queries sidebar section: the only shell fields persisted across restarts.
-  let savedQueriesOpen = $state(untrack(() => readStored(SQ_OPEN_KEY)) !== "false");
-  let savedQueriesHeight = $state(
-    untrack(() => {
-      const n = Number(readStored(SQ_HEIGHT_KEY));
-      return Number.isFinite(n) && n > 0 ? Math.min(500, Math.max(80, Math.round(n))) : 180;
-    }),
-  );
+  const readSavedQueriesOpen = () => readStored(SQ_OPEN_KEY) !== "false";
+  const readSavedQueriesHeight = () => {
+    const n = Number(readStored(SQ_HEIGHT_KEY));
+    return Number.isFinite(n) && n > 0 ? Math.min(500, Math.max(80, Math.round(n))) : 180;
+  };
+  let savedQueriesOpen = $state(untrack(readSavedQueriesOpen));
+  let savedQueriesHeight = $state(untrack(readSavedQueriesHeight));
+  prefs.afterHydrate(() => {
+    savedQueriesOpen = readSavedQueriesOpen();
+    savedQueriesHeight = readSavedQueriesHeight();
+  });
 
   function setConnection(c: { label: string; uri: string } | null) {
     connection = c;

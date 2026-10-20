@@ -1,12 +1,13 @@
 import { untrack } from "svelte";
 import { UI_SIZES, uiSizePx, type UiSizeKey } from "../domain/uiSize";
+import { prefs } from "./prefs.svelte";
 
 const STORAGE_KEY = "ui-size";
 const DEFAULT: UiSizeKey = "default";
 
 function readSaved(): UiSizeKey {
   try {
-    const v = localStorage.getItem(STORAGE_KEY);
+    const v = prefs.getItem(STORAGE_KEY);
     return UI_SIZES.some((s) => s.key === v) ? (v as UiSizeKey) : DEFAULT;
   } catch {
     return DEFAULT;
@@ -23,6 +24,10 @@ function applyRootFontSize(key: UiSizeKey) {
 export function createUiSize() {
   let current = $state<UiSizeKey>(typeof document !== "undefined" ? readSaved() : DEFAULT);
   untrack(() => applyRootFontSize(current));
+  prefs.afterHydrate(() => {
+    current = readSaved();
+    applyRootFontSize(current);
+  });
 
   return {
     get current(): UiSizeKey {
@@ -33,7 +38,7 @@ export function createUiSize() {
       current = key;
       applyRootFontSize(key);
       try {
-        localStorage.setItem(STORAGE_KEY, key);
+        prefs.setItem(STORAGE_KEY, key);
       } catch {
         /* storage unavailable — keep the in-memory size */
       }

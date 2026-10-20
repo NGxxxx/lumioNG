@@ -5,6 +5,7 @@ import { quit, minimize, toggleMaximize, isMaximized, onMaximizedChange } from "
 import { getAppVersion, getAppInfo, openExternalUrl } from "../api/app";
 import { forgetSshHostKey } from "../api/connection";
 import type { DialogFilter } from "../api/files";
+import { prefs } from "./prefs.svelte";
 
 export const pickCertFile = () => openDialog([{ name: "PEM", extensions: ["pem", "crt", "cer"] }]);
 export const pickAnyFile = () => openDialog([{ name: "All files", extensions: ["*"] }]);
@@ -17,4 +18,9 @@ export const forgetHostKey = (host: string, port: number) => forgetSshHostKey(ho
 export const appVersion = () => getAppVersion();
 export const appInfo = () => getAppInfo();
 export const openLink = (url: string) => openExternalUrl(url);
-export const windowControls = { quit, minimize, toggleMaximize, isMaximized, onMaximizedChange };
+/** Saves pending settings before closing the window (a debounced write would otherwise be lost). */
+const quitAfterFlush = async () => {
+  await prefs.flush();
+  await quit();
+};
+export const windowControls = { quit: quitAfterFlush, minimize, toggleMaximize, isMaximized, onMaximizedChange };

@@ -1,7 +1,7 @@
-use serde::Serialize;
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
 
-#[derive(Debug, Serialize)]
-#[serde(tag = "kind", content = "message")]
+#[derive(Debug)]
 pub enum AppError {
     Connection(String),
     SshTunnel(String),
@@ -27,6 +27,29 @@ impl std::fmt::Display for AppError {
 }
 
 impl std::error::Error for AppError {}
+
+/// Wire format `{ "kind": …, "message": … }` (no `message` for `NotConnected`). Every error that
+/// reaches the frontend is written to the log at `warn`, redacted, as it is serialized.
+impl Serialize for AppError {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let (kind, message) = match self {
+            AppError::Connection(m) => ("Connection", Some(m)),
+            AppError::SshTunnel(m) => ("SshTunnel", Some(m)),
+            AppError::Query(m) => ("Query", Some(m)),
+            AppError::Serialize(m) => ("Serialize", Some(m)),
+            AppError::Parse(m) => ("Parse", Some(m)),
+            AppError::Io(m) => ("Io", Some(m)),
+            AppError::NotConnected => ("NotConnected", None),
+        };
+        tracing::warn!(kind, "{}", crate::redact::redact_text(&self.to_string()));
+        let mut s = serializer.serialize_struct("AppError", if message.is_some() { 2 } else { 1 })?;
+        s.serialize_field("kind", kind)?;
+        if let Some(m) = message {
+            s.serialize_field("message", m)?;
+        }
+        s.end()
+    }
+}
 
 /// Reject an operation when the connection is read-only.
 pub fn ensure_writable(read_only: bool) -> Result<(), AppError> {
@@ -72,6 +95,11 @@ mod tests {
         let err = AppError::SshTunnel("auth rejected".into());
         let json = serde_json::to_string(&err).unwrap();
         assert_eq!(json, r#"{"kind":"SshTunnel","message":"auth rejected"}"#);
+    }
+
+    #[test]
+    fn not_connected_serializes_without_message() {
+        assert_eq!(serde_json::to_string(&AppError::NotConnected).unwrap(), r#"{"kind":"NotConnected"}"#);
     }
 
     #[test]

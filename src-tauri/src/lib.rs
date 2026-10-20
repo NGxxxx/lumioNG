@@ -13,8 +13,11 @@ mod json_bson;
 mod json_import;
 mod json_stream;
 mod known_hosts;
+mod logging;
 mod mcp;
+mod prefs;
 mod query_library;
+mod redact;
 mod registry;
 mod script;
 mod secrets;
@@ -32,6 +35,14 @@ pub fn run() {
         .manage(commands::command_log::CommandLogFile::default())
         .manage(commands::mcp::McpServer::default())
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            use tauri::Manager;
+            // Logging is best-effort: the app runs fine without a writable log directory.
+            if let Ok(dir) = app.path().app_log_dir() {
+                logging::init(dir);
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::connection::connect,
             commands::connection::test_connection,
@@ -134,6 +145,16 @@ pub fn run() {
             commands::mcp::mcp_stop,
             commands::mcp::mcp_status,
             commands::mcp::mcp_set_sessions,
+            commands::diagnostics::log_frontend,
+            commands::diagnostics::export_diagnostics,
+            commands::diagnostics::take_crash_reports,
+            commands::diagnostics::open_crash_folder,
+            commands::prefs::prefs_load,
+            commands::prefs::prefs_save,
+            commands::prefs::prefs_export,
+            commands::prefs::prefs_import,
+            #[cfg(debug_assertions)]
+            commands::diagnostics::debug_panic,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

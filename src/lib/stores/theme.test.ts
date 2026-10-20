@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createTheme } from "./theme.svelte";
+import { prefs } from "./prefs.svelte";
 
 beforeEach(() => {
-  localStorage.clear();
+  prefs.clear();
   document.documentElement.removeAttribute("data-theme");
 });
 
@@ -17,16 +18,16 @@ describe("theme store", () => {
     t.set("latte");
     expect(t.current).toBe("latte");
     expect(document.documentElement.dataset.theme).toBe("latte");
-    expect(localStorage.getItem("theme")).toBe("latte");
+    expect(prefs.getItem("theme")).toBe("latte");
   });
   it("restores a saved theme on construction", () => {
-    localStorage.setItem("theme", "latte");
+    prefs.setItem("theme", "latte");
     const t = createTheme();
     expect(t.current).toBe("latte");
     expect(document.documentElement.dataset.theme).toBe("latte");
   });
   it("ignores an invalid saved key", () => {
-    localStorage.setItem("theme", "bogus");
+    prefs.setItem("theme", "bogus");
     const t = createTheme();
     expect(t.current).toBe("mocha");
   });

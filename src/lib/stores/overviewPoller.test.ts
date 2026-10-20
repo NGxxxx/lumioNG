@@ -10,6 +10,7 @@ vi.mock("../api/mongoServer", () => ({
 
 import * as api from "../api/mongoServer";
 import { createOverviewPoller } from "./overviewPoller.svelte";
+import { prefs } from "./prefs.svelte";
 
 const metrics = api.serverMetrics as ReturnType<typeof vi.fn>;
 const slow = api.slowOps as ReturnType<typeof vi.fn>;
@@ -36,7 +37,7 @@ describe("createOverviewPoller", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.clearAllMocks();
-    localStorage.clear();
+    prefs.clear();
     query = 0;
     uptime = 100;
     metrics.mockImplementation(async () => { query += 200; uptime += 2; return text(); });
@@ -132,7 +133,7 @@ describe("createOverviewPoller", () => {
     a.setIntervalMs(10_000);
     expect(createOverviewPoller("s", { prod: false, connId: 7 }).intervalMs).toBe(10_000);
     expect(createOverviewPoller("s", { prod: false, connId: 8 }).intervalMs).toBe(2000);
-    localStorage.setItem("lumio.overviewInterval.v1", "{bad");
+    prefs.setItem("lumio.overviewInterval.v1", "{bad");
     expect(createOverviewPoller("s", { prod: false, connId: 7 }).intervalMs).toBe(2000);
   });
 

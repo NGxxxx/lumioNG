@@ -1,4 +1,5 @@
 import { untrack } from "svelte";
+import { prefs } from "./prefs.svelte";
 
 const SUPPRESS_KEY = "suppress-destructive-warning";
 const TIMEOUT_KEY = "query-timeout-ms";
@@ -27,7 +28,7 @@ const DENSITIES: readonly Density[] = ["compact", "comfortable", "spacious"];
 
 function readDensity(): Density {
   try {
-    const v = localStorage.getItem(DENSITY_KEY);
+    const v = prefs.getItem(DENSITY_KEY);
     return (DENSITIES as readonly string[]).includes(v ?? "") ? (v as Density) : "comfortable";
   } catch {
     return "comfortable";
@@ -44,7 +45,7 @@ const DEFAULT_GRID_DEPTH = 1;
 
 function readBool(key: string): boolean {
   try {
-    return localStorage.getItem(key) === "true";
+    return prefs.getItem(key) === "true";
   } catch {
     return false;
   }
@@ -53,7 +54,7 @@ function readBool(key: string): boolean {
 /** Read a positive-integer setting; fall back to `fallback` for missing/invalid values. */
 function readPosInt(key: string, fallback: number): number {
   try {
-    const n = Number(localStorage.getItem(key));
+    const n = Number(prefs.getItem(key));
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : fallback;
   } catch {
     return fallback;
@@ -64,7 +65,7 @@ function readPosInt(key: string, fallback: number): number {
  *  `null` means "no user override, use the CSS default". */
 function readPosIntOrNull(key: string): number | null {
   try {
-    const n = Number(localStorage.getItem(key));
+    const n = Number(prefs.getItem(key));
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : null;
   } catch {
     return null;
@@ -74,7 +75,7 @@ function readPosIntOrNull(key: string): number | null {
 /** Read the grid depth setting: positive int, "all" → null (unlimited), anything else → default 1. */
 function readGridDepth(): number | null {
   try {
-    const raw = localStorage.getItem(GRID_DEPTH_KEY);
+    const raw = prefs.getItem(GRID_DEPTH_KEY);
     if (raw === "all") return null;
     const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? Math.floor(n) : DEFAULT_GRID_DEPTH;
@@ -85,7 +86,7 @@ function readGridDepth(): number | null {
 
 function writeKey(key: string, value: string) {
   try {
-    localStorage.setItem(key, value);
+    prefs.setItem(key, value);
   } catch {
     /* storage unavailable — keep the in-memory value */
   }
@@ -93,36 +94,50 @@ function writeKey(key: string, value: string) {
 
 const RECORD_HISTORY_KEY = "lumio.recordQueryHistory";
 
-/** App-wide UI preferences persisted in localStorage. */
+function readExportFormat(): ExportFormatPref {
+  const v = prefs.getItem(EXPORT_FORMAT_KEY) ?? "";
+  return (EXPORT_FORMATS as readonly string[]).includes(v) ? (v as ExportFormatPref) : "json";
+}
+
+/** App-wide UI preferences persisted in the prefs store (prefs.json). */
 export function createSettings() {
-  const hasStorage = typeof localStorage !== "undefined";
-  let suppress = $state<boolean>(hasStorage ? untrack(() => readBool(SUPPRESS_KEY)) : false);
-  let timeoutMs = $state<number>(
-    hasStorage ? untrack(() => readPosInt(TIMEOUT_KEY, DEFAULT_TIMEOUT_MS)) : DEFAULT_TIMEOUT_MS,
-  );
-  let cap = $state<number>(hasStorage ? untrack(() => readPosInt(CAP_KEY, DEFAULT_CAP)) : DEFAULT_CAP);
-  let capUnlimited = $state<boolean>(hasStorage ? untrack(() => readBool(CAP_UNLIMITED_KEY)) : false);
-  let wrapLongLines = $state<boolean>(hasStorage ? untrack(() => readBool(WRAP_KEY)) : false);
-  let stageCellEdits = $state<boolean>(hasStorage ? untrack(() => readBool(STAGE_EDITS_KEY)) : false);
-  let exportFormat = $state<ExportFormatPref>(
-    hasStorage ? untrack(() => (EXPORT_FORMATS as readonly string[]).includes(localStorage.getItem(EXPORT_FORMAT_KEY) ?? "") ? (localStorage.getItem(EXPORT_FORMAT_KEY) as ExportFormatPref) : "json") : "json",
-  );
-  let exportIncludeMetadata = $state<boolean>(hasStorage ? untrack(() => readBool(EXPORT_METADATA_KEY)) : false);
-  let commandLogToFile = $state<boolean>(hasStorage ? untrack(() => readBool(COMMAND_LOG_FILE_KEY)) : false);
-  let queryEditorHeightPx = $state<number | null>(
-    hasStorage ? untrack(() => readPosIntOrNull(EDITOR_H_KEY)) : null,
-  );
-  let gridMaxDepth = $state<number | null>(
-    hasStorage ? untrack(() => readGridDepth()) : DEFAULT_GRID_DEPTH,
-  );
-  let showSystemDatabases = $state<boolean>(hasStorage ? untrack(() => readBool(SHOW_SYSTEM_DBS_KEY)) : false);
-  let density = $state<Density>(hasStorage ? untrack(readDensity) : "comfortable");
-  let peekWidth = $state<number>(
-    hasStorage ? untrack(() => Math.max(PEEK_MIN_W, readPosInt(PEEK_WIDTH_KEY, PEEK_DEFAULT_W))) : PEEK_DEFAULT_W,
-  );
-  let peekPinned = $state<boolean>(hasStorage ? untrack(() => readBool(PEEK_PINNED_KEY)) : false);
+  let suppress = $state<boolean>(untrack(() => readBool(SUPPRESS_KEY)));
+  let timeoutMs = $state<number>(untrack(() => readPosInt(TIMEOUT_KEY, DEFAULT_TIMEOUT_MS)));
+  let cap = $state<number>(untrack(() => readPosInt(CAP_KEY, DEFAULT_CAP)));
+  let capUnlimited = $state<boolean>(untrack(() => readBool(CAP_UNLIMITED_KEY)));
+  let wrapLongLines = $state<boolean>(untrack(() => readBool(WRAP_KEY)));
+  let stageCellEdits = $state<boolean>(untrack(() => readBool(STAGE_EDITS_KEY)));
+  let exportFormat = $state<ExportFormatPref>(untrack(readExportFormat));
+  let exportIncludeMetadata = $state<boolean>(untrack(() => readBool(EXPORT_METADATA_KEY)));
+  let commandLogToFile = $state<boolean>(untrack(() => readBool(COMMAND_LOG_FILE_KEY)));
+  let queryEditorHeightPx = $state<number | null>(untrack(() => readPosIntOrNull(EDITOR_H_KEY)));
+  let gridMaxDepth = $state<number | null>(untrack(() => readGridDepth()));
+  let showSystemDatabases = $state<boolean>(untrack(() => readBool(SHOW_SYSTEM_DBS_KEY)));
+  let density = $state<Density>(untrack(readDensity));
+  let peekWidth = $state<number>(untrack(() => Math.max(PEEK_MIN_W, readPosInt(PEEK_WIDTH_KEY, PEEK_DEFAULT_W))));
+  let peekPinned = $state<boolean>(untrack(() => readBool(PEEK_PINNED_KEY)));
   // On unless explicitly turned off (spec §3.1).
-  let recordQueryHistory = $state<boolean>(hasStorage ? untrack(() => localStorage.getItem(RECORD_HISTORY_KEY) !== "false") : true);
+  let recordQueryHistory = $state<boolean>(untrack(() => prefs.getItem(RECORD_HISTORY_KEY) !== "false"));
+
+  // The singleton is created while prefs.json is still loading; re-read everything once it is in.
+  prefs.afterHydrate(() => {
+    suppress = readBool(SUPPRESS_KEY);
+    timeoutMs = readPosInt(TIMEOUT_KEY, DEFAULT_TIMEOUT_MS);
+    cap = readPosInt(CAP_KEY, DEFAULT_CAP);
+    capUnlimited = readBool(CAP_UNLIMITED_KEY);
+    wrapLongLines = readBool(WRAP_KEY);
+    stageCellEdits = readBool(STAGE_EDITS_KEY);
+    exportFormat = readExportFormat();
+    exportIncludeMetadata = readBool(EXPORT_METADATA_KEY);
+    commandLogToFile = readBool(COMMAND_LOG_FILE_KEY);
+    queryEditorHeightPx = readPosIntOrNull(EDITOR_H_KEY);
+    gridMaxDepth = readGridDepth();
+    showSystemDatabases = readBool(SHOW_SYSTEM_DBS_KEY);
+    density = readDensity();
+    peekWidth = Math.max(PEEK_MIN_W, readPosInt(PEEK_WIDTH_KEY, PEEK_DEFAULT_W));
+    peekPinned = readBool(PEEK_PINNED_KEY);
+    recordQueryHistory = prefs.getItem(RECORD_HISTORY_KEY) !== "false";
+  });
 
   return {
     get recordQueryHistory(): boolean {
@@ -211,7 +226,7 @@ export function createSettings() {
     resetQueryEditorHeight() {
       queryEditorHeightPx = null;
       try {
-        localStorage.removeItem(EDITOR_H_KEY);
+        prefs.removeItem(EDITOR_H_KEY);
       } catch {
         /* storage unavailable — keep the in-memory value */
       }

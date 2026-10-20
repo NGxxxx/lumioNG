@@ -70,6 +70,17 @@
           : "application/octet-stream";
     return `data:${mime};base64,${base64}`;
   });
+  // PDFs go through a blob: URL (the CSP's object-src allows only blob:); revoked when it changes or the panel closes.
+  let pdfUrl = $state<string | null>(null);
+  $effect(() => {
+    if (kind !== "pdf" || base64 === null) {
+      pdfUrl = null;
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))], { type: "application/pdf" }));
+    pdfUrl = url;
+    return () => URL.revokeObjectURL(url);
+  });
   const textContent = $derived(base64 !== null && kind === "text" ? base64ToUtf8Text(base64) : null);
 </script>
 
@@ -88,13 +99,13 @@
         <p class="gridfs-error">{m.gridfs_preview_error({ error })}</p>
       {:else if kind === "image" && dataUrl}
         <img src={dataUrl} alt={row.filename ?? ""} />
-      {:else if kind === "pdf" && dataUrl}
+      {:else if kind === "pdf" && pdfUrl}
         <div class="gridfs-pdf-preview">
-          <embed type="application/pdf" src={dataUrl} />
+          <embed type="application/pdf" src={pdfUrl} />
           <!-- Inline PDF rendering depends on the OS webview (WebView2/WKWebView/WebKitGTK) and
                can silently fail to render; always offer a working escape hatch alongside it. -->
           <p class="gridfs-pdf-fallback">
-            <a href={dataUrl} download={row.filename ?? "download.pdf"}>{m.gridfs_pdf_fallback_link()}</a>
+            <a href={pdfUrl} download={row.filename ?? "download.pdf"}>{m.gridfs_pdf_fallback_link()}</a>
           </p>
         </div>
       {:else if kind === "text" && textContent !== null}

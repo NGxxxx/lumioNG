@@ -1,12 +1,13 @@
 // src/lib/stores/filterHistory.svelte.ts — last applied filters per connection/db/collection,
 // kept in local storage (spec §2.3). Rules (dedupe, cap 10, pinned) live in domain/filterHistory.
 import { pushFilter, normalizeFilter, type FilterHistoryEntry } from "../domain/filterHistory";
+import { prefs } from "./prefs.svelte";
 
 export const STORAGE_KEY = "lumio.filterHistory.v1";
 
 function readAll(): Record<string, FilterHistoryEntry[]> {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}") as unknown;
+    const raw = JSON.parse(prefs.getItem(STORAGE_KEY) ?? "{}") as unknown;
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
     const out: Record<string, FilterHistoryEntry[]> = {};
     for (const [ns, list] of Object.entries(raw as Record<string, unknown>)) {
@@ -25,10 +26,11 @@ function readAll(): Record<string, FilterHistoryEntry[]> {
 
 export function createFilterHistory() {
   let all = $state.raw<Record<string, FilterHistoryEntry[]>>(readAll());
+  prefs.afterHydrate(() => (all = readAll()));
 
   function persist() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+      prefs.setItem(STORAGE_KEY, JSON.stringify(all));
     } catch {
       // storage full / unavailable: history just isn't kept
     }

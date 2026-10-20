@@ -31,7 +31,10 @@ export type CommandId =
   | "view.toggleWrap"
   | "view.toggleSavedQueries"
   | "help.about"
+  | "help.exportDiagnostics"
   | "tools.mcpSettings"
+  | "tools.exportSettings"
+  | "tools.importSettings"
   | "edit.undo"
   // Grid (result grid / data view)
   | "grid.newDocument"

@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { loadLayout, saveLayout, clearLayout, LAYOUT_KEY } from "./gridLayout";
+import { prefs } from "./prefs.svelte";
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => prefs.clear());
 
 describe("gridLayout", () => {
   const l = { hidden: ["a"], pinned: ["b"], widths: { b: 200 }, sort: [{ path: "c", dir: -1 as const }], mode: "tree" as const };
@@ -21,11 +22,11 @@ describe("gridLayout", () => {
   });
 
   it("corrupt or wrongly shaped storage is ignored", () => {
-    localStorage.setItem(LAYOUT_KEY, "{oops");
+    prefs.setItem(LAYOUT_KEY, "{oops");
     expect(loadLayout("x")).toBeNull();
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ x: { hidden: "a", pinned: [], widths: {}, sort: [], mode: "grid" } }));
+    prefs.setItem(LAYOUT_KEY, JSON.stringify({ x: { hidden: "a", pinned: [], widths: {}, sort: [], mode: "grid" } }));
     expect(loadLayout("x")).toBeNull();
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify({ x: { hidden: [], pinned: [], widths: { a: "wide" }, sort: [{ path: "a", dir: 2 }], mode: "grid" } }));
+    prefs.setItem(LAYOUT_KEY, JSON.stringify({ x: { hidden: [], pinned: [], widths: { a: "wide" }, sort: [{ path: "a", dir: 2 }], mode: "grid" } }));
     expect(loadLayout("x")).toEqual({ hidden: [], pinned: [], widths: {}, sort: [], mode: "grid" });
   });
 });

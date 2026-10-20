@@ -1,8 +1,9 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { createUiSize } from "./uiSize.svelte";
+import { prefs } from "./prefs.svelte";
 
 beforeEach(() => {
-  localStorage.clear();
+  prefs.clear();
   document.documentElement.style.fontSize = "";
 });
 
@@ -17,16 +18,16 @@ describe("uiSize store", () => {
     s.set("large");
     expect(s.current).toBe("large");
     expect(document.documentElement.style.fontSize).toBe("18px");
-    expect(localStorage.getItem("ui-size")).toBe("large");
+    expect(prefs.getItem("ui-size")).toBe("large");
   });
   it("restores a saved size on construction", () => {
-    localStorage.setItem("ui-size", "larger");
+    prefs.setItem("ui-size", "larger");
     const s = createUiSize();
     expect(s.current).toBe("larger");
     expect(document.documentElement.style.fontSize).toBe("20px");
   });
   it("ignores an invalid saved key", () => {
-    localStorage.setItem("ui-size", "huge");
+    prefs.setItem("ui-size", "huge");
     const s = createUiSize();
     expect(s.current).toBe("default");
   });

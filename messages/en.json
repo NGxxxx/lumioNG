@@ -1280,6 +1280,11 @@
   "menu_tools": "Tools",
   "menu_mcp_server": "MCP server",
   "menu_mcp_settings": "MCP settings…",
+  "menu_export_settings": "Export settings…",
+  "menu_import_settings": "Import settings…",
+  "settings_exported": "Settings exported",
+  "settings_export_failed": "Could not export settings: {error}",
+  "settings_import_failed": "Could not import settings: {error}",
   "mcp_status_error": "error",
   "mcp_title": "MCP server",
   "mcp_intro": "Let AI assistants (Claude, Cursor, VS Code…) browse and query the connections open in LumioNG through the Model Context Protocol. The server listens on this computer only, and every request must carry the access token below.",
@@ -1324,5 +1329,14 @@
   "builder_tpl_countPerDay": "Count per day",
   "builder_warn_sort_after_limit": "$sort after $limit only orders the documents that survived the limit — sort first if you want the top ones.",
   "conn_secret_keychain": "🔒 Saved passwords are kept in the system keychain",
-  "conn_secret_file": "System keychain unavailable — saved passwords are kept obfuscated in the settings file"
+  "conn_secret_file": "System keychain unavailable — saved passwords are kept obfuscated in the settings file",
+  "menu_export_diagnostics": "Export diagnostics…",
+  "diagnostics_exported": "Diagnostics bundle saved",
+  "diagnostics_export_failed": "Could not export diagnostics: {error}",
+  "crash_dialog_title": "LumioNG closed unexpectedly",
+  "crash_dialog_message": "The app crashed last time. A report was saved on this computer only — nothing was sent anywhere. Copy it if you want to attach it to a bug report.",
+  "crash_dialog_copy": "Copy report",
+  "crash_dialog_copied": "Copied",
+  "crash_dialog_open_folder": "Open folder",
+  "crash_dialog_dismiss": "Dismiss"
 }

@@ -4,6 +4,7 @@ import { errorMessage } from "../api/errors";
 import {
   DEFAULT_MCP_PORT, generateToken, isValidPort, isValidToken, pushActivity, type McpActivity, type McpSession,
 } from "../domain/mcp";
+import { prefs } from "./prefs.svelte";
 
 const ENABLED_KEY = "mcp-enabled";
 const PORT_KEY = "mcp-port";
@@ -14,14 +15,14 @@ export type McpState = "off" | "starting" | "running" | "error";
 
 function read(key: string): string | null {
   try {
-    return localStorage.getItem(key);
+    return prefs.getItem(key);
   } catch {
     return null;
   }
 }
 function write(key: string, value: string) {
   try {
-    localStorage.setItem(key, value);
+    prefs.setItem(key, value);
   } catch {
     /* storage unavailable — keep the in-memory value */
   }
@@ -29,17 +30,28 @@ function write(key: string, value: string) {
 
 /** Built-in MCP server: persisted on/off + settings, live status, and recent tool calls. */
 export function createMcp() {
-  const savedPort = Number(read(PORT_KEY));
-  let enabled = $state(untrack(() => read(ENABLED_KEY) === "true"));
-  let port = $state(isValidPort(savedPort) ? savedPort : DEFAULT_MCP_PORT);
-  let allowWrites = $state(untrack(() => read(WRITES_KEY) === "true"));
-  let token = $state(untrack(() => {
+  const readPort = () => {
+    const p = Number(read(PORT_KEY));
+    return isValidPort(p) ? p : DEFAULT_MCP_PORT;
+  };
+  const readToken = () => {
     const t = read(TOKEN_KEY);
     if (t && isValidToken(t)) return t;
     const fresh = generateToken();
     write(TOKEN_KEY, fresh);
     return fresh;
-  }));
+  };
+  let enabled = $state(untrack(() => read(ENABLED_KEY) === "true"));
+  let port = $state(untrack(readPort));
+  let allowWrites = $state(untrack(() => read(WRITES_KEY) === "true"));
+  let token = $state(untrack(readToken));
+  // The singleton is created while prefs.json is still loading; re-read once it is in.
+  prefs.afterHydrate(() => {
+    enabled = read(ENABLED_KEY) === "true";
+    port = readPort();
+    allowWrites = read(WRITES_KEY) === "true";
+    token = readToken();
+  });
   let status = $state<McpState>("off");
   let error = $state<string | null>(null);
   let activity = $state.raw<McpActivity[]>([]);

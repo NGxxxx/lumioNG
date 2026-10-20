@@ -8,6 +8,7 @@ import * as api from "../api/documents";
 import { createRefJump } from "./refJump.svelte";
 import { getRemembered } from "./refMemory";
 import { memoryKey } from "../domain/refTarget";
+import { prefs } from "./prefs.svelte";
 
 const findById = api.findById as ReturnType<typeof vi.fn>;
 const OID = { $oid: "652f1a9e0000000000000c41" };
@@ -35,7 +36,7 @@ function deferred<T>() {
 describe("createRefJump", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    prefs.clear();
   });
 
   it("one guessed target found → opens it in the drawer, no menu", async () => {
@@ -89,7 +90,7 @@ describe("createRefJump", () => {
   it("forget clears the remembered target", async () => {
     findById.mockResolvedValueOnce(null);
     const { j } = setup(["orders", "accounts"]);
-    localStorage.setItem("lumio.refTargets.v1", JSON.stringify({ [memoryKey(1, "shop", "orders", "ownerRef")]: { coll: "accounts", at: 1 } }));
+    prefs.setItem("lumio.refTargets.v1", JSON.stringify({ [memoryKey(1, "shop", "orders", "ownerRef")]: { coll: "accounts", at: 1 } }));
     await j.jump(input("ownerRef"));
     expect(j.menu?.remembered).toBe("accounts");
     j.forget();
@@ -158,7 +159,7 @@ describe("createRefJump", () => {
 describe("createRefJump — array elements", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    prefs.clear();
   });
 
   it("productIds.2 guesses products and shares memory with the field", async () => {
@@ -173,7 +174,7 @@ describe("createRefJump — array elements", () => {
 describe("createRefJump — whole-database search", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorage.clear();
+    prefs.clear();
   });
 
   it("never looks inside views (only real collections are searched)", async () => {

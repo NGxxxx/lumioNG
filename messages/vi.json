@@ -1280,6 +1280,11 @@
   "menu_tools": "Công cụ",
   "menu_mcp_server": "MCP server",
   "menu_mcp_settings": "Cài đặt MCP…",
+  "menu_export_settings": "Xuất cài đặt…",
+  "menu_import_settings": "Nhập cài đặt…",
+  "settings_exported": "Đã xuất cài đặt",
+  "settings_export_failed": "Không thể xuất cài đặt: {error}",
+  "settings_import_failed": "Không thể nhập cài đặt: {error}",
   "mcp_status_error": "lỗi",
   "mcp_title": "MCP server",
   "mcp_intro": "Cho phép trợ lý AI (Claude, Cursor, VS Code…) duyệt và truy vấn các kết nối đang mở trong LumioNG qua Model Context Protocol. Server chỉ lắng nghe trên máy này và mọi yêu cầu phải kèm access token bên dưới.",
@@ -1324,5 +1329,14 @@
   "builder_tpl_countPerDay": "Đếm theo ngày",
   "builder_warn_sort_after_limit": "$sort sau $limit chỉ sắp xếp những document còn lại sau limit — hãy sort trước nếu muốn lấy top.",
   "conn_secret_keychain": "🔒 Mật khẩu đã lưu được giữ trong keychain của hệ thống",
-  "conn_secret_file": "Không dùng được keychain hệ thống — mật khẩu được lưu dạng làm rối trong file cấu hình"
+  "conn_secret_file": "Không dùng được keychain hệ thống — mật khẩu được lưu dạng làm rối trong file cấu hình",
+  "menu_export_diagnostics": "Xuất gói chẩn đoán…",
+  "diagnostics_exported": "Đã lưu gói chẩn đoán",
+  "diagnostics_export_failed": "Không thể xuất gói chẩn đoán: {error}",
+  "crash_dialog_title": "LumioNG đã đóng đột ngột",
+  "crash_dialog_message": "Lần chạy trước ứng dụng bị lỗi. Báo cáo chỉ được lưu trên máy này — không gửi đi đâu cả. Hãy sao chép nếu muốn đính kèm vào báo lỗi.",
+  "crash_dialog_copy": "Sao chép báo cáo",
+  "crash_dialog_copied": "Đã sao chép",
+  "crash_dialog_open_folder": "Mở thư mục",
+  "crash_dialog_dismiss": "Bỏ qua"
 }
