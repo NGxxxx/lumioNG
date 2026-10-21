@@ -2,11 +2,16 @@
 #![allow(clippy::too_many_arguments)]
 // Tests use literals like 3.14 as ordinary sample values, not as approximations of PI.
 #![cfg_attr(test, allow(clippy::approx_constant))]
+mod atlas;
 mod audit;
 mod bson_import;
 mod bson_json;
 mod command_log_file;
 mod commands;
+mod compare;
+mod csfle;
+#[cfg(feature = "csfle")]
+mod csfle_engine;
 mod csv_export;
 mod csv_import;
 mod error;
@@ -39,6 +44,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(state::AppState::default())
         .manage(vault::VaultSession::default())
+        .manage(commands::atlas::AtlasState::default())
         .manage(commands::command_log::CommandLogFile::default())
         .manage(commands::mcp::McpServer::default())
         .plugin(tauri_plugin_dialog::init())
@@ -108,6 +114,7 @@ pub fn run() {
             commands::query::explain_find,
             commands::query::explain_aggregate,
             commands::query::find_by_id,
+            commands::query::find_raw_by_ids,
             commands::mutation::insert_document,
             commands::mutation::replace_document,
             commands::mutation::delete_document,
@@ -118,6 +125,7 @@ pub fn run() {
             commands::mutation::replace_one,
             commands::mutation::delete_one,
             commands::import_export::write_text_file,
+            commands::import_export::write_base64_file,
             commands::import_export::read_text_file_if_exists,
             commands::import_export::import_documents,
             commands::import_export::export_json_progress,
@@ -126,6 +134,11 @@ pub fn run() {
             commands::import_export::export_sql_progress,
             commands::import_export::export_query_progress,
             commands::import_export::cancel_export,
+            commands::compare::compare_start,
+            commands::compare::compare_page,
+            commands::compare::compare_dispose,
+            commands::compare::compare_cancel,
+            commands::compare::sync_apply,
             commands::gridfs::gridfs_preview_bytes,
             commands::gridfs::gridfs_download,
             commands::import_export::import_bson,
@@ -151,6 +164,26 @@ pub fn run() {
             commands::stats::coll_stats,
             commands::stats::db_stats,
             commands::stats::coll_options,
+            commands::csfle::csfle_available,
+            commands::csfle::csfle_get,
+            commands::csfle::csfle_save,
+            commands::csfle::csfle_clear,
+            commands::csfle::csfle_generate_local_key,
+            commands::csfle::csfle_session_enabled,
+            commands::csfle::csfle_encrypted_paths,
+            commands::csfle::csfle_list_keys,
+            commands::csfle::csfle_create_data_key,
+            commands::csfle::csfle_encrypt,
+            commands::atlas::atlas_has_credentials,
+            commands::atlas::atlas_save_credentials,
+            commands::atlas::atlas_forget_credentials,
+            commands::atlas::atlas_list_projects,
+            commands::atlas::atlas_list_clusters,
+            commands::search_index::atlas_version,
+            commands::search_index::list_search_indexes,
+            commands::search_index::create_search_index,
+            commands::search_index::update_search_index,
+            commands::search_index::drop_search_index,
             commands::server::server_status,
             commands::server::build_info,
             commands::server::host_info,

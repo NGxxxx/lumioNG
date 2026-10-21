@@ -30,8 +30,7 @@ pub const SOURCE_UI: &str = "ui";
 pub const SOURCE_SCRIPT: &str = "script";
 pub const SOURCE_MCP: &str = "mcp";
 pub const SOURCE_IMPORT: &str = "import";
-/// Used by data sync (unit 14).
-#[allow(dead_code)]
+/// Data sync (`commands::compare`), one line per write batch.
 pub const SOURCE_SYNC: &str = "sync";
 
 /// Which environments get audited (decision D5): PROD only by default.

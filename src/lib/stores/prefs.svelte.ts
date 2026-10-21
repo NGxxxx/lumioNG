@@ -32,7 +32,9 @@ export function createPrefs(saveDelayMs = SAVE_DELAY_MS) {
       clearTimeout(timer);
       timer = null;
     }
-    if (!dirty || loadFailed) return pending;
+    // Before hydration the map holds only early writes: saving it would replace prefs.json with a partial map.
+    // hydrate() schedules a save for those writes once the file has been merged in.
+    if (!dirty || loadFailed || !hydrated) return pending;
     dirty = false;
     pending = pending
       .then(() => savePrefs(snapshot()))
@@ -102,7 +104,7 @@ export function createPrefs(saveDelayMs = SAVE_DELAY_MS) {
       for (const [k, v] of early) if (!map.has(k)) map.set(k, v);
       hydrated = true;
       runHydrateCallbacks();
-      if (migrated || early.size > 0) schedule();
+      if (migrated || early.size > 0 || dirty) schedule();
       if (typeof window !== "undefined") {
         window.addEventListener("pagehide", () => void flush());
         window.addEventListener("visibilitychange", () => {

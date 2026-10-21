@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
-import { render, fireEvent } from "@testing-library/svelte";
+import { render, fireEvent, waitFor } from "@testing-library/svelte";
 import ResultGrid from "./ResultGrid.svelte";
 import { mergeColumns } from "../domain/schema";
 import type { GridPageView } from "../domain/gridView";
@@ -296,20 +296,22 @@ describe("ResultGrid keyboard shortcuts", () => {
   it("Ctrl+Insert calls duplicateSelected and forwards a non-null result via onopendocument", async () => {
     const docs = [{ _id: { $oid: "a" }, name: "x" }];
     const dupDoc = { name: "x" };
-    const v = baseView(docs, { duplicateSelected: vi.fn().mockReturnValue(dupDoc) });
+    const v = baseView(docs, { duplicateSelected: vi.fn().mockResolvedValue(dupDoc) });
     const onopendocument = vi.fn();
     const { container } = render(ResultGrid, { props: { v, onopendocument } });
     await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "Insert", ctrlKey: true });
     expect(v.duplicateSelected).toHaveBeenCalled();
-    expect(onopendocument).toHaveBeenCalledWith(dupDoc, "insert");
+    await waitFor(() => expect(onopendocument).toHaveBeenCalledWith(dupDoc, "insert"));
   });
 
   it("Ctrl+Insert does nothing when duplicateSelected returns null", async () => {
     const docs = [{ _id: { $oid: "a" }, name: "x" }];
-    const v = baseView(docs, { duplicateSelected: vi.fn().mockReturnValue(null) });
+    const v = baseView(docs, { duplicateSelected: vi.fn().mockResolvedValue(null) });
     const onopendocument = vi.fn();
     const { container } = render(ResultGrid, { props: { v, onopendocument } });
     await fireEvent.keyDown(container.querySelector(".scroller")!, { key: "Insert", ctrlKey: true });
+    await Promise.resolve();
+    expect(v.duplicateSelected).toHaveBeenCalled();
     expect(onopendocument).not.toHaveBeenCalled();
   });
 

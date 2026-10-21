@@ -15,6 +15,15 @@ import { createPrefs } from "./prefs.svelte";
 const load = loadPrefs as ReturnType<typeof vi.fn>;
 const save = savePrefs as ReturnType<typeof vi.fn>;
 
+/** A store whose startup load has finished (writes only reach disk after that). */
+async function hydratedPrefs() {
+  const p = createPrefs();
+  await p.hydrate();
+  await vi.runAllTimersAsync();
+  save.mockClear();
+  return p;
+}
+
 describe("prefs store", () => {
   beforeEach(() => {
     vi.useFakeTimers();
@@ -37,7 +46,7 @@ describe("prefs store", () => {
   });
 
   it("writes_are_debounced_into_one_save", async () => {
-    const p = createPrefs();
+    const p = await hydratedPrefs();
     p.setItem("a", "1");
     await vi.advanceTimersByTimeAsync(200);
     p.setItem("b", "2");
@@ -46,7 +55,7 @@ describe("prefs store", () => {
     expect(save).not.toHaveBeenCalled();
     await vi.advanceTimersByTimeAsync(1);
     expect(save).toHaveBeenCalledTimes(1);
-    expect(save).toHaveBeenCalledWith({ a: "3", b: "2" });
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ a: "3", b: "2" }));
   });
 
   it("hydrate loads the file, migrates localStorage once and saves", async () => {
@@ -110,9 +119,10 @@ describe("prefs store", () => {
   });
 
   it("keys lists names only and importFrom replaces everything", async () => {
-    const p = createPrefs();
+    const p = await hydratedPrefs();
     p.setItem("x", "secret");
-    expect(p.keys()).toEqual(["x"]);
+    expect(p.keys()).toEqual(expect.arrayContaining(["x"]));
+    expect(p.keys()).not.toContain("secret");
     (importPrefs as ReturnType<typeof vi.fn>).mockResolvedValue({ theme: "latte" });
     await p.importFrom("/tmp/s.json");
     expect(p.getItem("x")).toBeNull();
@@ -121,11 +131,11 @@ describe("prefs store", () => {
   });
 
   it("importFrom flushes first and keeps the mcp-* values the backend merged in", async () => {
-    const p = createPrefs();
+    const p = await hydratedPrefs();
     p.setItem("mcp-token", "mine");
     const imp = importPrefs as ReturnType<typeof vi.fn>;
     imp.mockImplementation(async () => {
-      expect(save).toHaveBeenCalledWith({ "mcp-token": "mine" }); // current state reached disk before the merge
+      expect(save).toHaveBeenCalledWith(expect.objectContaining({ "mcp-token": "mine" })); // current state reached disk before the merge
       return { theme: "latte", "mcp-token": "mine" };
     });
     await p.importFrom("/tmp/s.json");
@@ -146,12 +156,28 @@ describe("prefs store", () => {
   });
 
   it("flush only saves when something changed", async () => {
-    const p = createPrefs();
+    const p = await hydratedPrefs();
     await p.flush();
     expect(save).not.toHaveBeenCalled();
     p.setItem("a", "1");
     await p.flush();
     await p.flush();
     expect(save).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not save before hydration finished, and the early key still persists afterwards", async () => {
+    let release!: (v: Record<string, string>) => void;
+    load.mockReturnValue(new Promise((r) => (release = r)));
+    const p = createPrefs();
+    const hydrating = p.hydrate();
+    p.setItem("early", "1");
+    await p.flush();
+    await vi.advanceTimersByTimeAsync(1000); // the debounce timer fires too
+    expect(save).not.toHaveBeenCalled();
+    release({ "from-file": "x", __migrated_v1: "1" });
+    await hydrating;
+    await p.flush();
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(save).toHaveBeenCalledWith(expect.objectContaining({ early: "1", "from-file": "x" }));
   });
 });

@@ -5,6 +5,7 @@
   import type { Doc } from "../domain/doc";
   import { flattenEditableDoc, existingKeysAt, setAtPath, removeAtPath, insertAtPath, allExpandablePaths, findFieldMatches, ancestorPathsOf, type EditRow, type FieldMatch, type PathSegment } from "../domain/editTree";
   import { describeValue } from "../domain/extjson";
+  import { isEncryptedBinary } from "../domain/csfle";
   import { hasInput, type LeafInputType } from "../domain/bsontree";
   import { createDebouncer, SEARCH_DEBOUNCE_MS } from "../domain/timing";
   import type { OpEntry } from "../domain/mongoOps";
@@ -21,6 +22,8 @@
     compact = false,
     fieldSuggestions = [],
     operatorSuggestionsFor,
+    onencrypt,
+    encryptedPaths,
   }: {
     value: Doc;
     onchange: (v: Doc) => void;
@@ -35,6 +38,10 @@
      *  name input — only meaningful for the Pipeline Builder (see PipelineStageCard.svelte); plain
      *  document editing never passes this. */
     operatorSuggestionsFor?: (depth: number) => readonly OpEntry[];
+    /** When set, editable fields get an "Encrypt with key…" button (client-side field level encryption). */
+    onencrypt?: (target: { segments: PathSegment[]; path: string; value: unknown }) => void;
+    /** Row paths that are ciphertext in the database (shown decrypted): they get an "Encrypted" badge. */
+    encryptedPaths?: ReadonlySet<string>;
   } = $props();
 
   // Persists across edits (value changes on every keystroke) — only reset by remounting
@@ -165,6 +172,18 @@
   });
 </script>
 
+{#snippet encryptBtn(row: Extract<EditRow, { kind: "field" }>)}
+  {#if onencrypt && !row.locked && !isEncryptedBinary(row.value)}
+    <button class="x enc" onclick={() => onencrypt({ segments: row.segments, path: row.path, value: row.value })} title={m.csfle_encrypt_with_key()} aria-label={m.csfle_encrypt_with_key()}>
+      <svg aria-hidden="true" width="11" height="11" viewBox="0 0 11 11"><rect x="2" y="5" width="7" height="5" rx="1" fill="currentColor"/><path d="M3.5 5V3.5a2 2 0 0 1 4 0V5" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>
+    </button>
+  {/if}
+{/snippet}
+
+{#snippet encBadge(row: Extract<EditRow, { kind: "field" }>)}
+  {#if encryptedPaths?.has(row.path)}<span class="badge enc-badge" title={m.csfle_encrypted_badge_title()}>{m.csfle_encrypted_badge()}</span>{/if}
+{/snippet}
+
 <div class="tree-wrap">
   {#if !compact}
     <div class="tree-toolbar">
@@ -228,6 +247,8 @@
             <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
             <span class="label clickable" onclick={() => toggle(row.path)}>{row.key}</span>
             <span class="badge">{Array.isArray(row.value) ? `array[${row.childCount}]` : "object"}</span>
+            {@render encBadge(row)}
+            {@render encryptBtn(row)}
             {#if row.removable}<button class="x" onclick={() => handleRemove(row)} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
           {:else}
             {@const info = describeValue(row.value)}
@@ -236,19 +257,23 @@
               <span class="tree-caret-pad"></span>
               <span class="label">{row.key}</span>
               <span class="badge">{type}</span>
+              {@render encBadge(row)}
               <TreeLeafInput
                 type={type as LeafInputType}
                 value={row.value}
                 onchange={(v) => handleSet(row, v)}
                 onerror={(e) => setError(row.path, e)}
               />
+              {@render encryptBtn(row)}
               {#if row.removable}<button class="x" onclick={() => handleRemove(row)} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
             {:else}
               <span class="tree-caret-pad"></span>
               <span class="label">{row.key}</span>
               <span class="badge">{type}</span>
+              {@render encBadge(row)}
               <span class="display">{info.display}</span>
               {#if row.locked}<span class="lock" title={m.tree_node_locked_title()}>🔒</span>{/if}
+              {@render encryptBtn(row)}
               {#if row.removable}<button class="x" onclick={() => handleRemove(row)} aria-label={m.tree_node_remove_label()}>✕</button>{/if}
             {/if}
           {/if}
@@ -346,6 +371,8 @@
   .label.clickable { cursor: pointer; }
   .badge { background: var(--blue-tint5); color: var(--slate); padding: 0 0.375rem; border-radius: var(--radius); font-size: 0.6875rem; font-family: var(--mono); flex: none; }
   .display { color: var(--gray-55); font-family: var(--mono); font-size: 0.8125rem; }
+  .x.enc { color: var(--muted); display: inline-flex; align-items: center; }
+  .enc-badge { color: var(--warn-fg); background: var(--warn-bg); }
   .x { border: none; background: none; color: var(--danger-strong); cursor: pointer; font-size: var(--fs); flex: none; }
   .lock { font-size: var(--fs); flex: none; }
 </style>

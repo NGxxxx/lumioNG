@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { insertWithUndo, replaceWithUndo } from "../stores/documentWrites";
   import { undo } from "../stores/undo.svelte";
-  import { errorMessage } from "../api/errors";
+  import { errorMessage, rawErrorText } from "../api/errors";
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { activeDocumentForm, type DocumentFormHandle } from "../stores/activeDocumentForm.svelte";
   import { idJson } from "../domain/docid";
@@ -13,6 +13,12 @@
   import { fieldsFor } from "../stores/fieldSuggestions";
   import { topLevelFieldNames } from "../domain/schema";
   import TreeEditor from "./TreeEditor.svelte";
+  import EncryptValueDialog from "./EncryptValueDialog.svelte";
+  import DestructiveDialog from "./DestructiveDialog.svelte";
+  import { createDestructiveGate } from "../stores/destructiveGate.svelte";
+  import { csfle } from "../stores/csfle.svelte";
+  import { plaintextRequiredPaths, ciphertextPaths } from "../domain/csfle";
+  import { setAtPath, type PathSegment } from "../domain/editTree";
   import { settings } from "../stores/settings.svelte";
   import * as m from "#lib/paraglide/messages.js";
   import { msgKey } from "#lib/msgkey.js";
@@ -75,6 +81,30 @@
     // name for a NEW field.
     fieldSuggestions = topLevelFieldNames(paths, ["_id"]);
   });
+  // Client-side field level encryption: only sessions opened with encryption offer "Encrypt with key…".
+  let csfleOn = $state(false);
+  // Paths stored as ciphertext in the database (the tree shows them decrypted); "Encrypted" badges mark them.
+  let encryptedPaths = $state<ReadonlySet<string>>(new Set());
+  untrack(async () => {
+    const sid = sessionManager.active?.id ?? "";
+    csfleOn = await csfle.sessionEnabled(sid);
+    if (csfleOn && mode === "edit" && initial) {
+      const id = idJson(initial);
+      if (id) encryptedPaths = new Set(await csfle.encryptedPaths(sid, db, coll, id));
+    } else if (csfleOn && initial) {
+      // Insert (Duplicate): the form holds the stored ciphertext of the source document, which is inserted as is.
+      encryptedPaths = new Set(ciphertextPaths(initial));
+    }
+  });
+  // A changed encrypted field may only be stored as plain text after an explicit (PROD: typed) confirmation.
+  const plaintextGate = createDestructiveGate(() => sessionManager.active?.environment ?? "");
+  let encryptTarget = $state<{ segments: PathSegment[]; path: string; value: unknown } | null>(null);
+  function applyEncrypted(encrypted: unknown) {
+    if (!encryptTarget) return;
+    docValue = setAtPath(docValue, encryptTarget.segments, encrypted) as Doc;
+    textDirty = true;
+    encryptTarget = null;
+  }
   // Debounced rather than a plain $derived (see scheduleRecompute below) — a full JSON.parse on
   // every keystroke scales with document size; 500ms of typing pause is a fine trade for a huge doc.
   let jsonValid = $state(true);
@@ -212,7 +242,19 @@
       }
       onsaved();
     } catch (e) {
-      error = errorMessage(e);
+      const paths = mode === "edit" ? plaintextRequiredPaths(rawErrorText(e)) : null;
+      if (paths && idText !== null) {
+        const id = idText;
+        const sid = sessionManager.active?.id ?? "";
+        error = errorMessage(e);
+        void plaintextGate.request({ op: "storePlaintext", target: { db, coll, detail: paths.join(", ") } }, async () => {
+          await replaceWithUndo(sid, db, coll, id, payload, paths);
+          error = null;
+          onsaved();
+        });
+      } else {
+        error = errorMessage(e);
+      }
     } finally {
       saving = false;
     }
@@ -264,6 +306,8 @@
         onchange={(v) => { docValue = v; textDirty = true; }}
         onvalidchange={(valid) => (treeValid = valid)}
         {fieldSuggestions}
+        onencrypt={csfleOn ? (t) => (encryptTarget = t) : undefined}
+        {encryptedPaths}
       />
     {:else}
       <div class="json-area">
@@ -291,6 +335,7 @@
     </details>
   {/if}
   {#if changedByUndo}<div class="note">{m.document_form_changed_note()}</div>{/if}
+  {#if csfleOn && mode === "edit"}<div class="note" data-testid="csfle-edit-warning">{m.csfle_edit_warning()}</div>{/if}
   {#if error}<div class="error">{error}</div>{/if}
   {#if view === "tree" && !treeValid}<div class="error">{m.document_form_invalid_fields_error()}</div>{/if}
 
@@ -310,6 +355,18 @@
     </div>
   </footer>
 </div>
+
+<DestructiveDialog gate={plaintextGate} />
+
+{#if encryptTarget}
+  <EncryptValueDialog
+    sessionId={sessionManager.active?.id ?? ""}
+    fieldPath={encryptTarget.path}
+    value={encryptTarget.value}
+    onencrypted={applyEncrypted}
+    oncancel={() => (encryptTarget = null)}
+  />
+{/if}
 
 <style>
   .changes { flex: none; padding: 0.25rem 0.75rem; border-top: 1px solid var(--border); font-size: var(--fs); color: var(--muted); }

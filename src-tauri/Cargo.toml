@@ -15,6 +15,14 @@ edition = "2021"
 name = "lumio_ng_app_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
+[features]
+# Client-side field level encryption (CSFLE). OPT-IN: it links the native libmongocrypt, which must be
+# installed at build time (MONGOCRYPT_LIB_DIR) and shipped with the app. Build it with
+# `--features csfle` (steps: README, "Client-side field level encryption"). Without it nothing native is
+# needed and the UI hides the feature.
+default = []
+csfle = ["mongodb/in-use-encryption", "mongodb/cert-key-password"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 

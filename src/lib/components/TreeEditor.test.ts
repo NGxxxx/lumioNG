@@ -300,3 +300,22 @@ describe("TreeEditor", () => {
     });
   });
 });
+
+describe("TreeEditor encryption action", () => {
+  it("offers Encrypt with key on editable, not-yet-encrypted fields when onencrypt is given", async () => {
+    const onencrypt = vi.fn();
+    const doc = { _id: { $oid: "507f1f77bcf86cd799439011" }, ssn: "123-45", secret: { $binary: { base64: "AQ==", subType: "06" } } } as Doc;
+    const { getAllByLabelText } = render(TreeEditor, { props: { value: doc, onchange: vi.fn(), onvalidchange: vi.fn(), onencrypt } });
+    await waitForRows();
+    const buttons = getAllByLabelText("Encrypt with key…");
+    expect(buttons).toHaveLength(1); // _id is locked and `secret` is already encrypted
+    await fireEvent.click(buttons[0]);
+    expect(onencrypt).toHaveBeenCalledWith(expect.objectContaining({ path: "ssn", value: "123-45" }));
+  });
+
+  it("shows no encrypt button without onencrypt", async () => {
+    const { queryAllByLabelText } = setup({ ssn: "x" } as Doc);
+    await waitForRows();
+    expect(queryAllByLabelText("Encrypt with key…")).toHaveLength(0);
+  });
+});

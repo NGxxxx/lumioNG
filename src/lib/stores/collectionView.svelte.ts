@@ -7,7 +7,8 @@ import { idJson } from "../domain/docid";
 import { type Doc } from "../domain/doc";
 import { inferSchema, mergeColumns, limitColumnsToDepth, type CollectionSchema, type ColumnField } from "../domain/schema";
 import { buildSort, buildProjection } from "../domain/grid";
-import { buildSkeleton, duplicateForInsert } from "../domain/skeleton";
+import { buildSkeleton } from "../domain/skeleton";
+import { duplicateSource } from "./documentWrites";
 import { matchingIndices } from "../domain/search";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -232,11 +233,21 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     return buildSkeleton(rawColumnFields);
   }
 
-  function duplicateSelected(): Doc | null {
+  /** The insert-form document for the one selected row (`_id` dropped); ciphertext is copied as stored on CSFLE sessions. */
+  async function duplicateDoc(doc: Doc): Promise<Doc | null> {
+    try {
+      return await duplicateSource(sessionId, db, coll, doc);
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+      return null;
+    }
+  }
+
+  async function duplicateSelected(): Promise<Doc | null> {
     const rows = [...selection.selected];
     if (rows.length !== 1) return null;
     const doc = docs[rows[0]];
-    return doc ? duplicateForInsert(doc) : null;
+    return doc ? duplicateDoc(doc) : null;
   }
 
   const copy = createClipboardCopy((msg) => { error = msg; });
@@ -300,6 +311,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     requestDeleteSelected,
     startEdit: (row, key) => edits.startEdit(row, key),
     newDocument,
+    duplicateDocument: duplicateDoc,
   });
 
   const { edit, editBlur } = edits;

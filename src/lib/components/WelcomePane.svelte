@@ -5,6 +5,7 @@
   import { createConnectionRegistry, type ConnectRequest } from "../stores/connections.svelte";
   import type { SavedConnection } from "../api/connections";
   import EnvBadge from "./EnvBadge.svelte";
+  import AtlasBrowser from "./AtlasBrowser.svelte";
   import { SHORTCUTS } from "../domain/commands";
   import { formatCombo } from "../domain/shortcuts";
   import { detectPlatform } from "../stores/platform";
@@ -35,6 +36,7 @@
 
   const recent = $derived(r.list.slice(0, RECENT_LIMIT));
   let uriText = $state("");
+  let atlasOpen = $state(false);
   let busyId = $state<number | "uri" | null>(null);
   let error = $state<string | null>(null);
 
@@ -107,7 +109,14 @@
     </section>
   {/if}
 
-  <button class="link" onclick={onnewconnection}>{m.welcome_new_connection()}</button>
+  <div class="links">
+    <button class="link" onclick={onnewconnection}>{m.welcome_new_connection()}</button>
+    <button class="link" aria-expanded={atlasOpen} onclick={() => (atlasOpen = !atlasOpen)}>{m.atlas_browser_toggle()}</button>
+  </div>
+  {#if atlasOpen}
+    <!-- The picked cluster's string is left in stores/connectionPrefill; the connection form takes it and the user adds the database user. -->
+    <AtlasBrowser onpick={() => onnewconnection()} />
+  {/if}
 
   <section class="tips">
     <h3>{m.welcome_tips()}</h3>
@@ -155,6 +164,7 @@
     font-family: var(--mono); font-size: 0.6875rem; color: var(--c-subtext1); padding: 0.0625rem 0.375rem;
     border-radius: var(--radius-sm); background: var(--hover); border: 1px solid var(--border);
   }
+  .links { display: flex; gap: 1.25rem; }
   .link { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accent); font-size: var(--fs); cursor: pointer; }
   .link:hover { text-decoration: underline; }
   .spinner {

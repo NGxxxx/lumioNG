@@ -9,6 +9,7 @@
   import TestConnectionDialog from "./TestConnectionDialog.svelte";
   import SessionList from "./SessionList.svelte";
   import ConnectionForm from "./ConnectionForm.svelte";
+  import { connectionPrefill } from "../stores/connectionPrefill";
   import * as m from "#lib/paraglide/messages.js";
 
   let {
@@ -51,6 +52,12 @@
     openSession();
   }
 
+  /** Saves and keeps the (possibly just created) entry selected in the list. */
+  async function saveSession() {
+    await r.save();
+    if (r.editingId !== null) selectedId = r.editingId;
+  }
+
   function newSession() {
     selectedId = null;
     r.clearForm();
@@ -78,6 +85,12 @@
 
   onMount(() => {
     r.load();
+    // A cluster picked in the Atlas browser: start a new connection with its string (no password: the user enters it).
+    const pre = connectionPrefill.take();
+    if (pre) {
+      r.clearForm();
+      if (r.fillFromUri(pre.uri).ok) r.label = pre.label;
+    }
     return pushModal({ onEscape: onclose });
   });
 </script>
@@ -114,8 +127,8 @@
         <button class="foot-btn new-btn" onclick={newSession}>
           <span class="plus">+</span>{m.session_manager_btn_new()}
         </button>
-        <button class="foot-btn" onclick={r.save} disabled={!r.label.trim() && !r.host.trim()}>
-          {r.editingId !== null ? m.session_manager_btn_update() : m.session_manager_btn_save()}
+        <button class="foot-btn" onclick={saveSession} disabled={!r.label.trim() && !r.host.trim()}>
+          {m.session_manager_btn_save()}
         </button>
         <button
           class="foot-btn del-btn"

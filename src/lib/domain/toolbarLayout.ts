@@ -11,7 +11,8 @@ export type ViewKey =
   | "host"
   | "query"
   | "document"
-  | "watch";
+  | "watch"
+  | "compare";
 
 /** One header action: an icon button, the single filled primary button, or an item in the ⋯ menu. */
 export type ToolbarEntry = { id: CommandId; style: "icon" | "primary"; overflow?: boolean };
@@ -43,6 +44,8 @@ const LAYOUT: Record<ViewKey, ToolbarEntry[]> = {
   document: [{ id: "query.save", style: "primary" }],
   // Record / Pause / Clear / Export live in the watch tab's own bar.
   watch: [],
+  // Compare / Dry run / Sync live in the compare tab itself.
+  compare: [],
 };
 
 /** Header actions for `view`, in display order (overflow entries render inside the ⋯ menu). */

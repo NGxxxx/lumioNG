@@ -21,6 +21,10 @@ pub struct Session {
     pub tunnel: Option<SshTunnelHandle>,
     // Local HTTP CONNECT forwarder when the connection goes through an HTTP proxy; closes on drop.
     pub proxy_tunnel: Option<HttpProxyTunnelHandle>,
+    // Explicit-encryption handle when the connection has client-side field level encryption on.
+    pub csfle: Option<Arc<crate::commands::csfle::CsfleHandle>>,
+    // Non-decrypting twin of `client` for CSFLE sessions (None: `client` itself is the raw client).
+    pub raw_client: Option<Client>,
 }
 
 /// What the audit log and MCP need to know about a live session.
@@ -52,6 +56,8 @@ pub struct AppState {
     pub profiler_holds: crate::commands::profiler::ProfilerHolds,
     /// Hash-chained log of write operations (see `crate::audit`).
     pub audit: AuditLog,
+    /// Stored compare results and dry-run marks for data sync (see `commands::compare`).
+    pub compare: crate::commands::compare::CompareState,
 }
 
 impl AppState {
@@ -64,7 +70,7 @@ impl AppState {
         environment: String,
         tunnel: Option<SshTunnelHandle>,
     ) {
-        self.sessions.lock().await.insert(session_id, Session { client, read_only, label, environment, tunnel, proxy_tunnel: None });
+        self.sessions.lock().await.insert(session_id, Session { client, read_only, label, environment, tunnel, proxy_tunnel: None, csfle: None, raw_client: None });
     }
 
     /// Keeps an HTTP proxy forwarder alive for as long as the session lives.
@@ -72,6 +78,31 @@ impl AppState {
         if let Some(s) = self.sessions.lock().await.get_mut(session_id) {
             s.proxy_tunnel = Some(handle);
         }
+    }
+
+    /// Attaches the encryption handle to a live session; it is dropped with the session.
+    pub async fn set_csfle(&self, session_id: &str, handle: crate::commands::csfle::CsfleHandle, raw: Client) {
+        if let Some(s) = self.sessions.lock().await.get_mut(session_id) {
+            s.csfle = Some(Arc::new(handle));
+            s.raw_client = Some(raw);
+        }
+    }
+
+    /// The client that never decrypts: ciphertext (BinData 6) comes back as stored. For sessions
+    /// without encryption it is the session client itself. Used by MCP, compare/sync and the
+    /// encrypted-path lookup, so ciphertext is never turned into plaintext behind the user's back.
+    pub async fn raw_client(&self, session_id: &str) -> Result<Client, AppError> {
+        self.sessions
+            .lock()
+            .await
+            .get(session_id)
+            .map(|s| s.raw_client.clone().unwrap_or_else(|| s.client.clone()))
+            .ok_or(AppError::NotConnected)
+    }
+
+    /// `(client, raw client)` when the session decrypts (CSFLE), else `(client, None)`.
+    pub async fn client_pair(&self, session_id: &str) -> Result<(Client, Option<Client>), AppError> {
+        self.sessions.lock().await.get(session_id).map(|s| (s.client.clone(), s.raw_client.clone())).ok_or(AppError::NotConnected)
     }
 
     pub async fn meta(&self, session_id: &str) -> Result<SessionMeta, AppError> {
@@ -145,6 +176,7 @@ impl AppState {
         self.sessions.lock().await.remove(session_id);
         self.cancels.lock().await.retain(|(id, _), _| id != session_id);
         self.watches.lock().await.retain(|(id, _), _| id != session_id);
+        self.compare.forget_session(session_id);
     }
 
     /// Reject a write command when the session's connection is read-only.
@@ -180,6 +212,30 @@ impl AppState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lazy(db: &str) -> Client {
+        // Clients connect lazily: nothing is contacted until an operation runs.
+        futures::executor::block_on(async { Client::with_uri_str(format!("mongodb://127.0.0.1:1/{db}")).await.unwrap() })
+    }
+    fn db_of(c: &Client) -> String {
+        c.default_database().unwrap().name().to_string()
+    }
+
+    #[tokio::test]
+    async fn raw_client_is_the_session_client_unless_the_session_decrypts() {
+        let state = AppState::default();
+        state.insert_session("plain".into(), lazy("main"), false, String::new(), String::new(), None).await;
+        assert_eq!(db_of(&state.raw_client("plain").await.unwrap()), "main");
+        assert!(state.client_pair("plain").await.unwrap().1.is_none());
+
+        state.insert_session("enc".into(), lazy("decrypting"), false, String::new(), String::new(), None).await;
+        state.sessions.lock().await.get_mut("enc").unwrap().raw_client = Some(lazy("raw"));
+        assert_eq!(db_of(&state.client("enc").await.unwrap()), "decrypting");
+        assert_eq!(db_of(&state.raw_client("enc").await.unwrap()), "raw");
+        let (c, raw) = state.client_pair("enc").await.unwrap();
+        assert_eq!((db_of(&c), db_of(&raw.unwrap())), ("decrypting".to_string(), "raw".to_string()));
+        assert!(matches!(state.raw_client("missing").await.unwrap_err(), AppError::NotConnected));
+    }
 
     #[tokio::test]
     async fn unknown_session_is_not_connected() {

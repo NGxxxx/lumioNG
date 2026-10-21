@@ -25,10 +25,18 @@ pub struct ScriptIo {
 }
 
 /// Guards `load()`: on a PROD session, snippets containing destructive calls only run when the user confirmed this run.
-#[derive(Clone, Copy, Default)]
+/// The default is fail-closed (`prod: true`, nothing confirmed): a caller that forgets to set the policy
+/// gets the strict one. `commands/script.rs` builds it explicitly from the session's environment.
+#[derive(Clone, Copy)]
 pub struct LoadPolicy {
     pub prod: bool,
     pub confirmed: bool,
+}
+
+impl Default for LoadPolicy {
+    fn default() -> Self {
+        Self { prod: true, confirmed: false }
+    }
 }
 
 /// Ensure a JS error message is never empty — callers display it directly in the UI.
@@ -722,6 +730,14 @@ mod console_load_tests {
             load_policy: LoadPolicy { prod, confirmed },
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn the_default_load_policy_is_fail_closed() {
+        let p = LoadPolicy::default();
+        assert!(p.prod && !p.confirmed);
+        let p = ScriptIo::default().load_policy;
+        assert!(p.prod && !p.confirmed);
     }
 
     #[tokio::test(flavor = "multi_thread")]

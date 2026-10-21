@@ -4,7 +4,6 @@ import { clipboardTextOf } from "../domain/extjson";
 import { type Doc } from "../domain/doc";
 import { getByPath } from "../domain/schema";
 import { isInlineEditable, isModalEditable } from "../domain/celledit";
-import { duplicateForInsert } from "../domain/skeleton";
 import type { FilterOp } from "../domain/filter";
 import type { MenuItem } from "../domain/gridView";
 import type { createRowSelection } from "./rowSelection.svelte";
@@ -24,6 +23,8 @@ export interface CollectionMenuCtx {
   requestDeleteSelected: () => void;
   startEdit: (row: number, key: string) => Promise<void>;
   newDocument: () => Doc;
+  /** The insert-form document for Duplicate (async: encrypting sessions re-read the stored ciphertext). */
+  duplicateDocument: (doc: Doc) => Promise<Doc | null>;
 }
 
 /** The cell right-click menu of one collection view: which items it offers and what each one does. */
@@ -91,9 +92,9 @@ export function createCollectionMenu(ctx: CollectionMenuCtx) {
     return items;
   }
 
-  /** Returns the doc to open for "open", `{ insert }` (a pre-built skeleton/duplicate) for New/Duplicate,
+  /** Returns the doc to open for "open", `{ insert }` (a pre-built skeleton) for New, `{ duplicate }` (resolves to the insert document) for Duplicate,
    *  or `{ expandFullDepth }` (a tree doc index) for the Tree view's "Expand full depth". */
-  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { expandFullDepth: number } | { peek: Doc } | { watch: string } | null {
+  function onMenuSelect(action: string): { open: Doc } | { insert: Doc } | { duplicate: Promise<Doc | null> } | { expandFullDepth: number } | { peek: Doc } | { watch: string } | null {
     const menu = selection.menu;
     if (!menu) return null;
     const row = menu.row;
@@ -170,9 +171,9 @@ export function createCollectionMenu(ctx: CollectionMenuCtx) {
         selection.closeMenu();
         return { insert: ctx.newDocument() };
       case "duplicate": {
-        const dup = doc ? duplicateForInsert(doc) : null;
+        const dup = doc ? ctx.duplicateDocument(doc) : null;
         selection.closeMenu();
-        return dup ? { insert: dup } : null;
+        return dup ? { duplicate: dup } : null;
       }
       case "editCell":
         ctx.startEdit(row, key);

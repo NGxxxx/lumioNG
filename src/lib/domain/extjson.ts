@@ -1,4 +1,6 @@
 /** Describe and display Canonical Extended JSON values; extract numeric wrapper values. */
+import { isEncryptedBinary } from "./csfle";
+
 export type BsonType =
   | "objectId" | "date" | "int" | "long" | "double" | "decimal"
   | "binary" | "string" | "bool" | "null" | "object" | "array" | "unknown"
@@ -108,7 +110,8 @@ export function describeValue(v: unknown): ValueInfo {
     if ("$binary" in o) {
       const b = o.$binary as Record<string, unknown> | undefined;
       const len = typeof b?.base64 === "string" ? (b.base64 as string).length : 0;
-      return { type: "binary", display: `Binary(${len} b64 chars)` };
+      // BinData subtype 6 is what CSFLE produces: label it so an undecryptable value is recognisable.
+      return { type: "binary", display: `${isEncryptedBinary(o) ? "Encrypted" : "Binary"}(${len} b64 chars)` };
     }
     if ("$regularExpression" in o) {
       const r = o.$regularExpression as Record<string, unknown> | undefined;

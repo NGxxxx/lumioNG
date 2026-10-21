@@ -113,4 +113,51 @@ describe("workspaceRestore", () => {
     await s.init();
     expect(s.prompt).toBeNull();
   });
+
+  describe("onSettled (decides whether the Session Manager opens)", () => {
+    it("reports 0 restored when there is no snapshot", async () => {
+      const onSettled = vi.fn();
+      const { store: s } = setup({ onSettled });
+      await s.init();
+      expect(onSettled).toHaveBeenCalledExactlyOnceWith(0);
+    });
+
+    it("stays unsettled while the offer is open, then reports 0 when declined", async () => {
+      store([tab(1)]);
+      const onSettled = vi.fn();
+      const { store: s } = setup({ onSettled });
+      await s.init();
+      expect(s.prompt).not.toBeNull();
+      expect(onSettled).not.toHaveBeenCalled();
+      s.decline();
+      expect(onSettled).toHaveBeenCalledExactlyOnceWith(0);
+    });
+
+    it("reports the restored connections when accepted", async () => {
+      store([tab(1)]);
+      const onSettled = vi.fn();
+      const { store: s } = setup({ onSettled });
+      await s.init();
+      await s.accept();
+      expect(onSettled).toHaveBeenCalledExactlyOnceWith(1);
+    });
+
+    it("reports 0 when accepted but no connection could be restored", async () => {
+      store([tab(1)]);
+      const onSettled = vi.fn();
+      const { store: s } = setup({ onSettled, connect: vi.fn(async () => false) });
+      await s.init();
+      await s.accept();
+      expect(onSettled).toHaveBeenCalledExactlyOnceWith(0);
+    });
+
+    it("reports 0 when the unlock was cancelled", async () => {
+      store([tab(1)]);
+      const onSettled = vi.fn();
+      const { store: s } = setup({ onSettled, connect: vi.fn(async () => "cancelled" as const) });
+      await s.init();
+      await s.accept();
+      expect(onSettled).toHaveBeenCalledExactlyOnceWith(0);
+    });
+  });
 });

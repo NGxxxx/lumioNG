@@ -2,19 +2,26 @@ import type { Environment } from "./environment";
 
 export type DestructiveOp =
   | "deleteOne" | "deleteMany" | "updateMany" | "dropCollection"
-  | "truncate" | "dropIndex" | "dropDatabase" | "script" | "killOp";
+  | "truncate" | "dropIndex" | "dropDatabase" | "script" | "killOp" | "setValidator" | "sync" | "searchIndexWrite"
+  | "storePlaintext" | "createDataKey";
 
 /** How much friction an operation needs before it runs (spec §2.1). */
 export function confirmLevel(env: Environment, op: DestructiveOp, count: number | null): "none" | "confirm" | "type" {
   switch (op) {
     case "deleteOne":
     case "script":
+    case "setValidator":
+    case "searchIndexWrite": // create / update of a search index: only PROD asks (the store skips the gate elsewhere)
       return "confirm";
     case "deleteMany":
     case "updateMany":
       return env === "prod" || count === null ? "type" : "confirm";
     case "killOp":
+    case "sync":
+    case "storePlaintext": // writing an encrypted field's value unencrypted: PROD asks for the collection name
       return env === "prod" ? "type" : "confirm";
+    case "createDataKey": // additive: only PROD asks
+      return env === "prod" ? "confirm" : "none";
     default:
       return "type"; // drops / truncate
   }

@@ -24,7 +24,8 @@ function writeStored(key: string, value: string) {
 export function createShell() {
   let connection = $state<{ label: string; uri: string } | null>(null);
   let connectedAt = $state<number | null>(null); // epoch ms of the active connection (status-bar clock)
-  let sessionOpen = $state(true);
+  // Starts hidden: the startup restore offer decides whether the manager opens (see workspaceRestore `onSettled`), so it never flashes.
+  let sessionOpen = $state(false);
   let sidebarWidth = $state(240);
   let logOpen = $state(false); // closed by default; the status bar shows a dot when commands arrive
   let logHeight = $state(140);

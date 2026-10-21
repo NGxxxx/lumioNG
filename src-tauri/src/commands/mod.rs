@@ -21,3 +21,7 @@ pub mod profiler;
 pub mod mcp;
 pub mod prefs;
 pub mod audit;
+pub mod compare;
+pub mod atlas;
+pub mod search_index;
+pub mod csfle;

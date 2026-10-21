@@ -9,7 +9,9 @@ use mongodb::Client;
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tauri::State;
+use tauri::{AppHandle, State};
+
+use super::csfle::{notify_read, read_with_fallback};
 
 /// Default op deadline when the frontend doesn't pass one (matches `run_script`'s and `settings.queryTimeoutMs`'s defaults in the frontend).
 const DEFAULT_TIMEOUT_MS: u64 = 30_000;
@@ -128,6 +130,14 @@ fn parse_count_doc(d: Option<Document>) -> u64 {
     .unwrap_or(0)
 }
 
+/// A pipeline ending in $out/$merge writes: refuse it on a read-only connection (before anything runs).
+async fn guard_pipeline_write(state: &AppState, session_id: &str, writes: bool) -> Result<(), AppError> {
+    if writes {
+        state.ensure_writable(session_id).await?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn aggregate(
     session_id: String,
@@ -137,27 +147,40 @@ pub async fn aggregate(
     skip: Option<i64>,
     limit: Option<i64>,
     timeout_ms: Option<u64>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<RawDoc>, AppError> {
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
+    let raw = state.client_pair(&session_id).await?.1;
+    let encrypting = raw.is_some();
 
     let stages = build_aggregate_stages(parse_pipeline(&pipeline)?, skip, limit);
     // A pipeline ending in $out/$merge writes to its destination: audit it there.
     let write_target = crate::audit::pipeline_write_target(&stages, &db, &coll);
+    guard_pipeline_write(&state, &session_id, write_target.is_some()).await?;
 
-    let run = with_interrupt(cancel, deadline, async move {
-        let collection = client.database(&db).collection::<Document>(&coll);
-        let mut agg = collection.aggregate(stages);
-        if let Some(mt) = remaining_until(deadline) {
-            agg = agg.max_time(mt);
-        }
-        let mut cursor = agg.await?;
-        let mut docs = Vec::new();
-        while let Some(d) = cursor.try_next().await? {
-            docs.push(doc_to_raw(d)?);
-        }
-        Ok(docs)
-    });
+    let sid = session_id.clone();
+    let run = async {
+        let (res, fell_back) = read_with_fallback(client, raw, |client| {
+            let (db, coll, stages) = (db.clone(), coll.clone(), stages.clone());
+            with_interrupt(cancel.clone(), deadline, async move {
+                let collection = client.database(&db).collection::<Document>(&coll);
+                let mut agg = collection.aggregate(stages);
+                if let Some(mt) = remaining_until(deadline) {
+                    agg = agg.max_time(mt);
+                }
+                let mut cursor = agg.await?;
+                let mut docs = Vec::new();
+                while let Some(d) = cursor.try_next().await? {
+                    docs.push(doc_to_raw(d)?);
+                }
+                Ok(docs)
+            })
+        })
+        .await;
+        notify_read(&app, &sid, fell_back.as_deref(), encrypting);
+        res
+    };
     match write_target {
         Some((op, ns)) => state.audited(&session_id, crate::audit::SOURCE_UI, op, &ns, None, |_| None, run).await,
         None => run.await,
@@ -202,35 +225,39 @@ pub async fn query_page(
     sort: Option<String>,       // order-preserving ExtJSON doc, e.g. {"age":-1,"_id":1}; empty → {_id:1}
     projection: Option<String>, // ExtJSON exclusion doc, e.g. {"big":0}
     timeout_ms: Option<u64>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<RawDoc>, AppError> {
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
+    let raw = state.client_pair(&session_id).await?.1;
+    let encrypting = raw.is_some();
 
     let (filter_doc, sort_doc, proj_doc) =
         build_find_options(filter.as_deref(), sort.as_deref(), projection.as_deref())?;
 
-    with_interrupt(cancel, deadline, async move {
-        let collection = client.database(&db).collection::<Document>(&coll);
-        let mut q = collection
-            .find(filter_doc)
-            .sort(sort_doc)
-            .skip(skip.max(0) as u64)
-            .limit(limit);
-        if let Some(p) = proj_doc {
-            q = q.projection(p);
-        }
-        if let Some(mt) = remaining_until(deadline) {
-            q = q.max_time(mt);
-        }
-        let mut cursor = q.await?;
+    let (res, fell_back) = read_with_fallback(client, raw, |client| {
+        let (db, coll, filter_doc, sort_doc, proj_doc) = (db.clone(), coll.clone(), filter_doc.clone(), sort_doc.clone(), proj_doc.clone());
+        with_interrupt(cancel.clone(), deadline, async move {
+            let collection = client.database(&db).collection::<Document>(&coll);
+            let mut q = collection.find(filter_doc).sort(sort_doc).skip(skip.max(0) as u64).limit(limit);
+            if let Some(p) = proj_doc {
+                q = q.projection(p);
+            }
+            if let Some(mt) = remaining_until(deadline) {
+                q = q.max_time(mt);
+            }
+            let mut cursor = q.await?;
 
-        let mut docs = Vec::new();
-        while let Some(d) = cursor.try_next().await? {
-            docs.push(doc_to_raw(d)?);
-        }
-        Ok(docs)
+            let mut docs = Vec::new();
+            while let Some(d) = cursor.try_next().await? {
+                docs.push(doc_to_raw(d)?);
+            }
+            Ok(docs)
+        })
     })
-    .await
+    .await;
+    notify_read(&app, &session_id, fell_back.as_deref(), encrypting);
+    res
 }
 
 #[tauri::command]
@@ -241,27 +268,35 @@ pub async fn sample_documents(
     filter: Option<String>,
     size: i64,
     timeout_ms: Option<u64>,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Vec<RawDoc>, AppError> {
     let (client, cancel, deadline) = begin_query_op(&state, &session_id, timeout_ms).await?;
+    let raw = state.client_pair(&session_id).await?.1;
+    let encrypting = raw.is_some();
 
     let user_filter = parse_user_filter(filter.as_deref())?;
     let pipeline = build_sample_pipeline(user_filter, size);
 
-    with_interrupt(cancel, deadline, async move {
-        let collection = client.database(&db).collection::<Document>(&coll);
-        let mut agg = collection.aggregate(pipeline);
-        if let Some(mt) = remaining_until(deadline) {
-            agg = agg.max_time(mt);
-        }
-        let mut cursor = agg.await?;
-        let mut docs = Vec::new();
-        while let Some(d) = cursor.try_next().await? {
-            docs.push(doc_to_raw(d)?);
-        }
-        Ok(docs)
+    let (res, fell_back) = read_with_fallback(client, raw, |client| {
+        let (db, coll, pipeline) = (db.clone(), coll.clone(), pipeline.clone());
+        with_interrupt(cancel.clone(), deadline, async move {
+            let collection = client.database(&db).collection::<Document>(&coll);
+            let mut agg = collection.aggregate(pipeline);
+            if let Some(mt) = remaining_until(deadline) {
+                agg = agg.max_time(mt);
+            }
+            let mut cursor = agg.await?;
+            let mut docs = Vec::new();
+            while let Some(d) = cursor.try_next().await? {
+                docs.push(doc_to_raw(d)?);
+            }
+            Ok(docs)
+        })
     })
-    .await
+    .await;
+    notify_read(&app, &session_id, fell_back.as_deref(), encrypting);
+    res
 }
 
 #[tauri::command]
@@ -392,21 +427,74 @@ pub async fn find_by_id(
     db: String,
     coll: String,
     id: String,
+    app: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<Option<String>, AppError> {
-    let client = state.client(&session_id).await?;
-    let found = client
-        .database(&db)
-        .collection::<Document>(&coll)
-        .find_one(id_filter(&id)?)
-        .await?;
-    found.map(doc_to_canonical_string).transpose()
+    let (client, raw) = state.client_pair(&session_id).await?;
+    let encrypting = raw.is_some();
+    let filter = id_filter(&id)?;
+    let (found, fell_back) = read_with_fallback(client, raw, |client| {
+        let (db, coll, filter) = (db.clone(), coll.clone(), filter.clone());
+        async move { Ok(client.database(&db).collection::<Document>(&coll).find_one(filter).await?) }
+    })
+    .await;
+    notify_read(&app, &session_id, fell_back.as_deref(), encrypting);
+    found?.map(doc_to_canonical_string).transpose()
+}
+
+/// `{ _id: { $in: [...] } }` from the canonical ExtJSON texts of several `_id` values.
+fn ids_filter(ids: &[String]) -> Result<Document, AppError> {
+    let values = ids
+        .iter()
+        .map(|id| crate::json_bson::canonical_string_to_bson(id))
+        .collect::<Result<Vec<_>, AppError>>()?;
+    Ok(doc! { "_id": { "$in": values } })
+}
+
+/// Documents by `_id` read through the NON-decrypting client: ciphertext (BinData subtype 6) comes back
+/// as stored. Undo snapshots and Duplicate use it on encrypting sessions, so a re-insert copies the
+/// ciphertext verbatim instead of writing the decrypted values back as plain text. On a session without
+/// encryption the raw client is the session client, so the result is the same as a normal read.
+#[tauri::command]
+pub async fn find_raw_by_ids(session_id: String, db: String, coll: String, ids: Vec<String>, state: State<'_, AppState>) -> Result<Vec<String>, AppError> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let raw = state.raw_client(&session_id).await?;
+    let filter = ids_filter(&ids)?;
+    let docs: Vec<Document> = raw.database(&db).collection::<Document>(&coll).find(filter).await?.try_collect().await?;
+    docs.into_iter().map(doc_to_canonical_string).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use mongodb::bson::{doc, oid::ObjectId, Bson};
+
+    #[tokio::test]
+    async fn out_and_merge_pipelines_are_refused_on_a_read_only_session() {
+        let state = AppState::default();
+        let client = || async { Client::with_uri_str("mongodb://localhost").await.unwrap() };
+        state.insert_session("ro".into(), client().await, true, "".into(), "".into(), None).await;
+        state.insert_session("rw".into(), client().await, false, "".into(), "".into(), None).await;
+        let stages = build_aggregate_stages(parse_pipeline(r#"[{"$match":{}},{"$out":"copy"}]"#).unwrap(), None, None);
+        let writes = crate::audit::pipeline_write_target(&stages, "d", "c").is_some();
+        assert!(writes, "$out is a write target");
+        assert!(guard_pipeline_write(&state, "ro", writes).await.is_err());
+        assert!(guard_pipeline_write(&state, "rw", writes).await.is_ok());
+        // A plain read pipeline is fine on a read-only session.
+        let read = build_aggregate_stages(parse_pipeline(r#"[{"$match":{}}]"#).unwrap(), None, None);
+        let reads = crate::audit::pipeline_write_target(&read, "d", "c").is_some();
+        assert!(guard_pipeline_write(&state, "ro", reads).await.is_ok());
+    }
+
+    #[test]
+    fn ids_filter_matches_any_of_the_ids_keeping_their_types() {
+        let f = ids_filter(&[r#"{"$oid":"652f0a1b2c3d4e5f60718293"}"#.to_string(), r#""abc""#.to_string()]).unwrap();
+        let oid = ObjectId::parse_str("652f0a1b2c3d4e5f60718293").unwrap();
+        assert_eq!(f, doc! { "_id": { "$in": [oid, "abc"] } });
+        assert!(ids_filter(&["not json".to_string()]).is_err());
+    }
 
     #[test]
     fn id_filter_keeps_the_id_type() {

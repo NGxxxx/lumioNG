@@ -84,6 +84,7 @@
     { label: m.menu_watch_queries(), action: "watchQueries" },
     { label: m.namespace_panel_menu_export(), action: "export" },
     { label: m.namespace_panel_menu_import(), action: "import" },
+    { label: m.menu_compare(), action: "compare" },
     { label: m.namespace_panel_menu_copy_name(), action: "copyName" },
     { label: m.namespace_panel_menu_rename(), action: "rename" },
     { label: m.namespace_panel_menu_duplicate(), action: "duplicate" },
@@ -152,6 +153,7 @@
         exportWizard = { mode: "pick", preChecked: [{ db: target.db, coll: target.coll }] };
       }
       else if (action === "import") openImportDialog(target.sessionId, target.db, target.coll);
+      else if (action === "compare") sessionManager.openCompare({ db: target.db, coll: target.coll }, target.sessionId);
       else if (action === "copyName") copyName(target.coll);
       else if (action === "rename") dialog = { type: "rename", db: target.db, coll: target.coll, sessionId: target.sessionId };
       else if (action === "duplicate") dialog = { type: "duplicate", db: target.db, coll: target.coll, sessionId: target.sessionId };

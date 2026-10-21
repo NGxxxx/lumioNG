@@ -379,7 +379,7 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
         return Err(format!("unknown tool `{name}` (writes are disabled)"));
     }
     let session = resolve_session(ctx.sessions, args)?;
-    let client = ctx.state.client(&session.id).await.map_err(|e| e.to_string())?;
+    let client = tool_client(ctx.state, &session.id).await.map_err(|e| e.to_string())?;
     // Filled in by the arms below so the audit line can carry the affected count and know whether
     // an `aggregate` turned out to write ($out/$merge).
     let count = AtomicU64::new(NO_COUNT);
@@ -673,8 +673,28 @@ fn non_empty_filter(args: &Value) -> Result<Document, String> {
     }
 }
 
+/// The client MCP tools use. It is the NON-decrypting one: encrypted fields reach an AI assistant as
+/// ciphertext (BinData subtype 6), never as plaintext, whatever the connection's own session shows.
+pub(crate) async fn tool_client(state: &AppState, session_id: &str) -> Result<mongodb::Client, crate::error::AppError> {
+    state.raw_client(session_id).await
+}
+
 #[cfg(test)]
 mod tests {
+    use mongodb::Client;
+    #[tokio::test]
+    async fn mcp_tools_read_through_the_non_decrypting_client() {
+        let lazy = |db: &str| Client::with_uri_str(format!("mongodb://127.0.0.1:1/{db}"));
+        let state = AppState::default();
+        state.insert_session("s".into(), lazy("decrypting").await.unwrap(), false, String::new(), String::new(), None).await;
+        state.sessions.lock().await.get_mut("s").unwrap().raw_client = Some(lazy("raw").await.unwrap());
+        let c = tool_client(&state, "s").await.unwrap();
+        assert_eq!(c.default_database().unwrap().name(), "raw", "MCP must not see plaintext of encrypted fields");
+        // A session without encryption keeps using its own client.
+        state.insert_session("p".into(), lazy("main").await.unwrap(), false, String::new(), String::new(), None).await;
+        assert_eq!(tool_client(&state, "p").await.unwrap().default_database().unwrap().name(), "main");
+    }
+
     use super::*;
 
     fn s(id: &str, label: &str) -> ExposedSession {

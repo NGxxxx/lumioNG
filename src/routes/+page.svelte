@@ -35,7 +35,7 @@
     mcp.init(); // brings the MCP server back if it was on last time
     vault.init(); // locked master-password vault: ask for it before any saved connection is opened
     void windowFrame.init(); // applies the "system window frame" choice
-    void app.workspace.init(); // offers the tabs of the previous session
+    app.workspace.init().catch(() => shell.openSession()); // offers the tabs of the previous session
     audit.init(); // tells Rust which environments to audit (it assumes PROD only until then)
     return startSessionHealth(); // pings open sessions; marks them degraded and reconnects when they go dark
   });

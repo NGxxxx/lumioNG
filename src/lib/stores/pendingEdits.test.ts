@@ -88,4 +88,13 @@ describe("pendingEdits", () => {
     pendingEdits.discard("s", "d", "c");
     expect(pendingEdits.count("s")).toBe(1);
   });
+
+  it("stops at an edit the backend refuses because the field is encrypted and keeps it staged", async () => {
+    upd.mockRejectedValueOnce({ kind: "Query", message: "csfle_plaintext_required:ssn" });
+    pendingEdits.stage("s", "d", "c", edit("1", "ssn", "a", "b"));
+    const r = await pendingEdits.commit("s", "d", "c");
+    expect(r.committed).toBe(0);
+    expect(r.error).toMatch(/document editor/);
+    expect(pendingEdits.list("s", "d", "c")).toHaveLength(1);
+  });
 });

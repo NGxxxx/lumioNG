@@ -26,8 +26,24 @@ vi.mock("../stores/exportJob.svelte", () => ({
   }),
 }));
 
+const csfleOn = vi.hoisted(() => ({ value: false }));
+vi.mock("../stores/csfle.svelte", () => ({ csfle: { sessionEnabled: vi.fn(async () => csfleOn.value) } }));
+
 // The dialog starts from the last export's choices; every test starts from the defaults.
 beforeEach(() => settings.setExportPrefs("json", false));
+
+describe("ExportWizard — encryption notice", () => {
+  it("says decrypted values are written to the file on an encrypting session only", async () => {
+    csfleOn.value = true;
+    const on = render(ExportWizard, { props: { input: { mode: "pick", preChecked: [] }, onclose: vi.fn() } });
+    expect((await on.findByTestId("csfle-export-notice")).textContent).toMatch(/plain text/);
+    on.unmount();
+    csfleOn.value = false;
+    const off = render(ExportWizard, { props: { input: { mode: "pick", preChecked: [] }, onclose: vi.fn() } });
+    await new Promise((r) => setTimeout(r, 30));
+    expect(off.queryByTestId("csfle-export-notice")).toBeNull();
+  });
+});
 
 describe("ExportWizard", () => {
   it("pick mode renders the active session's collection tree", () => {

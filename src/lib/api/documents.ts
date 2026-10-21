@@ -36,8 +36,10 @@ export async function replaceDocument(
   coll: string,
   idJson: string,
   docJson: string,
+  /** Encrypted paths the user confirmed to store as plain text (CSFLE sessions; empty otherwise). */
+  storePlaintext: string[] = [],
 ): Promise<void> {
-  await invoke("replace_document", { sessionId, db, coll, idJson, docJson });
+  await invoke("replace_document", { sessionId, db, coll, idJson, docJson, storePlaintext: storePlaintext.length ? storePlaintext : null });
 }
 
 export async function deleteDocument(sessionId: string, db: string, coll: string, idJson: string): Promise<void> {
@@ -48,6 +50,15 @@ export async function deleteDocument(sessionId: string, db: string, coll: string
 export async function fetchFullDoc(sessionId: string, db: string, coll: string, idJson: string): Promise<Doc | null> {
   const text = await findById(sessionId, db, coll, idJson);
   return text === null ? null : (JSON.parse(text) as Doc);
+}
+
+/**
+ * Documents by `_id` (canonical ExtJSON texts) read WITHOUT decrypting: on a CSFLE session the encrypted
+ * values come back as BinData subtype 6, exactly as stored. For undo snapshots and Duplicate.
+ */
+export async function fetchRawDocs(sessionId: string, db: string, coll: string, ids: string[]): Promise<Doc[]> {
+  const texts = await invoke<string[]>("find_raw_by_ids", { sessionId, db, coll, ids });
+  return texts.map((t) => JSON.parse(t) as Doc);
 }
 
 /** Returns `size` random documents for schema sampling (filter applied if provided). */

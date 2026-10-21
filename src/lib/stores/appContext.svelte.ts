@@ -159,6 +159,8 @@ export function createAppContext() {
         sm.showDestination();
       }
     },
+    // The manager stays closed when the restore brought a connection back; otherwise (declined, nothing, all failed) it opens.
+    onSettled: (restored) => { if (restored === 0) shell.openSession(); },
     onUnlockCancelled: () => toast.push(m.workspace_restore_unlock_cancelled(), "error"),
     onConnectFailed: (label) => toast.push(m.workspace_restore_connect_failed({ label }), "error"),
   });

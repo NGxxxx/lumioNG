@@ -22,7 +22,7 @@ describe("createShell", () => {
 
   it("openSession sets sessionOpen true", () => {
     const s = createShell();
-    s.toggleSession(); // false (was true by default)
+    expect(s.sessionOpen).toBe(false); // hidden until startup decides
     s.openSession();
     expect(s.sessionOpen).toBe(true);
   });

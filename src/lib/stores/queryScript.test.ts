@@ -75,6 +75,16 @@ describe("destructive confirm", () => {
     expect(s.destructiveConfirm).toBeNull();
   });
 
+  it("confirmRun aborts with a message when the active session changed while the confirm was open", async () => {
+    const s = createQueryScript("sess", "db.c.deleteMany({status:'old'})");
+    await s.run("mydb");
+    s.rebindSession("other");
+    await s.confirmRun();
+    expect(runScript).not.toHaveBeenCalled();
+    expect(s.error).toMatch(/session changed/i);
+    expect(s.destructiveConfirm).toBeNull();
+  });
+
   it("cancelConfirm clears without running", async () => {
     const s = createQueryScript("sess", "db.c.deleteMany({status:'old'})");
     await s.run("mydb");

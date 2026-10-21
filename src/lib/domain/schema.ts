@@ -22,6 +22,8 @@ export interface FieldSchema {
   type: BsonType;
   mixed: boolean;
   presence: number;
+  /** Every type seen, most frequent first — only set when `mixed`. */
+  types?: BsonType[];
 }
 
 export interface CollectionSchema {
@@ -117,12 +119,14 @@ export function inferSchema(docs: Doc[]): CollectionSchema {
         type = t;
       }
     }
-    return {
+    const field: FieldSchema = {
       path,
       type,
       mixed: m.size > 1,
       presence: sampleSize ? (present.get(path) ?? 0) / sampleSize : 0,
     };
+    if (m.size > 1) field.types = [...m].sort((a, b) => b[1] - a[1]).map(([t]) => t);
+    return field;
   });
 
   return { sampleSize, fields };

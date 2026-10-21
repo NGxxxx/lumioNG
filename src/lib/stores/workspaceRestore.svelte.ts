@@ -27,6 +27,8 @@ export type RestoreDeps = {
   onConnectFailed(label: string): void;
   /** The vault unlock was cancelled during this restore (called once, at the end). */
   onUnlockCancelled(): void;
+  /** The startup offer is fully settled (nothing to restore, declined, or answered). `restored` = connections brought back. */
+  onSettled?(restored: number): void;
 };
 
 export type RestorePrompt = { stage: "restore" | "prod"; plan: RestorePlan };
@@ -67,6 +69,7 @@ export function createWorkspaceRestore(deps: RestoreDeps, saveDelayMs = SAVE_DEL
   function settle() {
     prompt = null;
     activeTarget = null;
+    const restored = connected.size;
     connected.clear();
     if (unlockCancelled) {
       unlockCancelled = false;
@@ -74,6 +77,7 @@ export function createWorkspaceRestore(deps: RestoreDeps, saveDelayMs = SAVE_DEL
     }
     ready = true;
     saveNow();
+    deps.onSettled?.(restored);
   }
 
   async function restoreConnections(plan: RestorePlan, conns: PlannedConnection[]) {

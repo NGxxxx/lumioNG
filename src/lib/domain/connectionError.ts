@@ -15,6 +15,8 @@ export function classifyError(raw: string): FriendlyError | null {
   if (dupKey) return { key: "err_dup_key_index", params: { index: dupKey[1] } };
   if (/E11000 duplicate key/i.test(raw)) return { key: "err_dup_key" };
   if (/document failed validation/i.test(raw)) return { key: "err_validation_failed" };
+  const plaintext = raw.match(/csfle_plaintext_required:(\S+)/);
+  if (plaintext) return { key: "err_csfle_plaintext_required", params: { paths: plaintext[1] } };
   const unauthorized = raw.match(/not authorized on (\S+) to execute/i);
   if (unauthorized) return { key: "err_not_authorized", params: { db: unauthorized[1] } };
 

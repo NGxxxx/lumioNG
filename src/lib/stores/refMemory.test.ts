@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { getRemembered, remember, forget, REF_MEMORY_CAP } from "./refMemory";
+import { getRemembered, remember, forget, REF_MEMORY_CAP, edgeKey, getEdgeDecisions, setEdgeDecision, clearEdgeDecision } from "./refMemory";
 import { prefs } from "./prefs.svelte";
 
 describe("refMemory", () => {
@@ -28,5 +28,17 @@ describe("refMemory", () => {
     prefs.setItem("lumio.refTargets.v1", JSON.stringify({ k: { coll: 5 }, j: { coll: "x", at: 1 } }));
     expect(getRemembered("k")).toBeNull();
     expect(getRemembered("j")).toBe("x");
+  });
+
+  it("keeps diagram edge decisions per connection and database", () => {
+    setEdgeDecision(edgeKey(1, "shop", "orders.userId->users"), "confirmed");
+    setEdgeDecision(edgeKey(1, "shop", "orders.itemId->items"), "removed");
+    setEdgeDecision(edgeKey(2, "shop", "orders.userId->users"), "removed");
+    expect(getEdgeDecisions(1, "shop")).toEqual({ "orders.userId->users": "confirmed", "orders.itemId->items": "removed" });
+    expect(getEdgeDecisions(1, "other")).toEqual({});
+    clearEdgeDecision(edgeKey(1, "shop", "orders.itemId->items"));
+    expect(getEdgeDecisions(1, "shop")).toEqual({ "orders.userId->users": "confirmed" });
+    prefs.setItem("lumio.refEdges.v1", "garbage");
+    expect(getEdgeDecisions(1, "shop")).toEqual({});
   });
 });

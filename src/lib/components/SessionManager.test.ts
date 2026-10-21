@@ -2,8 +2,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent } from "@testing-library/svelte";
 import SessionManager from "./SessionManager.svelte";
-import { listConnections, type SavedConnection } from "../api/connections";
+import { listConnections, saveConnection, type SavedConnection } from "../api/connections";
 import { handleModalKeydown } from "#lib/stores/modalStack.js";
+import { connectionPrefill } from "../stores/connectionPrefill";
 
 function key(k: string): KeyboardEvent {
   return { key: k, target: null } as unknown as KeyboardEvent;
@@ -32,6 +33,13 @@ function saved(over: Partial<SavedConnection> = {}): SavedConnection {
 
 describe("SessionManager", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("opens with the connection string handed over by the Atlas browser, without a password", async () => {
+    connectionPrefill.set({ uri: "mongodb+srv://cluster0.ab1cd.mongodb.net", label: "Cluster0" });
+    const { getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    await vi.waitFor(() => expect((getByLabelText("Connection type:") as HTMLSelectElement).value).toBe("mongodb+srv"));
+    expect(connectionPrefill.take()).toBeNull();
+  });
 
   it("disables port when SRV is selected", async () => {
     const { getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
@@ -142,5 +150,39 @@ describe("SessionManager", () => {
     render(SessionManager, { onconnected, onclose: vi.fn() });
     handleModalKeydown(key("Enter"));
     expect(onconnected).not.toHaveBeenCalled();
+  });
+
+  it("the footer button is always labelled Save, also while editing a saved session", async () => {
+    (listConnections as ReturnType<typeof vi.fn>).mockResolvedValueOnce([saved()]);
+    const { findByText, getByRole, queryByRole } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    expect(getByRole("button", { name: "Save" })).toBeTruthy();
+    await fireEvent.click(await findByText("Local"));
+    expect(getByRole("button", { name: "Save" })).toBeTruthy();
+    expect(queryByRole("button", { name: "Update" })).toBeNull();
+  });
+
+  it("saving keeps the name filled and the row selected", async () => {
+    const a = saved({ id: 1, label: "Local" });
+    (listConnections as ReturnType<typeof vi.fn>).mockResolvedValueOnce([a]);
+    (saveConnection as ReturnType<typeof vi.fn>).mockResolvedValueOnce([a]);
+    const { findByText, getByRole, getByLabelText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    const row = (await findByText("Local")).closest(".session-row") as HTMLElement;
+    await fireEvent.click(row);
+    await fireEvent.click(getByRole("button", { name: "Save" }));
+    await vi.waitFor(() => expect(saveConnection).toHaveBeenCalled());
+    await vi.waitFor(() => expect(row.classList.contains("selected")).toBe(true));
+    expect((getByLabelText("Hostname / IP:") as HTMLInputElement).value).toBe("localhost");
+    expect(getByRole("button", { name: "Save" })).toBeTruthy();
+  });
+
+  it("saving a new session selects the new row", async () => {
+    const b = saved({ id: 5, label: "Fresh" });
+    (saveConnection as ReturnType<typeof vi.fn>).mockResolvedValueOnce([b]);
+    const { getByRole, getByLabelText, findByText } = render(SessionManager, { onconnected: vi.fn(), onclose: vi.fn() });
+    await fireEvent.input(getByLabelText("Session name"), { target: { value: "Fresh" } });
+    await fireEvent.input(getByLabelText("Hostname / IP:"), { target: { value: "h" } });
+    await fireEvent.click(getByRole("button", { name: "Save" }));
+    const row = (await findByText("Fresh")).closest(".session-row") as HTMLElement;
+    await vi.waitFor(() => expect(row.classList.contains("selected")).toBe(true));
   });
 });

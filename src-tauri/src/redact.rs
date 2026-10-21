@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 const MASK: &str = "****";
 
 /// Option / field names whose value is a secret (matched as a suffix of the key, case-insensitive).
-const SECRET_NAMES: &str = "password|passwd|pwd|passphrase|secret|token|api_?key|access_?key|secret_?key|private_?key";
+const SECRET_NAMES: &str = "password|passwd|pwd|passphrase|secret|token|api_?key|access_?key|secret_?key|private_?key|master_?key";
 
 /// `scheme://user:pass@` — the password may contain an unencoded `@`, so match up to the last one in the authority.
 static USERINFO: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?i)\b([a-z][a-z0-9+.-]*://[^\s/?#@:]+):[^\s/?#]*@").unwrap());
@@ -115,5 +115,25 @@ mod oidc_tests {
         assert!(!form.contains("RT-secret") && !form.contains("AT.secret"), "{form}");
         assert!(form.contains("client_id=abc"), "{form}");
         assert!(!redact_text("Authorization: Bearer AT.secret").contains("AT.secret"));
+    }
+
+    #[test]
+    fn redacts_atlas_service_account_secrets_and_tokens() {
+        let out = redact_text(
+            r#"POST grant_type=client_credentials&client_id=mdb_sa_id_1&client_secret=sA-9f8e Authorization: Bearer eyJhbGciOi.abc-DEF {"client_secret": "sA-9f8e", "access_token": "eyJhbGciOi.abc"}"#,
+        );
+        assert!(!out.contains("sA-9f8e") && !out.contains("eyJhbGciOi"), "{out}");
+        assert!(out.contains("client_id=mdb_sa_id_1"), "the client id is not a secret: {out}");
+    }
+
+    #[test]
+    fn redacts_every_csfle_credential_field() {
+        let blob = r#"{"localMasterKey":"QUJD","aws":{"accessKeyId":"AKIA1","secretAccessKey":"sek","sessionToken":"tok"},"azure":{"tenantId":"t","clientId":"c","clientSecret":"azsec"},"gcp":{"email":"sa@x","privateKey":"PKEY"},"kmip":{"endpoint":"h:1","certPassword":"pw"}}"#;
+        let out = redact_text(blob);
+        for leaked in ["QUJD", "sek", "tok", "azsec", "PKEY", "\"pw\""] {
+            assert!(!out.contains(leaked), "{leaked} leaked: {out}");
+        }
+        // Non-secret identifiers stay readable for diagnosis.
+        assert!(out.contains("sa@x") && out.contains("h:1"));
     }
 }

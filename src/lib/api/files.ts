@@ -21,6 +21,11 @@ export async function writeTextFile(path: string, contents: string): Promise<voi
   await invoke("write_text_file", { path, contents });
 }
 
+/** Writes binary content (given base64-encoded) to `path`. */
+export async function writeBase64File(path: string, data: string): Promise<void> {
+  await invoke("write_base64_file", { path, data });
+}
+
 /** Reads a text file's contents, or `null` if it doesn't exist — used to detect a companion
  *  `.metadata.json` sidecar next to a chosen import file. */
 export async function readTextFileIfExists(path: string): Promise<string | null> {

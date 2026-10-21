@@ -80,5 +80,5 @@ export interface GridPageView {
   /** Insert: build a blank document skeleton to open in the insert form (collectionView only). */
   newDocument?(): Doc;
   /** Ctrl+Insert: build a duplicate of the single selected document (collectionView only); null if not exactly one row is selected. */
-  duplicateSelected?(): Doc | null;
+  duplicateSelected?(): Promise<Doc | null>;
 }

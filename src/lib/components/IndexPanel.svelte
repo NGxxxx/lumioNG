@@ -11,12 +11,16 @@
   import ConfirmDialog from "./ConfirmDialog.svelte";
   import Modal from "./Modal.svelte";
   import IndexCreateForm from "./IndexCreateForm.svelte";
+  import SearchIndexPanel from "./SearchIndexPanel.svelte";
+  import { createSearchIndexView } from "../stores/searchIndexView.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let { db, coll }: { db: string; coll: string } = $props();
 
   const v = untrack(() => createIndexView(sessionManager.active?.id ?? "", db, coll));
+  const search = untrack(() => createSearchIndexView(sessionManager.active?.id ?? "", db, coll, sessionManager.active?.uri));
   const readOnly = $derived(sessionManager.active?.readOnly ?? false);
+  let tab = $state<"regular" | "search">("regular");
   let creating = $state(false);
 
   function flags(idx: IndexInfo): string {
@@ -36,10 +40,25 @@
 
   onMount(() => {
     v.init();
+    void search.detect();
+  });
+
+  // The tab only exists on Atlas; if detection settles the other way while it is open, fall back.
+  $effect(() => {
+    if (!search.isAtlas && tab === "search") tab = "regular";
   });
 </script>
 
 <div class="indexpanel">
+  {#if search.isAtlas}
+    <div class="tabs" role="tablist">
+      <button role="tab" aria-selected={tab === "regular"} class:on={tab === "regular"} onclick={() => (tab = "regular")}>{m.index_tab_regular()}</button>
+      <button role="tab" aria-selected={tab === "search"} class:on={tab === "search"} onclick={() => (tab = "search")}>{m.index_tab_search()}</button>
+    </div>
+  {/if}
+  {#if tab === "search" && search.isAtlas}
+    <SearchIndexPanel view={search} {readOnly} />
+  {:else}
   <div class="toolbar">
     <button onclick={() => (creating = true)}>{m.index_panel_create()}</button>
     <span class="summary" class:warn={v.summary.count > 0}>
@@ -108,6 +127,7 @@
     </table>
     {#if v.loading}<div class="status-line">{m.common_loading()}</div>{/if}
   </div>
+  {/if}
 </div>
 
 <DestructiveDialog gate={v.destructive} />
@@ -136,6 +156,9 @@
 
 <style>
   .indexpanel { display: flex; flex-direction: column; height: 100%; }
+  .tabs { display: flex; gap: 0.25rem; padding: 0.25rem 0.5rem 0; border-bottom: 1px solid var(--bg); }
+  .tabs button { height: 1.5rem; padding: 0 0.75rem; border: 1px solid transparent; border-bottom: 2px solid transparent; background: none; color: var(--muted); cursor: pointer; }
+  .tabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
   .toolbar { display: flex; align-items: center; gap: 0.75rem; padding: 0.375rem 0.5rem; border-bottom: 1px solid var(--bg); }
   .toolbar button { height: 1.5rem; padding: 0 0.625rem; border: 1px solid var(--gray-b8); border-radius: var(--radius); background: var(--panel); color: var(--fg); cursor: pointer; }
   .toolbar button:hover { background: var(--bg); }

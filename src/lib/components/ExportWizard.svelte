@@ -10,9 +10,14 @@
   import type { BsonType } from "../domain/extjson";
   import { pickSavePath, pickDirectory } from "../stores/desktop";
   import { settings } from "../stores/settings.svelte";
+  import { csfle } from "../stores/csfle.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let { input, onclose }: { input: ExportWizardInput; onclose: () => void } = $props();
+
+  // A session with client-side encryption reads fields decrypted, so the exported file holds plain text.
+  let decrypted = $state(false);
+  untrack(() => csfle.sessionEnabled(sessionManager.active?.id ?? "").then((on) => (decrypted = on)));
 
   // Start from last time's choices (BSON isn't offered for rows already in memory).
   let format = $state<ExportFormat>(untrack(() => (input.mode === "scopedMemory" && settings.exportFormat === "bson" ? "json" : settings.exportFormat)));
@@ -213,6 +218,7 @@
 
           <!-- Right: options -->
           <div class="options">
+            {#if decrypted}<p class="format-hint" data-testid="csfle-export-notice">{m.csfle_export_notice()}</p>{/if}
             <fieldset>
               <legend>{m.export_wizard_format()}</legend>
               <label><input type="radio" name="fmt" value="json" bind:group={format} /> JSON</label>

@@ -307,8 +307,7 @@
       v.requestDeleteSelected?.();
     } else if (mod && e.key === "Insert") {
       e.preventDefault();
-      const dup = v.duplicateSelected?.();
-      if (dup) onopendocument?.(dup, "insert");
+      void Promise.resolve(v.duplicateSelected?.()).then((dup) => { if (dup) onopendocument?.(dup, "insert"); });
     } else if (!mod && e.key === "Insert") {
       e.preventDefault();
       const doc = v.newDocument?.();

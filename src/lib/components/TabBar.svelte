@@ -40,6 +40,7 @@
       const name = t.savedQueryId != null ? queryLibrary.queryName(t.savedQueryId) : null;
       return name ?? m.tab_bar_query_title({ seq: t.seq });
     }
+    if (t.kind === "compare") return m.compare_tab_title({ coll: t.coll });
     if (t.kind === "watch") {
       const target = t.idText ? `${t.coll} / ${shorten(t.idText)}` : (t.coll ?? t.db ?? m.watch_scope_deployment());
       return m.tab_bar_watch_title({ target });

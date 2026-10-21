@@ -239,6 +239,11 @@ export function createConnectionRegistry() {
     beforeFill = null;
   }
 
+  function clearSecrets() {
+    password = ""; proxyPassword = ""; awsSessionToken = "";
+    tlsCertificateKeyFilePassword = ""; sshPassword = ""; sshPassphrase = "";
+  }
+
   /** MONGODB-AWS credentials must be a pair (or empty): a lone secret would be silently dropped from the URI. */
   function awsError(): string | null {
     if (authMethod !== "aws") return null;
@@ -262,12 +267,17 @@ export function createConnectionRegistry() {
     error = null;
     offerSaveWithoutPassword = false;
     const input = withoutPassword ? withoutSecrets(toInput()) : toInput();
+    const previousIds = new Set(list.map((c) => c.id));
+    const savedLabel = label.trim() || input.label;
     // Without a keychain the backend refuses to write a secret the vault can't seal. Set the vault
     // up / unlock it (dialog), then try again; if the user backs out, offer to save without the password.
     for (let attempt = 0; ; attempt++) {
       try {
         list = await saveConnection(editingId, input, withoutPassword);
-        clearForm();
+        // Keep the form filled and the saved entry selected; a new entry is found by diffing the ids.
+        if (editingId === null) editingId = list.find((c) => !previousIds.has(c.id))?.id ?? null;
+        if (withoutPassword) clearSecrets(); // that is what was stored
+        toast.push(m.session_manager_saved({ label: savedLabel }));
         if (withoutPassword) toast.push(m.vault_saved_without_password());
         return;
       } catch (e) {

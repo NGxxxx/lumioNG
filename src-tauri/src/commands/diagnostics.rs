@@ -182,4 +182,33 @@ mod tests {
         assert!(all.contains("db.example.com") && all.contains("prod"));
         assert!(all.contains("api-token"), "setting names are listed; values never are");
     }
+
+    #[test]
+    fn diagnostics_zip_has_only_whitelisted_files_and_masks_kms_credentials_in_logs() {
+        use crate::csfle::{AwsCreds, GcpCreds, KmipCreds, KmsSecrets};
+        let secrets = KmsSecrets {
+            local_master_key: Some("LOCALMASTERKEYB64".into()),
+            aws: Some(AwsCreds { access_key_id: "AKIAPUBLICID".into(), secret_access_key: "AWSSECRETVALUE".into(), session_token: "AWSSESSIONVALUE".into() }),
+            gcp: Some(GcpCreds { email: "sa@proj.iam".into(), private_key: "GCPPRIVATEVALUE".into() }),
+            kmip: Some(KmipCreds { endpoint: "kmip:5696".into(), cert_password: "KMIPPASSVALUE".into(), ..Default::default() }),
+            ..Default::default()
+        };
+        // Even if a credential document slipped into a log line, the bundle must mask it.
+        let line = format!("csfle setup failed: {}", secrets.to_json().unwrap());
+        let logs = vec![("lumio.2026-10-20.log".to_string(), line.into_bytes())];
+        let mut buf = Cursor::new(Vec::new());
+        write_bundle(&mut buf, &build_info(None), &logs, &[registry::tests::conn(1)], &[]).unwrap();
+        let mut zip = zip::ZipArchive::new(Cursor::new(buf.into_inner())).unwrap();
+        let names: Vec<String> = zip.file_names().filter_map(|n| n.ok().map(|c| c.into_owned())).collect();
+        let mut sorted = names.clone();
+        sorted.sort();
+        assert_eq!(sorted, ["app.json", "connections.json", "logs/lumio.2026-10-20.log", "settings-keys.json"], "csfle.json and the sealed secrets file are never part of the bundle");
+        let mut all = String::new();
+        for name in &names {
+            zip.by_name(name).unwrap().read_to_string(&mut all).unwrap();
+        }
+        for secret in ["LOCALMASTERKEYB64", "AWSSECRETVALUE", "AWSSESSIONVALUE", "GCPPRIVATEVALUE", "KMIPPASSVALUE"] {
+            assert!(!all.contains(secret), "{secret} leaked");
+        }
+    }
 }

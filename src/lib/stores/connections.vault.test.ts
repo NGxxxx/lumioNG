@@ -81,6 +81,8 @@ describe("save without a keychain", () => {
     expect(input.passwordEnc).toBe("");
     expect(input.sshPasswordEnc).toBe("");
     expect(r.offerSaveWithoutPassword).toBe(false);
+    expect(r.password).toBe(""); // the form stays filled but holds no secret
+    expect(r.label).not.toBe("");
     expect(toast.toasts.some((t: { message: string }) => /without its password/i.test(t.message))).toBe(true);
   });
 

@@ -110,6 +110,8 @@ pub async fn replace_document(
     coll: String,
     id_json: String,
     doc_json: String,
+    // Encrypted paths the user confirmed to store as plain text (CSFLE sessions only; see `csfle::restore_ciphertext`).
+    store_plaintext: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
     let client = state.writable_client(&session_id).await?;
@@ -122,6 +124,12 @@ pub async fn replace_document(
 
     let collection = client.database(&db).collection::<Document>(&coll);
     let filter = doc! { "_id": id_bson };
+    // The editor shows decrypted values: put the stored ciphertext back for every encrypted field left
+    // unchanged, and refuse (unless confirmed) to turn a changed one into plain text.
+    let new_doc = match state.client_pair(&session_id).await?.1 {
+        Some(raw) => super::csfle::guard_replacement(&raw, &client, &db, &coll, &filter, new_doc, &store_plaintext.unwrap_or_default()).await?,
+        None => new_doc,
+    };
     audited(&state, &session_id, "replace_document", &db, &coll, Some(&filter), |_| Some(1), async {
         let res = collection.replace_one(filter.clone(), new_doc).await?;
         if res.matched_count == 0 {
@@ -236,11 +244,17 @@ pub async fn update_one(
     filter: Option<String>,
     update: String,
     allow_all: bool,
+    // Encrypted paths the user confirmed to overwrite as plain text (CSFLE sessions only).
+    store_plaintext: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> Result<BulkResult, AppError> {
     let (collection, f) =
         resolve_write_target(&state, &session_id, &db, &coll, filter.as_deref(), allow_all).await?;
     let update_doc = canonical_string_to_doc(&update)?;
+    // A cell edit must not overwrite the ciphertext of an encrypted field with plain text.
+    if let Some(raw) = state.client_pair(&session_id).await?.1 {
+        super::csfle::guard_update(&raw, &db, &coll, &f, &update_doc, &store_plaintext.unwrap_or_default()).await?;
+    }
     let res = audited(&state, &session_id, "update_one", &db, &coll, Some(&f), |r| Some(r.modified_count), async {
         Ok(collection.update_one(f.clone(), update_doc).await?)
     })

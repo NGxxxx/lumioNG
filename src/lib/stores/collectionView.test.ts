@@ -7,6 +7,7 @@ vi.mock("../api/documents", () => ({
   replaceDocument: vi.fn(),
   deleteDocument: vi.fn(),
   fetchFullDoc: vi.fn(),
+  fetchRawDocs: vi.fn(),
   countDocuments: vi.fn(),
   updateMany: vi.fn(),
   updateOne: vi.fn(),
@@ -14,6 +15,7 @@ vi.mock("../api/documents", () => ({
   exportQueryProgress: vi.fn(),
 }));
 
+vi.mock("../api/csfle", () => ({ csfleSessionEnabled: vi.fn(async () => false) }));
 vi.mock("../api/indexes", () => ({
   listIndexes: vi.fn().mockResolvedValue(['{"v":2,"key":{"_id":1},"name":"_id_"}', '{"v":2,"key":{"status":1},"name":"status_1"}']),
 }));
@@ -23,6 +25,7 @@ vi.mock("../api/files", () => ({
 }));
 
 import * as documents from "../api/documents";
+import { csfleSessionEnabled } from "../api/csfle";
 import { createCollectionView } from "./collectionView.svelte";
 import { commandLog } from "./commandLog.svelte";
 import { activity } from "./activity.svelte";
@@ -1448,14 +1451,31 @@ describe("createCollectionView — grid shortcuts", () => {
     samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, x: 1 }]);
     const v = createCollectionView("conn:1", "d", "c");
     await v.init();
-    expect(v.duplicateSelected()).toBeNull(); // nothing selected
+    expect(await v.duplicateSelected()).toBeNull(); // nothing selected
     v.clickRow(0, { ctrl: false, shift: false });
     v.clickRow(1, { ctrl: true, shift: false });
-    expect(v.duplicateSelected()).toBeNull(); // two selected
+    expect(await v.duplicateSelected()).toBeNull(); // two selected
     v.clickRow(0, { ctrl: false, shift: false });
-    const dup = v.duplicateSelected();
+    const dup = await v.duplicateSelected();
     expect(dup).not.toBeNull();
     expect(dup!.x).toBe(1);
+  });
+
+  it("duplicateSelected on an encrypting session opens the raw (ciphertext) document", async () => {
+    const cipher = { $binary: { base64: "AQID", subType: "06" } };
+    qp.mockResolvedValueOnce([{ _id: { $oid: "a" }, ssn: "123-45" }]);
+    samp.mockResolvedValueOnce([{ _id: { $oid: "a" }, ssn: "123-45" }]);
+    vi.mocked(csfleSessionEnabled).mockResolvedValue(true);
+    vi.mocked(documents.fetchRawDocs).mockResolvedValueOnce([{ _id: { $oid: "a" }, ssn: cipher }]);
+    try {
+      const v = createCollectionView("conn:1", "d", "c");
+      await v.init();
+      v.clickRow(0, { ctrl: false, shift: false });
+      expect(await v.duplicateSelected()).toEqual({ ssn: cipher });
+      expect(documents.fetchRawDocs).toHaveBeenCalledWith("conn:1", "d", "c", ['{"$oid":"a"}']);
+    } finally {
+      vi.mocked(csfleSessionEnabled).mockResolvedValue(false);
+    }
   });
 });
 

@@ -438,6 +438,16 @@ pub fn vault_reset(ctx: &VaultCtx, registry_path: &Path) -> Result<(), AppError>
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => tracing::warn!(error = %e, "vault reset: could not delete oidc_tokens.json"),
     }
+    match std::fs::remove_file(atlas_path(ctx)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!(error = %e, "vault reset: could not delete atlas_secrets.json"),
+    }
+    match std::fs::remove_file(csfle_path(ctx)) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => tracing::warn!(error = %e, "vault reset: could not delete csfle_secrets.json"),
+    }
     let mut list = registry::load(registry_path)?;
     let mut cleared = false;
     for c in list.iter_mut() {
@@ -533,6 +543,165 @@ pub fn oidc_token_forget(store: &dyn TokenStore, ctx: &VaultCtx, id: u32) {
     if map.remove(&id.to_string()).is_some() {
         let _ = write_tokens(ctx, &map);
     }
+}
+
+// ---- Atlas Service Account secrets ---------------------------------------------------------------
+
+/// Service Account client secrets for the Atlas Admin API: one credential per client id (account
+/// `atlas-sa-<clientId>`), apart from every connection secret. Without a credential store the secret
+/// is sealed by the vault into `atlas_secrets.json`; a locked or missing vault means it is refused
+/// (never written in the clear).
+pub trait NamedSecretStore {
+    fn named_available(&self) -> bool;
+    fn named_get(&self, account: &str) -> Result<Option<String>, String>;
+    fn named_set(&self, account: &str, value: &str) -> Result<(), String>;
+    fn named_delete(&self, account: &str) -> Result<(), String>;
+}
+
+impl NamedSecretStore for OsKeychain {
+    fn named_available(&self) -> bool {
+        SecretStore::available(self)
+    }
+    fn named_get(&self, account: &str) -> Result<Option<String>, String> {
+        guarded_account(account, |e| e.get_password())
+    }
+    fn named_set(&self, account: &str, value: &str) -> Result<(), String> {
+        guarded_account(account, |e| e.set_password(value)).map(|_| ())
+    }
+    fn named_delete(&self, account: &str) -> Result<(), String> {
+        guarded_account(account, |e| e.delete_credential()).map(|_| ())
+    }
+}
+
+/// Credential-store account of a Service Account.
+pub fn atlas_account(client_id: &str) -> String {
+    format!("atlas-sa-{client_id}")
+}
+
+const ATLAS_FILE: &str = "atlas_secrets.json";
+/// Sealed fallback file of the CSFLE credentials (one entry per connection).
+const CSFLE_FILE: &str = "csfle_secrets.json";
+
+fn atlas_path(ctx: &VaultCtx) -> PathBuf {
+    ctx.path.with_file_name(ATLAS_FILE)
+}
+
+fn csfle_path(ctx: &VaultCtx) -> PathBuf {
+    ctx.path.with_file_name(CSFLE_FILE)
+}
+
+fn read_named(path: &Path) -> std::collections::BTreeMap<String, String> {
+    std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
+}
+
+fn write_named(path: &Path, map: &std::collections::BTreeMap<String, String>) -> Result<(), AppError> {
+    if map.is_empty() {
+        return match std::fs::remove_file(path) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(AppError::Io(e.to_string())),
+            _ => Ok(()),
+        };
+    }
+    let s = serde_json::to_string_pretty(map).map_err(|e| AppError::Serialize(e.to_string()))?;
+    registry::write_atomic(path, s.as_bytes())
+}
+
+/// Where a saved named secret (Atlas client secret, CSFLE credentials) ended up.
+#[derive(Debug, PartialEq)]
+pub enum AtlasSecretOutcome {
+    Keychain,
+    Vault,
+}
+
+fn named_load(store: &dyn NamedSecretStore, ctx: &VaultCtx, file: &Path, account: &str) -> Option<String> {
+    if store.named_available() {
+        return store.named_get(account).ok().flatten();
+    }
+    let sealed = read_named(file).remove(account)?;
+    ctx.session.with(|v| v.open(&sealed).ok()).flatten()
+}
+
+fn named_exists(store: &dyn NamedSecretStore, file: &Path, account: &str) -> bool {
+    if store.named_available() {
+        return store.named_get(account).ok().flatten().is_some();
+    }
+    read_named(file).contains_key(account)
+}
+
+/// `Vault("vault_locked" | "vault_uninitialized" | "vault_seal_failed")` when there is no credential
+/// store and the vault cannot seal the value, `Vault("keychain_refused")` when the store refuses.
+fn named_save(store: &dyn NamedSecretStore, ctx: &VaultCtx, file: &Path, account: &str, secret: &str) -> Result<AtlasSecretOutcome, AppError> {
+    if store.named_available() {
+        return store.named_set(account, secret).map(|_| AtlasSecretOutcome::Keychain).map_err(|_| AppError::Vault("keychain_refused".into()));
+    }
+    if !ctx.session.is_unlocked() {
+        return Err(AppError::Vault(match vault::read_file(&ctx.path) {
+            Ok(None) => "vault_uninitialized".into(),
+            _ => "vault_locked".into(),
+        }));
+    }
+    let Some(Ok(sealed)) = ctx.session.with(|v| v.seal(secret)) else {
+        return Err(AppError::Vault("vault_seal_failed".into()));
+    };
+    let mut map = read_named(file);
+    map.insert(account.to_string(), sealed);
+    write_named(file, &map)?;
+    Ok(AtlasSecretOutcome::Vault)
+}
+
+fn named_forget(store: &dyn NamedSecretStore, file: &Path, account: &str) {
+    if store.named_available() {
+        let _ = store.named_delete(account);
+        return;
+    }
+    let mut map = read_named(file);
+    if map.remove(account).is_some() {
+        let _ = write_named(file, &map);
+    }
+}
+
+/// The stored client secret, or `None` when absent / unreadable (locked vault).
+pub fn atlas_secret_load(store: &dyn NamedSecretStore, ctx: &VaultCtx, client_id: &str) -> Option<String> {
+    named_load(store, ctx, &atlas_path(ctx), &atlas_account(client_id))
+}
+
+/// Whether a secret is stored for `client_id` (a sealed one counts even while the vault is locked).
+pub fn atlas_secret_exists(store: &dyn NamedSecretStore, ctx: &VaultCtx, client_id: &str) -> bool {
+    named_exists(store, &atlas_path(ctx), &atlas_account(client_id))
+}
+
+/// Persists the client secret (see `named_save` for the refusal codes).
+pub fn atlas_secret_save(store: &dyn NamedSecretStore, ctx: &VaultCtx, client_id: &str, secret: &str) -> Result<AtlasSecretOutcome, AppError> {
+    named_save(store, ctx, &atlas_path(ctx), &atlas_account(client_id), secret)
+}
+
+/// Drops the stored secret (needs no unlocked vault).
+pub fn atlas_secret_forget(store: &dyn NamedSecretStore, ctx: &VaultCtx, client_id: &str) {
+    named_forget(store, &atlas_path(ctx), &atlas_account(client_id));
+}
+
+// ---- CSFLE (KMS credentials + local master key) ------------------------------------------------------
+
+/// Credential-store account of connection `id`'s CSFLE secret (see `csfle::KmsSecrets`).
+pub fn csfle_account(id: u32) -> String {
+    format!("csfle-{id}")
+}
+
+/// The stored KMS credentials JSON, or `None` when absent / unreadable (locked vault).
+pub fn csfle_secret_load(store: &dyn NamedSecretStore, ctx: &VaultCtx, id: u32) -> Option<String> {
+    named_load(store, ctx, &csfle_path(ctx), &csfle_account(id))
+}
+
+pub fn csfle_secret_exists(store: &dyn NamedSecretStore, ctx: &VaultCtx, id: u32) -> bool {
+    named_exists(store, &csfle_path(ctx), &csfle_account(id))
+}
+
+pub fn csfle_secret_save(store: &dyn NamedSecretStore, ctx: &VaultCtx, id: u32, json: &str) -> Result<AtlasSecretOutcome, AppError> {
+    named_save(store, ctx, &csfle_path(ctx), &csfle_account(id), json)
+}
+
+/// Drops the stored credentials (the connection or its encryption setup was removed).
+pub fn csfle_secret_forget(store: &dyn NamedSecretStore, ctx: &VaultCtx, id: u32) {
+    named_forget(store, &csfle_path(ctx), &csfle_account(id));
 }
 
 #[cfg(test)]
@@ -807,5 +976,93 @@ mod tests {
         vault_reset(&ctx, &reg).unwrap();
         assert!(!tokens_path(&ctx).exists() && !ctx.path.exists());
     }
-}
 
+    struct NamedMem {
+        available: bool,
+        items: std::cell::RefCell<HashMap<String, String>>,
+    }
+    impl NamedSecretStore for NamedMem {
+        fn named_available(&self) -> bool {
+            self.available
+        }
+        fn named_get(&self, a: &str) -> Result<Option<String>, String> {
+            Ok(self.items.borrow().get(a).cloned())
+        }
+        fn named_set(&self, a: &str, v: &str) -> Result<(), String> {
+            self.items.borrow_mut().insert(a.into(), v.into());
+            Ok(())
+        }
+        fn named_delete(&self, a: &str) -> Result<(), String> {
+            self.items.borrow_mut().remove(a);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn atlas_secret_lives_in_the_keychain_under_its_own_account() {
+        let store = NamedMem { available: true, items: Default::default() };
+        let session = VaultSession::default();
+        let ctx = token_ctx("atlas_kc", &session);
+        assert!(!atlas_secret_exists(&store, &ctx, "mdb_sa_id_1"));
+        assert_eq!(atlas_secret_save(&store, &ctx, "mdb_sa_id_1", "s3cret").unwrap(), AtlasSecretOutcome::Keychain);
+        assert_eq!(atlas_secret_load(&store, &ctx, "mdb_sa_id_1").as_deref(), Some("s3cret"));
+        assert!(store.items.borrow().contains_key("atlas-sa-mdb_sa_id_1"));
+        atlas_secret_forget(&store, &ctx, "mdb_sa_id_1");
+        assert_eq!(atlas_secret_load(&store, &ctx, "mdb_sa_id_1"), None);
+    }
+
+    #[test]
+    fn csfle_credentials_use_their_own_account_and_are_sealed_without_a_keychain() {
+        let store = NamedMem { available: true, items: Default::default() };
+        let session = VaultSession::default();
+        let ctx = token_ctx("csfle_kc", &session);
+        assert!(!csfle_secret_exists(&store, &ctx, 5));
+        assert_eq!(csfle_secret_save(&store, &ctx, 5, "{\"k\":1}").unwrap(), AtlasSecretOutcome::Keychain);
+        assert!(store.items.borrow().contains_key("csfle-5"));
+        assert_eq!(csfle_secret_load(&store, &ctx, 5).as_deref(), Some("{\"k\":1}"));
+        csfle_secret_forget(&store, &ctx, 5);
+        assert_eq!(csfle_secret_load(&store, &ctx, 5), None);
+
+        let nokc = NamedMem { available: false, items: Default::default() };
+        let ctx = token_ctx("csfle_vault", &session);
+        assert!(matches!(csfle_secret_save(&nokc, &ctx, 5, "TOPSECRET"), Err(AppError::Vault(c)) if c == "vault_uninitialized"));
+        let (vault, file) = Vault::create("correct horse").unwrap();
+        vault::write_file(&ctx.path, &file).unwrap();
+        session.set(vault);
+        assert_eq!(csfle_secret_save(&nokc, &ctx, 5, "TOPSECRET").unwrap(), AtlasSecretOutcome::Vault);
+        let on_disk = std::fs::read_to_string(csfle_path(&ctx)).unwrap();
+        assert!(!on_disk.contains("TOPSECRET") && on_disk.contains("vault:v1:"), "{on_disk}");
+        // Atlas and CSFLE files are independent.
+        assert!(!atlas_path(&ctx).exists());
+        session.clear();
+        assert!(csfle_secret_exists(&nokc, &ctx, 5));
+        assert_eq!(csfle_secret_load(&nokc, &ctx, 5), None);
+        csfle_secret_forget(&nokc, &ctx, 5);
+        assert!(!csfle_path(&ctx).exists());
+    }
+
+    #[test]
+    fn atlas_secret_is_sealed_by_the_vault_and_refused_when_it_cannot_seal() {
+        let store = NamedMem { available: false, items: Default::default() };
+        let session = VaultSession::default();
+        let ctx = token_ctx("atlas_vault", &session);
+        let code = |r: Result<AtlasSecretOutcome, AppError>| match r {
+            Err(AppError::Vault(c)) => c,
+            other => panic!("expected a vault refusal, got {other:?}"),
+        };
+        assert_eq!(code(atlas_secret_save(&store, &ctx, "id", "s3cret")), "vault_uninitialized");
+        let (vault, file) = Vault::create("correct horse").unwrap();
+        vault::write_file(&ctx.path, &file).unwrap();
+        assert_eq!(code(atlas_secret_save(&store, &ctx, "id", "s3cret")), "vault_locked");
+        session.set(vault);
+        assert_eq!(atlas_secret_save(&store, &ctx, "id", "s3cret").unwrap(), AtlasSecretOutcome::Vault);
+        let on_disk = std::fs::read_to_string(atlas_path(&ctx)).unwrap();
+        assert!(!on_disk.contains("s3cret") && on_disk.contains("vault:v1:"), "{on_disk}");
+        assert_eq!(atlas_secret_load(&store, &ctx, "id").as_deref(), Some("s3cret"));
+        session.clear();
+        assert_eq!(atlas_secret_load(&store, &ctx, "id"), None);
+        assert!(atlas_secret_exists(&store, &ctx, "id"), "a sealed secret still counts while locked");
+        atlas_secret_forget(&store, &ctx, "id");
+        assert!(!atlas_path(&ctx).exists());
+    }
+}

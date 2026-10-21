@@ -9,11 +9,15 @@
   import { toast } from "../stores/toast.svelte";
   import { createDbIndexCheck, type DbIndexCheck } from "../stores/dbIndexCheck.svelte";
   import DbIndexCheckPanel from "./DbIndexCheckPanel.svelte";
+  import { createDbDiagram, type DbDiagram } from "../stores/dbDiagram.svelte";
+  import DatabaseDiagram from "./DatabaseDiagram.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
-  let { db, onopen, onopenindexes }: {
+  let { db, onopen, onopenindexes, onopenfilter }: {
     db: string;
     onopen: (coll: string) => void;
+    /** Opens a collection's Data view with a filter (from a relationship-diagram edge). */
+    onopenfilter?: (coll: string, filter: string) => void;
     /** Opens a collection on its Indexes view (from the database-wide index check). */
     onopenindexes?: (coll: string) => void;
   } = $props();
@@ -23,7 +27,10 @@
   );
   onMount(() => {
     v.init();
-    return () => indexCheck?.cancel();
+    return () => {
+      indexCheck?.cancel();
+      diagram?.cancel();
+    };
   });
 
   const cols: { key: SortCol; label: () => string }[] = [
@@ -64,6 +71,18 @@
     indexCheck = null;
   }
 
+  // Relationship diagram: inferred only when the user presses Analyze; dropped on close.
+  let diagram = $state<DbDiagram | null>(null);
+  function openDiagram() {
+    diagram?.cancel();
+    diagram = createDbDiagram(sessionManager.active?.id ?? "", db, sessionManager.active?.connId ?? null);
+    void diagram.start();
+  }
+  function closeDiagram() {
+    diagram?.cancel();
+    diagram = null;
+  }
+
   function runBulk(action: "truncate" | "drop") {
     v.requestBulk(action, [...selected], (failed) => {
       selected = new Set(failed);
@@ -87,6 +106,7 @@
   <div class="bar">
     <button onclick={() => v.loadAll()}>{m.db_collections_load_stats()}</button>
     <button onclick={startIndexCheck} disabled={indexCheck?.running}>{m.dbidx_check()}</button>
+    <button onclick={openDiagram} disabled={diagram?.running}>{m.dbdiag_open()}</button>
     {#if selected.size > 0}
       <span class="sel-count">{m.db_collections_selected_count({ count: selected.size })}</span>
       <button onclick={() => runBulk("truncate")}>{m.db_collections_bulk_truncate()}</button>
@@ -94,6 +114,9 @@
       <button onclick={openBulkExport}>{m.db_collections_bulk_export()}</button>
     {/if}
   </div>
+  {#if diagram}
+    <DatabaseDiagram {diagram} {db} onclose={closeDiagram} onopenfilter={(c, f) => (onopenfilter ?? ((coll) => onopen(coll)))(c, f)} />
+  {/if}
   {#if indexCheck}
     <DbIndexCheckPanel check={indexCheck} onopen={(c) => (onopenindexes ?? onopen)(c)} onclose={closeIndexCheck} />
   {/if}

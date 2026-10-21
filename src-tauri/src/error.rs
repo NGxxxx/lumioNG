@@ -111,7 +111,19 @@ fn friendly_mongo_message(e: &mongodb::error::Error) -> String {
             cmd.code,
             trim_embedded_command(&cmd.message)
         ),
+        #[cfg(feature = "csfle")]
+        mongodb::error::ErrorKind::Encryption(e) => format!("{ENCRYPTION_PREFIX}{e}"),
         kind => kind.to_string(),
+    }
+}
+
+/// Start of every message that comes from libmongocrypt (a key that cannot be fetched or used).
+pub const ENCRYPTION_PREFIX: &str = "Encryption: ";
+
+impl AppError {
+    /// A libmongocrypt failure: on a read it means encrypted fields could not be decrypted.
+    pub fn is_encryption(&self) -> bool {
+        matches!(self, AppError::Query(m) if m.starts_with(ENCRYPTION_PREFIX))
     }
 }
 
@@ -131,6 +143,13 @@ mod tests {
         let err = AppError::SshTunnel("auth rejected".into());
         let json = serde_json::to_string(&err).unwrap();
         assert_eq!(json, r#"{"kind":"SshTunnel","message":"auth rejected"}"#);
+    }
+
+    #[test]
+    fn libmongocrypt_failures_are_recognised() {
+        assert!(AppError::Query(format!("{ENCRYPTION_PREFIX}key not found")).is_encryption());
+        assert!(!AppError::Query("Connection is read-only".into()).is_encryption());
+        assert!(!AppError::Parse(format!("{ENCRYPTION_PREFIX}x")).is_encryption());
     }
 
     #[test]

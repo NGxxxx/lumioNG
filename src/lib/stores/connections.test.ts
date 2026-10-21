@@ -66,7 +66,7 @@ describe("createConnectionRegistry", () => {
     expect(save).not.toHaveBeenCalled();
   });
 
-  it("save valid → obfuscates password and clears form", async () => {
+  it("save valid → obfuscates password and keeps the form", async () => {
     save.mockResolvedValueOnce([saved()]);
     const r = createConnectionRegistry();
     r.label = "L"; r.host = "localhost"; r.authMethod = "password"; r.user = "bob"; r.password = "s3cret";
@@ -75,8 +75,31 @@ describe("createConnectionRegistry", () => {
     expect(id).toBeNull();
     expect(deobfuscate(input.passwordEnc)).toBe("s3cret");
     expect(input.passwordEnc).not.toContain("s3cret");
-    expect(r.editingId).toBeNull();
-    expect(r.label).toBe("");
+    expect(r.label).toBe("L");
+    expect(r.host).toBe("localhost");
+  });
+
+  it("after saving an existing connection the label and editingId remain", async () => {
+    save.mockResolvedValueOnce([saved({ id: 7, label: "Old" })]);
+    const r = createConnectionRegistry();
+    r.edit(saved({ id: 7, label: "Old" }));
+    await r.save();
+    expect(r.editingId).toBe(7);
+    expect(r.label).toBe("Old");
+  });
+
+  it("after saving a new connection editingId becomes the new id", async () => {
+    const r = createConnectionRegistry();
+    save.mockResolvedValueOnce([saved({ id: 3, label: "A" })]);
+    r.label = "A"; r.host = "localhost";
+    await r.save();
+    expect(r.editingId).toBe(3);
+    save.mockResolvedValueOnce([saved({ id: 3, label: "A" }), saved({ id: 9, label: "B" })]);
+    r.clearForm();
+    r.label = "B"; r.host = "localhost";
+    await r.save();
+    expect(r.editingId).toBe(9);
+    expect(r.label).toBe("B");
   });
 
   it("environment and color are edited, saved, and default to empty for old entries", async () => {
@@ -93,7 +116,7 @@ describe("createConnectionRegistry", () => {
     const [, input] = save.mock.calls[0];
     expect(input.environment).toBe("prod");
     expect(input.color).toBe("#e5484d");
-    expect(r.environment).toBe("");
+    expect(r.environment).toBe("prod");
   });
 
   it("edit loads fields and deobfuscates the password", async () => {
@@ -189,11 +212,9 @@ describe("connection registry read-only", () => {
   });
 
   it("defaults readOnly false after clearForm", async () => {
-    save.mockResolvedValueOnce([saved()]);
     const r = createConnectionRegistry();
-    r.label = "L"; r.host = "localhost";
     r.readOnly = true;
-    await r.save(); // clearForm runs on success
+    r.clearForm();
     expect(r.readOnly).toBe(false);
   });
 });

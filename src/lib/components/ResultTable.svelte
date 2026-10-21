@@ -1,4 +1,5 @@
 <script lang="ts">
+  import DecryptBanner from "./DecryptBanner.svelte";
   import { onMount, onDestroy, untrack } from "svelte";
   import { getCollectionView } from "../stores/collectionViews.svelte";
   import { activeDataView } from "../stores/activeDataView.svelte";
@@ -199,6 +200,10 @@
     if (r && "peek" in r) void peek.show(r.peek);
     else if (r && "open" in r) onopendocument(await v.openDoc(r.open), "edit");
     else if (r && "insert" in r) onopendocument(r.insert, "insert");
+    else if (r && "duplicate" in r) {
+      const dup = await r.duplicate;
+      if (dup) onopendocument(dup, "insert");
+    }
     else if (r && "expandFullDepth" in r) treeRef?.expandFullDepth(r.expandFullDepth);
     else if (r && "watch" in r) sessionManager.openWatch({ db, coll, idText: r.watch });
   }
@@ -250,6 +255,7 @@
 <div class="result">
   {#if v.ioError}<div class="error">{v.ioError}</div>{/if}
   {#if v.error}<div class="error">{v.error}</div>{/if}
+  <DecryptBanner />
   <CollectionToolbar {v} bind:view={v.view} bind:this={toolbarRef}
     treeAllExpanded={treeRef?.isAllExpanded() ?? false}
     ontoggleexpand={() => treeRef?.toggleExpandAll()} />

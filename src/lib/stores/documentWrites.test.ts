@@ -5,10 +5,14 @@ vi.mock("../api/documents", () => ({
   replaceDocument: vi.fn().mockResolvedValue(undefined),
   fetchFullDoc: vi.fn().mockResolvedValue({ _id: 1, a: "full", big: "x" }),
   queryPage: vi.fn().mockResolvedValue([{ _id: 1 }, { _id: 2 }]),
+  fetchRawDocs: vi.fn(),
+  deleteDocument: vi.fn().mockResolvedValue(undefined),
 }));
+vi.mock("../api/csfle", () => ({ csfleSessionEnabled: vi.fn(async () => false) }));
 
-import { queryPage } from "../api/documents";
-import { insertWithUndo, replaceWithUndo, snapshotForUndo, UNDO_DELETE_CAP } from "./documentWrites";
+import { queryPage, fetchRawDocs, insertDocument } from "../api/documents";
+import { csfleSessionEnabled } from "../api/csfle";
+import { insertWithUndo, replaceWithUndo, snapshotForUndo, recordDelete, duplicateSource, UNDO_DELETE_CAP } from "./documentWrites";
 import { undo } from "./undo.svelte";
 
 beforeEach(() => vi.clearAllMocks());
@@ -31,5 +35,36 @@ describe("documentWrites", () => {
     const many = Array.from({ length: UNDO_DELETE_CAP + 1 }, (_, i) => String(i));
     expect(await snapshotForUndo("s", "d", "c", many)).toBeNull();
     expect(queryPage).not.toHaveBeenCalled();
+  });
+
+  it("snapshot on an encrypting session reads the stored ciphertext, and undo of the delete re-inserts it verbatim", async () => {
+    const cipher = { $binary: { base64: "AQID", subType: "06" } };
+    vi.mocked(csfleSessionEnabled).mockResolvedValueOnce(true);
+    vi.mocked(fetchRawDocs).mockResolvedValueOnce([{ _id: 1, ssn: cipher }]);
+    const snap = await snapshotForUndo("s", "d", "c", ["1"]);
+    expect(fetchRawDocs).toHaveBeenCalledWith("s", "d", "c", ["1"]);
+    expect(queryPage).not.toHaveBeenCalled();
+    recordDelete("s", "d", "c", snap);
+    await undo.undoLast();
+    expect(JSON.parse(vi.mocked(insertDocument).mock.calls.at(-1)![3])).toEqual({ _id: 1, ssn: cipher });
+  });
+
+  it("Duplicate on an encrypting session copies the raw document (no _id); other sessions keep the grid copy", async () => {
+    const cipher = { $binary: { base64: "AQID", subType: "06" } };
+    vi.mocked(csfleSessionEnabled).mockResolvedValueOnce(true);
+    vi.mocked(fetchRawDocs).mockResolvedValueOnce([{ _id: 1, name: "Ann", ssn: cipher }]);
+    const dup = await duplicateSource("s", "d", "c", { _id: 1, name: "Ann", ssn: "123-45" });
+    expect(fetchRawDocs).toHaveBeenCalledWith("s", "d", "c", ["1"]);
+    expect(dup).toEqual({ name: "Ann", ssn: cipher });
+
+    vi.mocked(fetchRawDocs).mockClear();
+    expect(await duplicateSource("s", "d", "c", { _id: 1, name: "Ann" })).toEqual({ name: "Ann" });
+    expect(fetchRawDocs).not.toHaveBeenCalled();
+  });
+
+  it("Duplicate refuses (rather than falling back to plain text) when the raw read fails", async () => {
+    vi.mocked(csfleSessionEnabled).mockResolvedValueOnce(true);
+    vi.mocked(fetchRawDocs).mockRejectedValueOnce(new Error("boom"));
+    await expect(duplicateSource("s", "d", "c", { _id: 1, ssn: "123-45" })).rejects.toThrow();
   });
 });

@@ -1,3 +1,4 @@
+import { atlasDetect } from "./atlasDetect";
 import { connect, disconnect, setSessionMeta as pushSessionMeta } from "../api/connection";
 import type { SshConnectInput, ProxyConnectInput } from "../api/connection";
 import { touchConnection } from "../api/connections";
@@ -120,6 +121,7 @@ export function createSessionManager() {
 
   /** Shared connect flow for both a new session and a reconnect. */
   async function performConnect(s: Session): Promise<boolean> {
+    atlasDetect.invalidate(s.id); // the server behind a reconnect may differ
     try {
       await commandLog.pushTimed(connectCmd(maskUri(s.uri)), s.id, () =>
         connect(s.id, s.uri, s.readOnly, s.ssh, s.label, s.environment, s.proxy ?? null, s.connId));
@@ -193,6 +195,7 @@ export function createSessionManager() {
   }
 
   async function closeSession(id: string) {
+    atlasDetect.invalidate(id);
     await disconnect(id).catch(() => {});
     setSessionEnvironment(id, null);
     setSessionMeta(id, null);
@@ -262,6 +265,16 @@ export function createSessionManager() {
     getWatch(tab, mode); // the change stream records right away, whether or not the tab is ever looked at
   }
 
+  /** Opens a Compare tab with `db.coll` on `sessionId` (default: the active session) as the source side. */
+  function openCompare(init: { db: string; coll: string }, sessionId?: string) {
+    const sid = sessionId ?? activeId;
+    if (!sid || !sessions.some((s) => s.id === sid)) return;
+    const tab = { id: nextTabId++, kind: "compare" as const, sessionId: sid, db: init.db, coll: init.coll };
+    workTabs = [...workTabs, tab];
+    activeId = sid;
+    zone = { zone: "work", id: tab.id };
+  }
+
   function activateWork(tabId: number) {
     const t = workTabs.find((w) => w.id === tabId);
     if (!t) return;
@@ -306,6 +319,7 @@ export function createSessionManager() {
     associateQueryTab,
     openDocument,
     openWatch,
+    openCompare,
     activateWork,
     closeWork,
     showDestination,

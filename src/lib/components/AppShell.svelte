@@ -20,7 +20,9 @@
   import GridFsFilesPanel from "#lib/components/GridFsFilesPanel.svelte";
   import DocumentForm from "#lib/components/DocumentForm.svelte";
   import WatchTab from "#lib/components/WatchTab.svelte";
+  import CompareTab from "#lib/components/CompareTab.svelte";
   import TabBar from "#lib/components/TabBar.svelte";
+  import { setPendingFilter } from "../stores/pendingFilter";
   import DatabaseCollectionsPanel from "#lib/components/DatabaseCollectionsPanel.svelte";
   import { createAxisDrag } from "#lib/components/axisDrag.js";
   import { lazyComponent } from "#lib/components/lazyComponent.svelte.js";
@@ -84,7 +86,7 @@
   const viewKey = $derived.by((): ViewKey | null => {
     if (active?.zone === "work") {
       const kind = sm.workTabs.find((w) => w.id === active.id)?.kind;
-      return kind === "query" ? "query" : kind === "watch" ? "watch" : "document";
+      return kind === "query" ? "query" : kind === "watch" ? "watch" : kind === "compare" ? "compare" : "document";
     }
     if (!onDestination || page === null) return null;
     return page === "collection" ? (`collection.${collectionView}` as ViewKey) : page;
@@ -226,7 +228,7 @@
         onCloseWork={(id) => sm.closeWork(id)}
         onNewQuery={() => sm.openQuery(aggregateTemplate(""))}
       />
-      {#if viewKey && viewKey !== "query" && viewKey !== "watch"}
+      {#if viewKey && viewKey !== "query" && viewKey !== "watch" && viewKey !== "compare"}
       <Toolbar
         {commands}
         entries={headerEntries}
@@ -272,7 +274,8 @@
           <div class="tabpane">
             {#key db}
               <DatabaseCollectionsPanel {db} onopen={(c) => nav?.selectCollection(db, c)}
-                onopenindexes={(c) => { nav?.selectCollection(db, c); nav?.setCollectionView("indexes"); }} />
+                onopenindexes={(c) => { nav?.selectCollection(db, c); nav?.setCollectionView("indexes"); }}
+                onopenfilter={(c, f) => { setPendingFilter(sm.activeId ?? "", db, c, f); nav?.selectCollection(db, c); }} />
             {/key}
           </div>
         {/if}
@@ -322,6 +325,8 @@
               {:else}
                 <div class="empty">{m.status_bar_loading()}</div>
               {/if}
+            {:else if tab.kind === "compare"}
+              <CompareTab {tab} />
             {:else if tab.kind === "watch"}
               <WatchTab {tab} onopendocument={(db, coll, doc) => app.openDocument(db, coll, doc, "edit")}
                 onopenquery={(statement) => sm.openQuery(statement, null, tab.sessionId)} />

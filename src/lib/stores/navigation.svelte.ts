@@ -35,7 +35,15 @@ export type WatchTab = {
   coll: string | null;
   idText: string | null;
 };
-export type WorkTab = DocumentTab | QueryTab | WatchTab;
+/** Compare / sync of two collections; `sessionId`/`db`/`coll` are the initial source side. */
+export type CompareTab = {
+  id: number;
+  kind: "compare";
+  sessionId: string;
+  db: string;
+  coll: string;
+};
+export type WorkTab = DocumentTab | QueryTab | WatchTab | CompareTab;
 /** Watch tab fields supplied by callers. */
 export type WatchTabInit = Omit<WatchTab, "id" | "kind" | "sessionId">;
 /** Document tab fields supplied by callers; `id` and `sessionId` are assigned by the manager. */

@@ -6,6 +6,8 @@
   import { SESSION_COLORS } from "../domain/session";
   import { createClipboardCopy } from "../stores/clipboardCopy";
   import { toast } from "../stores/toast.svelte";
+  import { csfle } from "../stores/csfle.svelte";
+  import CsfleSettings from "./CsfleSettings.svelte";
 
   let {
     registry: r,
@@ -19,7 +21,10 @@
   let uriError = $state(false);
   let filled = $state<number | null>(null);
   const copy = createClipboardCopy((msg) => toast.push(msg, "error"));
-  let activeTab = $state<"general" | "ssh" | "proxy">("general");
+  let activeTab = $state<"general" | "ssh" | "proxy" | "encryption">("general");
+  // The Encryption tab exists only where this build links libmongocrypt.
+  let csfleOn = $state(false);
+  csfle.available().then((v) => (csfleOn = v)).catch(() => {});
   let forgettingHostKey = $state(false);
   let forgotHostKey = $state(false);
 
@@ -105,6 +110,11 @@
     <button type="button" class="toggle-btn" class:toggle-active={activeTab === "proxy"} onclick={() => (activeTab = "proxy")}>
       {m.session_manager_tab_proxy()}
     </button>
+    {#if csfleOn}
+      <button type="button" class="toggle-btn" class:toggle-active={activeTab === "encryption"} onclick={() => (activeTab = "encryption")}>
+        {m.csfle_tab()}
+      </button>
+    {/if}
   </div>
 
   {#if activeTab === "general"}
@@ -364,6 +374,10 @@
         {@render secretNote()}
       {/if}
     </div>
+  {:else if activeTab === "encryption"}
+    {#key r.editingId}
+      <CsfleSettings connectionId={r.editingId} />
+    {/key}
   {:else}
     <div class="form-grid">
       <span class="form-label">{m.session_manager_ssh_enable()}</span>

@@ -488,6 +488,20 @@ pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
     std::fs::write(p, contents).map_err(|e| AppError::Io(e.to_string()))
 }
 
+/// Writes base64-encoded bytes to a user-chosen path (e.g. the relationship diagram's PNG export).
+#[tauri::command]
+pub fn write_base64_file(path: String, data: String) -> Result<(), AppError> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    let bytes = STANDARD
+        .decode(data.as_bytes())
+        .map_err(|e| AppError::Io(format!("invalid base64: {e}")))?;
+    let p = std::path::Path::new(&path);
+    if let Some(dir) = p.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| AppError::Io(e.to_string()))?;
+    }
+    std::fs::write(p, bytes).map_err(|e| AppError::Io(e.to_string()))
+}
+
 /// Reads a file's byte length without loading its content — backs the frontend's large-file
 /// confirm gate, checked before any import path starts parsing.
 #[tauri::command]
@@ -952,6 +966,17 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         write_text_file(path.to_string_lossy().to_string(), "hello world".into()).unwrap();
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "hello world");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn write_base64_file_decodes_and_rejects_garbage() {
+        let dir = std::env::temp_dir().join("lumiong_test_write_b64");
+        let path = dir.join("out.bin");
+        let _ = std::fs::remove_dir_all(&dir);
+        write_base64_file(path.to_string_lossy().to_string(), "aGk=".into()).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"hi");
+        assert!(write_base64_file(path.to_string_lossy().to_string(), "!!".into()).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -45,7 +45,8 @@ export function createScriptRun(ctx: ScriptRunCtx) {
   /** Critical-tier destructive ops (dropDatabase/drop/dropIndex(es), or an empty-filter mass
    *  write) — always confirmed via typed name, bypassing `settings.suppressDestructiveWarning`. */
   let criticalConfirm = $state<{ ops: string[] } | null>(null);
-  let pending: { db: string; script: string } | null = null;
+  // `sessionId` is the session the confirm was raised for: the run only goes ahead on that same session.
+  let pending: { db: string; script: string; sessionId: string } | null = null;
 
   /** Fetch one page directly from Rust for a "paged" recipe — bypasses QuickJS entirely. */
   async function fetchPagedPage(rc: PagedRecipe, skip: number, limit: number): Promise<Doc[]> {
@@ -323,7 +324,7 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     });
     const critical = scanCritical(scanned);
     if (critical.length) {
-      pending = { db, script };
+      pending = { db, script, sessionId: ctx.getSessionId() };
       criticalConfirm = { ops: critical };
       return;
     }
@@ -332,7 +333,7 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     // "Don't ask again" never applies on PROD.
     const prod = !canSuppress(sessionEnvironment(ctx.getSessionId()), "script");
     if (ops.length && (prod || !settings.suppressDestructiveWarning)) {
-      pending = { db, script };
+      pending = { db, script, sessionId: ctx.getSessionId() };
       destructiveConfirm = { ops, prod };
       return;
     }
@@ -343,7 +344,18 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     const p = pending;
     destructiveConfirm = null;
     pending = null;
-    if (p) await execute(p.db, p.script, true);
+    await executeConfirmed(p);
+  }
+
+  /** Runs a confirmed script, unless the active session changed while the confirm was open (the user
+   *  agreed to run it on the other session, possibly a different environment). */
+  async function executeConfirmed(p: { db: string; script: string; sessionId: string } | null) {
+    if (!p) return;
+    if (p.sessionId !== ctx.getSessionId()) {
+      r.error = m.script_confirm_session_changed();
+      return;
+    }
+    await execute(p.db, p.script, true);
   }
 
   function cancelConfirm() {
@@ -355,7 +367,7 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     const p = pending;
     criticalConfirm = null;
     pending = null;
-    if (p) await execute(p.db, p.script, true);
+    await executeConfirmed(p);
   }
 
   function cancelCritical() {

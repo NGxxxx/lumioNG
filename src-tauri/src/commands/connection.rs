@@ -1,3 +1,4 @@
+use crate::commands::csfle;
 use crate::error::AppError;
 use crate::http_client;
 use crate::http_proxy_tunnel::{self, HttpProxyTunnelHandle};
@@ -95,7 +96,7 @@ async fn open_client(
     ssh: Option<SshTunnelConfig>,
     proxy: Option<ProxyConfig>,
     connection_id: Option<u32>,
-) -> Result<(Client, Option<SshTunnelHandle>, Option<HttpProxyTunnelHandle>), AppError> {
+) -> Result<(Client, Option<SshTunnelHandle>, Option<HttpProxyTunnelHandle>, Option<(csfle::CsfleHandle, Client)>), AppError> {
     let oidc_proxy = proxy.clone();
     let http_proxy = proxy.filter(|p| p.is_http());
     if http_proxy.is_some() && ssh.as_ref().is_some_and(|s| s.enabled) {
@@ -147,7 +148,19 @@ async fn open_client(
         None => None,
     };
 
-    let client = Client::with_options(opts).map_err(|e| AppError::Connection(e.to_string()))?;
+    // Client-side field level encryption: reads are decrypted automatically (no auto-encryption on write).
+    let (client, csfle_handle) = match csfle::prepare(app, &app.state::<VaultSession>(), connection_id)? {
+        #[cfg(feature = "csfle")]
+        Some(prepared) => {
+            // The non-decrypting twin is built from the very same options (tunnel, proxy, OIDC included).
+            let raw = Client::with_options(opts.clone()).map_err(|e| AppError::Connection(e.to_string()))?;
+            let (client, handle) = prepared.build_client(opts).await?;
+            (client, Some((handle, raw)))
+        }
+        #[cfg(not(feature = "csfle"))]
+        Some(_) => return Err(AppError::Connection("Client-side field level encryption is not available in this build".into())),
+        None => (Client::with_options(opts).map_err(|e| AppError::Connection(e.to_string()))?, None),
+    };
 
     // Ping to confirm the connection is actually live (TLS/auth/SRV) — through the tunnel, if any.
     client
@@ -156,7 +169,7 @@ async fn open_client(
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
 
-    Ok((client, tunnel, proxy_tunnel))
+    Ok((client, tunnel, proxy_tunnel, csfle_handle))
 }
 
 #[tauri::command]
@@ -172,12 +185,15 @@ pub async fn connect(
     connection_id: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (client, tunnel, proxy_tunnel) = open_client(&app, &uri, ssh, proxy, connection_id).await?;
+    let (client, tunnel, proxy_tunnel, csfle_handle) = open_client(&app, &uri, ssh, proxy, connection_id).await?;
     state
         .insert_session(session_id.clone(), client, read_only, label.unwrap_or_default(), environment.unwrap_or_default(), tunnel)
         .await;
     if let Some(t) = proxy_tunnel {
         state.set_proxy_tunnel(&session_id, t).await;
+    }
+    if let Some((h, raw)) = csfle_handle {
+        state.set_csfle(&session_id, h, raw).await;
     }
     Ok(())
 }
@@ -314,7 +330,7 @@ fn vault_path(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(registry_path(app)?.with_file_name("vault.json"))
 }
 
-fn vault_ctx<'a>(app: &AppHandle, session: &'a VaultSession) -> Result<VaultCtx<'a>, AppError> {
+pub(crate) fn vault_ctx<'a>(app: &AppHandle, session: &'a VaultSession) -> Result<VaultCtx<'a>, AppError> {
     Ok(VaultCtx { path: vault_path(app)?, session })
 }
 
@@ -412,6 +428,8 @@ pub fn save_connection(
 pub fn delete_connection(app: AppHandle, vault: State<'_, VaultSession>, id: u32) -> Result<Vec<SavedConnection>, AppError> {
     // A deleted connection must not leave its OIDC refresh token behind.
     oidc_human::TokenPersist::forget(&AppTokens { app: app.clone(), id });
+    // ...nor its encryption settings and KMS credentials.
+    csfle::forget_connection(&app, &vault, id);
     update_registry(&app, &vault, |list| registry::remove(list, id))
 }
 
@@ -446,8 +464,14 @@ pub fn vault_setup(app: AppHandle, vault: State<'_, VaultSession>, password: Str
 /// "Forgot master password": deletes the vault and every sealed secret. Connections stay, with
 /// empty passwords. Irreversible.
 #[tauri::command]
-pub fn vault_reset(app: AppHandle, vault: State<'_, VaultSession>) -> Result<(), AppError> {
-    secrets::vault_reset(&vault_ctx(&app, &vault)?, &registry_path(&app)?)
+pub fn vault_reset(
+    app: AppHandle,
+    vault: State<'_, VaultSession>,
+    atlas: State<'_, crate::commands::atlas::AtlasState>,
+) -> Result<(), AppError> {
+    let r = secrets::vault_reset(&vault_ctx(&app, &vault)?, &registry_path(&app)?);
+    atlas.clear(); // cached Service Account clients hold a secret from before the reset
+    r
 }
 
 fn now_ms() -> i64 {
