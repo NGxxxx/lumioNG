@@ -1,11 +1,10 @@
 import * as m from "#lib/paraglide/messages.js";
 import { pendingKeys } from "../domain/pendingEdits";
 import { getByPath } from "../domain/schema";
-import { editTextOf } from "../domain/celledit";
 import type { Doc } from "../domain/doc";
 import { pendingEdits } from "./pendingEdits.svelte";
 import { settings } from "./settings.svelte";
-import { createEditBlurFlow } from "./cellEditBlur.svelte";
+import { createGridEditBlur } from "./cellEditBlur.svelte";
 import { createCellEditEntry } from "./cellEditEntry.svelte";
 import { createCommitEditFlow } from "./commitEditFlow.svelte";
 
@@ -47,17 +46,7 @@ export function createCollectionEdits(ctx: CollectionEditsCtx) {
     edit.begin(row, key, getByPath(ctx.getDocs()[row], key));
   }
 
-  const editBlur = createEditBlurFlow({
-    getEditing: () => edit.editing,
-    isSaving: () => commitFlow.saving,
-    clearEditing: () => edit.clear(),
-    getEditText: () => edit.editText,
-    getOriginalText: (row, key) => {
-      const d = ctx.getDocs()[row];
-      return d ? editTextOf(getByPath(d, key)) : "";
-    },
-    commitEdit: () => commitFlow.commitEdit(),
-  });
+  const editBlur = createGridEditBlur(edit, ctx.getDocs, () => commitFlow);
 
   const commitFlow = createCommitEditFlow({
     getSessionId: () => sessionId,

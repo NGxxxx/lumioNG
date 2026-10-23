@@ -10,9 +10,11 @@ export function confirmLevel(env: Environment, op: DestructiveOp, count: number 
   switch (op) {
     case "deleteOne":
     case "script":
-    case "setValidator":
-    case "searchIndexWrite": // create / update of a search index: only PROD asks (the store skips the gate elsewhere)
       return "confirm";
+    case "setValidator": // only PROD asks
+    case "searchIndexWrite": // create / update of a search index: only PROD asks
+    case "createDataKey": // additive: only PROD asks
+      return env === "prod" ? "confirm" : "none";
     case "deleteMany":
     case "updateMany":
       return env === "prod" || count === null ? "type" : "confirm";
@@ -20,8 +22,6 @@ export function confirmLevel(env: Environment, op: DestructiveOp, count: number 
     case "sync":
     case "storePlaintext": // writing an encrypted field's value unencrypted: PROD asks for the collection name
       return env === "prod" ? "type" : "confirm";
-    case "createDataKey": // additive: only PROD asks
-      return env === "prod" ? "confirm" : "none";
     default:
       return "type"; // drops / truncate
   }

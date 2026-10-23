@@ -20,3 +20,9 @@ export function clampPage(page: number, count: number): number {
 export function skipFor(page: number, size: number): number {
   return Math.max(0, (page - 1) * size);
 }
+
+/** The rows of `page` (1-based) out of an already materialized list. */
+export function pageSlice<T>(rows: T[], page: number, size: number): T[] {
+  const start = skipFor(page, size);
+  return rows.slice(start, start + size);
+}

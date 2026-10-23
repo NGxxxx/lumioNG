@@ -341,8 +341,11 @@ where
             Ordering::Equal => {
                 let (key, a) = self.src.head.take().ok_or(AppError::Query("merge state".into()))?;
                 let (_, b) = self.dst.head.take().ok_or(AppError::Query("merge state".into()))?;
-                let paths: Vec<Vec<&str>> = self.ignore.iter().map(|f| f.split('.').collect()).collect();
-                let same = normalized_bytes(&a, &paths)? == normalized_bytes(&b, &paths)?;
+                // Identical documents (same field order) are the common case: skip the normalising copies.
+                let same = (self.ignore.is_empty() && a == b) || {
+                    let paths: Vec<Vec<&str>> = self.ignore.iter().map(|f| f.split('.').collect()).collect();
+                    normalized_bytes(&a, &paths)? == normalized_bytes(&b, &paths)?
+                };
                 DiffItem { kind: if same { DiffKind::Same } else { DiffKind::Different }, key, src: Some(a), dst: Some(b) }
             }
         }))

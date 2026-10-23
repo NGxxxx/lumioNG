@@ -3,9 +3,9 @@
   import Modal from "./Modal.svelte";
   import DestructiveDialog from "./DestructiveDialog.svelte";
   import { createDestructiveGate } from "../stores/destructiveGate.svelte";
-  import { sessionManager } from "../stores/sessionManager.svelte";
+  import { sessionEnvironment } from "../stores/sessionEnv";
   import { createEncryptFlow } from "../stores/csfleEncrypt.svelte";
-  import { keyLabel, KMS_PROVIDERS } from "../domain/csfle";
+  import { keyLabel, KMS_PROVIDERS, MASTER_FIELDS, type KmsProviderName } from "../domain/csfle";
   import * as m from "#lib/paraglide/messages.js";
   import { msgKey } from "#lib/msgkey.js";
 
@@ -29,30 +29,14 @@
   untrack(() => flow.loadKeys());
 
   let creating = $state(false);
-  let newProvider = $state("local");
+  let newProvider = $state<KmsProviderName>("local");
   let newAltName = $state("");
   let master = $state<Record<string, string>>({});
 
-  const providerName: Record<string, () => string> = {
-    local: () => m.csfle_provider_local(),
-    aws: () => m.csfle_provider_aws(),
-    azure: () => m.csfle_provider_azure(),
-    gcp: () => m.csfle_provider_gcp(),
-    kmip: () => m.csfle_provider_kmip(),
-  };
-  const MASTER_FIELDS: Record<string, { key: string; label: () => string }[]> = {
-    local: [],
-    aws: [{ key: "region", label: () => m.csfle_mk_region() }, { key: "key", label: () => m.csfle_mk_key_arn() }, { key: "endpoint", label: () => m.csfle_mk_endpoint() }],
-    azure: [{ key: "keyVaultEndpoint", label: () => m.csfle_mk_kv_endpoint() }, { key: "keyName", label: () => m.csfle_mk_key_name() }, { key: "keyVersion", label: () => m.csfle_mk_key_version() }],
-    gcp: [{ key: "projectId", label: () => m.csfle_mk_project() }, { key: "location", label: () => m.csfle_mk_location() }, { key: "keyRing", label: () => m.csfle_mk_key_ring() }, { key: "keyName", label: () => m.csfle_mk_key_name() }, { key: "keyVersion", label: () => m.csfle_mk_key_version() }],
-    kmip: [{ key: "keyId", label: () => m.csfle_mk_kmip_key_id() }, { key: "endpoint", label: () => m.csfle_mk_endpoint() }],
-  };
-
   // Creating a key writes to the key vault: PROD asks first (confirmPolicy), other environments go straight through.
-  const gate = createDestructiveGate(() => sessionManager.active?.environment ?? "");
+  const gate = createDestructiveGate(() => sessionEnvironment(sessionId));
   async function create() {
-    const env = sessionManager.active?.environment ?? "";
-    await gate.request({ op: "createDataKey", target: { db: m.csfle_key_vault(), detail: newAltName.trim() || undefined }, skipConfirm: env !== "prod" }, async () => {
+    await gate.request({ op: "createDataKey", target: { db: m.csfle_key_vault(), detail: newAltName.trim() || undefined } }, async () => {
       if (await flow.createKey(newProvider, newAltName, master)) {
         creating = false;
         newAltName = "";
@@ -88,14 +72,14 @@
       {#if flow.keys.length === 0}<div class="hint">{m.csfle_no_keys()}</div>{/if}
       <label>{m.csfle_provider()}
         <select bind:value={newProvider} disabled={flow.busy}>
-          {#each KMS_PROVIDERS as p (p)}<option value={p}>{providerName[p]()}</option>{/each}
+          {#each KMS_PROVIDERS as p (p)}<option value={p}>{msgKey(`csfle_provider_${p}`)}</option>{/each}
         </select>
       </label>
       <label>{m.csfle_key_alt_name()}
         <input bind:value={newAltName} disabled={flow.busy} autocomplete="off" />
       </label>
       {#each MASTER_FIELDS[newProvider] as f (f.key)}
-        <label>{f.label()}
+        <label>{msgKey(f.labelKey)}
           <input value={master[f.key] ?? ""} oninput={(e) => (master = { ...master, [f.key]: e.currentTarget.value })} disabled={flow.busy} autocomplete="off" />
         </label>
       {/each}

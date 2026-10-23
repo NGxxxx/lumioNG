@@ -110,7 +110,7 @@ pub async fn replace_document(
     coll: String,
     id_json: String,
     doc_json: String,
-    // Encrypted paths the user confirmed to store as plain text (CSFLE sessions only; see `csfle::restore_ciphertext`).
+    // Encrypted paths the user confirmed to store as plain text (CSFLE sessions only; see `csfle_guard::restore_ciphertext`).
     store_plaintext: Option<Vec<String>>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {

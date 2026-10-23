@@ -16,7 +16,7 @@ export function createCsfleSettings(connectionId: number | null) {
   let loading = $state(false);
   let saving = $state(false);
   let error = $state<string | null>(null);
-  /** Where the credentials were stored by the last save: "keychain" | "vault" | "" (none). */
+  /** Where the last save put the credentials ("keychain", "vault", or "" for none); `null` until a save in this dialog. */
   let savedTo = $state<string | null>(null);
 
   const problem = $derived(settingsProblem(enabled, namespace, selected, stored, buildKmsInput(form, selected)));

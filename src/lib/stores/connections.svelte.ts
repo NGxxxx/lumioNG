@@ -37,6 +37,23 @@ export interface ConnectRequest {
   proxy: ProxyConnectInput | null;
 }
 
+/** The editable profile part of a saved connection (secrets aside). */
+function profileFromSaved(c: SavedConnection): ConnectionProfile {
+  return {
+    scheme: (c.scheme as ConnectionProfile["scheme"]) || "mongodb",
+    host: c.host, port: c.port,
+    authMethod: (c.authMethod as ConnectionProfile["authMethod"]) || "none",
+    user: c.user, authSource: c.authSource, replicaSet: c.replicaSet,
+    tls: c.tls, extraOptions: c.extraOptions, tlsCertificateKeyFile: c.tlsCertificateKeyFile ?? "",
+    proxyType: (c.proxyType as ProxyType) || "none", proxyHost: c.proxyHost ?? "", proxyPort: c.proxyPort ?? null,
+    proxyUser: c.proxyUser ?? "",
+    gssapiServiceName: c.gssapiServiceName ?? "", gssapiServiceRealm: c.gssapiServiceRealm ?? "",
+    gssapiCanonicalize: c.gssapiCanonicalize ?? "",
+    oidcMode: (c.oidcMode as OidcMode) || "workforce", oidcEnvironment: (c.oidcEnvironment as OidcEnvironment) || "azure",
+    oidcTokenResource: c.oidcTokenResource ?? "",
+  };
+}
+
 export function createConnectionRegistry() {
   let list = $state<SavedConnection[]>([]);
   const sortedList = $derived(sortByRecency(list));
@@ -308,20 +325,7 @@ export function createConnectionRegistry() {
     editingId = c.id;
     beforeFill = null;
     label = c.label;
-    loadProfile({
-      scheme: (c.scheme as ConnectionProfile["scheme"]) || "mongodb",
-      host: c.host, port: c.port,
-      authMethod: (c.authMethod as ConnectionProfile["authMethod"]) || "none",
-      user: c.user, authSource: c.authSource, replicaSet: c.replicaSet,
-      tls: c.tls, extraOptions: c.extraOptions,
-      tlsCertificateKeyFile: c.tlsCertificateKeyFile ?? "",
-      proxyType: (c.proxyType as ProxyType) || "none", proxyHost: c.proxyHost ?? "", proxyPort: c.proxyPort ?? null,
-      proxyUser: c.proxyUser ?? "",
-      gssapiServiceName: c.gssapiServiceName ?? "", gssapiServiceRealm: c.gssapiServiceRealm ?? "",
-      gssapiCanonicalize: c.gssapiCanonicalize ?? "",
-      oidcMode: (c.oidcMode as OidcMode) || "workforce", oidcEnvironment: (c.oidcEnvironment as OidcEnvironment) || "azure",
-      oidcTokenResource: c.oidcTokenResource ?? "",
-    });
+    loadProfile(profileFromSaved(c));
     password = c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
     proxyPassword = c.proxyPasswordEnc ? deobfuscate(c.proxyPasswordEnc) : "";
     awsSessionToken = c.awsSessionTokenEnc ? deobfuscate(c.awsSessionTokenEnc) : "";
@@ -382,19 +386,7 @@ export function createConnectionRegistry() {
 
   /** URI of a saved connection; the password only when asked for. */
   function uriOf(c: SavedConnection, includePassword: boolean): string {
-    const p: ConnectionProfile = {
-      scheme: (c.scheme as ConnectionProfile["scheme"]) || "mongodb",
-      host: c.host, port: c.port,
-      authMethod: (c.authMethod as ConnectionProfile["authMethod"]) || "none",
-      user: c.user, authSource: c.authSource, replicaSet: c.replicaSet,
-      tls: c.tls, extraOptions: c.extraOptions, tlsCertificateKeyFile: c.tlsCertificateKeyFile ?? "",
-      proxyType: (c.proxyType as ProxyType) || "none", proxyHost: c.proxyHost ?? "", proxyPort: c.proxyPort ?? null,
-      proxyUser: c.proxyUser ?? "",
-      gssapiServiceName: c.gssapiServiceName ?? "", gssapiServiceRealm: c.gssapiServiceRealm ?? "",
-      gssapiCanonicalize: c.gssapiCanonicalize ?? "",
-      oidcMode: (c.oidcMode as OidcMode) || "workforce", oidcEnvironment: (c.oidcEnvironment as OidcEnvironment) || "azure",
-      oidcTokenResource: c.oidcTokenResource ?? "",
-    };
+    const p = profileFromSaved(c);
     const pw = includePassword && c.passwordEnc ? deobfuscate(c.passwordEnc) : "";
     const secrets = includePassword
       ? {
@@ -478,6 +470,8 @@ export function createConnectionRegistry() {
   }
 
   return {
+    /** SSH or an HTTP proxy: the driver sees one local endpoint, so replica-set discovery is off. */
+    get tunneled() { return tunneled(); },
     get list() { return sortedList; },
     get error() { return error; },
     /** Where saved passwords are kept; null until known. */

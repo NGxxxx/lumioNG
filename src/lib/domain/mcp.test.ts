@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  clampMcpAccess, clientSnippets, DEFAULT_REDACT_FIELDS, endpointUrl, exposedSessions, fieldMatchesPattern, fieldsFromText, generateToken,
+  clampMcpAccess, clientSnippets, DEFAULT_REDACT_FIELDS, endpointUrl, exposedSessions, fieldsFromText, generateToken,
   isValidPort, isValidToken, parseRedactFields, pushActivity, MAX_ACTIVITY,
   type McpActivity,
 } from "./mcp";
@@ -65,15 +65,6 @@ describe("mcp domain", () => {
     // a session saved as write and later relabelled prod is exposed read-only
     const out = exposedSessions([{ id: "a", label: "P", status: "connected", environment: "prod", readOnly: false, mcpAccess: "write" }]);
     expect(out[0].access).toBe("read");
-  });
-
-  it("default redaction patterns catch accessToken, clientSecret, passwordHash and userPassword", () => {
-    const hidden = (name: string) => DEFAULT_REDACT_FIELDS.some((p) => fieldMatchesPattern(name, p));
-    for (const n of ["accessToken", "clientSecret", "passwordHash", "userPassword", "API_KEY", "apiKey", "cardNumber", "ssn"]) {
-      expect(hidden(n), n).toBe(true);
-    }
-    expect(hidden("className")).toBe(false);
-    expect(hidden("name")).toBe(false);
   });
 
   it("reads the redaction list from prefs JSON, falling back to the defaults", () => {

@@ -1,6 +1,6 @@
 // src/lib/stores/desktop.ts — desktop-shell actions for components (file pickers, window, app info),
 // so components never reach into api/ directly.
-import { openDialog, saveDialog, openDirDialog, readTextFileIfExists, importFileSize } from "../api/files";
+import { openDialog, openFilesDialog, listDirFiles, saveDialog, openDirDialog, readTextFileIfExists, importFileSize } from "../api/files";
 import { quit, minimize, toggleMaximize, isMaximized, onMaximizedChange } from "../api/window";
 import { getAppVersion, getAppInfo, openExternalUrl } from "../api/app";
 import { forgetSshHostKey } from "../api/connection";
@@ -10,6 +10,8 @@ import { prefs } from "./prefs.svelte";
 export const pickCertFile = () => openDialog([{ name: "PEM", extensions: ["pem", "crt", "cer"] }]);
 export const pickAnyFile = () => openDialog([{ name: "All files", extensions: ["*"] }]);
 export const pickFile = (filters: DialogFilter[]) => openDialog(filters);
+export const pickFiles = (filters: DialogFilter[]) => openFilesDialog(filters);
+export const listFolderFiles = (dir: string) => listDirFiles(dir);
 export const pickSavePath = (name: string, ext: string) => saveDialog(name, [{ name: ext.toUpperCase(), extensions: [ext] }]);
 export const pickDirectory = () => openDirDialog();
 export const readOptionalTextFile = (path: string) => readTextFileIfExists(path);

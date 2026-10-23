@@ -3,7 +3,7 @@
 use crate::error::AppError;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::util::now_ms;
 
 pub type Prefs = HashMap<String, String>;
 
@@ -29,23 +29,13 @@ pub fn prefs_path(dir: &Path) -> PathBuf {
     dir.join(FILE)
 }
 
-fn now_ms() -> u128 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
-}
-
-/// Writes `bytes` to `path` via `<path>.tmp` + rename, so a crash never leaves a half-written file.
-pub fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
+/// Writes `bytes` to `path` via `<path>.tmp` + fsync + rename (creating the directory first), so a
+/// crash never leaves a half-written file.
+fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), AppError> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(io)?;
     }
-    let mut tmp = path.as_os_str().to_owned();
-    tmp.push(".tmp");
-    let tmp = PathBuf::from(tmp);
-    std::fs::write(&tmp, bytes).map_err(io)?;
-    std::fs::rename(&tmp, path).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        io(e)
-    })
+    crate::registry::write_atomic(path, bytes)
 }
 
 /// Loads the prefs; a missing file is empty. A corrupt file is renamed to `prefs.json.corrupt-<epoch_ms>` and loads empty.

@@ -86,11 +86,6 @@ mod tests {
             r#"connect mongodb://a:****@h failed; body {"password": "****", "token":"****"}; Authorization: Bearer ****"#
         );
     }
-}
-
-#[cfg(test)]
-mod proxy_tests {
-    use super::*;
 
     #[test]
     fn redacts_proxy_password_in_uri_and_free_text() {
@@ -99,11 +94,6 @@ mod proxy_tests {
         assert!(!redact_text(&format!("failed: {uri}")).contains("pr0xy"));
         assert!(!redact_text(r#"{"proxyPassword": "pr0xy"}"#).contains("pr0xy"));
     }
-}
-
-#[cfg(test)]
-mod oidc_tests {
-    use super::*;
 
     #[test]
     fn redacts_oidc_token_fields_in_json_and_forms() {

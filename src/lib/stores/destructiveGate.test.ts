@@ -68,6 +68,19 @@ describe("destructiveGate", () => {
     expect(g2.pending?.level).toBe("type");
   });
 
+  it("a policy of none (e.g. setValidator off PROD) runs at once; PROD still asks", async () => {
+    const g = gate("staging");
+    const run = vi.fn().mockResolvedValue(undefined);
+    await g.request({ op: "setValidator", target: T }, run);
+    expect(run).toHaveBeenCalled();
+    expect(g.pending).toBeNull();
+    const g2 = gate("prod");
+    const run2 = vi.fn();
+    await g2.request({ op: "setValidator", target: T }, run2);
+    expect(run2).not.toHaveBeenCalled();
+    expect(g2.pending?.level).toBe("confirm");
+  });
+
   it("forceType always requires typing", async () => {
     const g = gate("dev");
     await g.request({ op: "deleteMany", target: T, count: 5, forceType: true }, vi.fn());

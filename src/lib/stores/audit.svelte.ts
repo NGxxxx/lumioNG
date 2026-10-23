@@ -7,19 +7,11 @@ import { prefs } from "./prefs.svelte";
 /** Prefs key of the audited-environments choice (an `audit-` key, so settings export/import never carries it). */
 const SCOPE_KEY = "audit-scope";
 
-function read(key: string): string | null {
-  try {
-    return prefs.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
 /** Audit log screen state plus the audited-environments setting, which is pushed down to Rust. */
 export function createAudit() {
-  let scope = $state<AuditScope>(untrack(() => parseAuditScope(read(SCOPE_KEY))));
+  let scope = $state<AuditScope>(untrack(() => parseAuditScope(prefs.getItem(SCOPE_KEY))));
   prefs.afterHydrate(() => {
-    scope = parseAuditScope(read(SCOPE_KEY));
+    scope = parseAuditScope(prefs.getItem(SCOPE_KEY));
     push();
   });
   let entries = $state.raw<AuditEntry[]>([]);
@@ -46,11 +38,7 @@ export function createAudit() {
     },
     setScope(v: AuditScope) {
       scope = v;
-      try {
-        prefs.setItem(SCOPE_KEY, v);
-      } catch {
-        /* keep the in-memory value */
-      }
+      prefs.setItem(SCOPE_KEY, v);
       push();
     },
     async load(range: AuditRange, environment: string) {

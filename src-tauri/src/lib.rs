@@ -10,6 +10,7 @@ mod command_log_file;
 mod commands;
 mod compare;
 mod csfle;
+mod csfle_guard;
 #[cfg(feature = "csfle")]
 mod csfle_engine;
 mod csv_export;
@@ -36,6 +37,7 @@ mod sql_import;
 mod sql_stream;
 mod ssh_tunnel;
 mod state;
+mod util;
 mod value_infer;
 mod vault;
 
@@ -143,6 +145,7 @@ pub fn run() {
             commands::gridfs::gridfs_download,
             commands::import_export::import_bson,
             commands::import_export::import_file_size,
+            commands::import_export::list_dir_files,
             commands::sql::sql_import_preview,
             commands::sql::sql_import_commit,
             commands::sql::cancel_import,
@@ -167,7 +170,6 @@ pub fn run() {
             commands::csfle::csfle_available,
             commands::csfle::csfle_get,
             commands::csfle::csfle_save,
-            commands::csfle::csfle_clear,
             commands::csfle::csfle_generate_local_key,
             commands::csfle::csfle_session_enabled,
             commands::csfle::csfle_encrypted_paths,

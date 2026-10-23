@@ -19,12 +19,20 @@ pub struct Session {
     pub environment: String,
     // Closes the SSH tunnel on drop; also asked whether it is down (see `AppState::tunnel_down`).
     pub tunnel: Option<SshTunnelHandle>,
-    // Local HTTP CONNECT forwarder when the connection goes through an HTTP proxy; closes on drop.
+    // Local HTTP CONNECT forwarder when the connection goes through an HTTP proxy; only held: it closes on drop.
+    #[allow(dead_code)]
     pub proxy_tunnel: Option<HttpProxyTunnelHandle>,
     // Explicit-encryption handle when the connection has client-side field level encryption on.
     pub csfle: Option<Arc<crate::commands::csfle::CsfleHandle>>,
     // Non-decrypting twin of `client` for CSFLE sessions (None: `client` itself is the raw client).
     pub raw_client: Option<Client>,
+}
+
+impl Session {
+    /// A plain session: no tunnel, no proxy forwarder, no encryption.
+    pub fn new(client: Client, read_only: bool, label: String, environment: String) -> Self {
+        Session { client, read_only, label, environment, tunnel: None, proxy_tunnel: None, csfle: None, raw_client: None }
+    }
 }
 
 /// What the audit log and MCP need to know about a live session.
@@ -61,31 +69,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub async fn insert_session(
-        &self,
-        session_id: String,
-        client: Client,
-        read_only: bool,
-        label: String,
-        environment: String,
-        tunnel: Option<SshTunnelHandle>,
-    ) {
-        self.sessions.lock().await.insert(session_id, Session { client, read_only, label, environment, tunnel, proxy_tunnel: None, csfle: None, raw_client: None });
-    }
-
-    /// Keeps an HTTP proxy forwarder alive for as long as the session lives.
-    pub async fn set_proxy_tunnel(&self, session_id: &str, handle: HttpProxyTunnelHandle) {
-        if let Some(s) = self.sessions.lock().await.get_mut(session_id) {
-            s.proxy_tunnel = Some(handle);
-        }
-    }
-
-    /// Attaches the encryption handle to a live session; it is dropped with the session.
-    pub async fn set_csfle(&self, session_id: &str, handle: crate::commands::csfle::CsfleHandle, raw: Client) {
-        if let Some(s) = self.sessions.lock().await.get_mut(session_id) {
-            s.csfle = Some(Arc::new(handle));
-            s.raw_client = Some(raw);
-        }
+    /// Registers a fully built session (tunnels and encryption included) in one step, so no reader
+    /// ever sees a decrypting session without its raw twin.
+    pub async fn insert_session(&self, session_id: String, session: Session) {
+        self.sessions.lock().await.insert(session_id, session);
     }
 
     /// The client that never decrypts: ciphertext (BinData 6) comes back as stored. For sessions
@@ -160,12 +147,15 @@ impl AppState {
             Err(_) => (String::new(), String::new()),
         };
         let res = fut.await;
+        if !self.audit.in_scope(&environment) {
+            return res;
+        }
         let entry = AuditEntry::new(source, op, ns).with_session(&label, &environment).with_filter(filter);
         let entry = match &res {
             Ok(v) => entry.with_count(count(v)),
             Err(e) => entry.with_error(&e.audit_summary()),
         };
-        if let Err(e) = self.audit.record(entry) {
+        if let Err(e) = self.audit.record_async(entry).await {
             tracing::error!("audit log write failed: {e}");
         }
         res
@@ -224,11 +214,11 @@ mod tests {
     #[tokio::test]
     async fn raw_client_is_the_session_client_unless_the_session_decrypts() {
         let state = AppState::default();
-        state.insert_session("plain".into(), lazy("main"), false, String::new(), String::new(), None).await;
+        state.insert_session("plain".into(), Session::new(lazy("main"), false, String::new(), String::new())).await;
         assert_eq!(db_of(&state.raw_client("plain").await.unwrap()), "main");
         assert!(state.client_pair("plain").await.unwrap().1.is_none());
 
-        state.insert_session("enc".into(), lazy("decrypting"), false, String::new(), String::new(), None).await;
+        state.insert_session("enc".into(), Session::new(lazy("decrypting"), false, String::new(), String::new())).await;
         state.sessions.lock().await.get_mut("enc").unwrap().raw_client = Some(lazy("raw"));
         assert_eq!(db_of(&state.client("enc").await.unwrap()), "decrypting");
         assert_eq!(db_of(&state.raw_client("enc").await.unwrap()), "raw");
@@ -248,7 +238,7 @@ mod tests {
     async fn meta_returns_label_and_environment() {
         let state = AppState::default();
         state
-            .insert_session("s1".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), true, "Orders".into(), "prod".into(), None)
+            .insert_session("s1".into(), Session::new(Client::with_uri_str("mongodb://localhost").await.unwrap(), true, "Orders".into(), "prod".into()))
             .await;
         let m = state.meta("s1").await.unwrap();
         assert_eq!(m, SessionMeta { label: "Orders".into(), environment: "prod".into(), read_only: true });
@@ -265,7 +255,7 @@ mod tests {
         let state = AppState::default();
         state.audit.set_dir(dir.clone());
         state
-            .insert_session("s1".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), false, "Orders".into(), "prod".into(), None)
+            .insert_session("s1".into(), Session::new(Client::with_uri_str("mongodb://localhost").await.unwrap(), false, "Orders".into(), "prod".into()))
             .await;
         let filter = mongodb::bson::doc! { "email": "a@b.c" };
         let ok: Result<u64, AppError> = state.audited("s1", "ui", "update_many", "shop.orders", Some(&filter), |n| Some(*n), async { Ok(4) }).await;
@@ -285,7 +275,7 @@ mod tests {
     #[tokio::test]
     async fn remove_session_clears_its_cancel_flag_too() {
         let state = AppState::default();
-        state.insert_session("s1".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), false, "".into(), "".into(), None).await;
+        state.insert_session("s1".into(), Session::new(Client::with_uri_str("mongodb://localhost").await.unwrap(), false, "".into(), "".into())).await;
         state.cancel_flag("s1", CancelScope::Job).await;
         state.cancel_flag("s2", CancelScope::Job).await;
         state.remove_session("s1").await;
@@ -297,9 +287,9 @@ mod tests {
     #[tokio::test]
     async fn ensure_writable_blocks_read_only_session() {
         let state = AppState::default();
-        state.insert_session("s1".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), true, "".into(), "".into(), None).await;
+        state.insert_session("s1".into(), Session::new(Client::with_uri_str("mongodb://localhost").await.unwrap(), true, "".into(), "".into())).await;
         assert!(state.ensure_writable("s1").await.is_err());
-        state.insert_session("s2".into(), Client::with_uri_str("mongodb://localhost").await.unwrap(), false, "".into(), "".into(), None).await;
+        state.insert_session("s2".into(), Session::new(Client::with_uri_str("mongodb://localhost").await.unwrap(), false, "".into(), "".into())).await;
         assert!(state.ensure_writable("s2").await.is_ok());
     }
 

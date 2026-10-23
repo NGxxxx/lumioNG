@@ -3,7 +3,15 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 /// How MCP clients may use a connection: "off" (hidden), "read" (default) or "write".
+pub const MCP_ACCESS_OFF: &str = "off";
 pub const MCP_ACCESS_READ: &str = "read";
+pub const MCP_ACCESS_WRITE: &str = "write";
+
+/// Whether an environment label ("" | "dev" | "staging" | "prod") is production — the one that
+/// always asks before writes, never takes MCP writes and is audited by default.
+pub fn is_prod(environment: &str) -> bool {
+    environment == "prod"
+}
 
 fn default_mcp_access() -> String {
     MCP_ACCESS_READ.to_string()
@@ -13,8 +21,8 @@ fn default_mcp_access() -> String {
 /// connection can never be "write" (the frontend enforces the same rule; this is the backstop).
 pub fn clamp_mcp_access(environment: &str, access: &str) -> String {
     match access {
-        "off" => "off",
-        "write" if environment != "prod" => "write",
+        MCP_ACCESS_OFF => MCP_ACCESS_OFF,
+        MCP_ACCESS_WRITE if !is_prod(environment) => MCP_ACCESS_WRITE,
         _ => MCP_ACCESS_READ,
     }
     .to_string()

@@ -120,14 +120,20 @@ export function createAppContext() {
     return { tabs, active: activeIdx };
   }
 
+  // One registry load (keychain reads for every saved connection) per restore, not one per connection.
+  let restoreRegistry: Promise<ReturnType<typeof createConnectionRegistry>> | null = null;
   const workspace = createWorkspaceRestore({
     capture: captureTabs,
     listSaved: async () => (await listConnections()).map((c) => ({ id: c.id, label: c.label, environment: c.environment })),
     async connect(connId) {
       // A sealed vault must be opened first; cancelling it leaves this connection (and its tabs) out.
       if (vault.status === "locked" && !(await vault.ensure("unlock"))) return "cancelled";
-      const registry = createConnectionRegistry();
-      await registry.load();
+      restoreRegistry ??= (async () => {
+        const r = createConnectionRegistry();
+        await r.load();
+        return r;
+      })();
+      const registry = await restoreRegistry;
       const saved = registry.list.find((c) => c.id === connId);
       if (!saved) return false;
       registry.edit(saved);
@@ -160,7 +166,10 @@ export function createAppContext() {
       }
     },
     // The manager stays closed when the restore brought a connection back; otherwise (declined, nothing, all failed) it opens.
-    onSettled: (restored) => { if (restored === 0) shell.openSession(); },
+    onSettled: (restored) => {
+      restoreRegistry = null;
+      if (restored === 0) shell.openSession();
+    },
     onUnlockCancelled: () => toast.push(m.workspace_restore_unlock_cancelled(), "error"),
     onConnectFailed: (label) => toast.push(m.workspace_restore_connect_failed({ label }), "error"),
   });
@@ -187,7 +196,7 @@ export function createAppContext() {
     // A saved connection's secrets are sealed while the vault is locked: ask for the master password first.
     if (conn.connId != null && vault.blocksConnect()) return false;
     // focusOrOpen is the sole owner of the backend connect call; passing the real connId lets it dedup saved connections.
-    const ok = await sm.focusOrOpen({ connId: conn.connId, uri: conn.uri, label: conn.label, readOnly: conn.readOnly, ssh: conn.ssh, environment: conn.environment, color: conn.color, mcpAccess: conn.mcpAccess, proxy: conn.proxy });
+    const ok = await sm.focusOrOpen(conn);
     if (ok) shell.setConnection(conn);
     return ok;
   }

@@ -21,10 +21,6 @@ export async function csfleSave(connectionId: number, config: CsfleConfig, kms: 
   return await invoke<string>("csfle_save", { connectionId, config, kms });
 }
 
-export async function csfleClear(connectionId: number): Promise<void> {
-  await invoke("csfle_clear", { connectionId });
-}
-
 /** Writes 96 random bytes to `path` for use as the local master key (refuses to overwrite). */
 export async function csfleGenerateLocalKey(path: string): Promise<void> {
   await invoke("csfle_generate_local_key", { path });

@@ -475,8 +475,8 @@ mod tests {
     async fn out_and_merge_pipelines_are_refused_on_a_read_only_session() {
         let state = AppState::default();
         let client = || async { Client::with_uri_str("mongodb://localhost").await.unwrap() };
-        state.insert_session("ro".into(), client().await, true, "".into(), "".into(), None).await;
-        state.insert_session("rw".into(), client().await, false, "".into(), "".into(), None).await;
+        state.insert_session("ro".into(), crate::state::Session::new(client().await, true, "".into(), "".into())).await;
+        state.insert_session("rw".into(), crate::state::Session::new(client().await, false, "".into(), "".into())).await;
         let stages = build_aggregate_stages(parse_pipeline(r#"[{"$match":{}},{"$out":"copy"}]"#).unwrap(), None, None);
         let writes = crate::audit::pipeline_write_target(&stages, "d", "c").is_some();
         assert!(writes, "$out is a write target");

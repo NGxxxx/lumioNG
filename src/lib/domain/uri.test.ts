@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { maskUri } from "./uri";
+import { maskUri, maskUrisInText } from "./uri";
 
 describe("maskUri", () => {
   it("masks the password, keeps user and host", () => {
@@ -30,5 +30,16 @@ describe("maskUri — option secrets", () => {
     expect(maskUri("mongodb://k:s@h/?authMechanismProperties=AWS_SESSION_TOKEN:tok%2Fen&tls=true")).toBe(
       "mongodb://k:****@h/?authMechanismProperties=AWS_SESSION_TOKEN:****&tls=true",
     );
+  });
+});
+
+describe("maskUrisInText", () => {
+  it("masks userinfo passwords and option secrets inside free text", () => {
+    const text = `db.x.find({u: "mongodb://bob:hunter2@h:27017/?proxyPassword=p%40ss&authMechanismProperties=AWS_SESSION_TOKEN:tok,X:y"})`;
+    const out = maskUrisInText(text);
+    expect(out).toContain("mongodb://bob:****@h");
+    expect(out).toContain("proxyPassword=****&");
+    expect(out).toContain("AWS_SESSION_TOKEN:****,X:y");
+    expect(out).not.toMatch(/hunter2|p%40ss|tok,/);
   });
 });

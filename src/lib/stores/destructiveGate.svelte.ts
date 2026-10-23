@@ -39,7 +39,8 @@ export type DestructiveRequest = {
   undoable?: boolean;
   /** Always require typing the name (e.g. an empty filter = every document). */
   forceType?: boolean;
-  /** The caller's own UI already was the confirmation: run at once unless typing is required. */
+  /** The caller's own UI already was the confirmation: run at once unless typing is required.
+   *  (Not for environment rules — those belong in confirmPolicy, whose "none" also runs at once.) */
   skipConfirm?: boolean;
   /** Overrides the gate's environment (a gate shared by several sessions, e.g. the sidebar). */
   env?: Environment;
@@ -61,10 +62,9 @@ export function createDestructiveGate(environment: () => Environment) {
   // Bumped per request / cancel, so the dialog can reset its type-to-confirm text.
   let requestSeq = $state(0);
 
-  function levelFor(req: DestructiveRequest, env: Environment, count: number | null, failed: boolean): "confirm" | "type" {
+  function levelFor(req: DestructiveRequest, env: Environment, count: number | null, failed: boolean): "none" | "confirm" | "type" {
     if (req.forceType || failed) return "type";
-    const l = confirmLevel(env, req.op, count);
-    return l === "type" ? "type" : "confirm";
+    return confirmLevel(env, req.op, count);
   }
 
   async function request(req: DestructiveRequest, run: () => Promise<void> | void): Promise<void> {
@@ -74,10 +74,11 @@ export function createDestructiveGate(environment: () => Environment) {
     error = null;
     action = run;
     const known = req.count ?? null;
+    const initial = levelFor(req, env, known, false);
     pending = {
       op: req.op, target: req.target, count: known, bytes: null, collections: null,
       counting: !!req.fetchCount, countFailed: false,
-      level: levelFor(req, env, known, false), undoable: req.undoable ?? false, env,
+      level: initial === "none" ? "confirm" : initial, undoable: req.undoable ?? false, env,
     };
     let count = known;
     let bytes: number | null = null;
@@ -95,7 +96,8 @@ export function createDestructiveGate(environment: () => Environment) {
       if (my !== seq || pending === null) return;
     }
     const level = levelFor(req, env, count, failed);
-    if (req.skipConfirm && level === "confirm") {
+    // The policy asks for nothing, or the caller's own UI already confirmed: run at once.
+    if (level === "none" || (req.skipConfirm && level === "confirm")) {
       pending = null;
       action = null;
       await run();

@@ -4,6 +4,7 @@
 //! panic message and a backtrace to `crash/crash-<epoch_ms>.txt` next to them; nothing is ever sent
 //! anywhere. All text is passed through `redact::redact_text` first.
 use crate::redact::redact_text;
+use crate::util::now_ms;
 use serde::Serialize;
 use std::backtrace::Backtrace;
 use std::path::{Path, PathBuf};
@@ -56,21 +57,17 @@ pub fn crash_dir(log_dir: &Path) -> PathBuf {
 }
 
 /// `crash-<epoch_ms>.txt`, zero-padded so names sort in time order.
-pub fn crash_file_name(epoch_ms: u128) -> String {
+pub fn crash_file_name(epoch_ms: i64) -> String {
     format!("crash-{epoch_ms:015}.txt")
 }
 
-fn crash_epoch_ms(name: &str) -> Option<u128> {
+fn crash_epoch_ms(name: &str) -> Option<i64> {
     name.strip_prefix("crash-")?.strip_suffix(".txt")?.parse().ok()
 }
 
 /// The report body: version, then the panic message and backtrace, redacted.
 pub fn crash_text(version: &str, message: &str, backtrace: &str) -> String {
     redact_text(&format!("LumioNG {version}\n\n{message}\n\nBacktrace:\n{backtrace}\n"))
-}
-
-fn now_ms() -> u128 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0)
 }
 
 thread_local! {
@@ -96,7 +93,7 @@ impl Drop for CaughtPanicScope {
 }
 
 /// Writes the crash report for a panic unless it happens inside a `CaughtPanicScope`.
-fn record_panic(crash_dir: &Path, epoch_ms: u128, message: &str, backtrace: impl FnOnce() -> String) -> Option<PathBuf> {
+fn record_panic(crash_dir: &Path, epoch_ms: i64, message: &str, backtrace: impl FnOnce() -> String) -> Option<PathBuf> {
     if CAUGHT_SCOPES.with(|c| c.get()) > 0 {
         return None;
     }
@@ -137,7 +134,7 @@ fn summary_of(text: &str) -> String {
 /// Reads every unseen report in `crash_dir` (oldest first) and moves each to `crash_dir/seen/`.
 pub fn take_crash_reports(crash_dir: &Path) -> std::io::Result<Vec<CrashReport>> {
     let Ok(entries) = std::fs::read_dir(crash_dir) else { return Ok(Vec::new()) };
-    let mut names: Vec<(u128, String)> = entries
+    let mut names: Vec<(i64, String)> = entries
         .flatten()
         .filter_map(|e| {
             let name = e.file_name().into_string().ok()?;

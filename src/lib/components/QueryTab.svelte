@@ -11,7 +11,7 @@
   import { docPeekFor } from "../stores/docPeek.svelte";
   import RefMenu from "./RefMenu.svelte";
   import { createRefJump } from "../stores/refJump.svelte";
-  import { sessionEnvironment, sessionMeta } from "../stores/sessionEnv";
+  import { isProdSession, sessionMeta } from "../stores/sessionEnv";
   import { setPendingFilter } from "../stores/pendingFilter";
   import { filterFromChips } from "../domain/filterChips";
   import { idJson } from "../domain/docid";
@@ -128,7 +128,7 @@
     connId: () => sessionMeta(sessionId).connId,
     collections: collectionsOf,
     peek,
-    prod: () => sessionEnvironment(sessionId) === "prod",
+    prod: () => isProdSession(sessionId),
   });
   function onGridRef(path: string, value: unknown, anchor: { x: number; y: number } | null) {
     const db = v.provenance?.db ?? currentDb;
@@ -439,7 +439,7 @@
           onrefresh={() => v.runExplain()}
           pipeline={isAggregateStatement ? tree.stages.filter((s) => s.enabled !== false) : null}
           onmovematchfirst={isAggregateStatement ? () => { tree.moveMatchFirst(); void v.runExplain(); } : undefined}
-          prod={sessionManager.sessions.find((x) => x.id === sessionId)?.environment === "prod"}
+          prod={isProdSession(sessionId)}
         />
       </div>
     {:else}

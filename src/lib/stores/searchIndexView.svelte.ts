@@ -159,13 +159,12 @@ export function createSearchIndexView(sessionId: string, db: string, coll: strin
     problem = validateSearchDefinition(e.definition, e.type);
     if (problem) return;
     guard.setError(null);
-    const run = async () => doSave(e);
-    if (sessionEnvironment(sessionId) === "prod") {
-      await destructive.request({ op: "searchIndexWrite", target: { db, coll, index: e.name || undefined, detail: e.mode === "edit" ? e.name : undefined } }, run);
-      return;
-    }
     try {
-      await run();
+      // PROD opens the confirmation (its errors show in the dialog); elsewhere the policy runs it at once.
+      await destructive.request(
+        { op: "searchIndexWrite", target: { db, coll, index: e.name || undefined, detail: e.mode === "edit" ? e.name : undefined } },
+        () => doSave(e),
+      );
     } catch (err) {
       guard.setError(errorMessage(err));
     }

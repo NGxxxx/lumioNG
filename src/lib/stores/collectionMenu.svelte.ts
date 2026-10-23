@@ -6,6 +6,7 @@ import { getByPath } from "../domain/schema";
 import { isInlineEditable, isModalEditable } from "../domain/celledit";
 import type { FilterOp } from "../domain/filter";
 import type { MenuItem } from "../domain/gridView";
+import { copyMenuChildren } from "./gridCopyMenu";
 import type { createRowSelection } from "./rowSelection.svelte";
 import type { createCollectionBulk } from "./collectionBulk.svelte";
 import type { createExportRequest } from "./exportRequest.svelte";
@@ -53,13 +54,7 @@ export function createCollectionMenu(ctx: CollectionMenuCtx) {
     items.push({
       label: m.context_menu_copy(),
       action: "copy",
-      children: [
-        { label: m.context_menu_copy_value(), action: "copyValue" },
-        { label: m.context_menu_copy_field_path(), action: "copyPath" },
-        { label: m.context_menu_copy_id(), action: "copyId", disabled: !hasId },
-        { label: m.context_menu_copy_selected_json({ count: n }), action: "copyJson" },
-        { label: m.context_menu_copy_selected_csv({ count: n }), action: "copyCsv" },
-      ],
+      children: copyMenuChildren(n, hasId),
     });
     items.push({
       label: m.context_menu_export(),

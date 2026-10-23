@@ -1,5 +1,6 @@
 import * as m from "#lib/paraglide/messages.js";
 import { sampleDocuments, fetchFullDoc, exportQueryProgress } from "../api/documents";
+import { errorMessage } from "../api/errors";
 import { overlayPending } from "../domain/pendingEdits";
 import { pendingEdits } from "./pendingEdits.svelte";
 import { toJsonArray, toCsv } from "../domain/exporter";
@@ -238,7 +239,7 @@ export function createCollectionView(sessionId: string, db: string, coll: string
     try {
       return await duplicateSource(sessionId, db, coll, doc);
     } catch (e) {
-      error = e instanceof Error ? e.message : String(e);
+      error = errorMessage(e);
       return null;
     }
   }

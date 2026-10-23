@@ -1,6 +1,7 @@
 //! HTTP CONNECT proxy support. The Mongo driver only speaks SOCKS5, so for an HTTP proxy we run a
 //! local listener (127.0.0.1:0, like `ssh_tunnel.rs`) and point the driver at it: each accepted
 //! connection asks the proxy to `CONNECT host:port`, then bytes are copied both ways.
+use crate::util::lock_recover;
 use crate::error::AppError;
 use crate::proxy::ProxyConfig;
 use base64::Engine;
@@ -72,10 +73,8 @@ pub struct HttpProxyTunnelHandle {
 impl Drop for HttpProxyTunnelHandle {
     fn drop(&mut self) {
         self.task.abort();
-        if let Ok(mut f) = self.forwards.lock() {
-            for h in f.drain(..) {
-                h.abort();
-            }
+        for h in lock_recover(&self.forwards).drain(..) {
+            h.abort();
         }
     }
 }
@@ -97,10 +96,9 @@ pub async fn open(cfg: &ProxyConfig, remote_host: &str, remote_port: u16) -> Res
                     let _ = tokio::io::copy_bidirectional(&mut local, &mut remote).await;
                 }
             });
-            if let Ok(mut f) = fw.lock() {
-                f.retain(|h| !h.is_finished());
-                f.push(h);
-            }
+            let mut f = lock_recover(&fw);
+            f.retain(|h| !h.is_finished());
+            f.push(h);
         }
     });
     Ok(HttpProxyTunnelHandle { local_port, task, forwards })

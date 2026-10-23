@@ -2,21 +2,19 @@ import type { InsertMode } from "../api/documents";
 import { metadataPathFor } from "../domain/collectionMetadata";
 import { describeImportTarget, describeSqlImportTargets, isLargeImportFile } from "../domain/importPlan";
 import { validateCollectionName } from "../domain/namespaces";
-import { pickFile, fileSize, readOptionalTextFile } from "./desktop";
+import { pickFile, pickFiles, pickDirectory, listFolderFiles, fileSize, readOptionalTextFile } from "./desktop";
+import { createImportBatch } from "./importBatch.svelte";
 import { createImportJob } from "./importJob.svelte";
 import { createCsvImport } from "./csvImport.svelte";
 import { createSqlImport } from "./sqlImport.svelte";
+import { errorMessage } from "../api/errors";
 import { jobs, importJobSource, phaseJobSource } from "./jobs.svelte";
 
-export type ImportFormat = "json" | "jsonl" | "bson" | "csv" | "sql";
+import { importFormatOf, type ImportFormat } from "../domain/importBatch";
+export { importFormatOf, type ImportFormat };
 
 const FILE_FILTERS = [{ name: "JSON / JSONL / BSON / SQL / CSV", extensions: ["json", "jsonl", "bson", "sql", "csv"] }];
 
-/** The file's extension decides the import flow. */
-export function importFormatOf(path: string): ImportFormat {
-  const p = path.toLowerCase();
-  return p.endsWith(".sql") ? "sql" : p.endsWith(".csv") ? "csv" : p.endsWith(".bson") ? "bson" : p.endsWith(".jsonl") ? "jsonl" : "json";
-}
 
 /** Single-screen import: pick (or change) a file, adjust target and options on one view, run, then
  *  see progress and results in place — "Back" after a failure keeps every choice. */
@@ -34,6 +32,9 @@ export function createImportDialog(args: { sessionId: string; db: string; coll: 
   let csv = $state.raw<ReturnType<typeof createCsvImport> | null>(null);
   let sql = $state.raw<ReturnType<typeof createSqlImport> | null>(null);
   let job = $state.raw<ReturnType<typeof createImportJob> | null>(null);
+  // Several files or a folder (database-level import only): one collection per file.
+  let batch = $state.raw<ReturnType<typeof createImportBatch> | null>(null);
+  let folderError = $state<string | null>(null);
   // Bumped per chosen file so late size/metadata answers for a previous file are ignored.
   let fileSeq = 0;
 
@@ -64,6 +65,8 @@ export function createImportDialog(args: { sessionId: string; db: string; coll: 
 
   async function setFile(p: string) {
     const seq = ++fileSeq;
+    batch = null;
+    folderError = null;
     path = p;
     size = null;
     metadataBundle = null;
@@ -87,9 +90,39 @@ export function createImportDialog(args: { sessionId: string; db: string; coll: 
     metadataBundle = bundle;
   }
 
+  function setBatch(paths: string[]) {
+    fileSeq++;
+    path = "";
+    size = null;
+    metadataBundle = null;
+    csv = null;
+    sql = null;
+    job = null;
+    folderError = null;
+    batch = createImportBatch({ sessionId, db, paths });
+  }
+
+  /** A database-level import may pick several files at once; a collection-level one picks one. */
   async function browse() {
-    const p = await pickFile(FILE_FILTERS);
-    if (p) await setFile(p);
+    if (args.coll !== null) {
+      const p = await pickFile(FILE_FILTERS);
+      if (p) await setFile(p);
+      return;
+    }
+    const picked = await pickFiles(FILE_FILTERS);
+    if (picked.length === 1) await setFile(picked[0]);
+    else if (picked.length > 1) setBatch(picked);
+  }
+
+  /** Every importable file of a folder (e.g. a `mongodump` database directory). */
+  async function browseFolder() {
+    const dir = await pickDirectory();
+    if (!dir) return;
+    try {
+      setBatch(await listFolderFiles(dir));
+    } catch (e) {
+      folderError = errorMessage(e);
+    }
   }
 
   function start() {
@@ -130,6 +163,7 @@ export function createImportDialog(args: { sessionId: string; db: string; coll: 
     csv = null;
     sql = null;
     job = null;
+    batch = null;
     view = "setup";
   }
 
@@ -154,6 +188,9 @@ export function createImportDialog(args: { sessionId: string; db: string; coll: 
     get sqlTargetError() { return sqlTargetError; },
     get sqlTargetPlan() { return sqlTargetPlan; },
     get job() { return job; },
+    get batch() { return batch; },
+    get folderError() { return folderError; },
+    get multiFile() { return args.coll === null; },
     get view() { return view; },
     get running() { return running; },
     get finished() { return finished; },
@@ -161,6 +198,7 @@ export function createImportDialog(args: { sessionId: string; db: string; coll: 
     get canStart() { return canStart; },
     setFile,
     browse,
+    browseFolder,
     start,
     back,
     importAnother,

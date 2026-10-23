@@ -78,8 +78,3 @@ export function collectRefValues(docs: Doc[], path: string, limit: number = REF_
   }
   return [...seen];
 }
-
-/** `{_id: {$in: […]}}` over canonical ExtJSON id texts. */
-export function idsFilter(idTexts: string[]): string {
-  return `{"_id":{"$in":[${idTexts.join(",")}]}}`;
-}

@@ -1,6 +1,7 @@
 //! Optional on-disk command log: appends full command text to a daily file and reads one entry back.
 use crate::command_log_file::{entry_block, file_name_for, files_to_prune, is_log_file_name};
 use crate::error::AppError;
+use crate::util::now_ms;
 use serde::Serialize;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
@@ -31,13 +32,6 @@ fn io(e: impl std::fmt::Display) -> AppError {
 
 fn log_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
     Ok(app.path().app_log_dir().map_err(io)?.join("command-log"))
-}
-
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 fn prune(dir: &Path, now: i64) -> Result<(), AppError> {

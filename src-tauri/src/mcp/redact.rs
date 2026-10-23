@@ -20,16 +20,24 @@ pub fn default_patterns() -> Vec<String> {
 
 /// Case-insensitive whole-string match where `*` matches any (possibly empty) run of characters.
 fn glob_match(pattern: &str, text: &str) -> bool {
+    // Field names and patterns are almost always ASCII: match the bytes without allocating.
+    if pattern.is_ascii() && text.is_ascii() {
+        return glob_match_by(pattern.as_bytes(), text.as_bytes(), |a, b| a.eq_ignore_ascii_case(b), b'*');
+    }
     let p: Vec<char> = pattern.to_lowercase().chars().collect();
     let t: Vec<char> = text.to_lowercase().chars().collect();
+    glob_match_by(&p, &t, |a, b| a == b, '*')
+}
+
+fn glob_match_by<T: Copy + PartialEq>(p: &[T], t: &[T], eq: impl Fn(&T, &T) -> bool, star_sym: T) -> bool {
     let (mut pi, mut ti) = (0usize, 0usize);
     let (mut star, mut mark) = (None::<usize>, 0usize);
     while ti < t.len() {
-        if pi < p.len() && p[pi] == '*' {
+        if pi < p.len() && p[pi] == star_sym {
             star = Some(pi);
             mark = ti;
             pi += 1;
-        } else if pi < p.len() && p[pi] == t[ti] {
+        } else if pi < p.len() && eq(&p[pi], &t[ti]) {
             pi += 1;
             ti += 1;
         } else if let Some(s) = star {
@@ -40,7 +48,7 @@ fn glob_match(pattern: &str, text: &str) -> bool {
             return false;
         }
     }
-    while pi < p.len() && p[pi] == '*' {
+    while pi < p.len() && p[pi] == star_sym {
         pi += 1;
     }
     pi == p.len()

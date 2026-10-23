@@ -11,6 +11,7 @@
 //! [`AuditLog::record`] with their own `source`.
 
 use crate::error::AppError;
+use crate::util::now_ms;
 use mongodb::bson::{Bson, Document};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -46,8 +47,8 @@ pub enum AuditScope {
 impl AuditScope {
     pub fn includes(self, environment: &str) -> bool {
         match self {
-            AuditScope::Prod => environment == "prod",
-            AuditScope::StagingProd => environment == "prod" || environment == "staging",
+            AuditScope::Prod => crate::registry::is_prod(environment),
+            AuditScope::StagingProd => crate::registry::is_prod(environment) || environment == "staging",
             AuditScope::All => true,
         }
     }
@@ -208,18 +209,10 @@ fn redact_value(v: &Bson) -> Bson {
 
 // ── time ──
 
-/// (year, month) in UTC for an epoch-millisecond timestamp (Hinnant's civil-from-days).
+/// (year, month) in UTC for an epoch-millisecond timestamp.
 pub fn year_month(ts_ms: i64) -> (i32, u32) {
-    let days = ts_ms.div_euclid(86_400_000);
-    let z = days + 719_468;
-    let era = z.div_euclid(146_097);
-    let doe = z.rem_euclid(146_097);
-    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    ((if m <= 2 { y + 1 } else { y }) as i32, m as u32)
+    let (y, m, _) = crate::bson_json::civil_from_days(ts_ms.div_euclid(86_400_000));
+    (y as i32, m)
 }
 
 fn file_name(year: i32, month: u32) -> String {
@@ -237,13 +230,6 @@ fn parse_file_name(name: &str) -> Option<(i32, u32)> {
     let (y, m) = rest.split_once('-')?;
     let (y, m) = (y.parse::<i32>().ok()?, m.parse::<u32>().ok()?);
     (1..=12).contains(&m).then_some((y, m))
-}
-
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 /// The OS account name from the environment; no dependency needed for this.
@@ -288,7 +274,7 @@ impl Default for AuditLog {
 }
 
 impl AuditLog {
-    #[allow(dead_code)] // tests and later callers
+    #[cfg(test)]
     pub fn new(dir: PathBuf) -> Self {
         let log = AuditLog::default();
         log.set_dir(dir);
@@ -309,14 +295,27 @@ impl AuditLog {
         self.lock().scope = scope;
     }
 
-    #[allow(dead_code)] // tests and later callers
+    #[cfg(test)]
     pub fn scope(&self) -> AuditScope {
         self.lock().scope
     }
 
+    /// Whether an entry for `environment` would be kept — lets callers skip building one.
+    pub fn in_scope(&self, environment: &str) -> bool {
+        self.lock().scope.includes(environment)
+    }
+
+    /// `record` on the blocking pool: it appends and fsyncs, which must not stall an async worker.
+    pub async fn record_async(&self, e: AuditEntry) -> Result<(), AppError> {
+        let log = self.clone();
+        tokio::task::spawn_blocking(move || log.record(e))
+            .await
+            .map_err(|err| AppError::Io(err.to_string()))?
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         // A panic while holding the lock cannot leave `Inner` half-updated in a harmful way.
-        self.inner.lock().unwrap_or_else(|p| p.into_inner())
+        crate::util::lock_recover(&self.inner)
     }
 
     /// Appends `e` (after filling `ts`, `os_user`, `app_version`, `prev_hash`). An entry outside the
@@ -338,7 +337,10 @@ impl AuditLog {
         }
         let (y, m) = year_month(e.ts);
         let path = dir.join(file_name(y, m));
-        std::fs::create_dir_all(&dir).map_err(io_err)?;
+        let known_head = g.head.as_ref().is_some_and(|(p, _)| *p == path);
+        if !known_head {
+            std::fs::create_dir_all(&dir).map_err(io_err)?; // a known head means we wrote here already
+        }
 
         let prev = match &g.head {
             Some((p, h)) if *p == path => h.clone(),
@@ -346,7 +348,7 @@ impl AuditLog {
         };
         e.prev_hash = prev;
         let line = serde_json::to_string(&e).map_err(|err| AppError::Serialize(err.to_string()))?;
-        let result = append_line(&path, &line, g.head.as_ref().is_some_and(|(p, _)| *p == path));
+        let result = append_line(&path, &line, known_head);
         match result {
             Ok(()) => g.head = Some((path, hash_line(&line))),
             Err(err) => {
@@ -528,7 +530,7 @@ fn file_label(path: &Path) -> String {
 
 /// Checks one file's chain; the first line's `prev_hash` is accepted as is (see `verify_dir` for the
 /// link to the previous file).
-#[allow(dead_code)] // single-file check, used by tests and export verification
+#[cfg(test)]
 pub fn verify_chain(path: &Path) -> Result<VerifyReport, AppError> {
     verify_file(path, None).map(|(r, _)| r)
 }

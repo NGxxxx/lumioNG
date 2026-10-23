@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { candidateRefs, scoreCandidate, keepStrong, collectRefValues, idsFilter, MIN_REF_SCORE } from "./refInference";
+import { candidateRefs, scoreCandidate, keepStrong, collectRefValues, MIN_REF_SCORE } from "./refInference";
 import type { CollectionSchema, FieldSchema } from "./schema";
 
 const f = (path: string, type: FieldSchema["type"] = "objectId", extra: Partial<FieldSchema> = {}): FieldSchema => ({
@@ -65,7 +65,7 @@ describe("scoreCandidate", () => {
   });
 });
 
-describe("collectRefValues / idsFilter", () => {
+describe("collectRefValues", () => {
   const oid = (n: number) => ({ $oid: n.toString(16).padStart(24, "0") });
   it("collects distinct ObjectIds from scalars and arrays, ignoring other values, up to the limit", () => {
     const docs = [
@@ -76,6 +76,5 @@ describe("collectRefValues / idsFilter", () => {
     expect(collectRefValues(docs, "userId")).toEqual([JSON.stringify(oid(10))]);
     expect(collectRefValues(docs, "tagIds")).toEqual([JSON.stringify(oid(20)), JSON.stringify(oid(21))]);
     expect(collectRefValues(docs, "tagIds", 1)).toHaveLength(1);
-    expect(idsFilter([JSON.stringify(oid(1))])).toBe(`{"_id":{"$in":[{"$oid":"${oid(1).$oid}"}]}}`);
   });
 });

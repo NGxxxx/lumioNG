@@ -4,6 +4,7 @@
 //! for a model to read than the canonical form the app's own frontend uses.
 
 use super::redact::{first_redacted_field, first_redacted_in_pipeline, redact_document};
+use crate::util::lock_recover;
 use crate::audit::{AuditEntry, AuditError, SOURCE_MCP};
 use crate::state::SessionMeta;
 use crate::state::AppState;
@@ -255,11 +256,11 @@ fn writes_refused(ctx: &ToolCtx<'_>, s: &ExposedSession, meta: Option<&SessionMe
     };
     if !ctx.allow_writes {
         Some("writes are disabled in LumioNG's MCP settings".into())
-    } else if s.access != "write" {
+    } else if s.access != crate::registry::MCP_ACCESS_WRITE {
         Some(format!("connection `{}` is shared with MCP as `{}`; set its MCP access to write in the connection settings to allow writes", s.label, s.access))
     } else if meta.read_only {
         Some(format!("connection `{}` is read-only", s.label))
-    } else if meta.environment == "prod" {
+    } else if crate::registry::is_prod(&meta.environment) {
         Some(format!("connection `{}` is labelled production; MCP never writes to it", s.label))
     } else {
         None
@@ -392,11 +393,11 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
     let write_target: Mutex<Option<(&'static str, String)>> = Mutex::new(None);
     let mongo_err = |e: mongodb::error::Error| {
         let text = e.to_string();
-        *audit_error.lock().unwrap_or_else(|p| p.into_inner()) = Some(crate::error::AppError::from(e).audit_summary());
+        *lock_recover(&audit_error) = Some(crate::error::AppError::from(e).audit_summary());
         text
     };
     let refuse = |why: String| {
-        *audit_error.lock().unwrap_or_else(|p| p.into_inner()) = Some(format!("Refused: {why}"));
+        *lock_recover(&audit_error) = Some(format!("Refused: {why}"));
         why
     };
     let run = async {
@@ -437,7 +438,7 @@ pub async fn call_tool(ctx: &ToolCtx<'_>, name: &str, args: &Value) -> Result<St
                 refuse_redacted_pipeline(ctx, &stages)?;
                 if pipeline_writes(&stages) {
                     wrote.store(true, Ordering::Relaxed);
-                    *write_target.lock().unwrap_or_else(|p| p.into_inner()) =
+                    *lock_recover(&write_target) =
                         crate::audit::pipeline_write_target(&stages, str_arg(args, "database")?, str_arg(args, "collection")?);
                     if let Some(why) = writes_refused(ctx, session, meta.as_ref()) {
                         return Err(refuse(format!("$out/$merge refused: {why}")));
@@ -686,12 +687,12 @@ mod tests {
     async fn mcp_tools_read_through_the_non_decrypting_client() {
         let lazy = |db: &str| Client::with_uri_str(format!("mongodb://127.0.0.1:1/{db}"));
         let state = AppState::default();
-        state.insert_session("s".into(), lazy("decrypting").await.unwrap(), false, String::new(), String::new(), None).await;
+        state.insert_session("s".into(), crate::state::Session::new(lazy("decrypting").await.unwrap(), false, String::new(), String::new())).await;
         state.sessions.lock().await.get_mut("s").unwrap().raw_client = Some(lazy("raw").await.unwrap());
         let c = tool_client(&state, "s").await.unwrap();
         assert_eq!(c.default_database().unwrap().name(), "raw", "MCP must not see plaintext of encrypted fields");
         // A session without encryption keeps using its own client.
-        state.insert_session("p".into(), lazy("main").await.unwrap(), false, String::new(), String::new(), None).await;
+        state.insert_session("p".into(), crate::state::Session::new(lazy("main").await.unwrap(), false, String::new(), String::new())).await;
         assert_eq!(tool_client(&state, "p").await.unwrap().default_database().unwrap().name(), "main");
     }
 
@@ -744,7 +745,7 @@ mod tests {
         let state = AppState::default();
         state.audit.set_dir(dir.clone());
         state.audit.set_scope(crate::audit::AuditScope::All);
-        state.insert_session("r1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "Dev".into(), "dev".into(), None).await;
+        state.insert_session("r1".into(), crate::state::Session::new(mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "Dev".into(), "dev".into())).await;
         let mut sess = s("r1", "Dev");
         sess.access = "read".into();
         let sessions = [sess];
@@ -798,7 +799,7 @@ mod tests {
     #[tokio::test]
     async fn queries_on_redacted_fields_are_refused() {
         let state = AppState::default();
-        state.insert_session("a".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "".into(), "".into(), None).await;
+        state.insert_session("a".into(), crate::state::Session::new(mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "".into(), "".into())).await;
         let sessions = [s("a", "A")];
         let redact = vec!["password".to_string()];
         let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &redact, audit_reads: false };
@@ -817,7 +818,7 @@ mod tests {
         let state = AppState::default();
         state.audit.set_dir(dir.clone());
         state.audit.set_scope(crate::audit::AuditScope::All);
-        state.insert_session("a".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "A".into(), "dev".into(), None).await;
+        state.insert_session("a".into(), crate::state::Session::new(mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "A".into(), "dev".into())).await;
         let sessions = [s("a", "A")];
         let redact = vec!["password".to_string()];
         let args = json!({ "database": "d", "collection": "c", "filter": { "password": 1 } });
@@ -863,7 +864,7 @@ mod tests {
         let state = AppState::default();
         state.audit.set_dir(dir.clone());
         // Rust knows this connection is production and read-only...
-        state.insert_session("t1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), true, "Real".into(), "prod".into(), None).await;
+        state.insert_session("t1".into(), crate::state::Session::new(mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), true, "Real".into(), "prod".into())).await;
         // ...but the frontend list says dev, writable, write access.
         let sessions = [s("t1", "Spoofed")];
         let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: true, redact: &[], audit_reads: false };
@@ -882,7 +883,7 @@ mod tests {
         let state = AppState::default();
         state.audit.set_dir(dir.clone());
         state.audit.set_scope(crate::audit::AuditScope::All);
-        state.insert_session("g1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "G".into(), "dev".into(), None).await;
+        state.insert_session("g1".into(), crate::state::Session::new(mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "G".into(), "dev".into())).await;
         let sessions = [s("g1", "G")];
         let redact = vec!["*password*".to_string()];
         let ctx = ToolCtx { state: &state, sessions: &sessions, allow_writes: false, redact: &redact, audit_reads: false };
@@ -981,7 +982,7 @@ mod tests {
         let state = AppState::default();
         state.audit.set_dir(dir.clone());
         // A lazily-connecting client: the refusal happens before any network I/O.
-        state.insert_session("p1".into(), mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "Shop".into(), "prod".into(), None).await;
+        state.insert_session("p1".into(), crate::state::Session::new(mongodb::Client::with_uri_str("mongodb://localhost:1").await.unwrap(), false, "Shop".into(), "prod".into())).await;
         let mut sess = s("p1", "Shop");
         sess.environment = "prod".into();
         let sessions = [sess];
@@ -1006,7 +1007,7 @@ mod tests {
     async fn tools_against_a_live_server() {
         let uri = std::env::var("LUMIO_TEST_MONGO_URI").unwrap_or_else(|_| "mongodb://localhost:27017".into());
         let state = AppState::default();
-        state.insert_session("s1".into(), mongodb::Client::with_uri_str(&uri).await.unwrap(), false, "".into(), "".into(), None).await;
+        state.insert_session("s1".into(), crate::state::Session::new(mongodb::Client::with_uri_str(&uri).await.unwrap(), false, "".into(), "".into())).await;
         let sessions = [s("s1", "Local")];
         let db = "lumio_mcp_test";
         let ns = |extra: Value| {

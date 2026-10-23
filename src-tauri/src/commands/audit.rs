@@ -2,6 +2,8 @@
 use crate::audit::{AuditEntry, AuditScope, VerifyReport};
 use crate::error::AppError;
 use crate::state::AppState;
+// Reading a large log is file I/O and hashing: keep it off the async runtime.
+use crate::util::blocking;
 use std::path::Path;
 use tauri::State;
 
@@ -32,9 +34,4 @@ pub async fn audit_verify(state: State<'_, AppState>) -> Result<VerifyReport, Ap
 pub async fn audit_export(path: String, state: State<'_, AppState>) -> Result<u64, AppError> {
     let log = state.audit.clone();
     blocking(move || log.export(Path::new(&path))).await
-}
-
-/// Reading a large log is file I/O and hashing: keep it off the async runtime so the UI stays responsive.
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T, AppError> + Send + 'static) -> Result<T, AppError> {
-    tokio::task::spawn_blocking(f).await.map_err(|e| AppError::Io(e.to_string()))?
 }

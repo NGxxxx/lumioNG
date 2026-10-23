@@ -1,16 +1,17 @@
 import { deleteMany, fetchFullDoc } from "../api/documents";
 import { getByPath } from "../domain/schema";
-import { clampPage, pageCount } from "../domain/paging";
+import { pageSlice } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { idJson } from "../domain/docid";
 import { clipboardTextOf } from "../domain/extjson";
 import { isInlineEditable, isModalEditable } from "../domain/celledit";
 import { errorMessage } from "../api/errors";
 import { deleteManyCmd, findOneByIdCmd } from "../domain/mongosh";
-import { idInFilter } from "../domain/selection";
+import { idInFilter, resolveIds } from "../domain/selection";
 import { toJsonArray, toCsv } from "../domain/exporter";
 import type { ExportWizardInput } from "../domain/exportPlan";
 import type { MenuItem } from "../domain/gridView";
+import { copyMenuChildren } from "./gridCopyMenu";
 import * as m from "#lib/paraglide/messages.js";
 import { commandLog } from "./commandLog.svelte";
 import { createClipboardCopy } from "./clipboardCopy";
@@ -26,7 +27,7 @@ export interface ScriptResultGridCtx {
   getSessionId: () => string;
   result: ScriptResult;
   selection: ReturnType<typeof createRowSelection>;
-  getRun: () => ReturnType<typeof createScriptRun>;
+  run: Pick<ReturnType<typeof createScriptRun>, "refreshResults">;
   startEdit: (row: number, key: string) => void;
   clearEdit: () => void;
 }
@@ -40,6 +41,17 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
   const destructive = createDestructiveGate(() => sessionEnvironment(ctx.getSessionId()));
   let exportRequest = $state.raw<{ rows: Doc[] } | null>(null);
 
+  /** The docs of the selected rows (current page). */
+  function selectedDocs(): Doc[] {
+    return [...selection.selected].map((i) => r.docs[i]).filter(Boolean) as Doc[];
+  }
+
+  /** Whether every given row holds a doc with an `_id` (deletable by id). */
+  function allHaveId(rows: Iterable<number>): boolean {
+    for (const i of rows) if (r.docs[i]?._id === undefined) return false;
+    return true;
+  }
+
   function menuItems(): MenuItem[] {
     const menu = selection.menu;
     if (!menu) return [];
@@ -47,7 +59,6 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
     const n = selection.effectiveRows().length;
     const hasId = doc ? idJson(doc) !== null : false;
     const editable = r.isEditable();
-    const allHaveId = selection.effectiveRows().every((i) => { const d = r.docs[i]; return d ? idJson(d) !== null : false; });
     const items: MenuItem[] = [];
     if (editable) {
       items.push({ label: m.context_menu_open_document(), action: "open", disabled: !hasId || n !== 1 });
@@ -61,13 +72,7 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
           || (!isInlineEditable(menu.key, getByPath(doc, menu.key)) && !isModalEditable(menu.key, getByPath(doc, menu.key))),
       });
     }
-    const copyChildren: MenuItem[] = [
-      { label: m.context_menu_copy_value(), action: "copyValue" },
-      { label: m.context_menu_copy_field_path(), action: "copyPath" },
-      { label: m.context_menu_copy_id(), action: "copyId", disabled: !hasId },
-      { label: m.context_menu_copy_selected_json({ count: n }), action: "copyJson" },
-      { label: m.context_menu_copy_selected_csv({ count: n }), action: "copyCsv" },
-    ];
+    const copyChildren = copyMenuChildren(n, hasId);
     if (editable) {
       items.push({ label: m.context_menu_copy(), action: "copy", children: copyChildren });
     } else {
@@ -78,7 +83,7 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
       { label: m.context_menu_export_all_results(), action: "exportAll" },
     ]});
     if (editable) {
-      items.push({ label: m.context_menu_delete_selected_n({ count: n }), action: "deleteSelected", disabled: !allHaveId });
+      items.push({ label: m.context_menu_delete_selected_n({ count: n }), action: "deleteSelected", disabled: !allHaveId(selection.effectiveRows()) });
     }
     return items;
   }
@@ -95,7 +100,7 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
     switch (action) {
       case "open": selection.closeMenu(); return doc ? { open: doc } : null;
       case "expandFullDepth": { const row = menu.row; selection.closeMenu(); return { expandFullDepth: row }; }
-      case "refresh": ctx.getRun().refreshResults(); break;
+      case "refresh": ctx.run.refreshResults(); break;
       case "editCell": { const row = menu.row; const k = menu.key; selection.closeMenu(); ctx.startEdit(row, k); return null; }
       case "copyValue": copy(clipboardTextOf(getByPath(doc, key))); break;
       case "copyPath": copy(key); break;
@@ -129,27 +134,22 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
   }
 
   function requestDeleteSelected() {
-    if (!r.isEditable()) return;
-    const picked = [...selection.selected].map((i) => r.docs[i]).filter(Boolean) as Doc[];
-    requestDelete(picked);
+    if (r.isEditable()) requestDelete(selectedDocs());
   }
 
   /** Exports the selection if any, else every currently loaded row (matches the "Export" ->
    *  "All results" context-menu action). */
   function requestExportCurrent() {
-    const picked = [...selection.selected].map((i) => r.docs[i]).filter(Boolean) as Doc[];
+    const picked = selectedDocs();
     exportRequest = { rows: picked.length > 0 ? picked : r.docs };
   }
 
   async function deleteSelected(picked: Doc[]) {
     if (!r.provenance) return;
     const prov = r.provenance;
-    const ids: string[] = [];
-    for (const d of picked) {
-      const id = idJson(d);
-      if (id === null) { r.ioError = m.query_run_selection_missing_id(); return; }
-      ids.push(id);
-    }
+    const resolved = resolveIds(picked, picked.keys());
+    if ("missing" in resolved) { r.ioError = m.query_run_selection_missing_id(); return; }
+    const ids = resolved.ids;
     const filter = idInFilter(ids);
     r.loading = true;
     try {
@@ -158,23 +158,14 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
         deleteMany(ctx.getSessionId(), prov.db, prov.coll, filter, false));
       recordDelete(ctx.getSessionId(), prov.db, prov.coll, snapshot);
       selection.clearSelection();
-      ctx.clearEdit();
       if (r.recipe) {
-        const rc = r.recipe;
-        const gen = r.bumpGeneration();
-        if (rc.fixedLimit === null) {
-          const total = await ctx.getRun().countPaged(rc);
-          if (gen !== r.generation) return;
-          r.totalCount = total;
-          r.pageReq = clampPage(r.page, pageCount(r.totalCount, r.pageSize));
-        }
-        await ctx.getRun().loadPagedCurrentPage();
+        await ctx.run.refreshResults(); // recount + refetch (bumping the generation drops any open edit)
       } else {
-        r.fullDocs = r.fullDocs.filter((d) => { const id = idJson(d); return id === null || !ids.includes(id); });
+        ctx.clearEdit();
+        const gone = new Set(ids);
+        r.fullDocs = r.fullDocs.filter((d) => { const id = idJson(d); return id === null || !gone.has(id); });
         r.totalCount = r.fullDocs.length;
-        r.docs = r.showingAll
-          ? r.fullDocs
-          : r.fullDocs.slice((r.page - 1) * r.pageSize, (r.page - 1) * r.pageSize + r.pageSize);
+        r.docs = r.showingAll ? r.fullDocs : pageSlice(r.fullDocs, r.page, r.pageSize);
       }
     } catch (e) {
       r.ioError = errorMessage(e);
@@ -214,7 +205,14 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
   function replaceDoc(saved: Doc) {
     const id = idJson(saved);
     if (id === null) return;
-    const swap = (list: Doc[]) => list.map((d) => (idJson(d) === id ? saved : d));
+    // Ids are unique: swap the first match and stop scanning.
+    const swap = (list: Doc[]) => {
+      const i = list.findIndex((d) => d._id !== undefined && idJson(d) === id);
+      if (i < 0) return list;
+      const next = list.slice();
+      next[i] = saved;
+      return next;
+    };
     r.fullDocs = swap(r.fullDocs);
     r.docs = swap(r.docs);
   }
@@ -223,10 +221,7 @@ export function createScriptResultGrid(ctx: ScriptResultGridCtx) {
     get destructive() { return destructive; },
     get exportRequest() { return exportRequest; },
     get canEditSelected() { return getSelectedForEdit() !== null; },
-    get canDeleteSelected() {
-      return r.isEditable() && selection.selected.size > 0 &&
-        [...selection.selected].every((i) => { const d = r.docs[i]; return d ? idJson(d) !== null : false; });
-    },
+    get canDeleteSelected() { return r.isEditable() && selection.selected.size > 0 && allHaveId(selection.selected); },
     copy,
     menuItems,
     onMenuSelect,

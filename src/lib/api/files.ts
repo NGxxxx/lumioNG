@@ -21,6 +21,17 @@ export async function writeTextFile(path: string, contents: string): Promise<voi
   await invoke("write_text_file", { path, contents });
 }
 
+/** Opens a multi-file open dialog; returns the chosen paths (empty if cancelled). */
+export async function openFilesDialog(filters: DialogFilter[]): Promise<string[]> {
+  const result = await open({ multiple: true, directory: false, filters });
+  return Array.isArray(result) ? result : typeof result === "string" ? [result] : [];
+}
+
+/** Full paths of the files directly inside `dir` (not recursive), sorted. */
+export async function listDirFiles(dir: string): Promise<string[]> {
+  return await invoke<string[]>("list_dir_files", { dir });
+}
+
 /** Writes binary content (given base64-encoded) to `path`. */
 export async function writeBase64File(path: string, data: string): Promise<void> {
   await invoke("write_base64_file", { path, data });

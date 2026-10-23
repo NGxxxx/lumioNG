@@ -11,6 +11,7 @@
   import EnvBadge from "./EnvBadge.svelte";
   import DestructiveDialog from "./DestructiveDialog.svelte";
   import * as m from "#lib/paraglide/messages.js";
+  import { formatCount } from "../domain/stats";
 
   let { tab }: { tab: CompareTab } = $props();
 
@@ -93,10 +94,10 @@
     <div class="kinds" role="tablist" aria-label={m.compare_list_label()}>
       {#each KINDS as k (k.key)}
         <button role="tab" aria-selected={cv.kind === k.key} class:on={cv.kind === k.key} onclick={() => cv.showKind(k.key)}>
-          {k.label} <span class="n">{k.count.toLocaleString("en-US")}</span>
+          {k.label} <span class="n">{formatCount(k.count)}</span>
         </button>
       {/each}
-      <span class="same">{m.compare_same()} <span class="n">{cv.summary.same.toLocaleString("en-US")}</span></span>
+      <span class="same">{m.compare_same()} <span class="n">{formatCount(cv.summary.same)}</span></span>
     </div>
     {#if cv.summary.truncated}<div class="info">{m.compare_truncated()}</div>{/if}
 

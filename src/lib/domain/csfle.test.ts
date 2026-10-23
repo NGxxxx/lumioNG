@@ -62,6 +62,8 @@ describe("buildConfig / masterKeyJson / keyLabel", () => {
   });
   it("builds master key descriptions per provider and drops blanks", () => {
     expect(masterKeyJson("local", {})).toBeNull();
+    expect(masterKeyJson("nope", {})).toBeNull();
+    expect(JSON.parse(masterKeyJson("kmip", { keyId: " 1 ", endpoint: "" })!)).toEqual({ keyId: "1" });
     expect(JSON.parse(masterKeyJson("aws", { region: "us-east-1", key: "arn:aws:kms:x", endpoint: "" })!)).toEqual({ region: "us-east-1", key: "arn:aws:kms:x" });
     expect(JSON.parse(masterKeyJson("gcp", { projectId: "p", location: "global", keyRing: "r", keyName: "k" })!)).toEqual({ projectId: "p", location: "global", keyRing: "r", keyName: "k" });
   });

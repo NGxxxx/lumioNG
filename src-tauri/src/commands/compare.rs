@@ -172,9 +172,7 @@ pub struct CompareState {
     cancels: std::sync::Mutex<HashMap<String, Arc<AtomicBool>>>,
 }
 
-fn lock<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|p| p.into_inner())
-}
+use crate::util::lock_recover as lock;
 
 impl CompareState {
     pub fn record_dry_run(&self, plan: &SyncPlan, planned: SyncCounts, now: Instant) {
@@ -228,7 +226,7 @@ pub fn check_target(meta: &SessionMeta, dry_run: bool, confirmed: bool) -> Resul
     if meta.read_only {
         return Err(AppError::Query(format!("The sync destination \"{}\" is a read-only connection.", meta.label)));
     }
-    if meta.environment == "prod" && !dry_run && !confirmed {
+    if crate::registry::is_prod(&meta.environment) && !dry_run && !confirmed {
         return Err(AppError::Query(format!("The sync destination \"{}\" is PROD; confirm the sync first.", meta.label)));
     }
     Ok(())
@@ -332,12 +330,15 @@ async fn estimate_total(state: &AppState, a: &NsRef, b: &NsRef, filter: &Documen
     if !filter.is_empty() {
         return None;
     }
-    let mut total = 0;
-    for ns in [a, b] {
-        let client = data_client(state, &ns.session_id).await.ok()?;
-        total += client.database(&ns.db).collection::<Document>(&ns.coll).estimated_document_count().await.ok()?;
-    }
-    Some(total)
+    let count = |ns: &NsRef| {
+        let ns = ns.clone();
+        async move {
+            let client = data_client(state, &ns.session_id).await.ok()?;
+            client.database(&ns.db).collection::<Document>(&ns.coll).estimated_document_count().await.ok()
+        }
+    };
+    let (x, y) = tokio::join!(count(a), count(b));
+    Some(x? + y?)
 }
 
 pub async fn compare_run(
@@ -356,8 +357,7 @@ pub async fn compare_run(
     lock(&state.compare.results).remove(compare_id);
     let cancel = state.compare.begin_cancel(compare_id);
     let total = estimate_total(state, &src, &dst, &filter).await;
-    let a = open_sorted(state, &src, &key, &filter).await?;
-    let b = open_sorted(state, &dst, &key, &filter).await?;
+    let (a, b) = tokio::try_join!(open_sorted(state, &src, &key, &filter), open_sorted(state, &dst, &key, &filter))?;
     let opts = DiffOptions { key: key.clone(), ignore_fields: clean_fields(ignore_fields), cap: MAX_DIFF_KEYS };
     let mut keys: HashMap<DiffKind, Vec<Bson>> = HashMap::new();
     let mut last = 0;
@@ -414,8 +414,13 @@ pub async fn compare_page_run(state: &AppState, compare_id: &str, kind: DiffKind
         let to = (from + limit.min(MAX_PAGE) as usize).min(all.len());
         (c.src.clone(), c.dst.clone(), c.key.clone(), all.len() as u64, all[from..to].to_vec())
     };
-    let mut src_docs = if kind != DiffKind::OnlyDst && !keys.is_empty() { fetch_by_keys(state, &src, &key, &keys).await? } else { vec![] };
-    let mut dst_docs = if kind != DiffKind::OnlySrc && !keys.is_empty() { fetch_by_keys(state, &dst, &key, &keys).await? } else { vec![] };
+    let fetch = |ns: &NsRef, wanted: bool| {
+        let ns = ns.clone();
+        let (key, keys) = (&key, &keys);
+        async move { if wanted && !keys.is_empty() { fetch_by_keys(state, &ns, key, keys).await } else { Ok(vec![]) } }
+    };
+    let (mut src_docs, mut dst_docs) =
+        tokio::try_join!(fetch(&src, kind != DiffKind::OnlyDst), fetch(&dst, kind != DiffKind::OnlySrc))?;
     let mut rows = Vec::with_capacity(keys.len());
     for k in &keys {
         rows.push(DiffRow {
@@ -571,8 +576,7 @@ pub async fn sync_run(
     let limits = if dry_run { None } else { Some(state.compare.take_dry_run(&plan, Instant::now())?) };
     let cancel = state.compare.begin_cancel(compare_id);
     let total = estimate_total(state, from, to, &filter).await;
-    let a = open_sorted(state, from, &key, &filter).await?;
-    let b = open_sorted(state, to, &key, &filter).await?;
+    let (a, b) = tokio::try_join!(open_sorted(state, from, &key, &filter), open_sorted(state, to, &key, &filter))?;
     let join = MergeJoin::new(a, b, &key, &clean_fields(&plan.ignore_fields));
     let client = data_client(state, &to.session_id).await?;
     let mut sink = MongoSink {
@@ -660,7 +664,7 @@ mod tests {
         let lazy = |db: &str| mongodb::Client::with_uri_str(format!("mongodb://127.0.0.1:1/{db}"));
         let state = AppState::default();
         for id in ["src", "dst"] {
-            state.insert_session(id.into(), lazy(&format!("{id}_decrypting")).await.unwrap(), false, String::new(), String::new(), None).await;
+            state.insert_session(id.into(), crate::state::Session::new(lazy(&format!("{id}_decrypting")).await.unwrap(), false, String::new(), String::new())).await;
             state.sessions.lock().await.get_mut(id).unwrap().raw_client = Some(lazy(&format!("{id}_raw")).await.unwrap());
         }
         // Both ends hand out the raw client, so ciphertext is compared and copied verbatim.
@@ -832,7 +836,7 @@ mod tests {
         for (id, env, ro) in sessions {
             // Never connects: every refusal below happens before the first round trip.
             let client = Client::with_uri_str("mongodb://127.0.0.1:1/?serverSelectionTimeoutMS=200").await.unwrap();
-            state.insert_session(id.to_string(), client, *ro, format!("L-{id}"), env.to_string(), None).await;
+            state.insert_session(id.to_string(), crate::state::Session::new(client, *ro, format!("L-{id}"), env.to_string())).await;
         }
         state
     }
@@ -883,8 +887,8 @@ mod tests {
         let state = AppState::default();
         state.audit.set_dir(dir.clone());
         state.audit.set_scope(crate::audit::AuditScope::All);
-        state.insert_session("a".into(), Client::with_uri_str(&uri).await.unwrap(), false, "A".into(), "dev".into(), None).await;
-        state.insert_session("b".into(), Client::with_uri_str(&uri).await.unwrap(), false, "B".into(), "prod".into(), None).await;
+        state.insert_session("a".into(), crate::state::Session::new(Client::with_uri_str(&uri).await.unwrap(), false, "A".into(), "dev".into())).await;
+        state.insert_session("b".into(), crate::state::Session::new(Client::with_uri_str(&uri).await.unwrap(), false, "B".into(), "prod".into())).await;
         let db = state.client("a").await.unwrap().database("lumio_sync_test");
         let _ = db.drop().await;
         let (src, dst) = (db.collection::<Document>("src"), db.collection::<Document>("dst"));

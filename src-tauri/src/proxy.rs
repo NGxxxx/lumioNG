@@ -1,5 +1,5 @@
-//! Proxy settings shared by every outbound client (the Mongo driver today; OIDC and the Atlas API
-//! later). Plain data plus URL building; the actual HTTP CONNECT tunnel is in `http_proxy_tunnel.rs`.
+//! Proxy settings shared by every outbound client (the Mongo driver, OIDC and the Atlas Admin API).
+//! Plain data plus URL building; the actual HTTP CONNECT tunnel is in `http_proxy_tunnel.rs`.
 use serde::Deserialize;
 
 /// `kind` is "socks5" or "http". The password is plaintext here (decoded by the frontend just for

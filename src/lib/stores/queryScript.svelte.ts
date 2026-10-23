@@ -1,13 +1,14 @@
 import { untrack } from "svelte";
 import { getByPath } from "../domain/schema";
 import { clampWidth } from "../domain/colwidth";
+import { skipFor } from "../domain/paging";
 import { matchingIndices } from "../domain/search";
 import { settings } from "./settings.svelte";
 import { fieldsFor as sharedFieldsFor } from "./fieldSuggestions";
 import { createQuickSearch } from "./quickSearch.svelte";
-import { createEditBlurFlow } from "./cellEditBlur.svelte";
+import { createGridEditBlur } from "./cellEditBlur.svelte";
 import { createCellEditEntry } from "./cellEditEntry.svelte";
-import { editTextOf, setByPath } from "../domain/celledit";
+import { setByPath } from "../domain/celledit";
 import { idJson } from "../domain/docid";
 import * as m from "#lib/paraglide/messages.js";
 import { createRowSelection } from "./rowSelection.svelte";
@@ -94,7 +95,7 @@ export function createQueryScript(sessionId: string, initialStatement: string, o
     getSessionId: () => sessionId,
     result,
     selection,
-    getRun: () => scriptRun,
+    run: scriptRun,
     startEdit: (row, key) => startEdit(row, key),
     clearEdit: () => edit.clear(),
   });
@@ -131,17 +132,7 @@ export function createQueryScript(sessionId: string, initialStatement: string, o
     edit.begin(row, key, getByPath(doc, key));
   }
 
-  const editBlur = createEditBlurFlow({
-    getEditing: () => edit.editing,
-    isSaving: () => commitFlow.saving,
-    clearEditing: () => edit.clear(),
-    getEditText: () => edit.editText,
-    getOriginalText: (row, key) => {
-      const doc = result.docs[row];
-      return doc ? editTextOf(getByPath(doc, key)) : "";
-    },
-    commitEdit: () => commitFlow.commitEdit(),
-  });
+  const editBlur = createGridEditBlur(edit, () => result.docs, () => commitFlow);
 
   const commitFlow = createCommitEditFlow({
     getSessionId: () => sessionId,
@@ -156,7 +147,7 @@ export function createQueryScript(sessionId: string, initialStatement: string, o
     // index instead of a linear idJson() scan over the whole result set on every edit.
     onCommitted: (row, key, value) => {
       if (result.recipe) return;
-      const idx = result.showingAll ? row : (result.page - 1) * result.pageSize + row;
+      const idx = result.showingAll ? row : skipFor(result.page, result.pageSize) + row;
       if (idx < 0 || idx >= result.fullDocs.length) return;
       result.fullDocs[idx] = setByPath(result.fullDocs[idx], key, value);
       result.fullDocs = [...result.fullDocs];

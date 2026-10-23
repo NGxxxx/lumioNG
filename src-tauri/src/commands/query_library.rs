@@ -1,22 +1,15 @@
 use crate::error::AppError;
 use crate::query_library::{self, QueryNode};
 use std::path::PathBuf;
-use tauri::{AppHandle, Manager};
+use crate::util::config_dir;
+use tauri::AppHandle;
 
 fn legacy_library_path(app: &AppHandle) -> Result<PathBuf, AppError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| AppError::Io(e.to_string()))?;
-    Ok(dir.join("query_library.json"))
+    Ok(config_dir(app)?.join("query_library.json"))
 }
 
 pub(crate) fn library_dir(app: &AppHandle) -> Result<PathBuf, AppError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| AppError::Io(e.to_string()))?;
-    Ok(dir.join("saved_queries"))
+    Ok(config_dir(app)?.join("saved_queries"))
 }
 
 #[tauri::command]

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { pageCount, clampPage, skipFor } from "./paging";
+import { pageCount, clampPage, skipFor, pageSlice } from "./paging";
 
 describe("pageCount", () => {
   it("total 0 → 1 page", () => expect(pageCount(0, 50)).toBe(1));
@@ -19,4 +19,12 @@ describe("clampPage", () => {
 describe("skipFor", () => {
   it("page 1 → 0", () => expect(skipFor(1, 50)).toBe(0));
   it("page 3 size 50 → 100", () => expect(skipFor(3, 50)).toBe(100));
+});
+
+describe("pageSlice", () => {
+  const rows = [1, 2, 3, 4, 5];
+  it("first page", () => expect(pageSlice(rows, 1, 2)).toEqual([1, 2]));
+  it("middle page", () => expect(pageSlice(rows, 2, 2)).toEqual([3, 4]));
+  it("short last page", () => expect(pageSlice(rows, 3, 2)).toEqual([5]));
+  it("past the end → empty", () => expect(pageSlice(rows, 4, 2)).toEqual([]));
 });

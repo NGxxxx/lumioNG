@@ -6,12 +6,8 @@ const STORAGE_KEY = "collection-sort";
 const DEFAULT: CollectionSortMode = "default";
 
 function readSaved(): CollectionSortMode {
-  try {
-    const v = prefs.getItem(STORAGE_KEY);
-    return v === "default" || v === "asc" || v === "desc" ? v : DEFAULT;
-  } catch {
-    return DEFAULT;
-  }
+  const v = prefs.getItem(STORAGE_KEY);
+  return v === "default" || v === "asc" || v === "desc" ? v : DEFAULT;
 }
 
 /** Reactive sidebar collection-sort mode: "default" keeps server order, "asc"/"desc" sorts A-Z / Z-A. */
@@ -26,11 +22,7 @@ export function createCollectionSort() {
     set(mode: CollectionSortMode) {
       if (mode === current) return;
       current = mode;
-      try {
-        prefs.setItem(STORAGE_KEY, mode);
-      } catch {
-        /* storage unavailable — keep the in-memory setting */
-      }
+      prefs.setItem(STORAGE_KEY, mode);
     },
   };
 }

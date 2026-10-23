@@ -315,7 +315,7 @@
       />
 
       <span class="form-label">{m.session_manager_label_replica_set()}</span>
-      <input class="form-input mono" bind:value={r.replicaSet} disabled={r.sshEnabled || r.proxyType === "http"} title={r.sshEnabled || r.proxyType === "http" ? m.session_manager_tooltip_ssh_lock() : undefined} placeholder={m.connection_form_optional()} aria-label={m.session_manager_label_replica_set()} />
+      <input class="form-input mono" bind:value={r.replicaSet} disabled={r.tunneled} title={r.tunneled ? m.session_manager_tooltip_ssh_lock() : undefined} placeholder={m.connection_form_optional()} aria-label={m.session_manager_label_replica_set()} />
 
       <span class="form-label">{m.session_manager_label_tls()}</span>
       <label class="form-check">
@@ -329,7 +329,7 @@
         <span>{m.session_manager_tls_enable()}</span>
       </label>
 
-      {#if (r.tls || r.authMethod === "x509" || r.authMethod === "ldap") && (r.sshEnabled || r.proxyType === "http")}
+      {#if (r.tls || r.authMethod === "x509" || r.authMethod === "ldap") && r.tunneled}
         <span class="form-label"></span>
         <div class="form-notice" data-testid="tls-tunnel-hint">{m.conn_tls_tunnel_hostname_hint()}</div>
       {/if}

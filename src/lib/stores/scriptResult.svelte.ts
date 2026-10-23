@@ -1,6 +1,7 @@
 import type { ConsoleEntry, Provenance } from "../api/script";
 import type { DisplayMode } from "../domain/scriptOutcome";
-import { limitColumnsToDepth, type ColumnField } from "../domain/schema";
+import { limitColumnsToDepth, mergeColumns, type ColumnField } from "../domain/schema";
+import { computeColumnWidths } from "../domain/colwidth";
 import { pageCount, clampPage } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { settings } from "./settings.svelte";
@@ -14,6 +15,13 @@ export type PagedRecipe = {
   projection: string | null;
   baseSkip: number;
   fixedLimit: number | null;
+};
+
+/** Everything a builder preview replaces and later restores. */
+export type ResultSnapshot = {
+  fullDocs: Doc[]; docs: Doc[]; rawColumnFields: ColumnField[]; colWidths: Record<string, number>;
+  defaultColWidths: Record<string, number>; displayModeVal: DisplayMode; provenance: Provenance | null;
+  totalCount: number; recipe: PagedRecipe | null; pageReq: number; capped: boolean; valueJson: string | null; ackJson: string | null;
 };
 
 /** The result state of one Query tab, shared by the run, explain and grid helpers of `createQueryScript`.
@@ -71,6 +79,42 @@ export function createScriptResult(opts: { clearEdit: () => void }) {
     return displayModeVal === "grid-editable" && provenance !== null;
   }
 
+  /** Empties the result data (rows, columns, value/ack, provenance, counts); mode and paging are left alone. */
+  function clearData() {
+    fullDocs = [];
+    docs = [];
+    rawColumnFields = [];
+    provenance = null;
+    capped = false;
+    totalCount = 0;
+    valueJson = null;
+    ackJson = null;
+  }
+
+  /** A fully materialized ("static") result: all rows, the first page shown, columns and widths from all rows. */
+  function setStatic(rows: Doc[]) {
+    fullDocs = rows;
+    docs = rows.slice(0, pageSize);
+    rawColumnFields = mergeColumns(null, rows);
+    defaultColWidths = computeColumnWidths(columnFields, rows);
+    colWidths = { ...defaultColWidths };
+    totalCount = rows.length;
+  }
+
+  function snapshot(): ResultSnapshot {
+    return {
+      fullDocs, docs, rawColumnFields, colWidths, defaultColWidths, displayModeVal, provenance,
+      totalCount, recipe, pageReq, capped, valueJson, ackJson,
+    };
+  }
+
+  function restore(s: ResultSnapshot) {
+    fullDocs = s.fullDocs; docs = s.docs; rawColumnFields = s.rawColumnFields; colWidths = s.colWidths;
+    defaultColWidths = s.defaultColWidths; displayModeVal = s.displayModeVal; provenance = s.provenance;
+    totalCount = s.totalCount; recipe = s.recipe; pageReq = s.pageReq; capped = s.capped;
+    valueJson = s.valueJson; ackJson = s.ackJson;
+  }
+
   return {
     get fullDocs() { return fullDocs; }, set fullDocs(v: Doc[]) { fullDocs = v; },
     get recipe() { return recipe; }, set recipe(v: PagedRecipe | null) { recipe = v; },
@@ -100,6 +144,10 @@ export function createScriptResult(opts: { clearEdit: () => void }) {
     get page() { return page; },
     bumpGeneration,
     isEditable,
+    clearData,
+    setStatic,
+    snapshot,
+    restore,
   };
 }
 

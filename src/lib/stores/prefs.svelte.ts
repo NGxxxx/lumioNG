@@ -4,6 +4,7 @@
 import { loadPrefs, savePrefs, exportPrefs, importPrefs } from "../api/prefs";
 import { logFrontend } from "../api/diagnostics";
 import { MIGRATED_KEY, migrateFromLocalStorage } from "../domain/prefsMigration";
+import { rawErrorText } from "../api/errors";
 
 const SAVE_DELAY_MS = 300;
 
@@ -59,6 +60,7 @@ export function createPrefs(saveDelayMs = SAVE_DELAY_MS) {
       return map.get(key) ?? null;
     },
     setItem(key: string, value: string): void {
+      if (map.get(key) === value) return; // unchanged: no rewrite of prefs.json
       map.set(key, value);
       schedule();
     },
@@ -87,7 +89,7 @@ export function createPrefs(saveDelayMs = SAVE_DELAY_MS) {
       } catch (e) {
         // Keep the unreadable file untouched for the whole session instead of overwriting it with a partial map.
         loadFailed = true;
-        void logFrontend("warn", "prefs.json could not be loaded; settings will not be saved this session", String(e)).catch(() => {});
+        void logFrontend("warn", "prefs.json could not be loaded; settings will not be saved this session", rawErrorText(e)).catch(() => {});
         hydrated = true;
         runHydrateCallbacks();
         return;

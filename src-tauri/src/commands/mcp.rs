@@ -116,7 +116,7 @@ pub async fn mcp_set_sessions(sessions: Vec<ExposedSession>, server: State<'_, M
 fn normalize_sessions(sessions: Vec<ExposedSession>) -> Vec<ExposedSession> {
     sessions
         .into_iter()
-        .filter(|s| s.access != "off")
+        .filter(|s| s.access != crate::registry::MCP_ACCESS_OFF)
         .map(|mut s| {
             s.access = crate::registry::clamp_mcp_access(&s.environment, &s.access);
             s

@@ -7,16 +7,13 @@ use russh::keys::{Algorithm, HashAlg, PrivateKeyWithHashAlg, PublicKeyOrCertific
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::task::JoinHandle;
 
-/// `Mutex::lock` that recovers the guard from a poisoned lock. Every critical section here is a
-/// single assignment/push/drain that leaves no half-updated invariant behind, so a panic elsewhere
-/// must not permanently wedge the tunnel with `unwrap()` panics.
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(|e| e.into_inner())
-}
+// Every critical section on the std mutexes here is a single assignment/push/drain, so a poisoned
+// lock is safe to recover.
+use crate::util::lock_recover as lock;
 
 /// Frontend-supplied SSH tunnel config; secrets are plaintext on this wire (obfuscation only applies to the persisted registry copy).
 #[derive(Debug, Clone, Deserialize)]

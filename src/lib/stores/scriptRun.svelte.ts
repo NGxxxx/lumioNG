@@ -2,17 +2,16 @@ import { runScript, cancelScript } from "../api/script";
 import type { ConsoleEntry } from "../api/script";
 import { rafThrottle } from "../domain/rafThrottle";
 import { queryPage, aggregate, aggregateCount, countDocuments } from "../api/documents";
-import { displayMode as computeDisplayMode, parseRows, type DisplayMode } from "../domain/scriptOutcome";
-import { mergeColumns, type ColumnField } from "../domain/schema";
+import { displayMode as computeDisplayMode, parseRows } from "../domain/scriptOutcome";
+import { mergeColumns } from "../domain/schema";
 import { computeColumnWidths } from "../domain/colwidth";
-import { pageCount, clampPage } from "../domain/paging";
+import { pageCount, clampPage, skipFor, pageSlice } from "../domain/paging";
 import type { Doc } from "../domain/doc";
 import { scanDestructive, scanCritical, withLoadedSnippets } from "../domain/scriptScan";
 import { queryLibrary } from "./queryLibrary.svelte";
 import { errorMessage } from "../api/errors";
 import { canSuppress } from "../domain/confirmPolicy";
 import type { HistoryEntry } from "../domain/queryHistory";
-import type { Provenance } from "../api/script";
 import * as m from "#lib/paraglide/messages.js";
 import { settings } from "./settings.svelte";
 import { commandLog } from "./commandLog.svelte";
@@ -21,7 +20,7 @@ import { createShowAllFlow } from "./showAllFlow.svelte";
 import { sessionEnvironment, sessionMeta } from "./sessionEnv";
 import { queryHistory } from "./queryHistory.svelte";
 import type { createRowSelection } from "./rowSelection.svelte";
-import type { ScriptResult, PagedRecipe } from "./scriptResult.svelte";
+import type { ScriptResult, PagedRecipe, ResultSnapshot } from "./scriptResult.svelte";
 import type { createScriptExplain } from "./scriptExplain.svelte";
 
 /** What the run block needs from the owning query tab (all read lazily). */
@@ -79,7 +78,7 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     try {
       const result = rc.fixedLimit !== null
         ? await fetchPagedPage(rc, rc.baseSkip, rc.fixedLimit)
-        : await fetchPagedPage(rc, rc.baseSkip + (r.page - 1) * r.pageSize, r.pageSize);
+        : await fetchPagedPage(rc, rc.baseSkip + skipFor(r.page, r.pageSize), r.pageSize);
       if (gen !== r.generation) return;
       r.docs = result;
       if (rc.fixedLimit !== null) r.totalCount = r.docs.length;
@@ -97,37 +96,18 @@ export function createScriptRun(ctx: ScriptRunCtx) {
 
   // ── Builder preview (spec §1.3): the selected stage's sample temporarily replaces the result;
   // the run's own result is stashed and comes back on clearPreview (never by re-running). ──
-  type ResultSnapshot = {
-    fullDocs: Doc[]; docs: Doc[]; rawColumnFields: ColumnField[]; colWidths: Record<string, number>;
-    defaultColWidths: Record<string, number>; displayModeVal: DisplayMode; provenance: Provenance | null;
-    totalCount: number; recipe: PagedRecipe | null; pageReq: number; capped: boolean; valueJson: string | null; ackJson: string | null;
-  };
   let previewStash: ResultSnapshot | null = null;
   let previewLabel = $state<{ stage: number; of: number } | null>(null);
 
   function showPreview(rows: Doc[], label: { stage: number; of: number }) {
-    if (!previewStash) {
-      previewStash = {
-        fullDocs: r.fullDocs, docs: r.docs, rawColumnFields: r.rawColumnFields, colWidths: r.colWidths,
-        defaultColWidths: r.defaultColWidths, displayModeVal: r.displayModeVal, provenance: r.provenance,
-        totalCount: r.totalCount, recipe: r.recipe, pageReq: r.pageReq, capped: r.capped, valueJson: r.valueJson, ackJson: r.ackJson,
-      };
-    }
+    if (!previewStash) previewStash = r.snapshot();
     r.bumpGeneration();
     selection.clearSelection();
     r.recipe = null;
-    r.fullDocs = rows;
-    r.docs = rows.slice(0, r.pageSize);
-    r.rawColumnFields = mergeColumns(null, rows);
-    r.defaultColWidths = computeColumnWidths(r.columnFields, rows);
-    r.colWidths = { ...r.defaultColWidths };
+    r.clearData();
+    r.setStatic(rows);
     r.displayModeVal = "grid-readonly";
-    r.provenance = null;
-    r.totalCount = rows.length;
     r.pageReq = 1;
-    r.capped = false;
-    r.valueJson = null;
-    r.ackJson = null;
     previewLabel = label;
   }
 
@@ -138,10 +118,7 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     previewLabel = null;
     r.bumpGeneration();
     selection.clearSelection();
-    r.fullDocs = s.fullDocs; r.docs = s.docs; r.rawColumnFields = s.rawColumnFields; r.colWidths = s.colWidths;
-    r.defaultColWidths = s.defaultColWidths; r.displayModeVal = s.displayModeVal; r.provenance = s.provenance;
-    r.totalCount = s.totalCount; r.recipe = s.recipe; r.pageReq = s.pageReq; r.capped = s.capped;
-    r.valueJson = s.valueJson; r.ackJson = s.ackJson;
+    r.restore(s);
   }
 
   /** `confirmed`: the user passed the destructive/critical gate for this run; Rust requires it before a PROD load() may run destructive snippet code. */
@@ -191,66 +168,34 @@ export function createScriptRun(ctx: ScriptRunCtx) {
       explain.explainHint = outcome.explainHint ?? null;
       r.displayModeVal = computeDisplayMode(outcome);
 
-      if (outcome.result.kind === "docs") {
-        r.fullDocs = parseRows(outcome.result.rows);
-        r.docs = r.fullDocs.slice(0, r.pageSize);
-        r.rawColumnFields = mergeColumns(null, r.fullDocs);
-        r.defaultColWidths = computeColumnWidths(r.columnFields, r.fullDocs);
-        r.colWidths = { ...r.defaultColWidths };
+      r.clearData();
+      const res = outcome.result;
+      if (res.kind === "docs") {
+        r.setStatic(parseRows(res.rows));
         r.provenance = outcome.provenance;
-        r.totalCount = r.fullDocs.length;
         r.capped = outcome.capped;
-        r.valueJson = null;
-        r.ackJson = null;
-      } else if (outcome.result.kind === "cursorQuery") {
-        const c = outcome.result;
-        r.recipe = {
-          cursorKind: c.cursorKind, db: c.db, coll: c.coll, query: c.query,
-          sort: c.sort, projection: c.projection, baseSkip: c.baseSkip, fixedLimit: c.fixedLimit,
+      } else if (res.kind === "cursorQuery") {
+        const rc: PagedRecipe = {
+          cursorKind: res.cursorKind, db: res.db, coll: res.coll, query: res.query,
+          sort: res.sort, projection: res.projection, baseSkip: res.baseSkip, fixedLimit: res.fixedLimit,
         };
+        r.recipe = rc;
         explain.recipeDirty = false;
-        r.fullDocs = [];
-        r.docs = [];
-        r.rawColumnFields = [];
-        r.provenance = { db: c.db, coll: c.coll };
-        r.capped = false;
-        r.valueJson = null;
-        r.ackJson = null;
-        if (r.recipe.fixedLimit === null) {
+        r.provenance = { db: res.db, coll: res.coll };
+        if (rc.fixedLimit === null) {
+          // Page 1 does not depend on the total: count and fetch together.
           const gen = r.generation;
-          const total = await countPaged(r.recipe);
+          const [count] = await Promise.allSettled([countPaged(rc), loadPagedCurrentPage()]);
+          if (count.status === "rejected") throw count.reason;
           if (gen !== r.generation) return;
-          r.totalCount = total;
+          r.totalCount = count.value;
+        } else {
+          await loadPagedCurrentPage();
         }
-        await loadPagedCurrentPage();
-      } else if (outcome.result.kind === "value") {
-        r.valueJson = outcome.result.json;
-        r.docs = [];
-        r.fullDocs = [];
-        r.rawColumnFields = [];
-        r.provenance = null;
-        r.capped = false;
-        r.totalCount = 0;
-        r.ackJson = null;
-      } else if (outcome.result.kind === "ack") {
-        r.ackJson = outcome.result.json;
-        r.docs = [];
-        r.fullDocs = [];
-        r.rawColumnFields = [];
-        r.provenance = null;
-        r.capped = false;
-        r.totalCount = 0;
-        r.valueJson = null;
-      } else {
-        // kind === "none"
-        r.docs = [];
-        r.fullDocs = [];
-        r.rawColumnFields = [];
-        r.provenance = null;
-        r.capped = false;
-        r.totalCount = 0;
-        r.valueJson = null;
-        r.ackJson = null;
+      } else if (res.kind === "value") {
+        r.valueJson = res.json;
+      } else if (res.kind === "ack") {
+        r.ackJson = res.json;
       }
 
       r.error = outcome.error;
@@ -416,7 +361,7 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     r.pageReq = clampPage(p, r.pgCount);
     r.bumpGeneration();
     if (r.recipe) await loadPagedCurrentPage();
-    else r.docs = r.fullDocs.slice((r.page - 1) * r.pageSize, (r.page - 1) * r.pageSize + r.pageSize);
+    else r.docs = pageSlice(r.fullDocs, r.page, r.pageSize);
   }
 
   /** In-place reload of the current page (same recipe query): recount + refetch. Only meaningful
@@ -451,8 +396,6 @@ export function createScriptRun(ctx: ScriptRunCtx) {
     get previewLabel() { return previewLabel; },
     get staleAfterUndo() { return staleAfterUndo; },
     showAll,
-    countPaged,
-    loadPagedCurrentPage,
     refreshResults,
     showPreview,
     clearPreview,

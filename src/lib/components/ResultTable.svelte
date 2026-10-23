@@ -16,7 +16,7 @@
   import DocPeekDrawer from "./DocPeekDrawer.svelte";
   import RefMenu from "./RefMenu.svelte";
   import { createRefJump } from "../stores/refJump.svelte";
-  import { sessionEnvironment, sessionMeta } from "../stores/sessionEnv";
+  import { isProdSession, sessionMeta } from "../stores/sessionEnv";
   import { setPendingFilter, takePendingFilter } from "../stores/pendingFilter";
   import { filterFromChips } from "../domain/filterChips";
   import { docPeekFor } from "../stores/docPeek.svelte";
@@ -121,7 +121,7 @@
     connId: () => sessionMeta(sid).connId,
     collections: collectionsOf,
     peek,
-    prod: () => sessionEnvironment(sid) === "prod",
+    prod: () => isProdSession(sid),
   });
   // A grid cell belongs to this collection; a drawer field to whatever document the drawer shows.
   function onGridRef(path: string, value: unknown, anchor: { x: number; y: number } | null) {

@@ -132,17 +132,24 @@ export function buildConfig(enabled: boolean, namespace: string, selected: reado
   return { enabled, keyVaultNamespace: namespace.trim() || DEFAULT_KEY_VAULT_NAMESPACE, providers: [...selected], cryptSharedLibPath: cryptSharedLibPath.trim() };
 }
 
-/** The provider-specific master key description for a new data key, as JSON text ("" for local). */
+/** The master key fields each provider asks for when creating a data key (labels are message keys). */
+export const MASTER_FIELDS: Record<KmsProviderName, { key: string; labelKey: string }[]> = {
+  local: [],
+  aws: [{ key: "region", labelKey: "csfle_mk_region" }, { key: "key", labelKey: "csfle_mk_key_arn" }, { key: "endpoint", labelKey: "csfle_mk_endpoint" }],
+  azure: [{ key: "keyVaultEndpoint", labelKey: "csfle_mk_kv_endpoint" }, { key: "keyName", labelKey: "csfle_mk_key_name" }, { key: "keyVersion", labelKey: "csfle_mk_key_version" }],
+  gcp: [
+    { key: "projectId", labelKey: "csfle_mk_project" }, { key: "location", labelKey: "csfle_mk_location" }, { key: "keyRing", labelKey: "csfle_mk_key_ring" },
+    { key: "keyName", labelKey: "csfle_mk_key_name" }, { key: "keyVersion", labelKey: "csfle_mk_key_version" },
+  ],
+  kmip: [{ key: "keyId", labelKey: "csfle_mk_kmip_key_id" }, { key: "endpoint", labelKey: "csfle_mk_endpoint" }],
+};
+
+/** The provider-specific master key description for a new data key, as JSON text (null for local / unknown). */
 export function masterKeyJson(provider: string, f: Record<string, string>): string | null {
-  const v = (k: string) => (f[k] ?? "").trim();
-  const only = (o: Record<string, string>) => Object.fromEntries(Object.entries(o).filter(([, x]) => x !== ""));
-  switch (provider) {
-    case "aws": return JSON.stringify(only({ region: v("region"), key: v("key"), endpoint: v("endpoint") }));
-    case "azure": return JSON.stringify(only({ keyVaultEndpoint: v("keyVaultEndpoint"), keyName: v("keyName"), keyVersion: v("keyVersion") }));
-    case "gcp": return JSON.stringify(only({ projectId: v("projectId"), location: v("location"), keyRing: v("keyRing"), keyName: v("keyName"), keyVersion: v("keyVersion") }));
-    case "kmip": return JSON.stringify(only({ keyId: v("keyId"), endpoint: v("endpoint") }));
-    default: return null;
-  }
+  const fields = (MASTER_FIELDS as Record<string, { key: string }[] | undefined>)[provider];
+  if (!fields?.length) return null;
+  const entries = fields.map(({ key }) => [key, (f[key] ?? "").trim()] as const).filter(([, x]) => x !== "");
+  return JSON.stringify(Object.fromEntries(entries));
 }
 
 /** A readable name for a key in a picker: its alternate names, else a short id. */

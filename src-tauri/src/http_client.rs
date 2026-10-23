@@ -1,5 +1,5 @@
-//! The one place outbound HTTP clients are built (OIDC discovery and token endpoint now, the Atlas
-//! Admin API later), so proxy support, timeouts and TLS (rustls, no OpenSSL) stay consistent.
+//! The one place outbound HTTP clients are built (OIDC discovery and token endpoint, the Atlas Admin
+//! API), so proxy support, timeouts and TLS (rustls, no OpenSSL) stay consistent.
 use crate::error::AppError;
 use crate::proxy::ProxyConfig;
 use std::time::Duration;
@@ -7,22 +7,14 @@ use std::time::Duration;
 /// A client that goes through `proxy` (HTTP CONNECT or SOCKS5, with its credentials) when one is
 /// set, and straight to the host otherwise. Environment proxy variables are deliberately ignored:
 /// like the Mongo driver, the app only uses the proxy a connection was configured with.
-#[allow(dead_code)] // for the Atlas Admin API unit; the OIDC client must not follow redirects
-pub fn build(proxy: Option<&ProxyConfig>, timeout: Duration) -> Result<reqwest::Client, AppError> {
-    build_with(proxy, timeout, reqwest::redirect::Policy::limited(3))
-}
-
-/// Like `build`, but never follows a redirect: token and discovery requests carry credentials and
-/// must only ever reach the endpoint the IdP document named.
+///
+/// It never follows a redirect: token, discovery and Admin API requests carry credentials and must
+/// only ever reach the endpoint they were sent to.
 pub fn build_no_redirect(proxy: Option<&ProxyConfig>, timeout: Duration) -> Result<reqwest::Client, AppError> {
-    build_with(proxy, timeout, reqwest::redirect::Policy::none())
-}
-
-fn build_with(proxy: Option<&ProxyConfig>, timeout: Duration, redirect: reqwest::redirect::Policy) -> Result<reqwest::Client, AppError> {
     let mut b = reqwest::Client::builder()
         .timeout(timeout)
         .connect_timeout(timeout.min(Duration::from_secs(15)))
-        .redirect(redirect)
+        .redirect(reqwest::redirect::Policy::none())
         .user_agent(concat!("LumioNG/", env!("CARGO_PKG_VERSION")))
         .no_proxy();
     if let Some(p) = proxy.filter(|p| (p.is_http() || p.is_socks5()) && !p.host.is_empty()) {
@@ -49,7 +41,7 @@ mod tests {
             let _ = s.read(&mut buf).await;
             s.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok").await.unwrap();
         });
-        let c = build(None, Duration::from_secs(5)).unwrap();
+        let c = build_no_redirect(None, Duration::from_secs(5)).unwrap();
         assert_eq!(c.get(format!("http://127.0.0.1:{port}/")).send().await.unwrap().text().await.unwrap(), "ok");
     }
 
@@ -65,7 +57,7 @@ mod tests {
             String::from_utf8_lossy(&buf[..n]).to_string()
         });
         let cfg = ProxyConfig { kind: "http".into(), host: "127.0.0.1".into(), port, user: "u".into(), password: "p".into() };
-        let c = build(Some(&cfg), Duration::from_secs(5)).unwrap();
+        let c = build_no_redirect(Some(&cfg), Duration::from_secs(5)).unwrap();
         let body = c.get("http://idp.example.test/.well-known/openid-configuration").send().await.unwrap().text().await.unwrap();
         assert_eq!(body, "ok");
         let req = seen.await.unwrap();
@@ -103,6 +95,6 @@ mod tests {
     #[test]
     fn a_socks5_proxy_builds() {
         let cfg = ProxyConfig { kind: "socks5".into(), host: "127.0.0.1".into(), port: 1080, user: "u".into(), password: "p@ss".into() };
-        assert!(build(Some(&cfg), Duration::from_secs(5)).is_ok());
+        assert!(build_no_redirect(Some(&cfg), Duration::from_secs(5)).is_ok());
     }
 }

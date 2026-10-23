@@ -25,3 +25,8 @@ export function sessionMeta(id: string): { label: string; connId: number | null 
 export function sessionEnvironment(id: string): Environment {
   return envs.get(id) ?? "";
 }
+
+/** Whether the session is labelled production (the environment that always asks before writes). */
+export function isProdSession(id: string): boolean {
+  return sessionEnvironment(id) === "prod";
+}

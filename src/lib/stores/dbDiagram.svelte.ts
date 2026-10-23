@@ -6,14 +6,18 @@ import { sampleDocuments, queryPage } from "../api/documents";
 import { errorMessage } from "../api/errors";
 import { saveDialog, writeTextFile, writeBase64File } from "../api/files";
 import type { Doc } from "../domain/doc";
+import { forEachLimit } from "../domain/concurrency";
+import { idInFilter } from "../domain/selection";
 import { inferSchema, type CollectionSchema } from "../domain/schema";
-import { candidateRefs, collectRefValues, idsFilter, keepStrong, scoreCandidate, MIN_REF_SCORE, REF_VALUES_PER_CANDIDATE } from "../domain/refInference";
+import { candidateRefs, collectRefValues, scoreCandidate, MIN_REF_SCORE, REF_VALUES_PER_CANDIDATE } from "../domain/refInference";
 import { buildSvg, layoutGrid, type DiagramEdge, type DiagramNode } from "../domain/diagramLayout";
 import { memoryKey } from "../domain/refTarget";
 import { clearEdgeDecision, edgeKey, forget, getEdgeDecisions, getRemembered, remember, setEdgeDecision } from "./refMemory";
 
 export const DIAGRAM_MAX_COLLECTIONS = 50;
 export const DIAGRAM_SAMPLE_SIZE = 200;
+/** Sample / lookup queries in flight at once while building the diagram. */
+export const DIAGRAM_CONCURRENCY = 4;
 const QUERY_TIMEOUT_MS = 15_000;
 
 export type InferredEdge = DiagramEdge & { hits: number; sampled: number; sampleIds: string[]; removed: boolean };
@@ -59,7 +63,7 @@ export function createDbDiagram(sessionId: string, db: string, connId: number | 
       total = colls.length;
       const samples: Record<string, Doc[]> = {};
       const schemas: Record<string, CollectionSchema> = {};
-      for (const c of colls) {
+      await forEachLimit(colls, DIAGRAM_CONCURRENCY, async (c) => {
         if (my !== gen) return;
         try {
           const docs = await sampleDocuments(sessionId, db, c, "{}", DIAGRAM_SAMPLE_SIZE, QUERY_TIMEOUT_MS);
@@ -73,22 +77,23 @@ export function createDbDiagram(sessionId: string, db: string, connId: number | 
           schemas[c] = { sampleSize: 0, fields: [] };
         }
         done++;
-      }
+      });
+      if (my !== gen) return;
       const cands = candidateRefs(schemas);
       total += cands.length;
       const decisions = getEdgeDecisions(connId, db);
       const scored: InferredEdge[] = [];
-      for (const cand of cands) {
+      await forEachLimit(cands, DIAGRAM_CONCURRENCY, async (cand) => {
         if (my !== gen) return;
         const values = collectRefValues(samples[cand.from], cand.path, REF_VALUES_PER_CANDIDATE);
         if (values.length > 0) {
           try {
-            const found = await queryPage(sessionId, db, cand.to, 0, values.length, idsFilter(values), null, '{"_id":1}', QUERY_TIMEOUT_MS);
+            const found = await queryPage(sessionId, db, cand.to, 0, values.length, idInFilter(values), null, '{"_id":1}', QUERY_TIMEOUT_MS);
             if (my !== gen) return;
             const hits = Math.min(found.length, values.length);
             const score = scoreCandidate(hits, values.length);
             const state = decisions[cand.id];
-            if (keepStrong([{ score }]).length > 0 || state === "confirmed") {
+            if (score >= MIN_REF_SCORE || state === "confirmed") {
               scored.push({ ...cand, score, hits, sampled: values.length, sampleIds: values, confirmed: state === "confirmed", removed: state === "removed" });
             }
           } catch {
@@ -97,7 +102,8 @@ export function createDbDiagram(sessionId: string, db: string, connId: number | 
           }
         }
         done++;
-      }
+      });
+      if (my !== gen) return;
       edges = scored.sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
       relayout(colls);
       finished = true;
@@ -154,7 +160,7 @@ export function createDbDiagram(sessionId: string, db: string, connId: number | 
   /** Filter text selecting the referenced documents of an edge (the sampled values) in its target collection. */
   function filterFor(id: string): string | null {
     const e = edges.find((x) => x.id === id);
-    return e ? idsFilter(e.sampleIds) : null;
+    return e ? idInFilter(e.sampleIds) : null;
   }
 
   /** Saves the diagram as a standalone SVG file. Returns false when the user cancels the dialog. */

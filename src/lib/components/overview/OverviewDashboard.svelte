@@ -2,7 +2,7 @@
 <script lang="ts">
   import { onMount, untrack, type Snippet } from "svelte";
   import { sessionManager } from "../../stores/sessionManager.svelte";
-  import { sessionEnvironment, sessionMeta } from "../../stores/sessionEnv";
+  import { isProdSession, sessionMeta } from "../../stores/sessionEnv";
   import { createOverviewPoller, OVERVIEW_INTERVALS } from "../../stores/overviewPoller.svelte";
   import { createClipboardCopy } from "../../stores/clipboardCopy";
   import { toast } from "../../stores/toast.svelte";
@@ -21,7 +21,7 @@
 
   const sessionId = untrack(() => sessionManager.active?.id ?? "");
   const p = untrack(() =>
-    createOverviewPoller(sessionId, { prod: sessionEnvironment(sessionId) === "prod", connId: sessionMeta(sessionId).connId }),
+    createOverviewPoller(sessionId, { prod: isProdSession(sessionId), connId: sessionMeta(sessionId).connId }),
   );
   const readOnly = $derived(sessionManager.active?.readOnly ?? false);
   const info = $derived(sessionManager.active?.host?.info ?? null);

@@ -9,6 +9,7 @@
   import TargetCollectionField from "./TargetCollectionField.svelte";
   import ImportProgressBar from "./ImportProgressBar.svelte";
   import ImportResultSummary from "./ImportResultSummary.svelte";
+  import ImportBatchPanel from "./ImportBatchPanel.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
   let { sessionId, db, coll = null, existingCollections = [], onclose }: {
@@ -43,38 +44,48 @@
     : d.sqlTargetPlan?.kind === "new" ? m.sql_import_target_new({ n: d.sqlTargetPlan.collections.length, names: d.sqlTargetPlan.collections.join(", ") })
     : null,
   );
-  const wide = $derived(d.format === "sql" || d.format === "csv");
+  const busy = $derived(d.running || (d.batch?.running ?? false));
+  // Once a batch started, its file list is fixed ("Import another file" starts over).
+  const batchLocked = $derived(d.batch !== null && (d.batch.running || d.batch.finished));
+  const wide = $derived(d.format === "sql" || d.format === "csv" || d.batch !== null);
 
   function primaryEnter() {
-    if (d.view === "setup") d.start();
+    if (d.batch) {
+      if (d.batch.finished) onclose();
+      else void d.batch.run();
+    } else if (d.view === "setup") d.start();
     else if (d.finished) onclose();
   }
 
   onMount(() => pushModal({
-    onEscape: () => { if (!d.running) onclose(); },
+    onEscape: () => { if (!busy) onclose(); },
     onEnter: primaryEnter,
-    enterDisabled: () => (d.view === "setup" ? !d.canStart : !d.finished),
+    enterDisabled: () => (d.batch ? !d.batch.canStart && !d.batch.finished : d.view === "setup" ? !d.canStart : !d.finished),
   }));
 </script>
 
-<div class="backdrop" use:portal role="presentation" use:backdropClose={() => { if (!d.running) onclose(); }}>
+<div class="backdrop" use:portal role="presentation" use:backdropClose={() => { if (!busy) onclose(); }}>
   <div class="modal" class:wide role="dialog" aria-modal="true" aria-label={title}>
     <header><div class="title">{title}</div></header>
     <div class="body">
       <div class="file-row">
         <span class="label">{m.import_dialog_file_label()}</span>
-        <span class="path" title={d.path}>{d.fileName || m.sql_import_no_file_chosen()}</span>
-        {#if d.format}
+        <span class="path" title={d.path}>{d.batch ? m.import_batch_files({ count: d.batch.rows.length, importable: d.batch.importable }) : d.fileName || m.sql_import_no_file_chosen()}</span>
+        {#if d.format && !d.batch}
           <span class="badge">{FORMAT_LABEL[d.format]}{d.size !== null ? ` · ${formatFileSize(d.size)}` : ""}</span>
         {/if}
-        {#if d.view === "setup"}
-          <button type="button" onclick={() => d.browse()}>{d.path ? m.import_dialog_change() : m.import_dialog_browse()}</button>
+        {#if d.view === "setup" && !batchLocked}
+          <button type="button" onclick={() => d.browse()}>{d.path || d.batch ? m.import_dialog_change() : m.import_dialog_browse()}</button>
+          {#if d.multiFile}<button type="button" onclick={() => d.browseFolder()}>{m.import_dialog_browse_folder()}</button>{/if}
         {/if}
       </div>
 
-      {#if d.view === "setup"}
+      {#if d.batch}
+        <ImportBatchPanel batch={d.batch} insertModes={INSERT_MODES} />
+      {:else if d.view === "setup"}
+        {#if d.folderError}<div class="error">{d.folderError}</div>{/if}
         {#if !d.path}
-          <p class="hint">{m.import_dialog_hint()}</p>
+          <p class="hint">{d.multiFile ? m.import_dialog_hint_db() : m.import_dialog_hint()}</p>
         {:else}
           {#if d.large}<div class="notice">{m.import_dialog_large_notice({ size: formatFileSize(d.size ?? 0) })}</div>{/if}
           {#if d.format === "sql"}<div class="notice">{m.sql_import_scope_notice()}</div>{/if}
@@ -221,7 +232,20 @@
       {/if}
     </div>
     <footer>
-      {#if d.view === "setup"}
+      {#if d.batch}
+        {@const b = d.batch}
+        {#if b.running}
+          <button type="button" onclick={() => b.cancel()}>{m.common_cancel()}</button>
+          <!-- The import keeps running after the dialog closes (the status bar shows it). -->
+          <button type="button" onclick={onclose}>{m.jobs_background()}</button>
+        {:else if b.finished}
+          <button type="button" onclick={() => d.importAnother()}>{m.import_dialog_another()}</button>
+          <button type="button" class="primary" onclick={onclose}>{m.common_close()}</button>
+        {:else}
+          <button type="button" onclick={onclose}>{m.common_cancel()}</button>
+          <button type="button" class="primary" disabled={!b.canStart} onclick={() => b.run()}>{m.import_batch_run({ count: b.importable })}</button>
+        {/if}
+      {:else if d.view === "setup"}
         <button type="button" onclick={onclose}>{m.common_cancel()}</button>
         <button type="button" class="primary" disabled={!d.canStart} onclick={() => d.start()}>
           {d.sql ? m.sql_import_run({ count: d.sql.selected.size }) : m.import_dialog_run()}

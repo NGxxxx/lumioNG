@@ -15,11 +15,12 @@ const TABLE: Record<DestructiveOp, [Level, Level, Level, Level]> = {
   dropDatabase: ["type", "type", "type", "type"],
   script: ["confirm", "confirm", "confirm", "confirm"],
   killOp: ["confirm", "confirm", "confirm", "type"],
-  setValidator: ["confirm", "confirm", "confirm", "confirm"],
+  // Validator save: only PROD asks.
+  setValidator: ["none", "none", "none", "confirm"],
   // Data sync: writes into the destination; PROD needs the collection name typed.
   sync: ["confirm", "confirm", "confirm", "type"],
-  // Search index create / update: a plain confirm (the store only opens the gate on PROD); drop uses dropIndex (typed).
-  searchIndexWrite: ["confirm", "confirm", "confirm", "confirm"],
+  // Search index create / update: only PROD asks; drop uses dropIndex (typed).
+  searchIndexWrite: ["none", "none", "none", "confirm"],
   // Encrypted field saved as plain text: PROD needs the collection name typed. New data key: only PROD asks.
   storePlaintext: ["confirm", "confirm", "confirm", "type"],
   createDataKey: ["none", "none", "none", "confirm"],

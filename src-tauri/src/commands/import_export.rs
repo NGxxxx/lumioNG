@@ -511,6 +511,22 @@ pub fn import_file_size(path: String) -> Result<u64, AppError> {
         .map_err(|e| AppError::Io(e.to_string()))
 }
 
+/// Full paths of the regular files directly inside `dir` (not recursive), sorted — the frontend
+/// picks the importable ones when a whole folder (e.g. a `mongodump` database directory) is chosen.
+#[tauri::command]
+pub fn list_dir_files(dir: String) -> Result<Vec<String>, AppError> {
+    let io = |e: std::io::Error| AppError::Io(e.to_string());
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(io)? {
+        let entry = entry.map_err(io)?;
+        if entry.file_type().map_err(io)?.is_file() {
+            out.push(entry.path().to_string_lossy().into_owned());
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
 /// Reads a text file if it exists, `None` if it doesn't — used to detect a companion
 /// `.metadata.json` sidecar next to a chosen import file without treating "missing" as an error.
 #[tauri::command]
@@ -977,6 +993,23 @@ mod tests {
         write_base64_file(path.to_string_lossy().to_string(), "aGk=".into()).unwrap();
         assert_eq!(std::fs::read(&path).unwrap(), b"hi");
         assert!(write_base64_file(path.to_string_lossy().to_string(), "!!".into()).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn list_dir_files_lists_only_direct_files_sorted() {
+        let dir = std::env::temp_dir().join("lumiong_test_list_dir_files");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("b.bson"), b"").unwrap();
+        std::fs::write(dir.join("a.json"), b"").unwrap();
+        std::fs::write(dir.join("sub").join("c.json"), b"").unwrap();
+        let names: Vec<String> = list_dir_files(dir.to_string_lossy().into_owned())
+            .unwrap()
+            .iter()
+            .map(|p| std::path::Path::new(p).file_name().unwrap().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(names, ["a.json", "b.bson"]);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

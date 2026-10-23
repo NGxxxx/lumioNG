@@ -20,12 +20,6 @@ export const DEFAULT_REDACT_FIELDS: readonly string[] = [
   "*password*", "*passwd*", "*secret*", "*token*", "*apikey*", "*api_key*", "*cardnumber*", "ssn",
 ];
 
-/** Case-insensitive whole-name match with `*` wildcards (the same rule the Rust side applies). */
-export function fieldMatchesPattern(name: string, pattern: string): boolean {
-  const re = new RegExp("^" + pattern.trim().split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$", "i");
-  return pattern.trim() !== "" && re.test(name);
-}
-
 /** A stored or typed access level made valid: unknown → "read", and a PROD connection can never be "write". */
 export function clampMcpAccess(environment: string, access: string | null | undefined): McpAccess {
   const a = (MCP_ACCESS_LEVELS as readonly string[]).includes(access ?? "") ? (access as McpAccess) : DEFAULT_MCP_ACCESS;

@@ -193,16 +193,16 @@ pub struct VaultSession(Mutex<Option<Vault>>);
 
 impl VaultSession {
     pub fn set(&self, vault: Vault) {
-        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = Some(vault);
+        *crate::util::lock_recover(&self.0) = Some(vault);
     }
     pub fn clear(&self) {
-        *self.0.lock().unwrap_or_else(|e| e.into_inner()) = None;
+        *crate::util::lock_recover(&self.0) = None;
     }
     pub fn is_unlocked(&self) -> bool {
-        self.0.lock().unwrap_or_else(|e| e.into_inner()).is_some()
+        crate::util::lock_recover(&self.0).is_some()
     }
     pub fn with<T>(&self, f: impl FnOnce(&Vault) -> T) -> Option<T> {
-        self.0.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(f)
+        crate::util::lock_recover(&self.0).as_ref().map(f)
     }
 }
 

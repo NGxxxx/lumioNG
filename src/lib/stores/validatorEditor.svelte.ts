@@ -139,7 +139,7 @@ export function createValidatorEditor(args: {
       if (!(await args.save(json, level, action))) throw new Error("save failed");
     };
     await destructive.request(
-      { op: "setValidator", target: { db, coll }, undoable: true, skipConfirm: sessionEnvironment(sessionId) !== "prod" },
+      { op: "setValidator", target: { db, coll }, undoable: true },
       run,
     );
   }

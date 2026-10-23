@@ -66,12 +66,16 @@ claude mcp add --transport http lumiong http://127.0.0.1:7737/mcp --header "Auth
 | `count_documents` | Count matching documents |
 | `collection_schema` | Field paths, BSON types and presence from a random sample |
 | `list_indexes` | Index definitions |
+| `explain` | Winning plan's stages and indexes for a find or pipeline (queryPlanner) |
 | `insert_documents` * | Insert up to 1 000 documents |
 | `update_documents` * | Update one / many documents matching a non-empty filter |
 | `delete_documents` * | Delete one / many documents matching a non-empty filter |
 
-\* Only listed when **Allow writes** is on. Writes are always refused on read-only connections and
-on connections labelled *production*.
+\* Only listed when **Allow writes** is on. Writes also need the connection's MCP access set to
+*write*, and are always refused on read-only connections and on connections labelled *production*.
+Connections whose MCP access is *off* are not listed at all. Values of fields matching your
+redaction patterns come back as `"[redacted]"` and cannot be filtered or aggregated on. Writes made
+through MCP are recorded in the audit log (reads too, if you turn that on).
 
 `connection` may be omitted when only one connection is open; otherwise pass its id or label.
 Arguments accept Extended JSON (`{"_id": {"$oid": "…"}}`, `{"$date": "…"}`); results are returned as

@@ -2,7 +2,18 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, fireEvent, screen } from "@testing-library/svelte";
 import { handleModalKeydown } from "#lib/stores/modalStack.js";
 
-vi.mock("../api/files", () => ({ openDialog: vi.fn(), importFileSize: vi.fn(), readTextFileIfExists: vi.fn() }));
+vi.mock("../api/files", () => {
+  const openDialog = vi.fn();
+  return {
+    openDialog,
+    // The database-level picker allows several files; a single pick behaves like openDialog.
+    openFilesDialog: async (f: unknown) => { const p = await openDialog(f); return p ? [p] : []; },
+    openDirDialog: vi.fn(),
+    listDirFiles: vi.fn(),
+    importFileSize: vi.fn(),
+    readTextFileIfExists: vi.fn(),
+  };
+});
 vi.mock("../api/documents", () => ({ importDocuments: vi.fn(), importBson: vi.fn() }));
 vi.mock("../api/sql", () => ({ sqlImportPreview: vi.fn(), sqlImportCommit: vi.fn() }));
 vi.mock("../api/csv", () => ({ csvImportPreview: vi.fn(), csvImportCommit: vi.fn() }));
@@ -620,5 +631,21 @@ describe("ImportDialog — after a successful import", () => {
     openDialog.mockResolvedValueOnce("/tmp/more.json");
     await fireEvent.click(screen.getByText("Browse…"));
     expect((screen.getByLabelText("Target collection") as HTMLInputElement).value).toBe("users");
+  });
+});
+
+describe("ImportDialog — a whole folder", () => {
+  it("lists one collection per data file, skips the rest, and imports them all", async () => {
+    (filesApi.openDirDialog as ReturnType<typeof vi.fn>).mockResolvedValueOnce("/dump/shop");
+    (filesApi.listDirFiles as ReturnType<typeof vi.fn>).mockResolvedValueOnce(["/dump/shop/orders.bson", "/dump/shop/orders.metadata.json", "/dump/shop/users.json"]);
+    render(ImportDialog, { props: { sessionId: "s", db: "shop", coll: null, existingCollections: [], onclose: () => {} } });
+    await fireEvent.click(screen.getByRole("button", { name: "Folder…" }));
+    expect(await screen.findByText("orders.bson")).toBeTruthy();
+    expect(screen.getByText("mongodump metadata, applied with the data files")).toBeTruthy();
+    const run = screen.getByRole("button", { name: "Import 2 files" });
+    await fireEvent.click(run);
+    await vi.waitFor(() => expect(screen.getByRole("button", { name: "Close" })).toBeTruthy());
+    expect(importBson.mock.calls[0].slice(0, 4)).toEqual(["s", "shop", "orders", "/dump/shop/orders.bson"]);
+    expect(importDocuments.mock.calls[0].slice(0, 4)).toEqual(["s", "shop", "users", "/dump/shop/users.json"]);
   });
 });

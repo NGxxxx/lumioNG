@@ -33,7 +33,7 @@ use `domain`. `domain` must **never** import upward into `api`/`stores`/`compone
 
 ### Store factory pattern (project standard)
 State + actions are wrapped in `createX(...)`, returning **getters** for state and functions for
-actions (see `stores/workspace.svelte.ts`, `stores/collectionView.svelte.ts`):
+actions (see `stores/collectionView.svelte.ts`, `stores/compareView.svelte.ts`):
 
 ```ts
 export function createX(args) {
@@ -53,8 +53,8 @@ export function createX(args) {
   by `id`). When initializing `$state`/creating a store from props, wrap it in `untrack(() => …)`
   to avoid the `state_referenced_locally` warning; read-only values derived from props use
   `$derived` (see `DocumentForm.svelte`).
-- **Large document arrays use `$state.raw`, NEVER `$state`** (see `docs`/`pageDocs` in
-  `collectionView.svelte.ts`, `queryRun.svelte.ts`). `$state` deep-proxies every nested field →
+- **Large document arrays use `$state.raw`, NEVER `$state`** (see `docs` in
+  `collectionView.svelte.ts`, `fullDocs`/`docs` in `scriptResult.svelte.ts`). `$state` deep-proxies every nested field →
   25k documents blows RAM past 1GB (each field becomes a signal/proxy). `$state.raw` keeps the doc
   as a plain object; still reactive when **the whole array is reassigned**.
   ⚠️ Trade-off: with raw, **in-place mutation does not re-render**. Every update must be immutable —
@@ -72,22 +72,35 @@ export function createX(args) {
 
 ```
 src-tauri/src/
-  state.rs        # AppState + helpers. Get the client via: `let client = state.client().await?;`
+  state.rs        # AppState: sessions (client, raw non-decrypting client, read-only, env, tunnels),
+                  #   audit log. client() / writable_client() / raw_client() / audited()
   error.rs        # AppError (serializes { kind, message } to the frontend). No unwrap in command layer.
+  util.rs         # tiny shared helpers (poison-tolerant lock, now_ms, config dir, atomic write)
   bson_json.rs    # BSON → Canonical ExtJSON (to frontend)
   json_bson.rs    # Canonical ExtJSON → BSON (from frontend)
-  registry.rs     # saved connection profiles (connections.json)
-  secrets.rs      # connection secrets in the OS keychain (fill on load / sync on save; file fallback)
-  commands/
-    mod.rs        # `pub mod <group>;` (do NOT re-export functions — see macro note below)
-    connection.rs # connect, list_namespaces, DbInfo…
-    documents.rs  # query_page, insert/replace/delete…
-    mcp.rs        # MCP server on/off + exposed session list
-  mcp/            # built-in MCP server: http.rs (minimal HTTP/1.1), mod.rs (JSON-RPC), tools.rs
+  registry.rs     # saved connection profiles (connections.json), incl. MCP access level
+  secrets.rs      # connection secrets in the OS keychain; file fallback sealed by vault.rs
+  vault.rs        # master-password vault (Argon2id + AES-256-GCM) for the file fallback
+  audit.rs        # append-only, hash-chained audit log of writes
+  redact.rs       # scrub secrets from logs / crash reports / diagnostics
+  csfle*.rs       # CSFLE config, libmongocrypt engine (feature `csfle`), ciphertext guards
+  compare.rs      # streaming diff/sync of two collections
+  proxy.rs http_proxy_tunnel.rs ssh_tunnel.rs http_client.rs oidc_human.rs atlas.rs
+  *_import.rs *_export.rs *_stream.rs   # streaming format readers/writers
+  script/         # QuickJS console: engine, prelude.js (mongosh shim), host/{read,write,admin}.rs
+  mcp/            # built-in MCP server: http.rs, mod.rs (JSON-RPC), tools.rs, redact.rs
+  commands/       # #[tauri::command]s by domain; mod.rs is only `pub mod <group>;`
+                  #   (do NOT re-export functions — see macro note below)
+    connection.rs # connect/test/namespaces/profiles/vault; diagnose.rs = step-by-step diagnosis
+    query.rs      # find/aggregate/count/explain pages; mutation.rs = insert/replace/delete…
+    …             # admin, index, search_index, users, server, stats, profiler, watch,
+                  #   import_export, csv, sql, gridfs, script, compare, csfle, atlas, audit, mcp, prefs
 ```
 
 ### Backend conventions
-- **Always get the client** via `state.client().await?` (don't repeat lock/as_ref/clone boilerplate).
+- **Always get the client** via `state.client(&session_id).await?` (don't repeat lock boilerplate).
+  Writes use `state.writable_client(&session_id).await?` (enforces read-only) wrapped in
+  `state.audited(...)`; data that must never be decrypted (MCP, compare/sync) uses `state.raw_client`.
 - **New command** → place it in `commands/<group>.rs` matching its domain (create a new group if
   needed), then register it with its **full path** in `generate_handler!` in `lib.rs`:
   `commands::<group>::<command>`.

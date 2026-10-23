@@ -173,7 +173,8 @@ Manager, or the Secret Service on Linux (gnome-keyring, KWallet) — one credent
   carries `secretsInKeychain` so the file says where its secrets are.
 - **Migration:** a file written by an older version is moved to the store on first load.
 - **Fallback:** with no usable store (no Secret Service, unlock prompt dismissed, store locked),
-  secrets stay in the file, obfuscated as before; after the first failure the store is left alone
+  secrets stay in the file, sealed by the master-password vault (`vault.rs`) once it is set up and
+  obfuscated until then; after the first failure the store is left alone
   until the next launch so the user isn't prompted on every action. A credential that can't be read
   is never deleted by an unrelated save. The connection form shows which mode is active.
 

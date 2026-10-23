@@ -12,14 +12,6 @@
   const s = untrack(() => createCsfleSettings(connectionId));
   untrack(() => s.load());
 
-  const providerName: Record<string, () => string> = {
-    local: () => m.csfle_provider_local(),
-    aws: () => m.csfle_provider_aws(),
-    azure: () => m.csfle_provider_azure(),
-    gcp: () => m.csfle_provider_gcp(),
-    kmip: () => m.csfle_provider_kmip(),
-  };
-
   async function chooseFile(set: (path: string) => void) {
     const path = await pickAnyFile();
     if (path) set(path);
@@ -28,9 +20,7 @@
     const path = await pickSavePath("lumiong-local-master.key", "key");
     if (path) await s.generateLocalKey(path);
   }
-  const problemText = $derived(
-    s.problem === "namespace" ? m.csfle_problem_namespace() : s.problem === "providers" ? m.csfle_problem_providers() : s.problem === "credentials" ? m.csfle_problem_credentials() : null,
-  );
+  const problemText = $derived(s.problem ? msgKey(`csfle_problem_${s.problem}`) : null);
 </script>
 
 {#if connectionId === null}
@@ -48,8 +38,8 @@
     <div class="providers">
       {#each KMS_PROVIDERS as p (p)}
         <label class="check">
-          <input type="checkbox" checked={s.selected.includes(p)} onchange={(e) => s.toggleProvider(p, e.currentTarget.checked)} aria-label={providerName[p]()} />
-          <span>{providerName[p]()}</span>
+          <input type="checkbox" checked={s.selected.includes(p)} onchange={(e) => s.toggleProvider(p, e.currentTarget.checked)} aria-label={msgKey(`csfle_provider_${p}`)} />
+          <span>{msgKey(`csfle_provider_${p}`)}</span>
           {#if s.stored.includes(p)}<span class="stored">{m.csfle_stored()}</span>{/if}
         </label>
       {/each}
@@ -58,7 +48,7 @@
 
   {#each KMS_PROVIDERS.filter((p) => s.selected.includes(p)) as p (p)}
     <fieldset>
-      <legend>{providerName[p]()}</legend>
+      <legend>{msgKey(`csfle_provider_${p}`)}</legend>
       <div class="form-grid">
         {#if p === "local"}
           <span class="lbl">{m.csfle_local_key_file()}</span>

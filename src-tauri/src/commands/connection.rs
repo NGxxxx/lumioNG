@@ -1,15 +1,16 @@
 use crate::commands::csfle;
 use crate::error::AppError;
 use crate::http_client;
-use crate::http_proxy_tunnel::{self, HttpProxyTunnelHandle};
+use crate::http_proxy_tunnel;
 use crate::known_hosts;
 use crate::oidc_human;
 use crate::proxy::ProxyConfig;
 use crate::registry::{self, ConnectionInput, SavedConnection};
 use crate::secrets::{self, Held, Locked, OsKeychain, SecretStore, VaultCtx};
 use crate::vault::VaultSession;
-use crate::ssh_tunnel::{self, SshTunnelConfig, SshTunnelHandle};
-use crate::state::AppState;
+use crate::ssh_tunnel::{self, SshTunnelConfig};
+use crate::state::{AppState, Session};
+use crate::util::{blocking, config_dir, lock_recover, now_ms};
 use futures::future::try_join_all;
 use mongodb::bson::doc;
 use mongodb::options::{AuthMechanism, ClientOptions, ServerAddress};
@@ -87,42 +88,75 @@ fn attach_human_oidc(app: &AppHandle, opts: &mut ClientOptions, proxy: Option<&P
     Ok(())
 }
 
+/// Port the driver assumes when a URI host has none.
+pub(crate) const DEFAULT_PORT: u16 = 27017;
+/// Why an HTTP proxy cannot carry a URI (the forwarder pins exactly one target host).
+pub(crate) const SINGLE_HOST_REQUIRED: &str = "An HTTP proxy requires a single direct host (no mongodb+srv, no replica set seed list)";
+/// Server selection / connect timeout instead of the driver's 30 s, so a transient Atlas hiccup doesn't freeze every operation for 30 s.
+pub(crate) const DRIVER_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// `(host, port)` of a TCP address, the port defaulting to 27017 (`None` for a Unix socket).
+pub(crate) fn tcp_host_port(addr: &ServerAddress) -> Option<(String, u16)> {
+    match addr {
+        ServerAddress::Tcp { host, port } => Some((host.clone(), port.unwrap_or(DEFAULT_PORT))),
+        #[allow(unreachable_patterns)]
+        _ => None,
+    }
+}
+
+/// The first host of the URI, as the target of a tunnel. `what` names the feature in the error.
+pub(crate) fn first_host(opts: &ClientOptions, what: &str) -> Result<(String, u16), AppError> {
+    let addr = opts.hosts.first().ok_or_else(|| AppError::Connection("no host in connection URI".into()))?;
+    tcp_host_port(addr).ok_or_else(|| AppError::Connection(format!("{what} requires a direct host:port URI")))
+}
+
+/// The one host an HTTP proxy forwarder can carry: refuses `mongodb+srv` and replica set seed lists.
+pub(crate) fn single_direct_host(opts: &ClientOptions, is_srv: bool) -> Result<(String, u16), AppError> {
+    if opts.hosts.len() != 1 || is_srv {
+        return Err(AppError::Connection(SINGLE_HOST_REQUIRED.into()));
+    }
+    first_host(opts, "An HTTP proxy")
+}
+
+/// Points the driver at a local forwarder (SSH tunnel or HTTP proxy) instead of the URI's hosts.
+pub(crate) fn route_via_local(opts: &mut ClientOptions, local_port: u16) {
+    opts.hosts = vec![ServerAddress::Tcp { host: "127.0.0.1".into(), port: Some(local_port) }];
+}
+
+/// The app's driver defaults: `app_name` (Atlas metrics / profiler) unless the URI set one, and 10 s timeouts.
+pub(crate) fn apply_driver_defaults(opts: &mut ClientOptions) {
+    opts.app_name.get_or_insert_with(|| "LumioNG".to_string());
+    opts.server_selection_timeout = Some(DRIVER_TIMEOUT);
+    opts.connect_timeout.get_or_insert(DRIVER_TIMEOUT);
+}
+
 /// Opens an SSH tunnel or an HTTP CONNECT forwarder (if requested) and rewrites `opts.hosts` to the local
 /// forwarded port; shared by `connect` and `test_connection`. A SOCKS5 proxy needs no work here: its
 /// `proxyHost`/`proxyPort`/... options travel in the URI and the driver applies them to every host.
+/// Returns a complete session (read-write, no label) holding everything that must live as long as the client.
 async fn open_client(
     app: &AppHandle,
     uri: &str,
     ssh: Option<SshTunnelConfig>,
     proxy: Option<ProxyConfig>,
     connection_id: Option<u32>,
-) -> Result<(Client, Option<SshTunnelHandle>, Option<HttpProxyTunnelHandle>, Option<(csfle::CsfleHandle, Client)>), AppError> {
+) -> Result<Session, AppError> {
     let oidc_proxy = proxy.clone();
     let http_proxy = proxy.filter(|p| p.is_http());
     if http_proxy.is_some() && ssh.as_ref().is_some_and(|s| s.enabled) {
         return Err(AppError::Connection("An SSH tunnel and a proxy cannot be used together".into()));
     }
-    // Override the driver's 30s server_selection_timeout default so a transient Atlas hiccup doesn't freeze every operation for 30s; also set app_name for Atlas metrics/profiler.
     let mut opts = ClientOptions::parse(uri)
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
-    opts.app_name.get_or_insert_with(|| "LumioNG".to_string());
-    opts.server_selection_timeout = Some(Duration::from_secs(10));
-    opts.connect_timeout.get_or_insert(Duration::from_secs(10));
+    apply_driver_defaults(&mut opts);
     attach_human_oidc(app, &mut opts, oidc_proxy.as_ref(), connection_id)?;
 
     let tunnel = match ssh {
         Some(cfg) if cfg.enabled => {
-            let ServerAddress::Tcp { host: remote_host, port: remote_port } = opts
-                .hosts
-                .first()
-                .cloned()
-                .ok_or_else(|| AppError::Connection("no host in connection URI".into()))?
-            else {
-                return Err(AppError::Connection("SSH tunnel requires a direct host:port URI".into()));
-            };
-            let tunnel = ssh_tunnel::open(&cfg, &remote_host, remote_port.unwrap_or(27017), &known_hosts_path(app)?).await?;
-            opts.hosts = vec![ServerAddress::Tcp { host: "127.0.0.1".into(), port: Some(tunnel.local_port) }];
+            let (remote_host, remote_port) = first_host(&opts, "SSH tunnel")?;
+            let tunnel = ssh_tunnel::open(&cfg, &remote_host, remote_port, &known_hosts_path(app)?).await?;
+            route_via_local(&mut opts, tunnel.local_port);
             Some(tunnel)
         }
         _ => None,
@@ -130,35 +164,26 @@ async fn open_client(
 
     let proxy_tunnel = match http_proxy {
         Some(cfg) => {
-            let ServerAddress::Tcp { host: remote_host, port: remote_port } = opts
-                .hosts
-                .first()
-                .cloned()
-                .ok_or_else(|| AppError::Connection("no host in connection URI".into()))?
-            else {
-                return Err(AppError::Connection("An HTTP proxy requires a direct host:port URI".into()));
-            };
-            if opts.hosts.len() != 1 || uri.trim_start().to_lowercase().starts_with("mongodb+srv") {
-                return Err(AppError::Connection("An HTTP proxy requires a single direct host (no mongodb+srv, no replica set seed list)".into()));
-            }
-            let t = http_proxy_tunnel::open(&cfg, &remote_host, remote_port.unwrap_or(27017)).await?;
-            opts.hosts = vec![ServerAddress::Tcp { host: "127.0.0.1".into(), port: Some(t.local_port) }];
+            let is_srv = uri.trim_start().to_lowercase().starts_with("mongodb+srv");
+            let (remote_host, remote_port) = single_direct_host(&opts, is_srv)?;
+            let t = http_proxy_tunnel::open(&cfg, &remote_host, remote_port).await?;
+            route_via_local(&mut opts, t.local_port);
             Some(t)
         }
         None => None,
     };
 
     // Client-side field level encryption: reads are decrypted automatically (no auto-encryption on write).
-    let (client, csfle_handle) = match csfle::prepare(app, &app.state::<VaultSession>(), connection_id)? {
+    let (client, csfle_parts): (Client, Option<(Arc<csfle::CsfleHandle>, Client)>) = match csfle::prepare(app, &app.state::<VaultSession>(), connection_id)? {
         #[cfg(feature = "csfle")]
         Some(prepared) => {
             // The non-decrypting twin is built from the very same options (tunnel, proxy, OIDC included).
             let raw = Client::with_options(opts.clone()).map_err(|e| AppError::Connection(e.to_string()))?;
             let (client, handle) = prepared.build_client(opts).await?;
-            (client, Some((handle, raw)))
+            (client, Some((Arc::new(handle), raw)))
         }
         #[cfg(not(feature = "csfle"))]
-        Some(_) => return Err(AppError::Connection("Client-side field level encryption is not available in this build".into())),
+        Some(_) => return Err(AppError::Connection(csfle::NOT_AVAILABLE.into())),
         None => (Client::with_options(opts).map_err(|e| AppError::Connection(e.to_string()))?, None),
     };
 
@@ -169,7 +194,8 @@ async fn open_client(
         .await
         .map_err(|e| AppError::Connection(e.to_string()))?;
 
-    Ok((client, tunnel, proxy_tunnel, csfle_handle))
+    let (csfle, raw_client) = csfle_parts.unzip();
+    Ok(Session { tunnel, proxy_tunnel, csfle, raw_client, ..Session::new(client, false, String::new(), String::new()) })
 }
 
 #[tauri::command]
@@ -185,16 +211,9 @@ pub async fn connect(
     connection_id: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<(), AppError> {
-    let (client, tunnel, proxy_tunnel, csfle_handle) = open_client(&app, &uri, ssh, proxy, connection_id).await?;
-    state
-        .insert_session(session_id.clone(), client, read_only, label.unwrap_or_default(), environment.unwrap_or_default(), tunnel)
-        .await;
-    if let Some(t) = proxy_tunnel {
-        state.set_proxy_tunnel(&session_id, t).await;
-    }
-    if let Some((h, raw)) = csfle_handle {
-        state.set_csfle(&session_id, h, raw).await;
-    }
+    let opened = open_client(&app, &uri, ssh, proxy, connection_id).await?;
+    let session = Session { read_only, label: label.unwrap_or_default(), environment: environment.unwrap_or_default(), ..opened };
+    state.insert_session(session_id, session).await;
     Ok(())
 }
 
@@ -302,19 +321,11 @@ pub async fn list_plain_collections(
 }
 
 pub(crate) fn registry_path(app: &AppHandle) -> Result<PathBuf, AppError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| AppError::Io(e.to_string()))?;
-    Ok(dir.join("connections.json"))
+    Ok(config_dir(app)?.join("connections.json"))
 }
 
 pub(crate) fn known_hosts_path(app: &AppHandle) -> Result<PathBuf, AppError> {
-    let dir = app
-        .path()
-        .app_config_dir()
-        .map_err(|e| AppError::Io(e.to_string()))?;
-    Ok(dir.join("known_hosts.json"))
+    Ok(config_dir(app)?.join("known_hosts.json"))
 }
 
 /// Drops the trusted SSH host key for `host:port`, if any, so the next connect trusts whatever key
@@ -349,7 +360,7 @@ fn load_full(
     let locked = secrets::fill(&mut list, store);
     if secrets::needs_migration(&list, store) {
         let mut file = secrets::sync(&list, &list, &locked, store);
-        secrets::seal_list(&mut file, &list, &held, ctx, !store.available())?;
+        secrets::seal_list(&mut file, &list, &held, ctx, use_vault)?;
         registry::save(path, &file)?;
         let flags: Vec<bool> = file.iter().map(|c| c.secrets_in_keychain).collect();
         for (c, f) in list.iter_mut().zip(flags) {
@@ -360,25 +371,8 @@ fn load_full(
 }
 
 /// Applies `change` to the full registry and saves it, keeping secrets in the credential store.
-fn update_registry(
-    app: &AppHandle,
-    session: &VaultSession,
-    change: impl FnOnce(Vec<SavedConnection>) -> Vec<SavedConnection>,
-) -> Result<Vec<SavedConnection>, AppError> {
-    update_registry_at(&registry_path(app)?, &OsKeychain, &vault_ctx(app, session)?, change)
-}
-
-fn update_registry_at(
-    path: &Path,
-    store: &dyn SecretStore,
-    ctx: &VaultCtx,
-    change: impl FnOnce(Vec<SavedConnection>) -> Vec<SavedConnection>,
-) -> Result<Vec<SavedConnection>, AppError> {
-    update_registry_inner(path, store, ctx, None, change)
-}
-
 /// `drop_held`: a connection whose held (sealed, unreadable) secrets must not be restored on this save.
-fn update_registry_inner(
+fn update_registry_at(
     path: &Path,
     store: &dyn SecretStore,
     ctx: &VaultCtx,
@@ -405,32 +399,60 @@ fn update_registry_inner(
         .collect())
 }
 
-#[tauri::command]
-pub fn list_connections(app: AppHandle, vault: State<'_, VaultSession>) -> Result<Vec<SavedConnection>, AppError> {
-    Ok(load_full(&registry_path(&app)?, &OsKeychain, &vault_ctx(&app, &vault)?)?.1)
+/// One registry / vault operation at a time: each is a load-modify-save of `connections.json`.
+static REGISTRY_IO: Mutex<()> = Mutex::new(());
+
+/// Runs registry and vault work (OS keychain calls, Argon2id key derivation, file I/O) on the
+/// blocking pool instead of Tauri's main thread, serialized by `REGISTRY_IO`.
+async fn registry_job<T: Send + 'static>(
+    app: AppHandle,
+    f: impl FnOnce(&AppHandle, &VaultSession) -> Result<T, AppError> + Send + 'static,
+) -> Result<T, AppError> {
+    blocking(move || {
+        let _io = lock_recover(&REGISTRY_IO);
+        let vault = app.state::<VaultSession>();
+        f(&app, &vault)
+    })
+    .await
+}
+
+/// `update_registry_at` on the app's registry file and credential store.
+fn update_app_registry(
+    app: &AppHandle,
+    vault: &VaultSession,
+    drop_held: Option<u32>,
+    change: impl FnOnce(Vec<SavedConnection>) -> Vec<SavedConnection>,
+) -> Result<Vec<SavedConnection>, AppError> {
+    update_registry_at(&registry_path(app)?, &OsKeychain, &vault_ctx(app, vault)?, drop_held, change)
 }
 
 #[tauri::command]
-pub fn save_connection(
+pub async fn list_connections(app: AppHandle) -> Result<Vec<SavedConnection>, AppError> {
+    registry_job(app, |app, vault| Ok(load_full(&registry_path(app)?, &OsKeychain, &vault_ctx(app, vault)?)?.1)).await
+}
+
+#[tauri::command]
+pub async fn save_connection(
     app: AppHandle,
-    vault: State<'_, VaultSession>,
     id: Option<u32>,
     input: ConnectionInput,
     clear_secrets: Option<bool>,
 ) -> Result<Vec<SavedConnection>, AppError> {
     // "Save without password": the user chose no secret, so sealed values held for this connection go too.
     let drop_held = if clear_secrets == Some(true) { id } else { None };
-    let (path, ctx) = (registry_path(&app)?, vault_ctx(&app, &vault)?);
-    update_registry_inner(&path, &OsKeychain, &ctx, drop_held, |list| registry::upsert(list, id, input))
+    registry_job(app, move |app, vault| update_app_registry(app, vault, drop_held, |list| registry::upsert(list, id, input))).await
 }
 
 #[tauri::command]
-pub fn delete_connection(app: AppHandle, vault: State<'_, VaultSession>, id: u32) -> Result<Vec<SavedConnection>, AppError> {
-    // A deleted connection must not leave its OIDC refresh token behind.
-    oidc_human::TokenPersist::forget(&AppTokens { app: app.clone(), id });
-    // ...nor its encryption settings and KMS credentials.
-    csfle::forget_connection(&app, &vault, id);
-    update_registry(&app, &vault, |list| registry::remove(list, id))
+pub async fn delete_connection(app: AppHandle, id: u32) -> Result<Vec<SavedConnection>, AppError> {
+    registry_job(app, move |app, vault| {
+        // A deleted connection must not leave its OIDC refresh token behind.
+        oidc_human::TokenPersist::forget(&AppTokens { app: app.clone(), id });
+        // ...nor its encryption settings and KMS credentials.
+        csfle::forget_connection(app, vault, id);
+        update_app_registry(app, vault, None, |list| registry::remove(list, id))
+    })
+    .await
 }
 
 /// Where saved passwords go: `"keychain"` (OS credential store) or `"file"` (obfuscated in
@@ -447,44 +469,36 @@ pub fn vault_status(app: AppHandle, vault: State<'_, VaultSession>) -> Result<&'
     Ok(secrets::vault_status(&OsKeychain, &vault_ctx(&app, &vault)?))
 }
 
-/// Unlocks the vault; a wrong password is an error of kind `Vault`.
+/// Unlocks the vault; a wrong password is an error of kind `Vault`. Argon2id runs off the main thread.
 #[tauri::command]
-pub fn vault_unlock(app: AppHandle, vault: State<'_, VaultSession>, password: String) -> Result<(), AppError> {
+pub async fn vault_unlock(app: AppHandle, password: String) -> Result<(), AppError> {
     let password = zeroize::Zeroizing::new(password);
-    secrets::vault_unlock(&vault_ctx(&app, &vault)?, &registry_path(&app)?, &password)
+    registry_job(app, move |app, vault| secrets::vault_unlock(&vault_ctx(app, vault)?, &registry_path(app)?, &password)).await
 }
 
 /// First-time setup: creates the vault with `password` and seals the secrets already in the file.
 #[tauri::command]
-pub fn vault_setup(app: AppHandle, vault: State<'_, VaultSession>, password: String) -> Result<(), AppError> {
+pub async fn vault_setup(app: AppHandle, password: String) -> Result<(), AppError> {
     let password = zeroize::Zeroizing::new(password);
-    secrets::vault_setup(&vault_ctx(&app, &vault)?, &registry_path(&app)?, &password)
+    registry_job(app, move |app, vault| secrets::vault_setup(&vault_ctx(app, vault)?, &registry_path(app)?, &password)).await
 }
 
 /// "Forgot master password": deletes the vault and every sealed secret. Connections stay, with
 /// empty passwords. Irreversible.
 #[tauri::command]
-pub fn vault_reset(
-    app: AppHandle,
-    vault: State<'_, VaultSession>,
-    atlas: State<'_, crate::commands::atlas::AtlasState>,
-) -> Result<(), AppError> {
-    let r = secrets::vault_reset(&vault_ctx(&app, &vault)?, &registry_path(&app)?);
-    atlas.clear(); // cached Service Account clients hold a secret from before the reset
-    r
-}
-
-fn now_ms() -> i64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
+pub async fn vault_reset(app: AppHandle) -> Result<(), AppError> {
+    registry_job(app, |app, vault| {
+        let r = secrets::vault_reset(&vault_ctx(app, vault)?, &registry_path(app)?);
+        app.state::<crate::commands::atlas::AtlasState>().clear(); // cached Service Account clients hold a secret from before the reset
+        r
+    })
+    .await
 }
 
 /// Stamp a saved connection's last-connected time after a successful `connect`; failures here must never block the connect flow (see `sessionManager.focusOrOpen`).
 #[tauri::command]
-pub fn touch_connection(app: AppHandle, vault: State<'_, VaultSession>, id: u32) -> Result<Vec<SavedConnection>, AppError> {
-    update_registry(&app, &vault, |list| registry::touch(list, id, now_ms()))
+pub async fn touch_connection(app: AppHandle, id: u32) -> Result<Vec<SavedConnection>, AppError> {
+    registry_job(app, move |app, vault| update_app_registry(app, vault, None, |list| registry::touch(list, id, now_ms()))).await
 }
 
 #[cfg(test)]
@@ -565,7 +579,7 @@ mod registry_secret_tests {
         let path = temp("roundtrip");
         let store = MemoryStore::default();
         let session = VaultSession::default();
-        let saved = update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::upsert(l, None, input("enc-secret"))).unwrap();
+        let saved = update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::upsert(l, None, input("enc-secret"))).unwrap();
         assert_eq!(saved[0].password_enc, "enc-secret"); // the frontend still gets it back
         assert!(saved[0].secrets_in_keychain);
         let on_disk = std::fs::read_to_string(&path).unwrap();
@@ -574,10 +588,10 @@ mod registry_secret_tests {
         let listed = load_full(&path, &store, &ctx(&path, &session)).unwrap().1;
         assert_eq!(listed[0].password_enc, "enc-secret");
 
-        update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::touch(l, 1, 7)).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::touch(l, 1, 7)).unwrap();
         assert_eq!(*store.writes.borrow(), 1); // a touch never rewrites the credential
 
-        update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::remove(l, 1)).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::remove(l, 1)).unwrap();
         assert!(store.items.borrow().is_empty());
     }
 
@@ -600,10 +614,10 @@ mod registry_secret_tests {
         let path = temp("nostore");
         let store = MemoryStore { broken: true, ..Default::default() };
         let session = VaultSession::default();
-        update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::upsert(l, None, input(""))).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::upsert(l, None, input(""))).unwrap();
         assert_eq!(load_full(&path, &store, &ctx(&path, &session)).unwrap().1.len(), 1);
         // A secret needs the vault first (see the refusal tests below).
-        assert!(update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::upsert(l, None, input("enc-secret"))).is_err());
+        assert!(update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::upsert(l, None, input("enc-secret"))).is_err());
     }
 
     // ── file fallback sealed by the master-password vault ──
@@ -637,7 +651,7 @@ mod registry_secret_tests {
         assert!(std::fs::read_to_string(&path).unwrap().contains("legacy-enc"));
 
         // Before any vault exists the old value may stay as it is (touching a connection works)…
-        update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::touch(l, 1, 2)).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::touch(l, 1, 2)).unwrap();
         // …and setting up the vault seals what the file already holds.
         secrets::vault_setup(&ctx(&path, &session), &path, MASTER).unwrap();
         let on_disk = std::fs::read_to_string(&path).unwrap();
@@ -649,7 +663,7 @@ mod registry_secret_tests {
         assert_eq!(secrets::vault_status(&store, &ctx(&path, &restarted)), "locked");
         assert_eq!(load_full(&path, &store, &ctx(&path, &restarted)).unwrap().1[0].password_enc, "");
         // An unrelated save while locked keeps the seal.
-        update_registry_at(&path, &store, &ctx(&path, &restarted), |l| registry::touch(l, 1, 9)).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &restarted), None, |l| registry::touch(l, 1, 9)).unwrap();
         assert!(registry::load(&path).unwrap()[0].password_enc.starts_with("vault:v1:"));
         // Wrong password changes nothing; the right one unlocks.
         assert!(secrets::vault_unlock(&ctx(&path, &restarted), &path, "nope-nope").is_err());
@@ -664,12 +678,12 @@ mod registry_secret_tests {
         let path = temp("refuse_uninit");
         let session = VaultSession::default();
         let store = no_store();
-        let r = update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::upsert(l, None, input("typed-pw")));
+        let r = update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::upsert(l, None, input("typed-pw")));
         assert_eq!(vault_code(r), "vault_uninitialized");
         assert!(!path.exists(), "nothing may be written");
 
         // Without the password the connection saves fine.
-        update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::upsert(l, None, input(""))).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::upsert(l, None, input(""))).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("typed-pw"));
 
         // Changing a legacy plain value is refused too; leaving it alone is not.
@@ -678,8 +692,8 @@ mod registry_secret_tests {
             l[0].password_enc = pw.into();
             l
         };
-        assert_eq!(vault_code(update_registry_at(&path, &store, &ctx(&path, &session), edit("changed"))), "vault_uninitialized");
-        update_registry_at(&path, &store, &ctx(&path, &session), edit("old")).unwrap();
+        assert_eq!(vault_code(update_registry_at(&path, &store, &ctx(&path, &session), None, edit("changed"))), "vault_uninitialized");
+        update_registry_at(&path, &store, &ctx(&path, &session), None, edit("old")).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("changed"));
     }
 
@@ -693,26 +707,26 @@ mod registry_secret_tests {
         let before = std::fs::read_to_string(&path).unwrap();
 
         // A typed password for a connection whose secret is sealed: refused, file untouched.
-        let r = update_registry_at(&path, &store, &ctx(&path, &locked), |mut l| {
+        let r = update_registry_at(&path, &store, &ctx(&path, &locked), None, |mut l| {
             l[0].password_enc = "typed-pw".into();
             l
         });
         assert_eq!(vault_code(r), "vault_locked");
         // A brand-new connection with a secret: refused as well.
-        let r = update_registry_at(&path, &store, &ctx(&path, &locked), |l| registry::upsert(l, None, input("typed-pw")));
+        let r = update_registry_at(&path, &store, &ctx(&path, &locked), None, |l| registry::upsert(l, None, input("typed-pw")));
         assert_eq!(vault_code(r), "vault_locked");
         assert_eq!(std::fs::read_to_string(&path).unwrap(), before);
         assert!(!std::fs::read_to_string(&path).unwrap().contains("typed-pw"));
 
         // Saving without a password works and keeps the sealed secrets of other connections.
-        update_registry_at(&path, &store, &ctx(&path, &locked), |l| registry::upsert(l, None, input(""))).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &locked), None, |l| registry::upsert(l, None, input(""))).unwrap();
         let list = registry::load(&path).unwrap();
         assert_eq!(list.len(), 2);
         assert!(list[0].password_enc.starts_with("vault:v1:"));
 
         // Once unlocked the same save goes through, sealed.
         secrets::vault_unlock(&ctx(&path, &locked), &path, MASTER).unwrap();
-        update_registry_at(&path, &store, &ctx(&path, &locked), |l| registry::upsert(l, Some(2), input("typed-pw"))).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &locked), None, |l| registry::upsert(l, Some(2), input("typed-pw"))).unwrap();
         let on_disk = std::fs::read_to_string(&path).unwrap();
         assert!(!on_disk.contains("typed-pw") && !on_disk.contains("legacy-enc"));
     }
@@ -727,10 +741,10 @@ mod registry_secret_tests {
         let blank = |l: Vec<SavedConnection>| registry::upsert(l, Some(1), input(""));
 
         // A normal blank save while locked keeps the seal (blank reads as "unreadable")…
-        update_registry_at(&path, &store, &ctx(&path, &locked), blank).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &locked), None, blank).unwrap();
         assert!(registry::load(&path).unwrap()[0].password_enc.starts_with("vault:v1:"));
         // …but an explicit "save without password" really removes it.
-        update_registry_inner(&path, &store, &ctx(&path, &locked), Some(1), blank).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &locked), Some(1), blank).unwrap();
         assert_eq!(registry::load(&path).unwrap()[0].password_enc, "");
     }
 
@@ -770,14 +784,14 @@ mod registry_secret_tests {
         let session = VaultSession::default();
         let store = MemoryStore::default();
         assert_eq!(secrets::vault_status(&store, &ctx(&path, &session)), "not_needed");
-        update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::upsert(l, None, input("enc-secret"))).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::upsert(l, None, input("enc-secret"))).unwrap();
         load_full(&path, &store, &ctx(&path, &session)).unwrap();
         assert!(!path.with_file_name("vault.json").exists());
         assert!(!std::fs::read_to_string(&path).unwrap().contains("vault:v1:"));
         // Even a key left in memory is not used to seal anything while a credential store exists.
         let (v, _) = crate::vault::Vault::create("x").unwrap();
         session.set(v);
-        update_registry_at(&path, &store, &ctx(&path, &session), |l| registry::touch(l, 1, 3)).unwrap();
+        update_registry_at(&path, &store, &ctx(&path, &session), None, |l| registry::touch(l, 1, 3)).unwrap();
         assert!(!std::fs::read_to_string(&path).unwrap().contains("vault:v1:"));
         assert!(!path.with_file_name("vault.json").exists());
     }

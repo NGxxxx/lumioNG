@@ -275,7 +275,8 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     #[ignore = "needs a MongoDB at LUMIO_TEST_MONGO_URI (default mongodb://localhost:27017/?directConnection=true)"]
     async fn csfle_editing_a_plain_field_keeps_the_ciphertext_of_encrypted_ones() {
-        use crate::commands::csfle::{guard_replacement, PLAINTEXT_REQUIRED};
+        use crate::commands::csfle::guard_replacement;
+        use crate::csfle_guard::PLAINTEXT_REQUIRED;
         let l = live("lumio_csfle_edit").await;
         let ssn = encrypt_value(&l.enc, Bson::String("123-45".into()), Some(&l.key_id), None, Algo::Random).await.unwrap();
         let name = "lumio_csfle_edit";
