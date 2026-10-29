@@ -224,3 +224,18 @@ describe("ExportWizard — remembered choices", () => {
     expect((getByLabelText("JSON") as HTMLInputElement).checked).toBe(true);
   });
 });
+
+describe("ExportWizard — filter box", () => {
+  it("narrows the collection list; Select all then only ticks the visible matches", async () => {
+    const { getByPlaceholderText, queryByText, getByText } = render(ExportWizard, {
+      props: { input: { mode: "pick", preChecked: [] }, onclose: vi.fn() },
+    });
+    await fireEvent.input(getByPlaceholderText("Filter databases or collections…"), { target: { value: "ORD" } });
+    expect(getByText("orders")).toBeTruthy();
+    expect(queryByText("users")).toBeNull();
+    await fireEvent.click(getByText("Select all"));
+    expect(getByText("1 selected")).toBeTruthy();
+    await fireEvent.input(getByPlaceholderText("Filter databases or collections…"), { target: { value: "zzz" } });
+    expect(getByText("Nothing matches “zzz”.")).toBeTruthy();
+  });
+});

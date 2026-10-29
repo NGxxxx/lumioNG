@@ -2,6 +2,10 @@
   import { settings } from "../stores/settings.svelte";
   import * as m from "#lib/paraglide/messages.js";
 
+  /** `timeoutOnly`: the collection Data view, where only the query timeout applies
+   *  (the result cap and query history belong to the Query tab). */
+  let { timeoutOnly = false }: { timeoutOnly?: boolean } = $props();
+
   let open = $state(false);
 
   function toggle(e: MouseEvent) {
@@ -22,22 +26,24 @@
         <input type="number" min="1" class="field-input" value={settings.queryTimeoutMs}
           onchange={(e) => settings.setQueryTimeoutMs(+e.currentTarget.value)} />
       </label>
-      <div class="field cap-field">
-        <label class="field-label" for="query-cap-input">{m.query_tab_settings_cap()}</label>
-        <input id="query-cap-input" type="number" min="1" class="field-input" value={settings.queryResultCap}
-          disabled={settings.queryResultCapUnlimited}
-          onchange={(e) => settings.setQueryResultCap(+e.currentTarget.value)} />
-        <label class="checkbox-row">
-          <input type="checkbox" checked={settings.queryResultCapUnlimited}
-            onchange={(e) => settings.setQueryResultCapUnlimited(e.currentTarget.checked)} />
-          <span>{m.query_tab_settings_cap_all()}</span>
+      {#if !timeoutOnly}
+        <div class="field cap-field">
+          <label class="field-label" for="query-cap-input">{m.query_tab_settings_cap()}</label>
+          <input id="query-cap-input" type="number" min="1" class="field-input" value={settings.queryResultCap}
+            disabled={settings.queryResultCapUnlimited}
+            onchange={(e) => settings.setQueryResultCap(+e.currentTarget.value)} />
+          <label class="checkbox-row">
+            <input type="checkbox" checked={settings.queryResultCapUnlimited}
+              onchange={(e) => settings.setQueryResultCapUnlimited(e.currentTarget.checked)} />
+            <span>{m.query_tab_settings_cap_all()}</span>
+          </label>
+        </div>
+        <label class="checkbox-row history-row">
+          <input type="checkbox" checked={settings.recordQueryHistory}
+            onchange={(e) => settings.setRecordQueryHistory(e.currentTarget.checked)} />
+          <span>{m.settings_record_history()}</span>
         </label>
-      </div>
-      <label class="checkbox-row history-row">
-        <input type="checkbox" checked={settings.recordQueryHistory}
-          onchange={(e) => settings.setRecordQueryHistory(e.currentTarget.checked)} />
-        <span>{m.settings_record_history()}</span>
-      </label>
+      {/if}
     </div>
   {/if}
 </div>

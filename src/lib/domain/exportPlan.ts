@@ -9,6 +9,21 @@ export function targetKey(db: string, coll: string): string {
   return JSON.stringify([db, coll]);
 }
 
+/** Case-insensitive substring match; a blank query matches everything. */
+export function matchesFilter(text: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  return q === "" || text.toLowerCase().includes(q);
+}
+
+/** The export picker's tree narrowed by `query`: a database whose name matches keeps all its
+ *  collections; otherwise only matching collections stay, and databases left empty are dropped. */
+export function filterPickTree<D extends { name: string; collections: string[] }>(databases: D[], query: string): D[] {
+  if (query.trim() === "") return databases;
+  return databases
+    .map((d) => (matchesFilter(d.name, query) ? d : { ...d, collections: d.collections.filter((c) => matchesFilter(c, query)) }))
+    .filter((d) => d.collections.length > 0);
+}
+
 /** Checked (db, coll) pairs in tree order. `checked` holds `targetKey` values. */
 export function buildTargets(
   databases: { name: string; collections: string[] }[],

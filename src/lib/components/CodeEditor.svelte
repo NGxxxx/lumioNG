@@ -2,7 +2,7 @@
 <script lang="ts">
   import { templateInsertion } from "../domain/queryTemplates";
   import { onMount } from "svelte";
-  import { EditorView, keymap, lineNumbers } from "@codemirror/view";
+  import { EditorView, keymap, lineNumbers, drawSelection } from "@codemirror/view";
   import { EditorState } from "@codemirror/state";
   import { defaultKeymap, history, historyKeymap, toggleComment } from "@codemirror/commands";
   import { bracketMatching } from "@codemirror/language";
@@ -35,6 +35,8 @@
   onMount(() => {
     const extensions = [
       lineNumbers(),
+      // CodeMirror draws the selection itself: WebKitGTK (Linux) ignores a CSS ::selection colour.
+      drawSelection(),
       history(),
       bracketMatching(),
       closeBrackets(),

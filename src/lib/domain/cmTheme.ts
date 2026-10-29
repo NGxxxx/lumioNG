@@ -18,8 +18,13 @@ const theme = EditorView.theme({
   "&.cm-focused": { outline: "none" },
   ".cm-activeLine": { backgroundColor: "transparent" },
   ".cm-activeLineGutter": { backgroundColor: "transparent" },
-  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground, .cm-content ::selection": {
-    backgroundColor: "var(--selected)",
+  // Drawn by drawSelection() (CodeEditor), so it looks the same in every webview. The selectors
+  // match the specificity of CodeMirror's baseTheme ones ("&light.cm-focused > .cm-scroller >
+  // .cm-selectionLayer .cm-selectionBackground"; `.cm-editor` stands in for `&light`, which only
+  // base themes may use), and a theme outranks the base theme at equal specificity. A plainer
+  // selector loses to its built-in light-grey selection.
+  "&.cm-editor .cm-selectionBackground, &.cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground": {
+    backgroundColor: "var(--text-selection)",
   },
   ".cm-cursor": { borderLeftColor: "var(--fg)" },
   ".cm-tooltip-autocomplete": {

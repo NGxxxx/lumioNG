@@ -12,6 +12,15 @@ beforeEach(() => {
 });
 
 describe("QuerySettingsPopover", () => {
+  it("timeoutOnly (collection Data view) shows just the timeout, which still writes to settings", async () => {
+    const { getByText, queryByText, container } = render(QuerySettingsPopover, { props: { timeoutOnly: true } });
+    await fireEvent.click(getByText("⚙"));
+    expect(container.querySelectorAll("input")).toHaveLength(1);
+    expect(queryByText("Timeout (ms)")).toBeTruthy();
+    await fireEvent.change(container.querySelector("input")!, { target: { value: "120000" } });
+    expect(settings.queryTimeoutMs).toBe(120000);
+  });
+
   it("is collapsed until the gear is clicked", async () => {
     const { getByText, queryByText } = render(QuerySettingsPopover);
     expect(queryByText("Timeout (ms)")).toBeNull();

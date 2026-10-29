@@ -1740,5 +1740,8 @@
   "import_batch_run": "Import {count} files",
   "import_batch_progress": "{done} of {total} files",
   "import_batch_inserted": "{count} inserted",
-  "err_coll_name_duplicate": "Another file imports into this collection."
+  "err_coll_name_duplicate": "Another file imports into this collection.",
+  "export_wizard_filter_collections": "Filter databases or collections…",
+  "export_wizard_filter_fields": "Filter fields…",
+  "export_wizard_no_match": "Nothing matches “{query}”."
 }

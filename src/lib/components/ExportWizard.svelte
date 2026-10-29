@@ -6,7 +6,7 @@
   import { sessionManager } from "../stores/sessionManager.svelte";
   import { createExportJob, type ExportFormat, type ExportTarget } from "../stores/exportJob.svelte";
   import { jobs, exportJobSource, exportTargetLabel } from "../stores/jobs.svelte";
-  import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, type ExportWizardInput } from "../domain/exportPlan";
+  import { targetKey, buildTargets, buildExportProjection, pickColumns, countLossyExportFields, filterPickTree, matchesFilter, type ExportWizardInput } from "../domain/exportPlan";
   import type { BsonType } from "../domain/extjson";
   import { pickSavePath, pickDirectory } from "../stores/desktop";
   import { settings } from "../stores/settings.svelte";
@@ -52,8 +52,18 @@
   // Tree-driven ("pick") mode exports the ACTIVE session; guard so a null active session shows no DBs.
   const databases = $derived(sessionManager.active?.tree?.databases ?? []);
 
+  // Search box over the picker (databases / collections) or the column list. While it narrows the
+  // list, Select all / Clear and a database's checkbox act on the visible items only; checks on
+  // hidden items are kept.
+  let query = $state("");
+  const shownDbs = $derived(filterPickTree(databases, query));
+  const shownCols = $derived(cols.map((c, i) => ({ c, i })).filter(({ c }) => matchesFilter(c.path, query)));
+
   function collsOf(db: string): string[] {
     return databases.find((d) => d.name === db)?.collections ?? [];
+  }
+  function shownCollsOf(db: string): string[] {
+    return shownDbs.find((d) => d.name === db)?.collections ?? [];
   }
   function dbSelectedCount(db: string): number {
     return collsOf(db).filter((c) => checked.has(targetKey(db, c))).length;
@@ -66,7 +76,7 @@
   }
   /** Toggle every collection of a database: select all unless already all-selected, else clear them. */
   function toggleDb(db: string) {
-    const colls = collsOf(db);
+    const colls = shownCollsOf(db);
     const all = colls.length > 0 && colls.every((c) => checked.has(targetKey(db, c)));
     const next = new Set(checked);
     for (const c of colls) {
@@ -76,12 +86,14 @@
     checked = next;
   }
   function selectAll() {
-    const next = new Set<string>();
-    for (const d of databases) for (const c of d.collections) next.add(targetKey(d.name, c));
+    const next = new Set(checked);
+    for (const d of shownDbs) for (const c of d.collections) next.add(targetKey(d.name, c));
     checked = next;
   }
   function clearAll() {
-    checked = new Set();
+    const next = new Set(checked);
+    for (const d of shownDbs) for (const c of d.collections) next.delete(targetKey(d.name, c));
+    checked = next;
   }
 
   function toggleCol(i: number) {
@@ -89,7 +101,7 @@
     cols = [...cols];
   }
   function selectAllCols(sel: boolean) {
-    cols = cols.map((c) => ({ ...c, sel }));
+    cols = cols.map((c) => (matchesFilter(c.path, query) ? { ...c, sel } : c));
   }
 
   async function chooseFolder() {
@@ -182,12 +194,15 @@
                 <button type="button" class="link" onclick={clearAll}>{m.export_wizard_clear()}</button>
                 <span class="count">{m.export_wizard_selected_count({ n: checked.size })}</span>
               </div>
+              <input class="filter" type="search" bind:value={query} placeholder={m.export_wizard_filter_collections()} aria-label={m.export_wizard_filter_collections()} />
               <div class="scroll">
-                {#each databases as d (d.name)}
-                  {@const total = d.collections.length}
+                {#if shownDbs.length === 0}<p class="no-match">{m.export_wizard_no_match({ query: query.trim() })}</p>{/if}
+                {#each shownDbs as d (d.name)}
+                  {@const total = collsOf(d.name).length}
                   {@const sel = dbSelectedCount(d.name)}
+                  {@const visible = d.collections}
                   <label class="db">
-                    <input type="checkbox" checked={total > 0 && sel === total} onchange={() => toggleDb(d.name)} />
+                    <input type="checkbox" checked={visible.length > 0 && visible.every((c) => checked.has(targetKey(d.name, c)))} onchange={() => toggleDb(d.name)} />
                     <span class="db-name">{d.name}</span>
                     <span class="db-count">{sel}/{total}</span>
                   </label>
@@ -205,8 +220,10 @@
                 <button type="button" class="link" onclick={() => selectAllCols(true)}>{m.export_wizard_select_all()}</button>
                 <button type="button" class="link" onclick={() => selectAllCols(false)}>{m.export_wizard_clear()}</button>
               </div>
+              <input class="filter" type="search" bind:value={query} placeholder={m.export_wizard_filter_fields()} aria-label={m.export_wizard_filter_fields()} />
               <div class="scroll">
-                {#each cols as c, i (c.path)}
+                {#if shownCols.length === 0}<p class="no-match">{m.export_wizard_no_match({ query: query.trim() })}</p>{/if}
+                {#each shownCols as { c, i } (c.path)}
                   <label class="coll">
                     <input type="checkbox" checked={c.sel} onchange={() => toggleCol(i)} />
                     <span>{c.path}</span>
@@ -312,7 +329,11 @@
   .link:hover { text-decoration: underline; }
 
   /* Scrollable list — behaves like the namespace sidebar when long */
-  .scroll { flex: 1; min-height: 7.5rem; max-height: 46vh; overflow: auto; padding: 0.25rem 0; }
+  .filter { margin: 0.375rem 0.5rem 0.125rem; height: 1.625rem; padding: 0 0.5rem; border: 1px solid var(--c-surface1); border-radius: var(--radius); background: var(--bg); color: var(--fg); font-size: var(--fs); box-sizing: border-box; width: calc(100% - 1rem); }
+  .filter:focus { outline: none; border-color: var(--focus-ring); }
+  .no-match { margin: 0.5rem 0.75rem; color: var(--muted); font-size: var(--fs); }
+  /* Fixed height: filtering must not shrink the dialog and move its buttons under the pointer. */
+  .scroll { flex: none; height: min(46vh, 24rem); overflow: auto; padding: 0.25rem 0; }
   .db, .coll { display: flex; align-items: center; gap: 0.375rem; padding: 0.1875rem 0.5rem; cursor: pointer; }
   .db { font-weight: 600; }
   .db-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

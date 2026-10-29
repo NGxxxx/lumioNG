@@ -1740,5 +1740,8 @@
   "import_batch_run": "Import {count} file",
   "import_batch_progress": "{done}/{total} file",
   "import_batch_inserted": "Đã thêm {count}",
-  "err_coll_name_duplicate": "Một file khác cũng import vào collection này."
+  "err_coll_name_duplicate": "Một file khác cũng import vào collection này.",
+  "export_wizard_filter_collections": "Lọc database hoặc collection…",
+  "export_wizard_filter_fields": "Lọc field…",
+  "export_wizard_no_match": "Không có kết quả cho “{query}”."
 }

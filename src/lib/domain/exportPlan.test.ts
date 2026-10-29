@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { targetKey, buildTargets, exportFileName, aggregateProgress, buildExportProjection, pickColumns, countLossyExportFields } from "./exportPlan";
+import { targetKey, buildTargets, filterPickTree, matchesFilter, exportFileName, aggregateProgress, buildExportProjection, pickColumns, countLossyExportFields } from "./exportPlan";
 
 describe("buildTargets", () => {
   const dbs = [
@@ -98,5 +98,28 @@ describe("countLossyExportFields", () => {
     const cols = [{ path: "name", type: "string" as const }];
     expect(countLossyExportFields(cols, "csv")).toBe(0);
     expect(countLossyExportFields(cols, "sql")).toBe(0);
+  });
+});
+
+describe("filterPickTree", () => {
+  const dbs = [
+    { name: "shop", collections: ["orders", "users", "order_items"] },
+    { name: "logs", collections: ["events", "audit"] },
+    { name: "Orders_archive", collections: ["y2024"] },
+  ];
+  it("returns the tree untouched for a blank query", () => {
+    expect(filterPickTree(dbs, "  ")).toBe(dbs);
+  });
+  it("keeps matching collections (case-insensitive), whole databases whose name matches, drops empty ones", () => {
+    expect(filterPickTree(dbs, "ORDER")).toEqual([
+      { name: "shop", collections: ["orders", "order_items"] },
+      { name: "Orders_archive", collections: ["y2024"] },
+    ]);
+    expect(filterPickTree(dbs, "logs")).toEqual([{ name: "logs", collections: ["events", "audit"] }]);
+    expect(filterPickTree(dbs, "nothing")).toEqual([]);
+  });
+  it("matchesFilter is a trimmed, case-insensitive substring test", () => {
+    expect(matchesFilter("customer.Email", " email ")).toBe(true);
+    expect(matchesFilter("name", "x")).toBe(false);
   });
 });

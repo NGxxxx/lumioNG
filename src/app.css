@@ -67,6 +67,8 @@
   --tab-active-fg: var(--c-text);
   --tab-inactive-bg: var(--c-crust);
   --row-selected: color-mix(in srgb, var(--c-blue) 12%, var(--c-base));
+  /* Selected text in code editors: must read clearly behind syntax colours, so much stronger than a row tint. */
+  --text-selection: color-mix(in srgb, var(--c-blue) 26%, var(--c-base));
   --row-selected-ring: color-mix(in srgb, var(--c-blue) 45%, var(--c-base));
   --row-hover: color-mix(in srgb, var(--c-text) 4%, var(--c-base));
   --menu-hover: color-mix(in srgb, var(--c-text) 6%, var(--c-base));
@@ -171,6 +173,7 @@
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 2px 6px rgba(0, 0, 0, 0.35), 0 24px 80px rgba(0, 0, 0, 0.55);
   --backdrop: rgba(5, 6, 8, 0.62);
+  --text-selection: color-mix(in srgb, var(--c-blue) 38%, var(--c-base));
 }
 
 html,

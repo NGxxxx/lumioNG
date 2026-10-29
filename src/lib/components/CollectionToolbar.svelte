@@ -7,6 +7,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
   import { chipsFromFilter } from "../domain/filterChips";
   import { msgKey } from "#lib/msgkey.js";
   import GridDepthSelect from "./GridDepthSelect.svelte";
+  import QuerySettingsPopover from "./QuerySettingsPopover.svelte";
 
   let { v, view = $bindable("grid"), treeAllExpanded = false, ontoggleexpand }: {
     v: ReturnType<typeof createCollectionView>;
@@ -260,6 +261,7 @@ import type { createCollectionView } from "../stores/collectionView.svelte";
     {#if view === "grid"}
       <GridDepthSelect />
     {/if}
+    <QuerySettingsPopover timeoutOnly />
   </div>
 </div>
 {#if v.filterError}<div class="error">{msgKey(v.filterError)}</div>{/if}
